@@ -19,7 +19,8 @@
       "const": "OpenSensorTemplate"
     },
     "template_version": {
-      "const": "0.1.0"
+      "type": "string",
+      "pattern": "^0\\.1\\.[0-9]+$"
     },
     "id": {
       "type": "string",

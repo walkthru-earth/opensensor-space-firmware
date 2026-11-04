@@ -134,7 +134,7 @@
         },
         "opensensor:field_id": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 1
         },
         "opensensor:valid_when": {
           "$ref": "#/definitions/gate"
