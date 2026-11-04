@@ -45,9 +45,11 @@ Raw results sit next to this page in [`parquet-small-files/`](parquet-small-file
 | PLAIN, LZ4_RAW | 17,842 | −59 % | yes |
 | PLAIN, ZSTD | 14,303 | −67 % | Android only |
 | Dictionary, UNCOMPRESSED | 21,025 | −51 % | yes |
-| DELTA_BINARY_PACKED ints, UNCOMPRESSED | 12,672 | −71 % | no |
-| DELTA ints, LZ4_RAW | 11,344 | −74 % | no |
-| DELTA ints plus BYTE_STREAM_SPLIT floats, LZ4_RAW | 10,647 | −75 % | no |
+| DELTA_BINARY_PACKED ints, UNCOMPRESSED | 12,672 | −71 % | yes |
+| DELTA ints, LZ4_RAW | 11,344 | −74 % | yes |
+| DELTA ints plus BYTE_STREAM_SPLIT floats, LZ4_RAW | 10,647 | −75 % | yes |
+
+Updated 2026-11-04. The last column now shows the current phone reader. In October the three DELTA rows said no. The phone has read DELTA_BINARY_PACKED and BYTE_STREAM_SPLIT since 2026-10-18, see Phone reader limits below.
 
 - The 86 row v6.7 file and the 180 row v6 file show the same order.
 - BYTE_STREAM_SPLIT alone gains nothing without a codec.
@@ -89,17 +91,20 @@ Issue #25 tracks each one as a task. Item 2 is done, the others are not decided.
 2. Make LZ4_RAW the persisted default. Done in #25 on the strength of the Arduino bench, the host survey and the phone reader. A paired `codec-test` bench on the current IDF builds is still owed to confirm the size and timing on device.
 3. Move long static key value entries behind a short versioned URI and hash. This is a wire contract change and needs its own decision.
 4. Prefer fewer row groups per file, since each one costs about 4.4 KB of footer.
-5. Treat DELTA_BINARY_PACKED for integers as the largest future win, after the phone reader supports it. Measure dictionary RAM on device before using it.
+5. Treat DELTA_BINARY_PACKED for integers as the largest future win. The phone reader supports it since 2026-10-18, so the next step is the on device measurement in [#135](https://github.com/walkthru-earth/opensensor-space-firmware/issues/135). Measure dictionary RAM on device before using it.
 6. Register v6.12 and v2.6 files with iceberg-go `AddFiles` as a raw tier, then rewrite them on the host into Iceberg v3 data files of about 256 MB, sorted by Thing, H3 cell and event time, with dictionary plus LZ4_RAW or SNAPPY, the page index on and bloom filters on `h3_cell_id`, `device_id` and a new `thing_id` column. The October 2026 survey called it `station_id`. #108 renamed it and changed nothing else.
 7. Partition by month while the fleet is small, then move to day with partition evolution.
 8. Keep anything the phone may read in LZ4_RAW or SNAPPY until iOS reads ZSTD. Keep device originals as an immutable archive.
 
 ## Phone reader limits
 
-The opensensor-space-mobile `:core:parquet` reader reads UNCOMPRESSED, LZ4_RAW, SNAPPY and GZIP on iOS and Android, ZSTD on Android only, and PLAIN, RLE and dictionary encodings. It refuses DELTA_* and BYTE_STREAM_SPLIT. It reads a 64 KiB tail on local links, 128 KiB on cellular and 256 KiB on Wi Fi, and it reads the page index but not bloom filters.
+Updated 2026-11-04. In October the reader refused DELTA_* and BYTE_STREAM_SPLIT. That changed on 2026-10-18.
 
-- LZ4_RAW or dictionary on device needs no reader work.
-- DELTA, BYTE_STREAM_SPLIT, ZSTD on iOS, bloom filters, the metadata URI and a `thing_id` column all need reader work first.
+The opensensor-space-mobile `:core:parquet` reader reads UNCOMPRESSED, LZ4_RAW, SNAPPY and GZIP on iOS and Android, ZSTD on Android only, and PLAIN, RLE, dictionary, DELTA_BINARY_PACKED and BYTE_STREAM_SPLIT encodings. It reads a 64 KiB tail on local links, 128 KiB on cellular and 256 KiB on Wi Fi, and it reads the page index but not bloom filters.
+
+- The DELTA and BYTE_STREAM_SPLIT decoders came from mobile [#94](https://github.com/walkthru-earth/opensensor-space-mobile/issues/94) in [PR #103](https://github.com/walkthru-earth/opensensor-space-mobile/pull/103) (commit `1da9474b`). They live in shared `commonMain` code, so iOS and Android run the same decoder. `EncodingFixtureTest` checks both bit for bit against PyArrow and DuckDB files, on the JVM and on the iOS simulator through `./gradlew verifyIos`.
+- LZ4_RAW, dictionary, DELTA or BYTE_STREAM_SPLIT on device need no reader work. DELTA on device still needs the measurement in [#135](https://github.com/walkthru-earth/opensensor-space-firmware/issues/135).
+- ZSTD on iOS, bloom filters, the metadata URI and a `thing_id` column all need reader work first.
 
 ## Rerun
 
