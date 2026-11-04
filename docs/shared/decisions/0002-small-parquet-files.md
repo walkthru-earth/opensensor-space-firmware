@@ -46,8 +46,14 @@ stands alone with a full footer (bridge decision 16).
 - No page index and no bloom filters on device. With one page per chunk and
   about 90 rows per group a page index repeats the chunk statistics and adds 1.6
   to 1.7 KB per file.
-- No DELTA_BINARY_PACKED and no BYTE_STREAM_SPLIT, although DELTA integers were
-  the largest host win in the survey. The phone reader refuses both today.
+- No DELTA_BINARY_PACKED and no BYTE_STREAM_SPLIT yet, although DELTA integers
+  were the largest host win in the survey. The phone reader decodes both on iOS
+  and Android since 2026-10-18 (mobile
+  [#94](https://github.com/walkthru-earth/opensensor-space-mobile/issues/94),
+  [PR #103](https://github.com/walkthru-earth/opensensor-space-mobile/pull/103)).
+  What is left is the on device measurement in
+  [#135](https://github.com/walkthru-earth/opensensor-space-firmware/issues/135).
+  Updated 2026-11-04. In October this line said the phone reader refused both.
 - No ZSTD in any file the phone may read. The phone reads ZSTD on Android only.
 - No dictionary encoding until there are on device RAM numbers for it next to the
   TLS and BLE buffers.
@@ -99,8 +105,12 @@ issue #61 with the other bench work.
 
 ## Reopen when
 
-- The phone reader decodes DELTA_BINARY_PACKED and BYTE_STREAM_SPLIT on both iOS
-  and Android. Then measure DELTA integers on device.
+- Met on 2026-10-18. The phone reader decodes DELTA_BINARY_PACKED and
+  BYTE_STREAM_SPLIT on both iOS and Android (mobile PR #103, covered by
+  `verifyIos`). The DELTA integer measurement on device is
+  [#135](https://github.com/walkthru-earth/opensensor-space-firmware/issues/135).
+- Not met yet. The DELTA measurement in #135 shows it fits the writer time,
+  heap and image budget on both boards.
 - iOS reads ZSTD. Then compare ZSTD against LZ4_RAW on device.
 - On device numbers show a dictionary page fits next to TLS and BLE on both
   boards.
