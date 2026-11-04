@@ -2,9 +2,9 @@
 
 
 > **Board scope:** OSCommon/OSLogger implement the shared pipeline for both native
-> ESP-IDF 6.1 board adapters. CoreS3 v6.21 uses the 81-column `cores3-telemetry-v6`
-> schema and Waveshare V2 v2.15 the 62-column PMS5003T `waveshare-sim7670g-telemetry-v6`
-> schema, both with dictionary v7. Schema identities and hardware
+> ESP-IDF 6.1 board adapters. CoreS3 uses the 81-column `cores3-telemetry-v6`
+> schema and Waveshare V2 the 62-column PMS5003T `waveshare-sim7670g-telemetry-v6`
+> schema. Firmware and dictionary versions are in the [status table](../../README.md#status). Schema identities and hardware
 > acquisition remain board-owned. Dated SD/throughput results below are historical
 > Arduino image evidence. A [short native CoreS3 readback](../boards/m5stack-cores3/bench-verified.md#board-1-first-native-esp-idf-flash-and-readback)
 > passed; Waveshare, native endurance and durability remain pending.
@@ -151,7 +151,7 @@ An optional spool can remain uncompressed. Measure complete Parquet bytes, CPU t
 - The 90-row batch and writer workspace reside in PSRAM, Quad on CoreS3 and OPI on Waveshare. The sample queue defaults to eight rows through `ossync::ServiceConfig` and is allocated by FreeRTOS. Allocation failure disables logging with an error. Queue depth is not a qualified stall budget.
 - One storage task owns FatFs and all SD transactions. CoreS3 shares SPI2 with the display through the application bus lock. Waveshare owns one-bit SDMMC. Neither waits for network work while holding the bus lock.
 - The writer streams through a 4 KiB stdio buffer on the storage task's internal stack. Each archive read handle has a separate 4 KiB PSRAM stdio buffer. Both boards reserve a heap-owned 4 KiB internal DMA SD transfer buffer before radios and retain it for the mount. The shared mount helper and descriptor budget cover writers, transient streams and four persistent archive readers.
-- A separate later uploader will read only finalized Parquet files. No retention deletion or object-storage synchronization is implemented yet.
+- The uploader reads only finalized dated Parquet files. Its software landed in #129, off by default and not wired into any board, see [uploader software](#uploader-software-129). No retention deletion exists.
 - Queue overflow counts dropped rows. Since #5 an SD space governor (`firmware/common/logger/src/storage_governor.h`) classifies the card as ready, degraded, full or retry. The hard reserve is 32 MiB, the high mark is 5 percent of the volume capped at 256 MiB, and 16 MiB of hysteresis stops flapping (all scaled down on tiny cards). Below the reserve the worker finalizes the open file, logs `PARQUET ALARM storage=full`, sets STATUS `fail` and `sd_state`, and stops normal card writes. Full/retry retain a bounded RAM batch and count new rows as dropped when it fills or a partition/window change cannot be committed. A write, close, rename or mount failure enters retry, which remounts the card (when the board supplies the hook) and probes after 10, 30, 60, 120, 240 and 480 s, then every 600 s. The RAM batch is kept until a probe writes it. Full is re-measured every 60 s with a remount, so space freed on a PC is seen without a reboot. No file is ever deleted automatically. There is no gap-record journal.
 
 Record sample jitter, queue high-water mark, drops, internal and PSRAM minimum free space, writer time, file bytes/row, SD write p50/p99/max latency, sync latency, incomplete-file count and, once implemented, recovery and upload retry counts. Label measurements by firmware build, configuration, sample count and card model; keep measured results in [bench-verified](../boards/m5stack-cores3/bench-verified.md).
@@ -188,6 +188,36 @@ archive deletion. Owner archives remain immutable and owner-controlled.
 SHA-256 and acknowledgement persistence are not implemented by the current
 CRC32 serial-readback helper.
 
+### Uploader software (#129)
+
+The shared uploader in `firmware/common/upload/` landed in #129. It is off by
+default through `CONFIG_OS_UPLOAD_ENABLE`, and no board wires a session into
+the storage worker yet. So no board uploads today. What follows is the current
+code in `os_upload_policy.h` and `os_upload_policy.cpp`.
+
+- It sends finalized dated `data_HHMM_` files only, oldest first, one at a time,
+  and only after UTC comes from a host or the network.
+- Each put sends `If-None-Match: *`. An SD ledger, append only, records what was
+  sent. The uploader never lists or reads the bucket.
+- The object key ends with the SD relative archive name, verbatim. That name
+  starts at `thing=<uuid>/`.
+- A `Dev` key is `<product>/dev/opensensor-space-firmware/<board>/<name>`. The
+  `<board>` segment is any lowercase slug of 1 to 32 characters from `[a-z0-9-]`
+  that the caller passes. The header comment and the host tests use `cores3` and
+  `waveshare-sim7670g`. These are not the footer `thing.board` slugs
+  `m5stack-cores3` and `waveshare-esp32-s3-sim7670g`, and no code compares them.
+  A board that wires the uploader picks the segment.
+- A `Prod` key is `<product>/<prod_prefix><name>`. The prefix must not be empty,
+  must end in `/` and must not start with `dev/`. So a prod key is never
+  `opensensor-space/thing=<uuid>/...`, the path the stac-opensensor PROFILE
+  publishes. Prod is meant for a private intake product that a publish Action
+  copies into place (#81). The intake product and prefix wait on the owner.
+- Since [decision 0001](decisions/0001-standalone-thing-stac.md) the board also
+  writes STAC. Each dated file gets a sidecar `<file>.json` File Item next to it
+  on SD, and it travels with the Parquet under the same key prefix. The board
+  writes the Thing Collection from its upload ledger. Neither writer is built
+  yet.
+
 MQTT QoS 1 can carry live gauges, alarms and device health. It is not the durable measurement source because duplicates and reconnect gaps are normal. Deduplicate any live copy by the same row identity.
 
 The ingestion service can accept the device's finalized Parquet directly. Uninterrupted 10/15/30/60-minute rotation produces 144/96/48/24 files per Thing per UTC day (the longer windows hold 2 or 4 row groups each); extra splits produce more. Cloud compaction can follow as fleet size and query costs warrant. Apache Iceberg catalog and snapshot management remain later work.
@@ -212,7 +242,7 @@ These are arithmetic projections, **not claims that the board/card will run for 
 
 Card endurance, bit retention, environmental conditions, continuous power, clock accuracy and long-run firmware reliability were not qualified. This is not a battery-runtime estimate. No automatic deletion/retention policy exists: on storage failure the batch is retained in RAM and later drops/errors are counted. A free-space reserve/alarm and tested recovery policy must be implemented before unattended deployment.
 
-**Can it sync afterward? Architecturally yes; currently no uploader exists.** The immutable files and Thing and date keys can be copied to object storage without re-encoding, but the device has not performed that upload. Remaining work:
+**Can it sync afterward? Architecturally yes, but no board uploads yet.** The immutable files and Thing and date keys can be copied to object storage without re-encoding. The uploader software landed in #129 and is off by default, see [uploader software](#uploader-software-129). No device has performed an upload. Remaining work:
 
 1. provision an endpoint, TLS trust and narrowly scoped credentials, without blocking acquisition;
 2. enumerate finalized normal files (exclude diagnostic copies/partials), stream bounded SD reads and retry the same object identity after disconnects;
