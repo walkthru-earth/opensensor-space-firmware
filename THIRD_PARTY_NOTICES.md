@@ -123,9 +123,11 @@ The JSON Schemas in [`tools/stac_opensensor/v0.1.0`](tools/stac_opensensor/v0.1.
 (`template.json`, `profile.json`, `schema.json`, `footer.json`), the profile
 text [`tools/stac_opensensor/PROFILE.md`](tools/stac_opensensor/PROFILE.md)
 and the example [`tools/stac_opensensor/footers/cores3-telemetry-v5.json`](tools/stac_opensensor/footers/cores3-telemetry-v5.json)
-are unmodified copies of
+are copies of
 [stac-opensensor](https://github.com/walkthru-earth/stac-opensensor) at commit
-`4408c4e52366bb3d154d22bbfffc88ff09aed6f1`, Copyright (c) 2025-2026 Walkthru.Earth, licensed
+`4408c4e52366bb3d154d22bbfffc88ff09aed6f1`. The schemas and the example are
+unmodified. In `PROFILE.md` only the relative links to files that are not
+vendored here are rewritten as absolute links at that commit. Copyright (c) 2025-2026 Walkthru.Earth, licensed
 [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/). The host contract
 tests use them to validate the board templates and the `opensensor` Parquet
 footer each board writes. They are not in any firmware image.

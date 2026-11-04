@@ -7,7 +7,7 @@
 | Template schema | <https://walkthru-earth.github.io/stac-opensensor/v0.1.0/template.json> |
 | Version | 0.1.0 |
 
-The [extension](README.md) defines fields. This profile fixes how a whole catalog of Things uses them,
+The [extension](https://github.com/walkthru-earth/stac-opensensor/blob/4408c4e52366bb3d154d22bbfffc88ff09aed6f1/README.md) defines fields. This profile fixes how a whole catalog of Things uses them,
 so any client can read any Thing without guessing.
 A Thing is the OGC SensorThings term for a device that carries sensors. It is fixed in one place or moving.
 It says which extensions each document must declare, which fields each column must carry and which vocabularies to use.
@@ -16,8 +16,8 @@ A document follows the profile when it lists the profile schema in `stac_extensi
 STAC validators then check the profile like any other extension.
 
 - [Full example](#full-example)
-- [Profile schema](json-schema/profile.json)
-- [Template schema](json-schema/template.json)
+- [Profile schema](https://github.com/walkthru-earth/stac-opensensor/blob/4408c4e52366bb3d154d22bbfffc88ff09aed6f1/json-schema/profile.json)
+- [Template schema](https://github.com/walkthru-earth/stac-opensensor/blob/4408c4e52366bb3d154d22bbfffc88ff09aed6f1/json-schema/template.json)
 
 ## Layers
 
@@ -156,7 +156,7 @@ These choices hold for every Thing.
 
 Every data file carries one key of ours, `opensensor`, in its Parquet key-value metadata, modelled on the GeoParquet `geo` key.
 The standard `geo` key sits beside it, see [Location](#location).
-The value is compact UTF-8 JSON that validates against [json-schema/footer.json](json-schema/footer.json).
+The value is compact UTF-8 JSON that validates against [json-schema/footer.json](https://github.com/walkthru-earth/stac-opensensor/blob/4408c4e52366bb3d154d22bbfffc88ff09aed6f1/json-schema/footer.json).
 No other key of ours is part of the contract.
 A file stands alone, so an indexer can build its Thing Collection and Item from the footer, the rows and the template it names.
 
@@ -206,9 +206,9 @@ The template lists 11 of its 81 columns, one or more of each kind. A generated t
 
 | File | Layer |
 | --- | --- |
-| [templates/m5stack-cores3/e5060fb7….json](templates/m5stack-cores3/e5060fb7fedbcabf665b1c8a159a77f5fe9283ac34bd2d89f1bc98b0f027d38b.json) | Board template, `dict` `e5060fb7…` |
-| [examples/catalog.json](examples/catalog.json) | Root Catalog |
-| [examples/collection.json](examples/collection.json) | Thing Collection made from the template |
-| [examples/item.json](examples/item.json) | File Item, one hour |
+| [templates/m5stack-cores3/e5060fb7….json](https://github.com/walkthru-earth/stac-opensensor/blob/4408c4e52366bb3d154d22bbfffc88ff09aed6f1/templates/m5stack-cores3/e5060fb7fedbcabf665b1c8a159a77f5fe9283ac34bd2d89f1bc98b0f027d38b.json) | Board template, `dict` `e5060fb7…` |
+| [examples/catalog.json](https://github.com/walkthru-earth/stac-opensensor/blob/4408c4e52366bb3d154d22bbfffc88ff09aed6f1/examples/catalog.json) | Root Catalog |
+| [examples/collection.json](https://github.com/walkthru-earth/stac-opensensor/blob/4408c4e52366bb3d154d22bbfffc88ff09aed6f1/examples/collection.json) | Thing Collection made from the template |
+| [examples/item.json](https://github.com/walkthru-earth/stac-opensensor/blob/4408c4e52366bb3d154d22bbfffc88ff09aed6f1/examples/item.json) | File Item, one hour |
 
 `npm run check-profile` validates all of them and checks that the Collection's columns and checksums match the template.
