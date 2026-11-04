@@ -64,10 +64,13 @@ in `firmware/common/`. Device protocol and telemetry contracts live in
 | CoreS3 pins, build, current bench evidence | `firmware/esp-idf-cores3/AGENTS.md`, `docs/boards/m5stack-cores3/README.md` |
 | Waveshare V2 pins, build, current bench evidence | `firmware/esp-idf-waveshare-sim7670g/AGENTS.md`, `docs/boards/waveshare-esp32-s3-sim7670g/README.md` |
 | Shared drivers, writer, settings, radio, logger | `firmware/common/AGENTS.md`, then its scoped `AGENTS.md` |
-| New ESP32-S3 board, logger hooks and capabilities | `docs/shared/board-porting.md`, `firmware/common/logger/README.md` |
+| New ESP32-S3 board, logger hooks, sensor modules and plugin manifests | `docs/shared/board-porting.md`, `firmware/common/logger/README.md`, `docs/shared/plugins/README.md` |
 | BLE/LAN and mobile compatibility | `docs/shared/ble-sync-protocol.md`, `../opensensor-space-mobile/AGENTS.md` |
 | Telemetry schema, Parquet, UTC, archive paths | `docs/shared/telemetry-pipeline.md`, `docs/shared/table-and-observation-model.md` |
 | Router/local NTP, H3 and country/privacy configuration | `docs/shared/time-and-location.md`, `firmware/common/location/AGENTS.md` |
+| Moving Thing, GNSS receiver and the `gnss_fix` hook | `firmware/common/gnss/AGENTS.md`, `docs/shared/time-and-location.md` |
+| Board STAC File Item and Thing Collection (decided in DR 0001, not built, #142 and #145) | `docs/shared/stac-contract/README.md`, `docs/shared/decisions/0001-standalone-thing-stac.md` |
+| LAN OTA, boot self test and core dumps (#40) | `firmware/common/connectivity/AGENTS.md`, `docs/shared/security-hardening.md` |
 | Host scripts and gates | `tools/AGENTS.md`, `docs/shared/development.md` |
 
 ## Code boundaries
@@ -89,6 +92,7 @@ in `firmware/common/`. Device protocol and telemetry contracts live in
 - The card is the origin. The local phone or laptop archive is the first copy.
   BLE/LAN sync works without internet. Cloud upload is optional. The uploader
   software landed in #129, off by default and not wired into any board yet.
+  Wiring it into the storage worker is #144.
 - Keep device PIN, Wi-Fi PSK and LAN bearer token out of logs, radio responses,
   captured artifacts and docs. Contract changes require firmware and mobile
   consumers to agree. `docs/shared/ble-sync-protocol.md` owns wire behavior.
@@ -183,6 +187,8 @@ commands read flash/device state. `chip` can reset a running app on exit. Never
 write eFuses or format the card. Never assume flash size from a product name.
 CoreS3 native USB readback must use esptool's default baud. 921600 corrupted a
 measured read. See the selected board's docs for recovery and power rules.
+LAN OTA (#40) writes only the inactive app slot over an authenticated LAN
+session. Images are not signed and rollback is off, so never claim either.
 
 ## Dependency selection
 

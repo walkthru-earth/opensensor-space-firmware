@@ -18,10 +18,13 @@ initialization and each board's schema/provenance remain in its own trial.
   callbacks run only on the main task through begin/poll; a host clock command
   must enqueue an RTC request rather than performing hardware IO on the worker.
 - Preserve 10-second monotonic sampling on both boards (the
-  `Config::sample_interval_ms` default), absent-field/type-safe runtime setters,
+  `Config::sample_interval_ms` default, which `begin()` rejects unless
+  `cadence::valid_sample_interval()` passes), absent-field/type-safe runtime setters,
   null UTC before a real anchor, visible drop/deadline/error counts, and immutable
-  finalized files. Keep 90-row RAM batches, eight-row-group writer bounds and
-  fsync after each row group; `.partial` files are preserved/quarantined rather
+  finalized files. Keep 90-row RAM batches (`cadence::kMaxBatchRows`), rows per
+  group from `cadence::rows_per_group()` for the rotation window, the
+  eight-row-group writer bound (`kMaxRowGroups`) and fsync after each row group.
+  Cadence rules stay pure in `os_logger_cadence.h`; `.partial` files are preserved/quarantined rather
   than repaired or deleted. Do not imply power-cut durability from normal resets.
 - Task priorities: board task `kBoardTaskPriority` (2) < `parquet-sd` worker
   (`Config::worker_priority`, 3) < `os-lan` (4). The worker stack stays in
@@ -62,6 +65,19 @@ initialization and each board's schema/provenance remain in its own trial.
   is refused while a radio `LIST` job runs, since the FATFS lock budget covers
   one walk. Keep the job's worker decisions pure in `os_logger_list_job.h`,
   and never start a periodic remount while a `LIST` job runs.
+- Boot self test (#40). `Config::self_test_field` must hold a valid value,
+  the SD card must be ready and BLE started before `self_test_deadline_ms`
+  (180 s). The logger then prints one SELFTEST line and calls
+  `ossync::ota::confirm_running_app`. Keep the verdict pure in
+  `firmware/common/src/boot_self_test.h`.
+- `Hooks::gnss_fix` is optional and runs on the main loop once per row. It
+  copies the newest H3 fix and never blocks or touches the receiver UART. A
+  board without a receiver leaves it null, so a moving Thing writes location
+  nulls. The per row source rule lives in `firmware/common/gnss`.
+- `os_sensor_module.h` is the sensor module API the generated
+  `<id>_module.h` headers build on, and `system.module.json` is the
+  `system` module manifest for logger owned columns, which gets no generated
+  header. See `firmware/common/sensors/AGENTS.md`.
 - Board metadata must describe its hardware honestly. PMS5003T has four particle
   bins and ambient temperature/humidity; do not synthesize CoreS3-only bins.
 - Copy the coarsened location settings at acquisition into the queued sample.

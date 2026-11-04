@@ -27,6 +27,14 @@ in `../../docs/boards/m5stack-cores3/` (start at its `README.md`).
   `telemetry_fields.inc` position, so only append fields. H3 and NTP policy are
   shared services: capture the coarsened Thing location with each sample, keep
   country owner-declared, and never initialize GPS or infer country here.
+- CoreS3 has no GNSS receiver and passes no `Hooks::gnss_fix`, so a moving
+  Thing writes location nulls, `location_source` included. Only a fixed Thing
+  gets the configured cell.
+- Sensor collection still lives in `bringup/telemetry_logger.cpp`. Columns come
+  from `bringup/board.json` segments, the shared modules and the board-local
+  `bringup/modules/` manifests, and the checked-in `telemetry_*.inc` must equal
+  their expansion. `shipped.lock` is append only. Never hand edit a generated
+  `*_module.h`, and run `plugin-contract-test` after any manifest or field change.
 - Reserve the heap-owned 4 KiB internal DMA SD transfer buffer before starting
   radios; keep it alive for the mount and reuse it for eight-sector chunks.
   Shared connectivity prefers PSRAM for packet/TCP memory and bounds static

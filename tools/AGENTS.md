@@ -7,20 +7,26 @@ C++ contract tests and cannot prove behavior on a physical board.
 | Need | Tool / gate |
 | --- | --- |
 | Parquet footer/writer and reader compatibility | `parquet-test --sanitize`, `inspect_parquet.py` |
+| Native GEOMETRY column and the `geo` footer key through the real writer, read by PyArrow and DuckDB | `geoparquet-test` |
 | Footer reader and Iceberg DataFile metrics | `reader-test` (ASan + UBSan, crafted footers, fuzz loop) |
 | File size, footer share and host encoding or compaction variants | `size-survey`, `size-survey-test` |
 | Telemetry dictionary, units and validity | `telemetry-contract-test --sanitize` |
 | BLE/LAN archive and framing | `archive-sync-test`, `test_ble_sync.py` |
+| Protocol 3 wire codec through the shipped Python client, advert bytes, BYE, DIAG and ABORTED golden frames, the LAN `FrameRing`, BLE notify credits and link auth gates | `ble-sync-test`, `ble-advert-test`, `disconnect-test`, `frame-ring-test`, `ble-policy-test` |
 | Router/local/public NTP order and H3 privacy geometry | `network-time-test`, `location-test`, `config-test`, `control-sync-test` |
+| GNSS SIMCom `CGNSSINFO` dialect, fix to H3 cell, freshness, the per row location source rule and no file split on a GNSS cell (no receiver or UART proof) | `gnss-test` |
+| Shared numeric rows, UTC helpers and archive wire primitives | `common-test` |
 | Checked serial readback, fetch and bounded capture, send a command on cue over the one port open | `parquet_device.py`, `capture_serial.py --send-on`, `capture-serial-test` |
 | Footer rebuild for a quarantined `.partial` from its page headers and the board field table, output in a separate directory and checked by PyArrow and DuckDB | `rebuild-partial --board waveshare --out <dir> <files>`, `rebuild-partial-test --sanitize` |
 | Power cut cycles at the write, footer and rename stages, per boot loss account, baseline SHA-256 manifest and compare (owner bench only, tests use a fake port) | `bench-power-cut run|analyze|manifest|compare`, `bench-power-cut-test` |
 | Discharge run curve of `battery_mv`, SOC, CRATE and `battery_health_state` against UTC as SVG, with power-critical closes and reboot loop small files per boot from serial or LOG_TAIL logs, overlapping polls joined, logs oldest first (owner bench, #61 item 1, tests use a generated run) | `analyze-discharge <files> --log <log> --out <dir>`, `analyze-discharge-test` |
 | Full-flash backup publication (offline fake esptool) | `backup-test` |
 | Native FAT mount root and archive directory creation | `logger-directory-test` |
+| Storage worker units on host fakes. Queue and wakeups, watchdog supervisor, persisted codec, STATUS formatter, UTC rotation, LIST_SINCE ring and walk, SD space governor, OPEN CRC cache, SD DMA buffer, archive reset, UART provisioning and ring only radio diagnostics | `logger-work-queue-test`, `logger-watchdog-test`, `logger-codec-store-test`, `logger-status-test`, `logger-rotation-test`, `logger-list-since-test`, `storage-governor-test`, `crc-cache-test`, `sd-transfer-buffer-test`, `logger-archive-reset-test`, `logger-provision-test`, `debug-log-test` |
 | Per-file C++ dialect and source path map of an SDK fixture build, and every fixture entry point calling it without swallowing its exit | `check_idf_target.py --compile-dialect <build>`, `compile-dialect-test` |
 | One board built from two checkout paths gives the same images (SDK, CI job) | `repro-paths-check [board] [variant]`, `repro-paths-test` |
 | Native SDK and affected board builds | `idf-setup`, `cores3-build`, `waveshare-build [logger|diagnostic]` |
+| SDK compile fixtures for shared connectivity and logger, no board target, C++ dialect check only. They need ESP-IDF, so the gate skips them | `connectivity-build-test`, `logger-build-test` |
 | Bench only `parquet bench-stall` image, parser bounds and default-off guard | `OS_BENCH=stall cores3-build` or `waveshare-build logger`, `logger-bench-stall-test` |
 | Shared sensor drivers on fake buses | `pms-frame-test`, `ltr553-test`, `max17048-test` |
 | Battery health states, thresholds, debounce, settling and the boot Low or Critical tie | `battery-health-test` |
@@ -57,13 +63,15 @@ C++ contract tests and cannot prove behavior on a physical board.
 - `owner-pin` and provisioning output are secrets. Do not retain them in logs,
   artifacts, fixtures, tests or documentation. Keep LAN tokens in ignored
   artifacts and never print them.
+- Many tools still hard code the two boards (`BOARDS` tuples, `--board` choices). A new board goes into each list by hand until #141 derives them from `board.json`.
 - Keep host fixtures deterministic. Record actual hardware evidence only in
   the relevant board's `bench-verified.md` with date, image hash and limits.
 
 - `.github/workflows/ci.yml` runs `pixi run gate` and the board image builds on
   every pull request. Keep the gate free of tasks that need hardware, Bluetooth,
   a LAN peer or the SDK. Each gate task is bounded by `OS_GATE_TASK_TIMEOUT`
-  (300 s), and the gate fails if a pixi `*-test` task is missing from its list.
+  (300 s), and the gate fails if a pixi `*-test` task is missing from its list,
+  except the two SDK fixtures `connectivity-build-test` and `logger-build-test`.
   `CI result` is the only required check, so a new CI job must join its
   `needs` list, see `docs/shared/development.md#required-checks`.
 - Firmware builds use the pinned native ESP-IDF wrapper and exact managed
