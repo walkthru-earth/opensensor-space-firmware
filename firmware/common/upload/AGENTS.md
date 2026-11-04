@@ -2,9 +2,8 @@
 
 - Software only. Off by default through `CONFIG_OS_UPLOAD_ENABLE`. No task,
   no provisioning and no call to source.coop happens from this component
-  until #144 wires a `Session` into the storage worker. Both board logger components
-  (`os_cores3`, `os_waveshare_logger`) REQUIRE `upload`, so it compiles but
-  never runs.
+  until #144 wires a `Session` into the storage worker. Each board logger
+  component REQUIREs `upload`, so it compiles but never runs.
 - Never put a real or realistic `sck_` key, PSK, PIN or token in code,
   tests, logs or docs. Use `<sck key>` style placeholders and the public AWS
   example keys. The API key is only ever sent in the STS POST body, never in
