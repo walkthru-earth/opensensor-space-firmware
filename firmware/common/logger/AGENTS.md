@@ -67,15 +67,18 @@ initialization and each board's schema/provenance remain in its own trial.
   and never start a periodic remount while a `LIST` job runs.
 - Boot self test (#40). `Config::self_test_field` must hold a valid value,
   the SD card must be ready and BLE started before `self_test_deadline_ms`
-  (180 s). The logger then prints one SELFTEST line and calls
-  `ossync::ota::confirm_running_app`. Keep the verdict pure in
+  (180 s). A null `self_test_field` skips the sensor check, and a name that is
+  not a board field fails it. Once decided, the logger calls
+  `ossync::ota::confirm_running_app` first, then prints one SELFTEST line with
+  the result and the mark. Keep the verdict pure in
   `firmware/common/src/boot_self_test.h`.
 - `Hooks::gnss_fix` is optional and runs on the main loop once per row. It
   copies the newest H3 fix and never blocks or touches the receiver UART. A
   board without a receiver leaves it null, so a moving Thing writes location
   nulls. The per row source rule lives in `firmware/common/gnss`.
-- `os_sensor_module.h` is the sensor module API the generated
-  `<id>_module.h` headers build on, and `system.module.json` is the
+- `os_sensor_module.h` is the sensor module API. Generated `<id>_module.h`
+  headers include only standard headers, and a board module table includes
+  both. `system.module.json` is the
   `system` module manifest for logger owned columns, which gets no generated
   header. See `firmware/common/sensors/AGENTS.md`.
 - Board metadata must describe its hardware honestly. PMS5003T has four particle
