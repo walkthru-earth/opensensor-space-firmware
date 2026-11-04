@@ -122,10 +122,10 @@ their own licenses and are not redistributed by this repository.
 The JSON Schemas in [`tools/stac_opensensor/v0.1.0`](tools/stac_opensensor/v0.1.0)
 (`template.json`, `profile.json`, `schema.json`, `footer.json`), the profile
 text [`tools/stac_opensensor/PROFILE.md`](tools/stac_opensensor/PROFILE.md)
-and the example [`tools/stac_opensensor/footers/cores3-telemetry-v5.json`](tools/stac_opensensor/footers/cores3-telemetry-v5.json)
+and the example [`tools/stac_opensensor/footers/m5stack-cores3.json`](tools/stac_opensensor/footers/m5stack-cores3.json)
 are copies of
 [stac-opensensor](https://github.com/walkthru-earth/stac-opensensor) at commit
-`4408c4e52366bb3d154d22bbfffc88ff09aed6f1`. The schemas and the example are
+`83787768cc8451109d48a03d4ef5493ffcd403dd`. The schemas and the example are
 unmodified. In `PROFILE.md` only the relative links that do not resolve in
 this tree are rewritten as absolute links at that commit. Copyright (c) 2025-2026 Walkthru.Earth, licensed
 [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/). The host contract

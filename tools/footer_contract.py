@@ -6,11 +6,11 @@ entries, `opensensor` then `geo`. A file without one, such as the soil fixture,
 carries only `opensensor`.
 
 `opensensor` is compact UTF-8 JSON valid against the pinned stac-opensensor
-json-schema/footer.json v0.1.0 (commit 4408c4e52366bb3d154d22bbfffc88ff09aed6f1)
+json-schema/footer.json v0.1.0 (commit 83787768cc8451109d48a03d4ef5493ffcd403dd)
 in tools/stac_opensensor/v0.1.0. The
 schema sets no additionalProperties, so problems() also holds every object to
 the schema's members in the schema's order, with at least the members of the
-pinned example footers/cores3-telemetry-v5.json. dict and desc come from the
+pinned example footers/m5stack-cores3.json. dict and desc come from the
 caller, read from the board digest headers, never hardcoded here. PROFILE
 also makes thing.board the board slug and firmware.boot_id 32 hex.
 
@@ -38,8 +38,8 @@ import parquet_footer
 
 PINNED = Path(__file__).resolve().parent / "stac_opensensor"
 SCHEMA = PINNED / "v0.1.0/footer.json"
-EXAMPLE = PINNED / "footers/cores3-telemetry-v5.json"
-SPEC = "https://github.com/walkthru-earth/stac-opensensor (4408c4e52366bb3d154d22bbfffc88ff09aed6f1)"
+EXAMPLE = PINNED / "footers/m5stack-cores3.json"
+SPEC = "https://github.com/walkthru-earth/stac-opensensor (83787768cc8451109d48a03d4ef5493ffcd403dd)"
 KEY = "opensensor"
 GEO_KEY = "geo"
 GEO_SCHEMA = PINNED.parent / "geoparquet/v2.0.0/schema.json"

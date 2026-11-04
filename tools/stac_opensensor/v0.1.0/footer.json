@@ -2,70 +2,151 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://walkthru-earth.github.io/stac-opensensor/v0.1.0/footer.json#",
   "title": "OpenSensor Parquet footer",
-  "description": "Value of the single `opensensor` key in a Parquet file's key-value metadata, as compact UTF-8 JSON. Modelled on the GeoParquet `geo` key. Holds no location, the rows and the standard `geo` key carry it. Not a STAC document.",
+  "description": "Value of the single `opensensor` key in a Parquet file's key-value metadata, as compact UTF-8 JSON. Modelled on the GeoParquet `geo` key. Holds no location, the rows and the standard `geo` key carry it. Not a STAC document. Every object stays open to new members, and readers ignore members they do not know.",
   "type": "object",
   "required": ["version", "thing", "firmware", "dictionary", "template", "acquisition", "file"],
   "properties": {
     "version": {
-      "const": "0.1.0"
+      "description": "Version of this footer contract, the same as the profile version. Readers compare major and minor, so any 0.1 patch passes.",
+      "type": "string",
+      "pattern": "^0\\.1\\.[0-9]+$"
     },
     "thing": {
       "type": "object",
       "required": ["id", "device_id", "board", "mobility"],
       "properties": {
-        "id": { "type": "string", "minLength": 1 },
-        "device_id": { "type": "string", "minLength": 1 },
-        "board": { "type": "string", "minLength": 1 },
-        "deployment_id": { "type": "string", "minLength": 1 },
-        "mobility": { "enum": ["fixed", "moving"] }
+        "id": {
+          "description": "The Thing UUID, lowercase. Names the thing=<uuid> partition and the Thing Collection.",
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "device_id": {
+          "description": "Hardware id of the board that wrote the file.",
+          "type": "string",
+          "minLength": 1
+        },
+        "board": {
+          "description": "Board slug, the <board> segment of template paths.",
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        },
+        "deployment_id": {
+          "description": "Owner chosen deployment id, or `unknown`.",
+          "type": "string",
+          "minLength": 1
+        },
+        "mobility": {
+          "enum": ["fixed", "moving"]
+        }
       }
     },
     "firmware": {
       "type": "object",
       "required": ["version", "schema", "boot_id"],
       "properties": {
-        "version": { "type": "string", "minLength": 1 },
-        "schema": { "type": "string", "minLength": 1 },
-        "boot_id": { "type": "string", "minLength": 1 }
+        "version": {
+          "description": "Firmware build that wrote the file. Changes with every release, even when the columns do not.",
+          "type": "string",
+          "minLength": 1
+        },
+        "schema": {
+          "description": "Firmware schema name, the template `id`. Changes only when the column layout changes.",
+          "type": "string",
+          "minLength": 1
+        },
+        "boot_id": {
+          "description": "32 lowercase hex characters, the same token as in the file name.",
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        }
       }
     },
     "dictionary": {
       "type": "object",
       "required": ["sha256"],
       "properties": {
-        "sha256": { "$ref": "#/definitions/sha256" },
-        "version": { "type": "string" },
-        "uri": { "type": "string", "format": "uri" }
+        "sha256": {
+          "description": "SHA-256 of the firmware column dictionary, equal to `firmware.dict` in the template.",
+          "$ref": "#/definitions/sha256"
+        },
+        "version": {
+          "description": "Label of the dictionary revision. The digest, not this label, identifies the dictionary.",
+          "type": "string"
+        },
+        "uri": {
+          "description": "Immutable URL of the dictionary bytes.",
+          "type": "string",
+          "format": "uri"
+        }
       }
     },
     "template": {
       "type": "object",
       "required": ["href", "sha256"],
       "properties": {
-        "href": { "type": "string", "format": "uri" },
-        "sha256": { "$ref": "#/definitions/sha256" }
+        "href": {
+          "description": "Immutable URL, commit pinned or content addressed, whose bytes hash to `sha256`.",
+          "type": "string",
+          "format": "uri"
+        },
+        "sha256": {
+          "description": "SHA-256 of the exact template bytes. Readers check it before they trust the template.",
+          "$ref": "#/definitions/sha256"
+        }
       }
     },
     "acquisition": {
       "type": "object",
       "required": ["sample_interval_ms", "time_semantics"],
       "properties": {
-        "sample_interval_ms": { "type": "integer", "minimum": 1 },
-        "time_semantics": { "type": "string", "minLength": 1 },
-        "config_id": { "type": "string" },
-        "config": { "type": "string" },
-        "calibration_id": { "type": "string" }
+        "sample_interval_ms": {
+          "description": "Milliseconds between samples in this file. The template value is only the default.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "time_semantics": {
+          "description": "Free text written by the firmware. Says which instant event_time_utc_us estimates and which clocks the other time columns use. Readers show it and never parse it.",
+          "type": "string",
+          "minLength": 1
+        },
+        "config_id": {
+          "type": "string"
+        },
+        "config": {
+          "description": "Acquisition settings as compact JSON text.",
+          "type": "string"
+        },
+        "calibration_id": {
+          "type": "string"
+        }
       }
     },
     "file": {
       "type": "object",
       "required": ["rotation_interval_s", "row_groups", "row_group_rows_max", "compression", "purpose"],
       "properties": {
-        "rotation_interval_s": { "type": "integer", "minimum": 1, "maximum": 3600 },
-        "row_groups": { "type": "integer", "minimum": 1 },
-        "row_group_rows_max": { "type": "integer", "minimum": 1 },
-        "compression": { "type": "string", "minLength": 1 },
-        "purpose": { "enum": ["telemetry", "codec-comparison-duplicate-rows"] }
+        "rotation_interval_s": {
+          "description": "Length of the file window in seconds. It divides 3600, so a window never crosses an hour or a day.",
+          "type": "integer",
+          "enum": [600, 900, 1800, 3600]
+        },
+        "row_groups": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "row_group_rows_max": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "compression": {
+          "description": "Parquet codec name in upper case, such as LZ4_RAW or UNCOMPRESSED.",
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$"
+        },
+        "purpose": {
+          "description": "`telemetry` for a normal file. `codec-comparison-duplicate-rows` for a benchmark copy that repeats rows of a telemetry file and is never published.",
+          "enum": ["telemetry", "codec-comparison-duplicate-rows"]
+        }
       }
     }
   },
