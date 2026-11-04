@@ -55,7 +55,7 @@ Bench recipe, about 75 min.
    mark only grows until the next reset, so do not reset the board until step 4.
 2. Wait for the first `DIAG tasks` line (60 s after boot) as the idle baseline.
 3. Exercise the deep paths. Sync a full day over BLE, then over LAN, run
-   `parquet flush`, and let one hourly rotation close a file.
+   `parquet flush`, and let one rotation window close a file (default 900 s, at most 1 h).
 4. Opening the CH343 console resets this board and clears the marks, so read
    them without a new serial session. Wait for the hourly report and pull it
    with `pixi run ble-sync log`, or keep one capture running from before step 1

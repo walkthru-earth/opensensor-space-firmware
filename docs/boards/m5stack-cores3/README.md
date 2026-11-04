@@ -57,7 +57,7 @@ Bench recipe, about 75 min.
    mark only grows until the next reset, so do not reset the board until step 4.
 2. Wait for the first `DIAG tasks` line (60 s after boot) as the idle baseline.
 3. Exercise the deep paths. Sync a full day over BLE, then over LAN, run
-   `parquet flush`, and let one hourly rotation close a file.
+   `parquet flush`, and let one rotation window close a file (default 900 s, at most 1 h).
 4. Read the marks with
    `pixi run parquet-device command --port <checked-port> 'parquet mem'`,
    which returns after the `DIAG heap` line. Opening the CoreS3 USB console
