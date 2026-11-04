@@ -20,7 +20,7 @@ The two audits are dated and propose draft field names. Their findings still sta
 v0.1.0 splits the metadata into three layers, as its [PROFILE.md](https://github.com/walkthru-earth/stac-opensensor/blob/83787768cc8451109d48a03d4ef5493ffcd403dd/PROFILE.md) defines.
 
 1. Board template. The firmware build generates one per schema, plain JSON with `"type": "OpenSensorTemplate"`, not STAC and not a profile Collection. It holds the public columns in `item_assets.data.table:columns` (core `unit`, core `roles` and the `opensensor:` column fields, no `title` or `opensensor:scale`), `instruments`, `opensensor:sample_interval_s`, and a `firmware` block with `schema`, `proto_min`, `dict`, `live_keys` and `unit_labels`. Its SHA-256 is the `desc` digest and `GET_DESCRIPTOR` streams it. The dictionary digest reaches it as `file:checksum` on a `describedby` link to `telemetry_fields.inc`. There is no `cube:dimensions`.
-2. Thing Collection. The board writes it since [decision 0001](../decisions/0001-standalone-thing-stac.md). It copies the template columns and adds extent, license and a second `describedby` link to the template with `file:checksum` set to `1220` plus `desc`. Column `title` and `opensensor:scale` come from the owner config when the owner sets them, and `opensensor:scales` only when a column names a scale.
+2. Thing Collection. The board writes it since [decision 0001](../decisions/0001-standalone-thing-stac.md). It copies the template columns and adds extent, license and a second `describedby` link to the template with `file:checksum` set to `1220` plus `desc`. Column `title` and `opensensor:scale` come from the owner config when the owner sets them, and `opensensor:scales` only when a column names a scale ([#145](https://github.com/walkthru-earth/opensensor-space-firmware/issues/145)).
 3. App profile. `primary`, `hero`, `family`, `display_step` and column labels live in an app file keyed by the dictionary digest, outside any published schema.
 
 | Draft name in the audits | v0.1.0 |
@@ -41,7 +41,7 @@ v0.1.0 splits the metadata into three layers, as its [PROFILE.md](https://github
 | Role values (measurement, quality, state and others) | Core `roles` with ACDD values `physicalMeasurement`, `auxiliaryInformation`, `qualityInformation`, `referenceInformation`, `coordinate`, and `modelResult` for derived columns |
 | `cube:dimensions`, `cube:variables` | Not used. Cadence is `opensensor:sample_interval_s` |
 | Shared `urn:opensensor:property:<id>` | `opensensor:property` with a shared URI such as NERC P07 where one fits, otherwise a per board URI |
-| Footer `stac:collection_href`, `stac:descriptor_sha256`, `urn:opensensor:collection:` | One `opensensor` footer key whose `template` group holds `href` and `sha256`, per stac-opensensor `footer.json` v0.1.0 (now commit `4408c4e52366bb3d154d22bbfffc88ff09aed6f1`, #88, #83) |
+| Footer `stac:collection_href`, `stac:descriptor_sha256`, `urn:opensensor:collection:` | One `opensensor` footer key whose `template` group holds `href` and `sha256`, per stac-opensensor `footer.json` v0.1.0 (now commit `83787768cc8451109d48a03d4ef5493ffcd403dd`, #88, #83) |
 | `opensensor:field_id`, `opensensor:procedure`, `opensensor:property` | Unchanged |
 
 `opensensor:settle_s` and `opensensor:derived` are new in v0.1.0. Upstream proposals may move some fields later, see stac-extensions/table#16 (`field_id`), table#17 (common metadata in columns), classification#55 (classes in table columns) and cf#11 (CF fields in table columns).
@@ -57,5 +57,6 @@ The owner decided these points after both audits were written. They supersede th
 - The footer keys were frozen as `opensensor:template_href` and `opensensor:template_sha256` (#88). The owner then superseded this with stac-opensensor a56dfb0. Each file the firmware finalizes now has one `opensensor` key holding versioned JSON, and the template link and digest sit in its `template` group. A partial file rebuilt by `tools/rebuild_partial.py` has no `opensensor` key (see the #88 entry in `../mobile-migration.md`).
 - Station becomes Thing with a required `mobility`, and the location moves to a
   native `geometry` column with a `geo` footer key (#83, bridge decisions 31 to
-  35). The firmware follows stac-opensensor commit `4408c4e52366bb3d154d22bbfffc88ff09aed6f1`. See the
-  Thing entry in `../mobile-migration.md`.
+  35). The firmware follows stac-opensensor commit `83787768cc8451109d48a03d4ef5493ffcd403dd`. See the
+  Thing entry in `../mobile-migration.md`. Code comments in `firmware/` and
+  `tools/` that still cite the older spec pin move to the new pin with [#142](https://github.com/walkthru-earth/opensensor-space-firmware/issues/142).
