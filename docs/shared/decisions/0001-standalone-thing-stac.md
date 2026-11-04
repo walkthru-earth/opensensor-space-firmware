@@ -24,12 +24,20 @@ built from the upload ledger instead of a bucket read. The analysis from
 | Thing Collection | Board | Written from the board's own upload ledger. The board is the only writer under `thing=<uuid>/` and never reads the bucket. Owner only fields such as provider names, contact, license and titles come from setup config |
 | Root Catalog | Catalog host | Only the catalog host writes it |
 | `items.parquet` | Catalog host, optional | Rebuilt from the Item JSON |
-| Regenerated STAC | Phone and indexer, optional | They may rebuild the File Item and the Thing Collection, and the result must equal the board's output |
+| Regenerated STAC | Phone and indexer, optional | They may rebuild the File Item and the Thing Collection, and the result must equal the board's output. The Root Catalog has no board output to match |
 
 The Item is meant to travel with its Parquet. No transport can carry it today.
 Sidecar transport over the board uploader and over BLE and LAN is future work,
 tracked in a separate issue. Undated files stay on the card with no Item, as
 before.
+
+The board stays the only Collection writer. A file the phone publishes after a
+BLE or LAN sync enters the Collection only when the board learns of that
+upload. How the board learns is future work, tracked in the same separate issue
+as sidecar transport over BLE and LAN. It could be an upload receipt the phone
+sends back to the board over BLE or LAN, or the board reading its own prefix.
+Until then such an Item is published but not listed in the Collection. Readers
+find it by listing the `thing=<uuid>/` prefix.
 
 Three related owner decisions came the same day. v0.1.0 of the spec is re-cut
 and keeps its schema URLs (OD-2026-11-04-A). Every published Thing, fixed or
