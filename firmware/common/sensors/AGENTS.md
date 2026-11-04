@@ -17,4 +17,6 @@
   it by hand, change the manifest and run `pixi run plugin-headers`.
   `plugin-contract-test` and `sensor-module-test` fail on a stale header.
 - A board-only part keeps its manifest under the board's own `modules/`
-  folder, not here. See `docs/shared/plugins/README.md`.
+  folder, not here, and lists it in that board's `board.json`
+  `local_modules`, or its segments fail as an unknown module. See
+  `docs/shared/plugins/README.md`.

@@ -187,8 +187,9 @@ commands read flash/device state. `chip` can reset a running app on exit. Never
 write eFuses or format the card. Never assume flash size from a product name.
 CoreS3 native USB readback must use esptool's default baud. 921600 corrupted a
 measured read. See the selected board's docs for recovery and power rules.
-LAN OTA (#40) writes only the inactive app slot over an authenticated LAN
-session. Images are not signed and rollback is off, so never claim either.
+LAN OTA (#40) writes the inactive app slot over an authenticated LAN session,
+and activation rewrites the otadata boot selection (`esp_ota_set_boot_partition`).
+Images are not signed and rollback is off, so never claim either.
 
 ## Dependency selection
 
