@@ -26,4 +26,5 @@ The logger depends on `gnss` only. A board that has a receiver adds
 - The power callback switches the receiver supply on and must never switch it
   off. Only read-only receiver queries plus the engine power-on command are
   sent. Never send network, SIM, band, NVM, CFUN or reset commands.
-- GNSS UTC is not a clock anchor yet. That is follow-up work on #83.
+- GNSS UTC is not a clock anchor. A fix never sets UTC. #83 closed without it
+  and no open issue tracks it yet.

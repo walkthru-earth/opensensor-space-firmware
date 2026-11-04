@@ -7,8 +7,10 @@ pinned ESP-IDF toolchain, component manifests and partition files. Never borrow 
 - Use `pixi run idf-setup`, `pixi run waveshare-build [logger|diagnostic]`
   and the backup-gated `waveshare-flash` task. No Arduino APIs or components.
   See the newest dated USB Parquet readback in the board bench record, at
-  this writing native v2.15 on 2026-10-26. Earlier Arduino image results
-  remain historical and require native readback to extend.
+  this writing native v2.15 on 2026-10-26. v2.17 has no dated readback yet,
+  and its GNSS path has only the empty no-fix reply on the bench
+  (board `hardware.md`). Earlier Arduino image results remain historical and
+  require native readback to extend.
 - Exact board: ESP32-S3-SIM7670G-4G **V2.0**, ESP32-S3R8 rev0.2, 16 MB Quad
   flash and 8 MB Octal PSRAM. OPI was qualified by an allocated-region memory
   test. Preserve UART0 console through CH343; USB CDC is not the console.
@@ -19,6 +21,13 @@ pinned ESP-IDF toolchain, component manifests and partition files. Never borrow 
 - OSLogger, OSConnectivity, OSRuntime and OSCommon own shared application
   services. Board code supplies only descriptors, sensor collection, card
   capacity hooks and board GPIO setup. No second radio initializer.
+- Sensor collection is the module table in `logger/sensor_modules.h` (#131),
+  driven by `logger/board.json` segments and the board-local
+  `logger/modules/waveshare/module.json`, and the checked-in `telemetry_*.inc`
+  must equal their expansion. `shipped.lock` is append only. Never hand edit a
+  generated `*_module.h`, and run `plugin-contract-test` after any manifest or
+  field change. `tools/waveshare_collect_reference.h` is the pre-module
+  collect, and `waveshare-contract-test` keeps both byte identical row for row.
 - Reserve the heap-owned 4 KiB internal DMA SD transfer buffer before radios
   and retain it while mounted. Shared connectivity prefers PSRAM for packet/TCP
   memory and bounds static Wi-Fi DMA buffers; the diagnostic excludes radios
