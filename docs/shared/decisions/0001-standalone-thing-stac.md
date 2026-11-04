@@ -2,49 +2,64 @@
 
 | | |
 | --- | --- |
-| Status | Accepted 2026-11-04, owner decision D. The board writes STAC. This supersedes the option C proposal below |
+| Status | Accepted 2026-11-04 as owner decision OD-2026-11-04-D. The board writes STAC. This supersedes the option C proposal below |
 | Date | 2026-10-27, amended 2026-11-04 |
 | Issue | [#109](https://github.com/walkthru-earth/opensensor-space-firmware/issues/109) |
 | Related | [#81](https://github.com/walkthru-earth/opensensor-space-firmware/issues/81) uploader, [#83](https://github.com/walkthru-earth/opensensor-space-firmware/issues/83) STAC epic, mobile #181 and #190, walkthru-earth/stac-opensensor#1 |
-| Spec | stac-opensensor `PROFILE.md` at `815fc45cce64d477ea4268f42ace79aed8877a98` (bridge decisions 33 and 40) |
+| Spec | stac-opensensor `PROFILE.md` Writers section at [`9943282984e3bb8bb37cc2188cabf8e7de5d52c2`](https://github.com/walkthru-earth/stac-opensensor/blob/9943282984e3bb8bb37cc2188cabf8e7de5d52c2/PROFILE.md#writers). The 2026-10-27 analysis read `PROFILE.md` at `815fc45cce64d477ea4268f42ace79aed8877a98` (bridge decisions 33 and 40) |
 | Bridge | decisions 12, 13, 16, 33 and 40 in `.handoff/ecosystem-bridge.md` |
-| Register | owner decisions A to D of 2026-11-04 in the [stac-opensensor decision register](https://github.com/walkthru-earth/stac-opensensor/blob/main/docs/decisions.md) |
+| Register | OD-2026-11-04-A to OD-2026-11-04-D in the [stac-opensensor decision register](https://github.com/walkthru-earth/stac-opensensor/blob/9943282984e3bb8bb37cc2188cabf8e7de5d52c2/docs/decisions.md) |
 
 ## Decision
 
-The owner decided on 2026-11-04 that the board firmware writes STAC (decision
-D). This replaces the option C proposal. The analysis from 2026-10-27 stays
-below as history.
+The owner decided on 2026-11-04 that the board firmware writes STAC
+(OD-2026-11-04-D). This replaces the option C proposal. This is not option D
+in the options table below. It is closest to option B, with the Collection
+built from the upload ledger instead of a bucket read. The analysis from
+2026-10-27 stays below as history.
 
 | Piece | Writer | How |
 | --- | --- | --- |
 | File Item | Board | Written at file finalize as a sidecar `<file>.json` next to `<file>.parquet` on SD. Only for dated `data_HHMM_` files. The data asset href is relative, `./<file>.parquet` |
 | Thing Collection | Board | Written from the board's own upload ledger. The board is the only writer under `thing=<uuid>/` and never reads the bucket. Owner only fields such as provider names, contact, license and titles come from setup config |
 | Root Catalog | Catalog host | Only the catalog host writes it |
-| Regenerated STAC | Phone and indexer, optional | They may rebuild any of the above, and the result must equal the board's output |
+| `items.parquet` | Catalog host, optional | Rebuilt from the Item JSON |
+| Regenerated STAC | Phone and indexer, optional | They may rebuild the File Item and the Thing Collection, and the result must equal the board's output |
 
-The Item travels with its Parquet. The board uploader sends both over Wi-Fi or
-4G, or the phone sends both after a BLE or LAN sync. Undated files stay on the
-card with no Item, as before.
+The Item is meant to travel with its Parquet. No transport can carry it today.
+Sidecar transport over the board uploader and over BLE and LAN is future work,
+tracked in a separate issue. Undated files stay on the card with no Item, as
+before.
 
 Three related owner decisions came the same day. v0.1.0 of the spec is re-cut
-and keeps its schema URLs (decision A). Every published Thing, fixed or moving,
-uses H3 resolution 8 (decision B). A template href may be any immutable URL
-whose bytes hash to `template.sha256`, with this repo pinned to a full commit as
-the canonical host (decision C).
+and keeps its schema URLs (OD-2026-11-04-A). Every published Thing, fixed or
+moving, uses H3 resolution 8 (OD-2026-11-04-B). A template href may be any
+immutable URL whose bytes hash to `template.sha256`, with this repo pinned to a
+full commit as the canonical host (OD-2026-11-04-C).
 
 The on device writer is not built yet. It is a separate firmware issue that
 measures flash, internal RAM and PSRAM on both boards before it lands.
 
 ### Facts that still constrain the implementation
 
-These come from the analysis below and still hold.
+These come from the analysis below and from the code, and they still hold.
 
 - Board keys are upload only and every put sends `If-None-Match: *`. The board
   never lists or reads the bucket. So the Collection must come from the SD
   upload ledger, not from a read, modify and write. A Collection changes with
   every file, so the implementation must also say how a new Collection replaces
   the old one under keys that refuse overwrites.
+- The uploader (`finalized_dated()` in
+  `firmware/common/upload/src/os_upload_policy.cpp`) and the BLE and LAN name
+  rule ([`ble-sync-protocol.md`](../ble-sync-protocol.md), names end in
+  `.parquet`) accept only Parquet today. Carrying the sidecar needs an uploader
+  change and a wire contract change that mobile agrees to. Both are future work
+  in a separate issue.
+- `location.resolution` in config still accepts 0 to 15, with 8 as the default
+  ([`ble-sync-protocol.md`](../ble-sync-protocol.md),
+  [`time-and-location.md`](../time-and-location.md)). Under OD-2026-11-04-B
+  published files and Items carry resolution 8. Narrowing the configurable
+  range is a code follow-up with its own issue.
 - Field boards upload to a private intake product, and a publish Action copies
   each file to the public product (#81 stage 4). The Action must copy the board's
   Item and Collection unchanged. Relative hrefs keep them valid after the copy.
@@ -70,7 +85,7 @@ These come from the analysis below and still hold.
 Everything below is the original proposal. Its recommendation of option C was
 not taken.
 
-## Context
+### Context (history)
 
 A Wi-Fi Thing can run with no phone. It logs to SD and, once #81 lands, uploads
 each closed file of at most one hour by itself (bridge decision 16). Bridge
@@ -94,7 +109,7 @@ footer, the rows and the template it names. PROFILE also publishes only dated
 `data_HHMM_` files, and files written before the board knew UTC get no Item until
 they are reconciled.
 
-## Facts that constrain the choice
+### Facts that constrain the choice (history)
 
 These come from the #81 plan and its comments, the firmware and the spec.
 
@@ -122,7 +137,7 @@ These come from the #81 plan and its comments, the firmware and the spec.
   polygon code, and no board calls it today. A board Item writer would pull it in.
   Its flash and RAM cost is not measured.
 
-## Options
+### Options (history)
 
 | Option | Board writes | Indexer writes | Main cost or risk |
 | --- | --- | --- | --- |
@@ -131,7 +146,7 @@ These come from the #81 plan and its comments, the firmware and the spec.
 | C | Nothing, Parquet only | Item, Collection, Catalog, mirror | Needs a job that runs and an owner for it. Matches decision 12 |
 | D | File Item as a cache | Rewrites Items and Collections, its output is the reference | Pays the on device cost of A and still needs the job of C |
 
-## Recommendation (proposal, superseded)
+### Recommendation (history, proposal, superseded)
 
 Option C, with the #81 stage 4 publish Action as the indexer. This is a proposal
 pending owner sign off on #109.
@@ -172,7 +187,7 @@ Why not B. It needs bucket read access and conditional writes that upload only
 keys do not have, and it reopens the race between many boards on one
 Collection.
 
-## Who owns what
+### Who owns what (history)
 
 | Part | Owns | Does not own |
 | --- | --- | --- |
@@ -182,7 +197,7 @@ Collection.
 | Mobile app | Upload settings over BLE (mobile #181), STAC for its own uploads until the indexer runs (mobile #190), app profile labels | Writing STAC for a standalone Thing |
 | stac-opensensor | The profile, `footer.json`, the example layout, `check-profile.mjs` | Running any job |
 
-## Consequences
+### Consequences (history)
 
 - No firmware or contract change. The firmware already emits everything the
   indexer needs.
@@ -193,7 +208,7 @@ Collection.
 - A board on the generic `s3` target uploads to its owner's bucket with no Action,
   so it gets no STAC unless that owner runs the indexer.
 
-## Reopen when
+### Reopen when (history)
 
 - A deployment needs STAC with no host job at all, for example the generic `s3`
   target with no indexer the owner can run.
@@ -203,7 +218,7 @@ Collection.
   PSRAM budget, and a host generator and the firmware produce byte equal Items
   tested in `pixi run gate`.
 
-## Open questions for the owner
+### Open questions for the owner (history, answered above)
 
 1. Accept option C, with the #81 publish Action as the indexer for both phone
    synced and standalone Things?
