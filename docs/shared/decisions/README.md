@@ -22,4 +22,4 @@ A later record can supersede an earlier one, and the old one stays as history.
 - Add a row to the table above and link the record from the pages it affects.
 - Decisions that touch the mobile app or stac-opensensor go in the durable
   ecosystem register,
-  [stac-opensensor `docs/decisions.md`](https://github.com/walkthru-earth/stac-opensensor/blob/9943282984e3bb8bb37cc2188cabf8e7de5d52c2/docs/decisions.md).
+  [stac-opensensor `docs/decisions.md`](https://github.com/walkthru-earth/stac-opensensor/blob/83787768cc8451109d48a03d4ef5493ffcd403dd/docs/decisions.md).

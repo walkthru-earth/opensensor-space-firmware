@@ -17,7 +17,7 @@ When any part lands, move the settled contract into `table-and-observation-model
 
 The two audits are dated and propose draft field names. Their findings still stand, but the names were replaced by the released extension [stac-opensensor v0.1.0](https://github.com/walkthru-earth/stac-opensensor). Read the audits for evidence and use the extension for names.
 
-v0.1.0 splits the metadata into three layers, as its [PROFILE.md](https://github.com/walkthru-earth/stac-opensensor/blob/4408c4e52366bb3d154d22bbfffc88ff09aed6f1/PROFILE.md) defines.
+v0.1.0 splits the metadata into three layers, as its [PROFILE.md](https://github.com/walkthru-earth/stac-opensensor/blob/83787768cc8451109d48a03d4ef5493ffcd403dd/PROFILE.md) defines.
 
 1. Board template. The firmware build generates one per schema, plain JSON with `"type": "OpenSensorTemplate"`, not STAC and not a profile Collection. It holds the public columns in `item_assets.data.table:columns` (core `unit`, core `roles` and the `opensensor:` column fields, no `title` or `opensensor:scale`), `instruments`, `opensensor:sample_interval_s`, and a `firmware` block with `schema`, `proto_min`, `dict`, `live_keys` and `unit_labels`. Its SHA-256 is the `desc` digest and `GET_DESCRIPTOR` streams it. The dictionary digest reaches it as `file:checksum` on a `describedby` link to `telemetry_fields.inc`. There is no `cube:dimensions`.
 2. Thing Collection. The board writes it since [decision 0001](../decisions/0001-standalone-thing-stac.md). It copies the template columns and adds extent, license and a second `describedby` link to the template with `file:checksum` set to `1220` plus `desc`. Column titles and scales are optional catalog host additions.
