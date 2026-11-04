@@ -2,12 +2,73 @@
 
 | | |
 | --- | --- |
-| Status | Proposed, pending owner sign off |
-| Date | 2026-10-27 |
+| Status | Accepted 2026-11-04, owner decision D. The board writes STAC. This supersedes the option C proposal below |
+| Date | 2026-10-27, amended 2026-11-04 |
 | Issue | [#109](https://github.com/walkthru-earth/opensensor-space-firmware/issues/109) |
 | Related | [#81](https://github.com/walkthru-earth/opensensor-space-firmware/issues/81) uploader, [#83](https://github.com/walkthru-earth/opensensor-space-firmware/issues/83) STAC epic, mobile #181 and #190, walkthru-earth/stac-opensensor#1 |
 | Spec | stac-opensensor `PROFILE.md` at `815fc45cce64d477ea4268f42ace79aed8877a98` (bridge decisions 33 and 40) |
 | Bridge | decisions 12, 13, 16, 33 and 40 in `.handoff/ecosystem-bridge.md` |
+| Register | owner decisions A to D of 2026-11-04 in the [stac-opensensor decision register](https://github.com/walkthru-earth/stac-opensensor/blob/main/docs/decisions.md) |
+
+## Decision
+
+The owner decided on 2026-11-04 that the board firmware writes STAC (decision
+D). This replaces the option C proposal. The analysis from 2026-10-27 stays
+below as history.
+
+| Piece | Writer | How |
+| --- | --- | --- |
+| File Item | Board | Written at file finalize as a sidecar `<file>.json` next to `<file>.parquet` on SD. Only for dated `data_HHMM_` files. The data asset href is relative, `./<file>.parquet` |
+| Thing Collection | Board | Written from the board's own upload ledger. The board is the only writer under `thing=<uuid>/` and never reads the bucket. Owner only fields such as provider names, contact, license and titles come from setup config |
+| Root Catalog | Catalog host | Only the catalog host writes it |
+| Regenerated STAC | Phone and indexer, optional | They may rebuild any of the above, and the result must equal the board's output |
+
+The Item travels with its Parquet. The board uploader sends both over Wi-Fi or
+4G, or the phone sends both after a BLE or LAN sync. Undated files stay on the
+card with no Item, as before.
+
+Three related owner decisions came the same day. v0.1.0 of the spec is re-cut
+and keeps its schema URLs (decision A). Every published Thing, fixed or moving,
+uses H3 resolution 8 (decision B). A template href may be any immutable URL
+whose bytes hash to `template.sha256`, with this repo pinned to a full commit as
+the canonical host (decision C).
+
+The on device writer is not built yet. It is a separate firmware issue that
+measures flash, internal RAM and PSRAM on both boards before it lands.
+
+### Facts that still constrain the implementation
+
+These come from the analysis below and still hold.
+
+- Board keys are upload only and every put sends `If-None-Match: *`. The board
+  never lists or reads the bucket. So the Collection must come from the SD
+  upload ledger, not from a read, modify and write. A Collection changes with
+  every file, so the implementation must also say how a new Collection replaces
+  the old one under keys that refuse overwrites.
+- Field boards upload to a private intake product, and a publish Action copies
+  each file to the public product (#81 stage 4). The Action must copy the board's
+  Item and Collection unchanged. Relative hrefs keep them valid after the copy.
+- The logger starts a new file on any change of cell, resolution, country or
+  mobility (`same_location` in `firmware/common/runtime/src/device_config.cpp`).
+  One file never spans two cells, so the Item geometry is always one cell.
+- `cellToBoundary` is in the vendored H3 sources but is not linked today.
+  `firmware/common/location/CMakeLists.txt` relies on section GC to drop it. An
+  Item writer pulls it in, and its flash and RAM cost is not measured.
+- The uploader waits for trusted UTC, so only dated files leave the board.
+
+### Open questions answered
+
+- Question 1. No. The board writes STAC, not the publish Action.
+- Question 3. The phone may keep writing STAC, but its output must equal the
+  board's output. The same holds for any indexer.
+- Question 4. Owner only Collection fields come from setup config.
+- Questions 2, 5, 6 and 7 move to the implementation issue. Question 2 now asks
+  where a regenerating indexer lives, if one is built.
+
+## History, 2026-10-27 analysis
+
+Everything below is the original proposal. Its recommendation of option C was
+not taken.
 
 ## Context
 
@@ -70,7 +131,7 @@ These come from the #81 plan and its comments, the firmware and the spec.
 | C | Nothing, Parquet only | Item, Collection, Catalog, mirror | Needs a job that runs and an owner for it. Matches decision 12 |
 | D | File Item as a cache | Rewrites Items and Collections, its output is the reference | Pays the on device cost of A and still needs the job of C |
 
-## Recommendation (proposal)
+## Recommendation (proposal, superseded)
 
 Option C, with the #81 stage 4 publish Action as the indexer. This is a proposal
 pending owner sign off on #109.

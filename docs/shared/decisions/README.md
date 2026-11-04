@@ -10,7 +10,7 @@ A later record can supersede an earlier one, and the old one stays as history.
 
 | Record | Issue | Status |
 | --- | --- | --- |
-| [0001 Who writes STAC for a standalone Wi-Fi Thing](0001-standalone-thing-stac.md) | [#109](https://github.com/walkthru-earth/opensensor-space-firmware/issues/109) | Proposed, pending owner sign off |
+| [0001 Who writes STAC for a standalone Wi-Fi Thing](0001-standalone-thing-stac.md) | [#109](https://github.com/walkthru-earth/opensensor-space-firmware/issues/109) | Accepted 2026-11-04, the board writes STAC (owner decision D) |
 | [0002 Small Parquet files, compaction and range reads](0002-small-parquet-files.md) | [#25](https://github.com/walkthru-earth/opensensor-space-firmware/issues/25) | Proposed, pending owner sign off |
 
 ## Writing a record
@@ -20,5 +20,6 @@ A later record can supersede an earlier one, and the old one stays as history.
 - Cite code and docs by repo path and spec text by full commit. Use numbers
   only from the repo, its bench records or the issue threads.
 - Add a row to the table above and link the record from the pages it affects.
-- Bridge questions that touch the mobile app or stac-opensensor go under "Open
-  questions for the owner" in `.handoff/ecosystem-bridge.md`, outside this repo.
+- Decisions that touch the mobile app or stac-opensensor go in the durable
+  ecosystem register,
+  [stac-opensensor `docs/decisions.md`](https://github.com/walkthru-earth/stac-opensensor/blob/main/docs/decisions.md).
