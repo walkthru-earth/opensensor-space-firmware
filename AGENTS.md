@@ -87,7 +87,8 @@ in `firmware/common/`. Device protocol and telemetry contracts live in
   alarms and resumes after space or storage recovers, without automatic deletion. Do not
   silently repair, delete or rewrite owner data.
 - The card is the origin. The local phone or laptop archive is the first copy.
-  BLE/LAN sync works without internet. Cloud upload is optional future work.
+  BLE/LAN sync works without internet. Cloud upload is optional. The uploader
+  software landed in #129, off by default and not wired into any board yet.
 - Keep device PIN, Wi-Fi PSK and LAN bearer token out of logs, radio responses,
   captured artifacts and docs. Contract changes require firmware and mobile
   consumers to agree. `docs/shared/ble-sync-protocol.md` owns wire behavior.
@@ -156,12 +157,11 @@ in `firmware/common/`. Device protocol and telemetry contracts live in
   its own LICENSE, NOTICE and headers. When a dependency, vendored file or
   pinned version changes, update `THIRD_PARTY_NOTICES.md` from the linker maps.
 - Ask the owner before creating a new public repository.
-- Every PR gets a CodeRabbit review. Validate each inline comment against the
-  code, fix it or explain why not, reply in that comment's thread and resolve
-  it before merging. CodeRabbit skips draft PRs, so comment
-  `@coderabbitai review` once. If it is rate limited, wait for the window, ask
-  once more, and note the gap on the PR. Commit per major step and post
-  progress on the tracking issue.
+- The merge gate is the local gates in the Host gate section below plus the
+  coordinator's review on the PR. CodeRabbit is advisory. When it comments,
+  check each inline comment against the code, fix it or explain why not, and
+  reply in its thread. Never hold a merge waiting for CodeRabbit. Commit per
+  major step and post progress on the tracking issue.
 - No em dashes in new or edited docs, commits, PR text or replies.
 
 ## Before any physical flash write
