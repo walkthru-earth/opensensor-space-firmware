@@ -193,7 +193,8 @@ CRC32 serial-readback helper.
 The shared uploader in `firmware/common/upload/` landed in #129. It is off by
 default through `CONFIG_OS_UPLOAD_ENABLE`, and no board wires a session into
 the storage worker yet. So no board uploads today. What follows is the current
-code in `os_upload_policy.h` and `os_upload_policy.cpp`.
+code in `firmware/common/upload/src/`, mainly `os_upload_policy`,
+`os_upload_session` and `os_upload_ledger`.
 
 - It sends finalized dated `data_HHMM_` files only, oldest first, one at a time,
   and only after UTC comes from a host or the network.
@@ -203,8 +204,9 @@ code in `os_upload_policy.h` and `os_upload_policy.cpp`.
   starts at `thing=<uuid>/`.
 - A `Dev` key is `<product>/dev/opensensor-space-firmware/<board>/<name>`. The
   `<board>` segment is any lowercase slug of 1 to 32 characters from `[a-z0-9-]`
-  that the caller passes. The header comment and the host tests use `cores3` and
-  `waveshare-sim7670g`. These are not the footer `thing.board` slugs
+  that does not start or end with `-`, and the caller passes it. The header
+  comment uses `cores3` and `waveshare-sim7670g`, and the host tests use
+  `cores3`. These are not the footer `thing.board` slugs
   `m5stack-cores3` and `waveshare-esp32-s3-sim7670g`, and no code compares them.
   A board that wires the uploader picks the segment.
 - A `Prod` key is `<product>/<prod_prefix><name>`. The prefix must not be empty,
@@ -214,7 +216,10 @@ code in `os_upload_policy.h` and `os_upload_policy.cpp`.
   copies into place (#81). The intake product and prefix wait on the owner.
 - Since [decision 0001](decisions/0001-standalone-thing-stac.md) the board also
   writes STAC. Each dated file gets a sidecar `<file>.json` File Item next to it
-  on SD, and it travels with the Parquet under the same key prefix. The board
+  on SD, and it is meant to travel with the Parquet under the same key prefix.
+  Today the uploader sends only `.parquet` names, and the BLE and LAN name rule
+  accepts only `.parquet` too. Sidecar transport is future work in a separate
+  issue. The board
   writes the Thing Collection from its upload ledger. Neither writer is built
   yet.
 
@@ -242,7 +247,7 @@ These are arithmetic projections, **not claims that the board/card will run for 
 
 Card endurance, bit retention, environmental conditions, continuous power, clock accuracy and long-run firmware reliability were not qualified. This is not a battery-runtime estimate. No automatic deletion/retention policy exists: on storage failure the batch is retained in RAM and later drops/errors are counted. A free-space reserve/alarm and tested recovery policy must be implemented before unattended deployment.
 
-**Can it sync afterward? Architecturally yes, but no board uploads yet.** The immutable files and Thing and date keys can be copied to object storage without re-encoding. The uploader software landed in #129 and is off by default, see [uploader software](#uploader-software-129). No device has performed an upload. Remaining work:
+**Can it sync afterward? Architecturally yes, but no board uploads yet.** The immutable files and Thing and date keys can be copied to object storage without re-encoding. The uploader software landed in #129 and is off by default, see [uploader software](#uploader-software-129). No device has performed an upload. The remaining work is listed below.
 
 1. provision an endpoint, TLS trust and narrowly scoped credentials, without blocking acquisition;
 2. enumerate finalized normal files (exclude diagnostic copies/partials), stream bounded SD reads and retry the same object identity after disconnects;
@@ -290,7 +295,7 @@ The current implementation in the active C/C++ trial uses:
 - a minimal writer-only Thrift Compact implementation in `parquet_writer.cpp` (streaming `Writer` class; `write_parquet()` wraps one group), without Arrow or Carquet dependencies; `tools/parquet_footer.py` is the matching host-side decoder used by the tests;
 - `.partial` -> row group -> sync (repeat) -> footer -> sync -> close -> footer validation -> final rename.
 
-Footer cost, measured on the host fixture with 77 columns × 90 incompressible rows (not real data): 4,484 bytes before statistics, 6,000 with them; 10.4 KB for two groups and 19.3 KB for four. Per-chunk metadata (~57 bytes × 77, mostly the required `path_in_schema` string) dominates, so several row groups per file cut the footer share only from about 17 % to 14 %. Hourly files (rotation 3600 s, the maximum, the default is 900 s) are worth having for four times fewer files and per-quarter-hour statistics, not for bytes; bytes come from LZ4 and from the phone's derived daily files.
+Footer cost was measured on the host fixture with 77 columns × 90 incompressible rows, not real data. It is 4,484 bytes before statistics and 6,000 with them. It is 10.4 KB for two groups and 19.3 KB for four. Per-chunk metadata (~57 bytes × 77, mostly the required `path_in_schema` string) dominates, so several row groups per file cut the footer share only from about 17 % to 14 %. Hourly files (3600 s rotation, the longest allowed, default 900 s) are worth having for four times fewer files and per-quarter-hour statistics, not for bytes. Bytes come from LZ4 and from the phone's derived daily files.
 
 Host conformance checks use PyArrow and DuckDB, including nulls and exact integer values, plus a field-level decode of the footer. Empty, one-row, boundary-value, wide/maximum-row, four-group "hourly" and eight-group fixtures pass the host sanitizer test, including `-0.0`/`+0.0`, all-NaN and all-null bounds; unsynced and dated single-group files pass real SD readback, and the first two-group v6 device file (105 rows across a window boundary) passed both readers and the footer decode on 2026-09-17. Add multiple-page cases only if that feature is introduced. The automatic 60-row run and current Hive-schema checks are recorded separately in [bench-verified](../boards/m5stack-cores3/bench-verified.md); longer runs and failure cases remain open. The [compression experiment](../boards/m5stack-cores3/compression-benchmark.md) screens Snappy/LZ4/Zstd on the host and adds an identical-row LZ4_RAW comparison on the board. Measure complete-file bytes, CPU time and memory bounds; on-device Snappy/Zstd and longer codec runs remain open. Separately run repeated power cuts during data, page header, footer, sync and rename before claiming recovery guarantees. The cited Zstd wrapper's memory figures are specific to its dictionary workload, not a CoreS3 budget.
 
