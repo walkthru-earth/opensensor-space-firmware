@@ -162,10 +162,11 @@ Use the Waveshare V2 files as the example.
    dated `data_HHMM_` file, with the data href `./<file>.parquet`. It writes
    the Thing Collection from its own upload ledger and is the only writer under
    `thing=<uuid>/`. Owner only fields come from setup config. The shared writer
-   is not built yet. It follows the stac-opensensor PROFILE Writers and
+   is not built yet. The File Item is [#142](https://github.com/walkthru-earth/opensensor-space-firmware/issues/142) and the Thing Collection is
+   [#145](https://github.com/walkthru-earth/opensensor-space-firmware/issues/145). It follows the stac-opensensor PROFILE Writers and
    Canonical form sections. When it lands, a new board measures its flash,
-   internal RAM and PSRAM cost on that board. Sidecar transport over the
-   uploader and over BLE and LAN is future work in a separate issue. Today both
-   accept only `.parquet` names.
+   internal RAM and PSRAM cost on that board. Sidecar transport is future
+   work, over the uploader in [#144](https://github.com/walkthru-earth/opensensor-space-firmware/issues/144) and over BLE and LAN in [#143](https://github.com/walkthru-earth/opensensor-space-firmware/issues/143). Today
+   both accept only `.parquet` names.
 9. Builds. Build both existing boards and the new one, `pixi run cores3-build`,
    `pixi run waveshare-build` and the new board task, then run `pixi run gate`.

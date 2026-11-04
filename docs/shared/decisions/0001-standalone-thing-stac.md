@@ -22,19 +22,19 @@ built from the upload ledger instead of a bucket read. The analysis from
 | --- | --- | --- |
 | File Item | Board | Written at file close as a sidecar `<file>.json` next to `<file>.parquet` on SD. Only for dated `data_HHMM_` files that pass the PROFILE no-Item rules. The data asset href is relative, `./<file>.parquet` |
 | Thing Collection | Board | Written after each upload from the board's own upload ledger and the owner config. The board is the only writer under `thing=<uuid>/` and never reads the bucket. Title, description, providers, contacts, the bucket and prefix of `partition:glob`, and column `title` and `opensensor:scale` come from the owner config set at setup |
-| Root Catalog | Catalog host | Only the catalog host's publish job writes it, when a Thing joins or leaves |
+| Root Catalog | Catalog host | Only the catalog host's publish job writes it, when a Thing joins or leaves ([stac-opensensor#14](https://github.com/walkthru-earth/stac-opensensor/issues/14)) |
 | `items.parquet` | Catalog host, optional | Rebuilt from the Item JSON |
-| Regenerated STAC | Phone and indexer, optional | They may rebuild the File Item and the Thing Collection, and the result must equal the board's output. The Root Catalog has no board output to match |
+| Regenerated STAC | Phone and indexer, optional | They may rebuild the File Item and the Thing Collection, and the result must equal the board's output. The Root Catalog has no board output to match. The phone writes a File Item only when it is the Thing ([opensensor-space-mobile#266](https://github.com/walkthru-earth/opensensor-space-mobile/issues/266)) |
 
 The Item is meant to travel with its Parquet. No transport can carry it today.
-Sidecar transport over the board uploader and over BLE and LAN is future work,
-tracked in a separate issue. Undated files stay on the card with no Item, as
+Sidecar transport over the board uploader is future work in [#144](https://github.com/walkthru-earth/opensensor-space-firmware/issues/144), and
+over BLE and LAN in [#143](https://github.com/walkthru-earth/opensensor-space-firmware/issues/143). Undated files stay on the card with no Item, as
 before.
 
 The board stays the only Collection writer. A file the phone publishes after a
 BLE or LAN sync enters the Collection only when the board learns of that
-upload. How the board learns is future work, tracked in the same separate issue
-as sidecar transport over BLE and LAN. It could be an upload receipt the phone
+upload. How the board learns is future work, tracked with sidecar transport
+over BLE and LAN in [#143](https://github.com/walkthru-earth/opensensor-space-firmware/issues/143). It could be an upload receipt the phone
 sends back to the board over BLE or LAN, or the board reading its own prefix.
 Until then such an Item is published but not listed in the Collection. Readers
 find it by listing the `thing=<uuid>/` prefix.
@@ -45,8 +45,9 @@ moving, uses H3 resolution 8 (OD-2026-11-04-B). A template href may be any
 immutable URL whose bytes hash to `template.sha256`, with this repo pinned to a
 full commit as the canonical host (OD-2026-11-04-C).
 
-The on device writer is not built yet. It is a separate firmware issue that
-measures flash, internal RAM and PSRAM on both boards before it lands. It must
+The on device writer is not built yet. The File Item sidecar is [#142](https://github.com/walkthru-earth/opensensor-space-firmware/issues/142) and
+the Thing Collection is [#145](https://github.com/walkthru-earth/opensensor-space-firmware/issues/145). Each measures flash, internal RAM and PSRAM on
+both boards before it lands. It must
 follow the PROFILE [Writers](https://github.com/walkthru-earth/stac-opensensor/blob/83787768cc8451109d48a03d4ef5493ffcd403dd/PROFILE.md#writers) and
 [Canonical form](https://github.com/walkthru-earth/stac-opensensor/blob/83787768cc8451109d48a03d4ef5493ffcd403dd/PROFILE.md#canonical-form) sections at the pinned commit, so a
 regenerated document equals the board's.
@@ -64,15 +65,15 @@ These come from the analysis below and from the code, and they still hold.
   `firmware/common/upload/src/os_upload_policy.cpp`) and the BLE and LAN name
   rule ([`ble-sync-protocol.md`](../ble-sync-protocol.md), names end in
   `.parquet`) accept only Parquet today. Carrying the sidecar needs an uploader
-  change and a wire contract change that mobile agrees to. Both are future work
-  in a separate issue.
+  change and a wire contract change that mobile agrees to. The uploader change
+  is [#144](https://github.com/walkthru-earth/opensensor-space-firmware/issues/144) and the BLE and LAN change is [#143](https://github.com/walkthru-earth/opensensor-space-firmware/issues/143).
 - `location.resolution` in config still accepts 0 to 15, with 8 as the default
   ([`ble-sync-protocol.md`](../ble-sync-protocol.md),
   [`time-and-location.md`](../time-and-location.md)). Under OD-2026-11-04-B
   published files and Items carry resolution 8. The PROFILE gives a file no
-  Item when a cell is not resolution 8. The uploader has no such check, so it
-  would still send that Parquet. Narrowing the configurable range is a code
-  follow-up with its own issue.
+  Item when a cell is not resolution 8 ([#142](https://github.com/walkthru-earth/opensensor-space-firmware/issues/142)). The uploader has no such
+  check, so it would still send that Parquet. Narrowing the configurable range
+  to resolution 8 is [#139](https://github.com/walkthru-earth/opensensor-space-firmware/issues/139).
 - Field boards upload to a private intake product, and a publish Action copies
   each file to the public product (#81 stage 4). The Action must copy the board's
   Item and Collection unchanged. Relative hrefs keep them valid after the copy.
@@ -85,13 +86,13 @@ These come from the analysis below and from the code, and they still hold.
   4.5.0, the version vendored here. It is in the vendored sources but is not
   linked today. `firmware/common/location/CMakeLists.txt` relies on section GC
   to drop it. An Item writer pulls it in, and its flash and RAM cost is not
-  measured.
+  measured. Linking it and measuring the cost is part of [#142](https://github.com/walkthru-earth/opensensor-space-firmware/issues/142).
 - The PROFILE asks the board to keep the Collection extent summary, the first
   start time and the union box, in NVS, so an SD swap or a lost ledger does not
-  reset it. The board has no such NVS state yet. This is future work for the
-  File Item sidecar issue.
+  reset it. The board has no such NVS state yet. This is future work in
+  [#145](https://github.com/walkthru-earth/opensensor-space-firmware/issues/145).
 - The PROFILE says a board uploads each file as soon as its window closes. No
-  board wires the uploader yet.
+  board wires the uploader yet. Wiring it is [#144](https://github.com/walkthru-earth/opensensor-space-firmware/issues/144).
 - The uploader waits for trusted UTC, so only dated files leave the board.
 
 ### Open questions answered
