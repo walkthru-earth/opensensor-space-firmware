@@ -72,6 +72,8 @@ C++ contract tests and cannot prove behavior on a physical board.
   a LAN peer or the SDK. Each gate task is bounded by `OS_GATE_TASK_TIMEOUT`
   (300 s), and the gate fails if a pixi `*-test` task is missing from its list,
   except the two SDK fixtures `connectivity-build-test` and `logger-build-test`.
+  The check only matches a key at line start written as `name-test = ...`, so
+  keep that form for every new task.
   `CI result` is the only required check, so a new CI job must join its
   `needs` list, see `docs/shared/development.md#required-checks`.
 - Firmware builds use the pinned native ESP-IDF wrapper and exact managed

@@ -67,8 +67,10 @@ initialization and each board's schema/provenance remain in its own trial.
   and never start a periodic remount while a `LIST` job runs.
 - Boot self test (#40). `Config::self_test_field` must hold a valid value,
   the SD card must be ready and BLE started before `self_test_deadline_ms`
-  (180 s). A null `self_test_field` skips the sensor check, and a name that is
-  not a board field fails it. Once decided, the logger calls
+  (180 s). The deadline applies at the first evaluation at or after it, where a
+  check still pending fails the test and a check already passing does not. A
+  null `self_test_field` skips the sensor check, and a name that is not a
+  board field fails it. Once decided, the logger calls
   `ossync::ota::confirm_running_app` first, then prints one SELFTEST line with
   the result and the mark. Keep the verdict pure in
   `firmware/common/src/boot_self_test.h`.
