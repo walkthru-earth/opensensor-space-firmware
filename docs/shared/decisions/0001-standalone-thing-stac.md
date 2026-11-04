@@ -6,9 +6,9 @@
 | Date | 2026-10-27, amended 2026-11-04 |
 | Issue | [#109](https://github.com/walkthru-earth/opensensor-space-firmware/issues/109) |
 | Related | [#81](https://github.com/walkthru-earth/opensensor-space-firmware/issues/81) uploader, [#83](https://github.com/walkthru-earth/opensensor-space-firmware/issues/83) STAC epic, mobile #181 and #190, walkthru-earth/stac-opensensor#1 |
-| Spec | stac-opensensor `PROFILE.md` Writers section at [`9943282984e3bb8bb37cc2188cabf8e7de5d52c2`](https://github.com/walkthru-earth/stac-opensensor/blob/9943282984e3bb8bb37cc2188cabf8e7de5d52c2/PROFILE.md#writers). The 2026-10-27 analysis read `PROFILE.md` at `815fc45cce64d477ea4268f42ace79aed8877a98` (bridge decisions 33 and 40) |
+| Spec | stac-opensensor `PROFILE.md` Writers section at [`83787768cc8451109d48a03d4ef5493ffcd403dd`](https://github.com/walkthru-earth/stac-opensensor/blob/83787768cc8451109d48a03d4ef5493ffcd403dd/PROFILE.md#writers). The 2026-10-27 analysis read `PROFILE.md` at `815fc45cce64d477ea4268f42ace79aed8877a98` (bridge decisions 33 and 40) |
 | Bridge | decisions 12, 13, 16, 33 and 40 in `.handoff/ecosystem-bridge.md` |
-| Register | OD-2026-11-04-A to OD-2026-11-04-D in the [stac-opensensor decision register](https://github.com/walkthru-earth/stac-opensensor/blob/9943282984e3bb8bb37cc2188cabf8e7de5d52c2/docs/decisions.md) |
+| Register | OD-2026-11-04-A to OD-2026-11-04-D in the [stac-opensensor decision register](https://github.com/walkthru-earth/stac-opensensor/blob/83787768cc8451109d48a03d4ef5493ffcd403dd/docs/decisions.md) |
 
 ## Decision
 

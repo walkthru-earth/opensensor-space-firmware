@@ -168,7 +168,7 @@ output/thing=<UUID>/year=YYYY/month=MM/day=DD/data_HHMM_<boot>_<first>-<last>-<a
 
 Only these dated `data_HHMM_` files are meant for publication. Unsynced files,
 quarantine and bench copies stay in the local archive (stac-opensensor
-PROFILE at 4408c4e52366bb3d154d22bbfffc88ff09aed6f1).
+PROFILE at 83787768cc8451109d48a03d4ef5493ffcd403dd).
 
 `HHMM` identifies the start of the UTC-aligned 10-, 15-, 30- or 60-minute window, not the upload time. The boot, sequence-range and attempt suffix prevents distinct files in the same window from overwriting each other after reboot, manual flush or a clock correction. The extension remains `.parquet`; the interval is configuration, not an extension suffix. New windows, midnight and clock-epoch changes split batches. Startup mid-window produces a short first file. Firmware paths include the `/sd` mount prefix; the card/object path starts at `output/`.
 
