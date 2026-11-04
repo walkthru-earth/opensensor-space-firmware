@@ -111,11 +111,12 @@ contract yet. `pixi run plugin-contract` fails until each step below is in.
 Use the Waveshare V2 files as the example.
 
 1. Board slug. Pick one lowercase slug that matches `^[a-z0-9]+(-[a-z0-9]+)*$`,
-   vendor first, such as `m5stack-cores3`. The footer schema enforces the
-   pattern. Register the slug in
-   [stac-opensensor](https://github.com/walkthru-earth/stac-opensensor) so no
-   two boards share it. The same slug names the footer `thing.board`, the
-   folder in `docs/shared/templates/` and the folder in `docs/boards/`.
+   vendor first, such as `m5stack-cores3`. The re-cut stac-opensensor
+   `footer.json` enforces the pattern, and this repo vendors it in Phase 2.
+   Today `docs/shared/plugins/v0.1.0/board.json` and `tools/footer_contract.py`
+   check it, and `pixi run plugin-contract` refuses a slug another board
+   already uses. The same slug names the footer `thing.board`, the folder in
+   `docs/shared/templates/` and the folder in `docs/boards/`.
 2. Board contract header. In the board `telemetry_contract.h` set `kBoard` to
    the slug, and set `kSchemaName`, `kDictionaryVersion`, `kFirmware` and
    `kCreatedBy`. Set `kDictionarySha256` in `telemetry_dictionary_digest.h` to
@@ -124,7 +125,8 @@ Use the Waveshare V2 files as the example.
    Write a board contract test like `tools/test_waveshare_contract.py`, add its
    `*-test` task to `pixi.toml` and list it in `tools/gate.sh`. The gate refuses
    a test task it does not list. Add the LIVE fixture
-   `tools/fixtures/live_keys/<board>.json`.
+   `tools/fixtures/live_keys/<fixture>.json` and name it in the `fixture` field
+   of the new `BOARDS` entry.
 4. Template. The contract test with `--write-template` builds the template
    through `tools/board_template.py`. It writes `telemetry_template.h` and
    `telemetry_descriptor_digest.h`, publishes
@@ -150,13 +152,15 @@ Use the Waveshare V2 files as the example.
    against `kBoard`. A prod upload goes to the intake prefix the owner sets.
    The [uploader software](telemetry-pipeline.md#uploader-software-129) section
    has the exact rules.
-8. STAC writer duty. Since owner decision D of 2026-11-04
+8. STAC writer duty. Since OD-2026-11-04-D
    ([decision 0001](decisions/0001-standalone-thing-stac.md)) the board writes
    STAC. At finalize it writes a File Item sidecar `<file>.json` next to each
    dated `data_HHMM_` file, with the data href `./<file>.parquet`. It writes
    the Thing Collection from its own upload ledger and is the only writer under
    `thing=<uuid>/`. Owner only fields come from setup config. The shared writer
    is not built yet. When it lands, a new board measures its flash, internal
-   RAM and PSRAM cost on that board.
+   RAM and PSRAM cost on that board. Sidecar transport over the uploader and
+   over BLE and LAN is future work in a separate issue. Today both accept only
+   `.parquet` names.
 9. Builds. Build both existing boards and the new one, `pixi run cores3-build`,
    `pixi run waveshare-build` and the new board task, then run `pixi run gate`.
