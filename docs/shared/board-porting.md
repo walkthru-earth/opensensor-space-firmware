@@ -115,11 +115,11 @@ step 8 until the shared writer exists.
 Use the Waveshare V2 files as the example.
 
 1. Board slug. Pick one lowercase slug that matches `^[a-z0-9]+(-[a-z0-9]+)*$`,
-   vendor first, such as `m5stack-cores3`. The re-cut stac-opensensor
-   `footer.json` enforces the pattern, and this repo vendors it in Phase 2.
-   Today `docs/shared/plugins/v0.1.0/board.json` and `tools/footer_contract.py`
-   check it, and `pixi run plugin-contract` refuses a slug another board
-   already uses. The same slug names the footer `thing.board`, the folder in
+   vendor first, such as `m5stack-cores3`. The vendored stac-opensensor
+   `tools/stac_opensensor/v0.1.0/footer.json` enforces the pattern.
+   `docs/shared/plugins/v0.1.0/board.json` and `tools/footer_contract.py` check
+   it too, and `pixi run plugin-contract` refuses a slug another board already
+   uses. The same slug names the footer `thing.board`, the folder in
    `docs/shared/templates/` and the folder in `docs/boards/`.
 2. Board contract header. In the board `telemetry_contract.h` set `kBoard` to
    the slug, and set `kSchemaName`, `kDictionaryVersion`, `kFirmware` and
@@ -162,9 +162,10 @@ Use the Waveshare V2 files as the example.
    dated `data_HHMM_` file, with the data href `./<file>.parquet`. It writes
    the Thing Collection from its own upload ledger and is the only writer under
    `thing=<uuid>/`. Owner only fields come from setup config. The shared writer
-   is not built yet. When it lands, a new board measures its flash, internal
-   RAM and PSRAM cost on that board. Sidecar transport over the uploader and
-   over BLE and LAN is future work in a separate issue. Today both accept only
-   `.parquet` names.
+   is not built yet. It follows the stac-opensensor PROFILE Writers and
+   Canonical form sections. When it lands, a new board measures its flash,
+   internal RAM and PSRAM cost on that board. Sidecar transport over the
+   uploader and over BLE and LAN is future work in a separate issue. Today both
+   accept only `.parquet` names.
 9. Builds. Build both existing boards and the new one, `pixi run cores3-build`,
    `pixi run waveshare-build` and the new board task, then run `pixi run gate`.
