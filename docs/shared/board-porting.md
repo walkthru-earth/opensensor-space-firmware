@@ -1,6 +1,6 @@
 # Porting an ESP32-S3 board
 
-The [firmware epic](https://github.com/walkthru-earth/aq-parquet/issues/6) uses
+The [firmware epic](https://github.com/walkthru-earth/opensensor-space-firmware/issues/6) uses
 board-neutral services in `firmware/common`. A board adapter owns pins,
 controller initialization, power, mount policy, measurements and capabilities.
 Extend hooks or configuration for a new capability. Never branch on a board
@@ -82,15 +82,16 @@ example.
    results separate. Do not copy another board's GPIO or controller policy.
 2. Register common component directories with CMake `EXTRA_COMPONENT_DIRS` and
    declare the required components. A logger uses
-   `REQUIRES common runtime connectivity logger location`. Select the Plantower
-   model explicitly and preserve each board's schema and provenance.
+   `REQUIRES common runtime connectivity logger location`. A board with a
+   Plantower PMS module selects the model explicitly. Preserve each board's
+   schema and provenance.
 3. Add Pixi tasks, target checks and board contract fixtures. Build both existing
    boards plus the new target using the [development gates](development.md#verification).
    A generic compile fixture never gets flashed. Write the board's
    `board.json` against the [plugin contract](plugins/README.md#writing-a-new-board-once),
    then run `pixi run plugin-new-board <path to board.json>` once. It writes
    the three `telemetry_*.inc` files and a first `shipped.lock`, and they are
-   frozen from then on.
+   frozen from then on. Then follow [Contract and publish](#contract-and-publish).
 4. Audit strapping pins, peripheral ownership, flash capacity, PSRAM, console
    and recovery. Before any physical write follow the full checked-port
    [identification and backup sequence](../../AGENTS.md#before-any-physical-flash-write).
@@ -102,3 +103,60 @@ example.
    `artifacts/` and owner copies in `exports/`. Record only observed results in
    that board's bench record. Host tests do not prove SD timing, coexistence,
    reconnect, power or durability. Add the board to the docs router and README.
+
+## Contract and publish
+
+After `pixi run plugin-new-board` the board has its field tables but no
+contract yet. `pixi run plugin-contract` fails until each step below is in.
+Use the Waveshare V2 files as the example.
+
+1. Board slug. Pick one lowercase slug that matches `^[a-z0-9]+(-[a-z0-9]+)*$`,
+   vendor first, such as `m5stack-cores3`. The footer schema enforces the
+   pattern. Register the slug in
+   [stac-opensensor](https://github.com/walkthru-earth/stac-opensensor) so no
+   two boards share it. The same slug names the footer `thing.board`, the
+   folder in `docs/shared/templates/` and the folder in `docs/boards/`.
+2. Board contract header. In the board `telemetry_contract.h` set `kBoard` to
+   the slug, and set `kSchemaName`, `kDictionaryVersion`, `kFirmware` and
+   `kCreatedBy`. Set `kDictionarySha256` in `telemetry_dictionary_digest.h` to
+   `shasum -a 256 telemetry_fields.inc`.
+3. Host tooling. Add the board to `BOARDS` in `tools/published_templates.py`.
+   Write a board contract test like `tools/test_waveshare_contract.py`, add its
+   `*-test` task to `pixi.toml` and list it in `tools/gate.sh`. The gate refuses
+   a test task it does not list. Add the LIVE fixture
+   `tools/fixtures/live_keys/<board>.json`.
+4. Template. The contract test with `--write-template` builds the template
+   through `tools/board_template.py`. It writes `telemetry_template.h` and
+   `telemetry_descriptor_digest.h`, publishes
+   `docs/shared/templates/<slug>/<dict>.json` byte exact and rewrites
+   [`index.json`](templates/index.json). Then run `pixi run pin-uris` twice,
+   with a commit after each run, as the
+   [templates README](templates/README.md#regenerate) lists. `kDictionaryUri`
+   and `kTemplateHref` end up as raw GitHub URLs at a full 40 hex commit of
+   this repo. A template href may be any immutable URL whose bytes hash to
+   `template.sha256`, and this repo is the canonical host. A catalog MAY mirror
+   the file at `templates/<board>/<template sha256>.json`.
+5. Footer fixture and gate. The board contract test builds a real footer
+   through `footer::build` and checks it with `tools/footer_contract.py`
+   against the vendored stac-opensensor `footer.json` and the GeoParquet 2.0.0
+   schema. `thing.board` must equal the template folder slug, and `dict` and
+   `desc` must equal the board headers. `pixi run published-templates-test`
+   and `pixi run pinned-uris-test` check the published copy and the pins.
+6. Mobile. Add a newest-first entry to [mobile-migration.md](mobile-migration.md)
+   with the new board, `dict` and `desc`, so the app can map its LIVE profile.
+7. Uploader prefix. A dev upload goes to
+   `<product>/dev/opensensor-space-firmware/<board>/<archive name>`. The
+   `<board>` segment is whatever slug the board passes, and no code checks it
+   against `kBoard`. A prod upload goes to the intake prefix the owner sets.
+   The [uploader software](telemetry-pipeline.md#uploader-software-129) section
+   has the exact rules.
+8. STAC writer duty. Since owner decision D of 2026-11-04
+   ([decision 0001](decisions/0001-standalone-thing-stac.md)) the board writes
+   STAC. At finalize it writes a File Item sidecar `<file>.json` next to each
+   dated `data_HHMM_` file, with the data href `./<file>.parquet`. It writes
+   the Thing Collection from its own upload ledger and is the only writer under
+   `thing=<uuid>/`. Owner only fields come from setup config. The shared writer
+   is not built yet. When it lands, a new board measures its flash, internal
+   RAM and PSRAM cost on that board.
+9. Builds. Build both existing boards and the new one, `pixi run cores3-build`,
+   `pixi run waveshare-build` and the new board task, then run `pixi run gate`.

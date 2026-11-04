@@ -265,7 +265,7 @@ any other board file under Option A, and no command rewrites them. The
 command prints the new `dict` and the steps left, which are the board
 `telemetry_contract.h`, the digest headers, the published template, a mobile
 migration entry naming the dict, the LIVE fixture and the pinned URIs, as
-[board-porting.md](../board-porting.md) lists. `pixi run plugin-contract`
+[Contract and publish](../board-porting.md#contract-and-publish) in board-porting.md lists. `pixi run plugin-contract`
 then fails until each one is in.
 
 **Decided 2026-10-27, Option A.** The pinned `kDictionaryUri` exists so that the
