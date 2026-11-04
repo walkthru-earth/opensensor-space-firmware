@@ -1,5 +1,7 @@
 # STAC firmware audit
 
+> Dated history, kept as written on 2026-10-25. File names such as `aq_logger.cpp` and `station_identity` were renamed later. Read [the decisions](../decisions/README.md) and the current code for today's layout.
+
 Read-only audit of branch `yharby/stac-firmware-audit` at commit `2b49114` (2026-10-25). No firmware code was changed and no board was flashed. All paths are relative to the repository root.
 
 The goal is a sensor agnostic mobile app (and later ecosystem) driven by a STAC JSON contract. Released firmware wire contracts (BLE frames, opcodes, UUIDs, JSON keys, Hive paths) stay backward compatible.

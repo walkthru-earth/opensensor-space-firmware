@@ -1,5 +1,7 @@
 # STAC firmware audit review
 
+> Dated history, kept as written on 2026-10-25. File names such as `aq_logger.cpp` and `station_identity` were renamed later. Read [the decisions](../decisions/README.md) and the current code for today's layout.
+
 Independent review of `firmware-audit.md` at commit `2b49114` on 2026-10-25. No firmware, app or doc file was changed. No board was flashed and no serial port was opened. The only host command run was `pixi run python tools/test_telemetry_contract.py --dictionary-out <scratch>` (host only, all cases PASS). Web pages were fetched through `r.jina.ai`. App paths are under `/Users/yharby/Documents/gh/walkthru-earth/opensensor/opensensor-space-mobile`, not `../opensensor-space-mobile` (the orca workspace folder of that name is empty).
 
 Marks. **Confirmed** means checked against the cited file, command output or spec text. **Plausible** means inferred from code and not exercised.
