@@ -17,10 +17,10 @@ When any part lands, move the settled contract into `table-and-observation-model
 
 The two audits are dated and propose draft field names. Their findings still stand, but the names were replaced by the released extension [stac-opensensor v0.1.0](https://github.com/walkthru-earth/stac-opensensor). Read the audits for evidence and use the extension for names.
 
-v0.1.0 splits the metadata into three layers, as its [PROFILE.md](https://github.com/walkthru-earth/stac-opensensor/blob/main/PROFILE.md) defines.
+v0.1.0 splits the metadata into three layers, as its [PROFILE.md](https://github.com/walkthru-earth/stac-opensensor/blob/4408c4e52366bb3d154d22bbfffc88ff09aed6f1/PROFILE.md) defines.
 
 1. Board template. The firmware build generates one per schema, plain JSON with `"type": "OpenSensorTemplate"`, not STAC and not a profile Collection. It holds the public columns in `item_assets.data.table:columns` (core `unit`, core `roles` and the `opensensor:` column fields, no `title` or `opensensor:scale`), `instruments`, `opensensor:sample_interval_s`, and a `firmware` block with `schema`, `proto_min`, `dict`, `live_keys` and `unit_labels`. Its SHA-256 is the `desc` digest and `GET_DESCRIPTOR` streams it. The dictionary digest reaches it as `file:checksum` on a `describedby` link to `telemetry_fields.inc`. There is no `cube:dimensions`.
-2. Thing Collection. The catalog publisher copies the template columns and adds titles, scales, extent, license and a second `describedby` link to the template with `file:checksum` set to `1220` plus `desc`.
+2. Thing Collection. The catalog publisher, which is the board since [decision 0001](../decisions/0001-standalone-thing-stac.md), copies the template columns and adds titles, scales, extent, license and a second `describedby` link to the template with `file:checksum` set to `1220` plus `desc`.
 3. App profile. `primary`, `hero`, `family`, `display_step` and column labels live in an app file keyed by the dictionary digest, outside any published schema.
 
 | Draft name in the audits | v0.1.0 |
@@ -36,7 +36,7 @@ v0.1.0 splits the metadata into three layers, as its [PROFILE.md](https://github
 | `opensensor:precision` | App profile `display_step` |
 | `opensensor:codes`, or a `bands` entry per code column | `classification:classes` in the column |
 | `opensensor:sensor` (vendor, model) | `opensensor:procedure` on the column and core `instruments` on the Collection |
-| `opensensor:station_id` on Items | One Collection per Thing UUID, one Item per day. The footer names it `thing.id` (#83) |
+| `opensensor:station_id` on Items | One Collection per Thing UUID, one Item per file. The footer names it `thing.id` (#83) |
 | `opensensor:calibration` | Not in v0.1.0 |
 | Role values (measurement, quality, state and others) | Core `roles` with ACDD values `physicalMeasurement`, `auxiliaryInformation`, `qualityInformation`, `referenceInformation`, `coordinate`, and `modelResult` for derived columns |
 | `cube:dimensions`, `cube:variables` | Not used. Cadence is `opensensor:sample_interval_s` |
