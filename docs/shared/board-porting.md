@@ -107,7 +107,11 @@ example.
 ## Contract and publish
 
 After `pixi run plugin-new-board` the board has its field tables but no
-contract yet. `pixi run plugin-contract` fails until each step below is in.
+contract yet. `pixi run plugin-contract` fails until the published template of
+step 4 is in. It also refuses a slug another board uses (step 1) and a
+`shipped.lock` release that `mobile-migration.md` does not name (step 6). The
+host contract tests and `pixi run gate` check the other steps. Nothing checks
+step 8 until the shared writer exists.
 Use the Waveshare V2 files as the example.
 
 1. Board slug. Pick one lowercase slug that matches `^[a-z0-9]+(-[a-z0-9]+)*$`,
