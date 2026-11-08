@@ -795,10 +795,10 @@ void owner_configuration() {
     std::size_t max;
     char fill;
   };
-  for (const auto &bound : {Bound{"owner.title", 64, 't'},
-                            Bound{"owner.description", 160, 'd'},
-                            Bound{"owner.provider", 64, 'p'},
-                            Bound{"thing.deployment_id", 32, 'x'}}) {
+  for (const auto &bound :
+       {Bound{"owner.title", 64, 't'}, Bound{"owner.description", 160, 'd'},
+        Bound{"owner.provider", 64, 'p'},
+        Bound{"thing.deployment_id", 32, 'x'}}) {
     accept(std::string(bound.key) + "=" + std::string(bound.max, bound.fill));
     reject(std::string(bound.key) + "=" +
                std::string(bound.max + 1, bound.fill),
@@ -924,8 +924,8 @@ void owner_configuration() {
   // A failed `cfg` save after the owner save puts the owner record back.
   const auto settings_live = config::get();
   fake_platform::nvs.fail_write_key = "cfg";
-  assert(!apply("thing.deployment_id=giza-01\nwifi.ssid=other", actions,
-                bad_key));
+  assert(
+      !apply("thing.deployment_id=giza-01\nwifi.ssid=other", actions, bad_key));
   assert(std::strcmp(bad_key, "nvs") == 0);
   fake_platform::nvs.fail_write_key.clear();
   assert(same_owner(live, config::owner_settings()));
@@ -979,8 +979,8 @@ void owner_configuration() {
   // escaped. The test driver parses both pages and checks their size.
   accept("owner.title=" + std::string(64, '"') + "\nowner.description=" +
          std::string(160, '\\') + "\nowner.provider=" + std::string(64, '\\') +
-         "\nowner.url=" + url_max + "\nthing.deployment_id=" +
-         std::string(32, 'z'));
+         "\nowner.url=" + url_max +
+         "\nthing.deployment_id=" + std::string(32, 'z'));
   const auto page5 = config::build_page(json, sizeof(json), 5);
   assert(page5 == 458);
   std::printf("%s\n", json);
@@ -1001,9 +1001,8 @@ void owner_configuration() {
 
   // No owner value ever reaches the serial log.
   const auto logs = log_text();
-  for (const char *value :
-       {"Cairo", "Rooftop", "Walkthru", "walkthru.earth", "cairo-0", "giza",
-        "example.org", "zzzz", "uuuu"})
+  for (const char *value : {"Cairo", "Rooftop", "Walkthru", "walkthru.earth",
+                            "cairo-0", "giza", "example.org", "zzzz", "uuuu"})
     assert(logs.find(value) == std::string::npos);
 }
 

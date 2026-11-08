@@ -804,9 +804,9 @@ std::optional<OwnerKey> owner_key(std::string_view key) {
 
 std::expected<void, OwnerValueError> check_owner_value(OwnerKey key,
                                                        std::string_view value) {
-  const auto info =
-      std::find_if(kOwnerKeys.begin(), kOwnerKeys.end(),
-                   [key](const OwnerKeyInfo &entry) { return entry.key == key; });
+  const auto info = std::find_if(
+      kOwnerKeys.begin(), kOwnerKeys.end(),
+      [key](const OwnerKeyInfo &entry) { return entry.key == key; });
   if (info == kOwnerKeys.end() || value.size() > info->max)
     return std::unexpected(OwnerValueError::TooLong);
   if (value.empty())
