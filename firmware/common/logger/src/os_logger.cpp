@@ -118,6 +118,7 @@ struct OutputFile {
   bool dated = false; // false: unsynced tree
   Codec codec = Codec::Uncompressed;
   config::LocationSettings location{};
+  config::DeploymentId deployment{};
   std::int32_t epoch = 0;
   std::int64_t window = 0; // UTC seconds / rotation, when dated
   std::int64_t first = 0, last = 0;
@@ -735,6 +736,7 @@ bool create_file(OutputFile &target, Codec codec, bool benchmark) {
   target.benchmark = benchmark;
   target.codec = codec;
   target.location = first_row.location;
+  target.deployment = first_row.deployment;
   target.epoch = static_cast<std::int32_t>(first_row.data[clock_epoch]);
   target.first = target.last = first_row.data[sequence];
   target.rows = 0;
@@ -836,14 +838,16 @@ bool append_group(OutputFile &target, std::size_t count) {
 // Writes the footer, syncs, closes, checks the structure and renames to
 // `<stem>-<last>-<attempt>.parquet`.
 bool finalize_file(OutputFile &target) {
-  // Mobility comes from the file's location snapshot, which splits the file
-  // whenever it changes, so every row of the file shares it.
+  // Mobility and the deployment id come from the file's snapshot, which
+  // splits the file whenever either changes, so every row of the file shares
+  // them. An unset deployment id falls back to config.deployment_id.
   const auto json = footer::build(
       writer_state->footer_json, config,
       {.device = device_text,
        .thing = thing_text,
        .boot = boot_text,
-       .mobility = ::config::mobility_name(target.location.mobility)},
+       .mobility = ::config::mobility_name(target.location.mobility),
+       .deployment = target.deployment.text.data()},
       {.rotation_seconds = rotation_seconds.load(),
        .row_groups = target.writer.row_groups(),
        .compression = codec_name(target.codec),
@@ -2095,20 +2099,21 @@ struct WorkerState {
 // Set while the worker executes a control request.
 WorkerState *active_state = nullptr;
 
-// Never mix clock epochs or UTC windows (including midnight) in a file: the
-// open file, or else the RAM batch, is the reference.
+// Never mix clock epochs, UTC windows (including midnight), locations or
+// deployment ids in a file: the open file, or else the RAM batch, is the
+// reference.
 bool fits_batch(const Sample &row, std::size_t count) {
   const OutputFile &open = writer_state->telemetry;
   if (open.open())
     return same_window(row, open.epoch, open.dated, open.window) &&
-           config::same_location(row.location, open.location);
+           same_file_labels(row, open);
   if (!count)
     return true;
   const auto &previous = writer_state->rows[0];
   return same_window(row, previous.data[clock_epoch],
                      previous.valid[event_time_utc_us] != 0,
                      window_index(previous)) &&
-         config::same_location(row.location, previous.location);
+         same_file_labels(row, previous);
 }
 
 // While a LAN reply waits for ring space, move queued samples into the RAM
@@ -2650,6 +2655,7 @@ power::Tracker power_tracker;
 void collect(std::int64_t now, std::int64_t scheduled) {
   Sample row{};
   row.location = ::config::get().location;
+  row.deployment = ::config::deployment_id();
   if (hooks.collect)
     hooks.collect(row, now, scheduled, hooks.context);
   if (sensor_check == selftest::Check::Pending && sensor_field < field_count &&

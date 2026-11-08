@@ -12,6 +12,7 @@
 #include <cstring>
 #include <source_location>
 #include <span>
+#include <string>
 #include <string_view>
 
 namespace {
@@ -121,6 +122,26 @@ void footer_bytes() {
   check(footer::build(json, config, kIds, kFile).has_value());
   check(std::string_view(json).find(R"("deployment_id":"a\"b\\c\n\u0001 )"
                                     "\xc3\xa9\"") != std::string_view::npos);
+  config = base_config();
+
+  // The file's deployment id snapshot wins over the board constant (#148).
+  // Unset, null or empty, the footer keeps "unknown".
+  const auto deployment_of = [&](const char *deployment) {
+    auto ids = kIds;
+    ids.deployment = deployment;
+    check(footer::build(json, config, ids, kFile).has_value());
+    const std::string_view text(json);
+    const auto key = text.find(R"("deployment_id":")");
+    check(key != std::string_view::npos);
+    const auto start = key + std::string_view(R"("deployment_id":")").size();
+    return std::string(text.substr(start, text.find('"', start) - start));
+  };
+  check(deployment_of("cairo-07") == "cairo-07");
+  check(deployment_of("") == "unknown");
+  check(deployment_of(nullptr) == "unknown");
+  config.deployment_id = "board-default";
+  check(deployment_of("") == "board-default");
+  check(deployment_of("giza-01") == "giza-01");
   config = base_config();
 
   // Fails closed, never a partial footer.

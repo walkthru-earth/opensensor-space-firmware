@@ -49,6 +49,9 @@ struct Ids {
   // thing.mobility, "fixed" or "moving", from the oscfg key thing.mobility
   // snapshotted with the file's location.
   const char *mobility = nullptr;
+  // thing.deployment_id from the file's snapshot of the oscfg owner record.
+  // Null or empty writes Config::deployment_id, "unknown" by default.
+  const char *deployment = nullptr;
 };
 struct File {
   std::uint32_t rotation_seconds = 0;
@@ -310,7 +313,8 @@ build(std::span<char> out, const Config &config, const Ids &ids,
   json.text("id", ids.thing);
   json.text("device_id", ids.device);
   json.text("board", config.board);
-  json.text("deployment_id", config.deployment_id);
+  json.text("deployment_id",
+            present(ids.deployment) ? ids.deployment : config.deployment_id);
   json.text("mobility", ids.mobility);
   json.close();
   json.open("firmware");

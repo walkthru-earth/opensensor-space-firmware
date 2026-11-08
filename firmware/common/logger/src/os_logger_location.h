@@ -15,7 +15,18 @@ namespace oslogger {
 // changes cannot relabel buffered samples of an open file.
 template <typename Row> struct LocationSample : Row {
   config::LocationSettings location{};
+  // Footer thing.deployment_id, snapshotted with the location (#148).
+  config::DeploymentId deployment{};
 };
+
+// The labels a file keeps for all its rows, compared between a new sample and
+// the open file or RAM batch. A change in either closes the file. Owner title,
+// description, provider and url are not labels and never split a file.
+template <typename A, typename B>
+[[nodiscard]] bool same_file_labels(const A &a, const B &b) {
+  return config::same_location(a.location, b.location) &&
+         config::same_deployment(a.deployment, b.deployment);
+}
 
 // Nullable fields, in order: cell ID, actual resolution, location_source and
 // the GEOMETRY slot, a 2D point at the cell centre packed by

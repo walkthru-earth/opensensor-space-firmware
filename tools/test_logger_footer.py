@@ -16,6 +16,11 @@ A second source check pins finalize_file() to footer::metadata(), the helper
 the board contract fixtures finish through. Those fixtures write a geometry
 column and read the raw Thrift key-value list, so opensensor before geo is
 proven on the bytes, and swapping the keys in the logger call fails here.
+
+A third source check pins the deployment id path (#148). collect()
+snapshots it per sample, the open file keeps the first row's copy, the footer
+writes that copy or "unknown", and fits_batch() closes the file when it
+changes. Each listed mutant must fail the check.
 """
 from __future__ import annotations
 
@@ -130,6 +135,82 @@ def prove_footer_metadata(source: str) -> None:
         raise AssertionError(f"footer metadata check missed the mutant: {name}")
 
 
+def function_body(source: str, signature: str) -> str:
+    start = source.find(signature)
+    assert start >= 0, f"{signature} not found"
+    end = source.find("\n}\n", start)
+    assert end > start, f"end of {signature} not found"
+    return source[start:end]
+
+
+# The deployment id path (#148). collect() snapshots it per sample,
+# create_file() copies the first row's value into the open file,
+# finalize_file() hands that copy to the footer, and fits_batch() closes the
+# file when it changes, exactly as it does for the location.
+DEPLOYMENT_WIRING = (
+    ("void collect(std::int64_t now, std::int64_t scheduled)",
+     "row.deployment = ::config::deployment_id();", 1),
+    ("bool create_file(OutputFile &target", "target.deployment = first_row.deployment;", 1),
+    ("bool finalize_file(OutputFile &target)", ".deployment = target.deployment.text.data()}", 1),
+    ("bool fits_batch(const Sample &row, std::size_t count)", "same_file_labels(row, open);", 1),
+    ("bool fits_batch(const Sample &row, std::size_t count)", "same_file_labels(row, previous);", 1),
+)
+FILE_LABELS = re.compile(
+    r"\[\[nodiscard\]\] bool same_file_labels\(const A &a, const B &b\) \{\s*"
+    r"return config::same_location\(a\.location, b\.location\) &&\s*"
+    r"config::same_deployment\(a\.deployment, b\.deployment\);\s*\}")
+FOOTER_DEPLOYMENT = ('json.text("deployment_id",\n'
+                     '            present(ids.deployment) ? ids.deployment : config.deployment_id);')
+
+
+def check_deployment(logger: str, labels: str, footer: str) -> None:
+    """The deployment id is snapshotted per file and a change splits it."""
+    for signature, text, count in DEPLOYMENT_WIRING:
+        body = function_body(logger, signature)
+        assert body.count(text) == count, f"{signature} must contain {text!r} {count} time(s)"
+    assert "row.deployment = " not in function_body(
+        logger, "bool fits_batch(const Sample &row, std::size_t count)"), \
+        "fits_batch() never rewrites a sample's deployment id"
+    assert logger.count("row.deployment =") == 1, "only collect() assigns row.deployment"
+    assert logger.count("same_location(") == 0, \
+        "the logger compares file labels only through same_file_labels()"
+    assert len(FILE_LABELS.findall(labels)) == 1, \
+        "same_file_labels() must compare the location and the deployment id"
+    assert footer.count(FOOTER_DEPLOYMENT) == 1, \
+        "the footer writes the file's deployment id, else Config::deployment_id"
+
+
+def prove_deployment(logger: str, labels: str, footer: str) -> None:
+    check_deployment(logger, labels, footer)
+    label_text = FILE_LABELS.search(labels).group(0)
+    mutants = {
+        "open file ignores labels": (logger.replace(
+            "same_file_labels(row, open);", "true;"), labels, footer),
+        "batch ignores labels": (logger.replace(
+            "same_file_labels(row, previous);", "true;"), labels, footer),
+        "location only, open file": (logger.replace(
+            "same_file_labels(row, open);",
+            "config::same_location(row.location, open.location);"), labels, footer),
+        "deployment not compared": (logger, labels.replace(label_text, label_text.replace(
+            " &&\n         config::same_deployment(a.deployment, b.deployment)", "")), footer),
+        "deployment not snapshotted": (logger.replace(
+            "  row.deployment = ::config::deployment_id();\n", ""), labels, footer),
+        "file keeps no snapshot": (logger.replace(
+            "  target.deployment = first_row.deployment;\n", ""), labels, footer),
+        "footer reads live value": (logger.replace(
+            ".deployment = target.deployment.text.data()}", "}"), labels, footer),
+        "footer ignores snapshot": (logger, labels, footer.replace(
+            FOOTER_DEPLOYMENT, 'json.text("deployment_id", config.deployment_id);')),
+    }
+    for name, (logger_mutant, labels_mutant, footer_mutant) in mutants.items():
+        assert (logger_mutant, labels_mutant, footer_mutant) != (logger, labels, footer), name
+        try:
+            check_deployment(logger_mutant, labels_mutant, footer_mutant)
+        except AssertionError:
+            continue
+        raise AssertionError(f"deployment wiring check missed the mutant: {name}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sanitize", action="store_true")
@@ -139,6 +220,9 @@ def main() -> None:
     logger_source = (common / "logger/src/os_logger.cpp").read_text()
     prove_footer_gate(logger_source)
     prove_footer_metadata(logger_source)
+    prove_deployment(logger_source,
+                     (common / "logger/src/os_logger_location.h").read_text(),
+                     (common / "logger/src/os_logger_footer.h").read_text())
     with tempfile.TemporaryDirectory(prefix="aq-logger-footer-") as directory:
         executable = Path(directory) / "footer-test"
         output = Path(directory) / "soil.parquet"

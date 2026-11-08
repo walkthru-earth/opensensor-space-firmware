@@ -2,9 +2,10 @@
 and firmware/common/gnss_reader.
 
 Covers the SIMCom CGNSSINFO dialect, fix to H3 cell, freshness, the per row
-location source rule and that a GNSS cell never splits files. Compiles the
-real os_gnss.cpp, device_config.cpp and the pinned H3 library. It does not
-prove a receiver fix, UART timing or antenna placement on a board.
+location source rule, that a GNSS cell never splits files and that a
+deployment id change does (#148). Compiles the real os_gnss.cpp,
+device_config.cpp and the pinned H3 library. It does not prove a receiver
+fix, UART timing or antenna placement on a board.
 """
 
 from __future__ import annotations
