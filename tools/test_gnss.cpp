@@ -384,23 +384,30 @@ void coherent_labels() {
                                sizeof bad_key, actions));
   };
   set(kCairo);
+  // The writer starts only after the reader finished its first read, so the
+  // reader always checks at least one sample however the threads are
+  // scheduled, and keeps reading until the writer is done.
+  std::atomic<bool> started{false};
   std::atomic<bool> done{false};
   std::thread writer([&] {
+    while (!started.load())
+      std::this_thread::yield();
     for (int i = 0; i < 2000; ++i)
       set(i % 2 ? kCairo : kGiza);
-    done = true;
+    done.store(true);
   });
   unsigned cairo = 0, giza = 0;
-  while (!done) {
+  do {
     const auto labels = config::sample_labels();
     const std::string_view country = labels.location.country;
     const std::string_view deployment = labels.deployment.text.data();
     assert((country == "EG" && deployment == "cairo-07") ||
            (country == "US" && deployment == "giza-01"));
     ++(country == "EG" ? cairo : giza);
-  }
+    started.store(true);
+  } while (!done.load());
   writer.join();
-  assert(cairo + giza > 0);
+  assert(cairo > 0 && cairo + giza > 1);
 }
 } // namespace
 

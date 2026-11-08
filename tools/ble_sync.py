@@ -523,7 +523,12 @@ class Session:
 
     @staticmethod
     def _config_json(flags: int, text: bytes) -> dict:
-        config = json.loads(text)
+        try:
+            config = json.loads(text)
+        except ValueError as error:  # JSONDecodeError and UnicodeDecodeError
+            raise ProtocolError(f"CONFIG is not valid UTF-8 JSON: {error}") from error
+        if not isinstance(config, dict):
+            raise ProtocolError(f"CONFIG JSON is {type(config).__name__}, not an object")
         config["reboot_required"] = bool(flags & 1)
         return config
 

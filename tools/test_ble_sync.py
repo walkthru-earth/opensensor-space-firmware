@@ -96,8 +96,12 @@ class FakeClient:
         self.config_drop = None
         self.config_skew = None
         self.config_short = 0
+        # config_body replaces every CONFIG body, to send malformed JSON.
+        self.config_body = None
 
     def emit_config(self, flags: int, text: bytes):
+        if self.config_body is not None:
+            text = self.config_body
         if self.config_chunk is None:
             self.emit(bytes([ble.F_CONFIG, flags]) + text)
             return
@@ -412,6 +416,32 @@ async def run_config_chunks():
     assert 0 < short < len(PAGE6) - last * slice_bytes, "the overshoot is in the last slice"
     overshoot = f"slice of {len(PAGE6) - last * slice_bytes} bytes at {last * slice_bytes}"
     assert overshoot + f" does not fit total {len(PAGE6) - short}" in await refused(config_short=short)
+    # A body that is not UTF-8 JSON or not an object is a ProtocolError, in
+    # one CONFIG frame or assembled from chunks, so the CLI prints FAIL.
+    malformed = {b"\xff\xfe{}": "not valid UTF-8 JSON", b'{"owner":': "not valid UTF-8 JSON",
+                 b"[1,2]": "CONFIG JSON is list, not an object", b'"x"': "CONFIG JSON is str, not an object"}
+    for body, expected in malformed.items():
+        for chunk in (None, 2):
+            assert expected in await refused(config_body=body, config_chunk=chunk), (body, chunk)
+
+    async def malformed_connect(_args):
+        client = FakeClient()
+        client.config_body = b"[]"
+        client.disconnect = AsyncMock()
+        session = ble.Session(client)
+        await session.start()
+        return client, session
+
+    with patch.object(ble, "connect", malformed_connect), \
+            patch.object(sys, "argv", ["ble_sync.py", "config", "--page", "6"]), \
+            contextlib.redirect_stderr(io.StringIO()) as err:
+        try:
+            await asyncio.to_thread(ble.main)
+        except SystemExit as error:
+            assert error.code == 1, error
+        else:
+            raise AssertionError("a list CONFIG must fail the CLI")
+    assert err.getvalue() == "FAIL CONFIG JSON is list, not an object\n", err.getvalue()
 
     # The CLI accepts page 6, sends it and prints the assembled JSON.
     seen = []
@@ -442,7 +472,7 @@ async def run_config_chunks():
     assert json.loads(out.getvalue()) == json.loads(PAGE6) | {"reboot_required": False}, out.getvalue()
     assert client.disconnect.await_count == 1
     print("PASS ble_sync CONFIG_CHUNK: page 6 and legacy replies assembled, UTF-8 split across chunks, "
-          "gap, changed total, slice past total and missing last chunk refused, CLI --page 6 accepted and 7 refused")
+          "gap, changed total, slice past total, missing last chunk and malformed JSON refused, CLI --page 6 accepted, 7 refused, bad JSON prints FAIL")
 
 
 def descriptor_offsets(client):
