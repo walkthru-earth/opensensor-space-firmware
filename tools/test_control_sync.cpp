@@ -120,7 +120,7 @@ void handle(const ble::ControlRequest &request, Peer &peer) {
 }
 
 void paged_configuration() {
-  for (std::uint8_t page = 0; page <= 4; ++page) {
+  for (std::uint8_t page = 0; page <= config::kLastConfigPage; ++page) {
     Peer peer;
     handle(
         request(ble::kOpGetConfig, ble::Link::Lan, std::string(1, char(page))),
@@ -131,6 +131,7 @@ void paged_configuration() {
     const std::string json(frame.begin() + 2, frame.end());
     assert(json.find(page == 0   ? "\"ble\""
                      : page == 1 ? "\"location\""
+                     : page >= 5 ? "\"owner\""
                                  : "\"ntp\"") != std::string::npos);
   }
   // #147. Page 1 carries location.gnss_cell only when the board wires a
@@ -152,7 +153,8 @@ void paged_configuration() {
            return 0x8828308281fffffULL;
          }).find("\"gnss_cell\":\"8828308281fffff\"") != std::string::npos);
   assert(page_one(nullptr).find("\"setup\":") != std::string::npos);
-  for (const auto &body : {std::string(1, char(5)), std::string(2, char(0))}) {
+  for (const auto &body : {std::string(1, char(config::kLastConfigPage + 1)),
+                           std::string(2, char(0))}) {
     Peer peer;
     handle(request(ble::kOpGetConfig, ble::Link::Ble, body), peer);
     assert(peer.successful.empty() && peer.errors.size() == 1);

@@ -192,7 +192,7 @@ bool handle_common_control(const ble::ControlRequest &request,
   const std::size_t length = request.length - 1;
   switch (request.bytes[0]) {
   case ble::kOpGetConfig:
-    if (length > 1 || (length == 1 && body[0] > 4))
+    if (length > 1 || (length == 1 && body[0] > config::kLastConfigPage))
       replies.error(replies.context, request.link, ble::kOpGetConfig,
                     ble::kErrMalformed, "page");
     else

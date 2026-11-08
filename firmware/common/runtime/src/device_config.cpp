@@ -14,6 +14,8 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <span>
+#include <type_traits>
 
 namespace config {
 namespace {
@@ -498,6 +500,350 @@ std::size_t json_escape(char *out, std::size_t size, const char *text) {
 }
 } // namespace
 
+// Owner site configuration (#148). Its own record under `owner`, beside `cfg`
+// and never inside it, so the `cfg` layout, key and type stay as they are. A
+// missing record means every owner key is unset. A damaged one is unset too,
+// with one serial line that carries no value.
+namespace {
+constexpr const char *kOwnerKey = "owner";
+constexpr std::array<std::uint8_t, 4> kOwnerMagic = {'O', 'S', 'O', 'W'};
+constexpr std::uint16_t kOwnerVersion = 1;
+
+struct OwnerKeyInfo {
+  std::string_view name;
+  OwnerKey key;
+  std::size_t max;
+};
+static constexpr std::array<OwnerKeyInfo, 5> kOwnerKeys = {{
+    {.name = "owner.title", .key = OwnerKey::Title, .max = kOwnerTitleMax},
+    {.name = "owner.description",
+     .key = OwnerKey::Description,
+     .max = kOwnerDescriptionMax},
+    {.name = "owner.provider",
+     .key = OwnerKey::Provider,
+     .max = kOwnerProviderMax},
+    {.name = "owner.url", .key = OwnerKey::Url, .max = kOwnerUrlMax},
+    {.name = "thing.deployment_id",
+     .key = OwnerKey::Deployment,
+     .max = kDeploymentIdMax},
+}};
+
+// Byte arrays only, like Blob, so the layout has no padding.
+struct OwnerPayload {
+  char title[kOwnerTitleMax + 1];
+  char description[kOwnerDescriptionMax + 1];
+  char provider[kOwnerProviderMax + 1];
+  char url[kOwnerUrlMax + 1];
+  char deployment[kDeploymentIdMax + 1];
+};
+struct OwnerBlob {
+  BlobHeader header;
+  OwnerPayload payload;
+};
+static_assert(alignof(OwnerBlob) == 1, "owner layout must not contain padding");
+static_assert(sizeof(OwnerPayload) == 421, "owner version 1 payload is pinned");
+static_assert(sizeof(OwnerBlob) == sizeof(BlobHeader) + sizeof(OwnerPayload),
+              "owner header and payload are contiguous");
+
+OwnerSettings owner_current;
+// Same single writer rule as staged_blob.
+OwnerBlob owner_staged;
+OwnerBlob owner_readback;
+
+// The text field of one key, in settings or in a stored payload.
+template <typename Owner> auto owner_field(Owner &owner, OwnerKey key) {
+  using Char = std::conditional_t<std::is_const_v<Owner>, const char, char>;
+  switch (key) {
+  case OwnerKey::Title:
+    return std::span<Char>(owner.title);
+  case OwnerKey::Description:
+    return std::span<Char>(owner.description);
+  case OwnerKey::Provider:
+    return std::span<Char>(owner.provider);
+  case OwnerKey::Url:
+    return std::span<Char>(owner.url);
+  case OwnerKey::Deployment:
+    break;
+  }
+  if constexpr (std::is_same_v<std::remove_const_t<Owner>, OwnerPayload>)
+    return std::span<Char>(owner.deployment);
+  else
+    return std::span<Char>(owner.deployment.text);
+}
+
+std::string_view text_of(std::span<const char> field) {
+  const auto end = std::find(field.begin(), field.end(), '\0');
+  return {field.data(), static_cast<std::size_t>(end - field.begin())};
+}
+
+// Copies a checked value and clears the rest, so equal values are equal
+// byte for byte.
+void store_text(std::span<char> field, std::string_view value) {
+  std::fill(field.begin(), field.end(), '\0');
+  std::copy_n(value.begin(), std::min(value.size(), field.size() - 1),
+              field.begin());
+}
+
+// Strict UTF-8 (no overlong forms, surrogates or code points above
+// U+10FFFF) without C0, DEL or C1 control characters.
+[[nodiscard]] std::expected<void, OwnerValueError>
+check_text(std::string_view value) {
+  std::size_t i = 0;
+  while (i < value.size()) {
+    const auto lead = static_cast<unsigned char>(value[i]);
+    if (lead < 0x80) {
+      if (lead < 0x20 || lead == 0x7f)
+        return std::unexpected(OwnerValueError::Control);
+      ++i;
+      continue;
+    }
+    std::size_t length = 0;
+    unsigned char low = 0x80;
+    unsigned char high = 0xbf;
+    if (lead >= 0xc2 && lead <= 0xdf) {
+      length = 2;
+    } else if (lead >= 0xe0 && lead <= 0xef) {
+      length = 3;
+      if (lead == 0xe0)
+        low = 0xa0;
+      else if (lead == 0xed)
+        high = 0x9f;
+    } else if (lead >= 0xf0 && lead <= 0xf4) {
+      length = 4;
+      if (lead == 0xf0)
+        low = 0x90;
+      else if (lead == 0xf4)
+        high = 0x8f;
+    } else {
+      return std::unexpected(OwnerValueError::Encoding);
+    }
+    if (value.size() - i < length)
+      return std::unexpected(OwnerValueError::Encoding);
+    for (std::size_t k = 1; k < length; ++k) {
+      const auto next = static_cast<unsigned char>(value[i + k]);
+      if (next < (k == 1 ? low : 0x80) || next > (k == 1 ? high : 0xbf))
+        return std::unexpected(OwnerValueError::Encoding);
+    }
+    // U+0080..U+009F, the C1 controls, are C2 80..C2 9F.
+    if (lead == 0xc2 && static_cast<unsigned char>(value[i + 1]) < 0xa0)
+      return std::unexpected(OwnerValueError::Control);
+    i += length;
+  }
+  return {};
+}
+
+// RFC 3986 characters only, so a link never needs JSON escaping.
+constexpr bool url_char(char c) {
+  if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+      (c >= '0' && c <= '9'))
+    return true;
+  return std::string_view("-._~:/?#[]@!$&'()*+,;=%").contains(c);
+}
+
+[[nodiscard]] std::expected<void, OwnerValueError>
+check_url(std::string_view value) {
+  constexpr std::string_view kScheme = "https://";
+  for (const char c : value)
+    if (static_cast<unsigned char>(c) < 0x20 || c == 0x7f)
+      return std::unexpected(OwnerValueError::Control);
+  if (!value.starts_with(kScheme) || value.size() == kScheme.size() ||
+      std::string_view("/?#").contains(value[kScheme.size()]))
+    return std::unexpected(OwnerValueError::Scheme);
+  if (!std::all_of(value.begin(), value.end(), url_char))
+    return std::unexpected(OwnerValueError::Charset);
+  return {};
+}
+
+bool same_owner(const OwnerSettings &a, const OwnerSettings &b) {
+  return std::all_of(kOwnerKeys.begin(), kOwnerKeys.end(),
+                     [&](const OwnerKeyInfo &info) {
+                       return text_of(owner_field(a, info.key)) ==
+                              text_of(owner_field(b, info.key));
+                     });
+}
+
+void encode_owner(OwnerBlob &blob, const OwnerSettings &owner) {
+  std::memset(&blob, 0, sizeof(blob));
+  for (const auto &info : kOwnerKeys)
+    store_text(owner_field(blob.payload, info.key),
+               text_of(owner_field(owner, info.key)));
+  std::copy(kOwnerMagic.begin(), kOwnerMagic.end(), blob.header.magic);
+  put_le(blob.header.version, kOwnerVersion, sizeof(blob.header.version));
+  put_le(blob.header.length, sizeof(OwnerPayload), sizeof(blob.header.length));
+  put_le(blob.header.crc32,
+         crc32(reinterpret_cast<const std::uint8_t *>(&blob.payload),
+               sizeof(blob.payload)),
+         sizeof(blob.header.crc32));
+}
+
+// Structure and CRC, then the same value rules as SET_CONFIG.
+bool decode_owner(const OwnerBlob &blob, std::size_t size,
+                  OwnerSettings &owner) {
+  if (size != sizeof(OwnerBlob) ||
+      !std::equal(kOwnerMagic.begin(), kOwnerMagic.end(), blob.header.magic) ||
+      get_le(blob.header.version, sizeof(blob.header.version)) !=
+          kOwnerVersion ||
+      get_le(blob.header.length, sizeof(blob.header.length)) !=
+          sizeof(OwnerPayload) ||
+      get_le(blob.header.crc32, sizeof(blob.header.crc32)) !=
+          crc32(reinterpret_cast<const std::uint8_t *>(&blob.payload),
+                sizeof(blob.payload)))
+    return false;
+  OwnerSettings decoded;
+  for (const auto &info : kOwnerKeys) {
+    const auto field = owner_field(blob.payload, info.key);
+    if (std::find(field.begin(), field.end(), '\0') == field.end())
+      return false;
+    const auto value = text_of(field);
+    if (!check_owner_value(info.key, value))
+      return false;
+    store_text(owner_field(decoded, info.key), value);
+  }
+  owner = decoded;
+  return true;
+}
+
+// One write and one commit, then a readback, like save_locked.
+bool save_owner(const OwnerSettings &owner) {
+  nvs_handle_t store;
+  if (nvs_open(kNamespace, NVS_READWRITE, &store) != ESP_OK)
+    return false;
+  encode_owner(owner_staged, owner);
+  bool ok = committed(store, nvs_set_blob(store, kOwnerKey, &owner_staged,
+                                          sizeof(owner_staged)));
+  std::size_t length = sizeof(owner_readback);
+  ok = ok &&
+       nvs_get_blob(store, kOwnerKey, &owner_readback, &length) == ESP_OK &&
+       length == sizeof(owner_staged) &&
+       std::memcmp(&owner_readback, &owner_staged, sizeof(owner_staged)) == 0;
+  nvs_close(store);
+  return ok;
+}
+
+// Reads the record through an open handle. Never erases it.
+OwnerSettings load_owner(nvs_handle_t store) {
+  OwnerSettings owner;
+  std::size_t size = sizeof(owner_readback);
+  const auto result = nvs_get_blob(store, kOwnerKey, &owner_readback, &size);
+  if (result == ESP_ERR_NVS_NOT_FOUND)
+    return owner;
+  if (result != ESP_OK || !decode_owner(owner_readback, size, owner)) {
+    owner = OwnerSettings{};
+    oslog.println("CONFIG OWNER invalid-stored-profile=true");
+  }
+  return owner;
+}
+
+void publish_owner(const OwnerSettings &owner) {
+  portENTER_CRITICAL(&settings_mutex);
+  owner_current = owner;
+  portEXIT_CRITICAL(&settings_mutex);
+}
+
+// Settings and owner change together, so a sample never sees one half of a
+// request.
+void publish_with_owner(const Settings &settings, const OwnerSettings &owner) {
+  portENTER_CRITICAL(&settings_mutex);
+  current = settings;
+  owner_current = owner;
+  portEXIT_CRITICAL(&settings_mutex);
+}
+
+// Saves the owner record first, then `cfg` when the request touched it. A
+// failed `cfg` save puts the previous owner record back, best effort.
+bool save_request(bool owner_changed, const OwnerSettings &previous_owner,
+                  const OwnerSettings &next_owner, bool settings_touched,
+                  const Settings &next) {
+  if (!persistent)
+    return true;
+  if (owner_changed && !save_owner(next_owner))
+    return false;
+  if (settings_touched && !save_locked(next)) {
+    if (owner_changed && !save_owner(previous_owner))
+      oslog.println("CONFIG ERROR operation=owner-rollback");
+    return false;
+  }
+  return true;
+}
+
+// Page 5 holds title, provider, url and thing.deployment_id, page 6 the
+// description. At every maximum length with every character escaped, page 5
+// is 458 bytes and page 6 is 348, both under the 480 byte CONFIG limit.
+int build_owner_page(char *out, std::size_t size, std::uint8_t page) {
+  const OwnerSettings owner = owner_settings();
+  if (page == 6) {
+    std::array<char, 2 * kOwnerDescriptionMax + 8> description{};
+    json_escape(description.data(), description.size(),
+                owner.description.data());
+    return std::snprintf(out, size, "{\"owner\":{\"description\":\"%s\"}}",
+                         description.data());
+  }
+  std::array<char, 2 * kOwnerTitleMax + 8> title{};
+  std::array<char, 2 * kOwnerProviderMax + 8> provider{};
+  std::array<char, 2 * kOwnerUrlMax + 8> url{};
+  std::array<char, 2 * kDeploymentIdMax + 8> deployment{};
+  json_escape(title.data(), title.size(), owner.title.data());
+  json_escape(provider.data(), provider.size(), owner.provider.data());
+  json_escape(url.data(), url.size(), owner.url.data());
+  json_escape(deployment.data(), deployment.size(),
+              owner.deployment.text.data());
+  return std::snprintf(out, size,
+                       "{\"owner\":{\"title\":\"%s\",\"provider\":\"%s\","
+                       "\"url\":\"%s\"},\"thing\":{\"deployment_id\":\"%s\"}}",
+                       title.data(), provider.data(), url.data(),
+                       deployment.data());
+}
+} // namespace
+
+std::optional<OwnerKey> owner_key(std::string_view key) {
+  for (const auto &info : kOwnerKeys)
+    if (info.name == key)
+      return info.key;
+  return std::nullopt;
+}
+
+std::expected<void, OwnerValueError> check_owner_value(OwnerKey key,
+                                                       std::string_view value) {
+  const auto info =
+      std::find_if(kOwnerKeys.begin(), kOwnerKeys.end(),
+                   [key](const OwnerKeyInfo &entry) { return entry.key == key; });
+  if (info == kOwnerKeys.end() || value.size() > info->max)
+    return std::unexpected(OwnerValueError::TooLong);
+  if (value.empty())
+    return {};
+  if (key == OwnerKey::Url)
+    return check_url(value);
+  if (key == OwnerKey::Deployment) {
+    const bool allowed = std::all_of(value.begin(), value.end(), [](char c) {
+      return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-';
+    });
+    if (!allowed)
+      return std::unexpected(OwnerValueError::Charset);
+    return {};
+  }
+  return check_text(value);
+}
+
+OwnerSettings owner_settings() {
+  OwnerSettings copy;
+  portENTER_CRITICAL(&settings_mutex);
+  copy = owner_current;
+  portEXIT_CRITICAL(&settings_mutex);
+  return copy;
+}
+
+DeploymentId deployment_id() {
+  DeploymentId copy;
+  portENTER_CRITICAL(&settings_mutex);
+  copy = owner_current.deployment;
+  portEXIT_CRITICAL(&settings_mutex);
+  return copy;
+}
+
+bool same_deployment(const DeploymentId &a, const DeploymentId &b) {
+  return text_of(a.text) == text_of(b.text);
+}
+
 void set_sensor_policy(const SensorPolicy &policy) { sensor_policy = policy; }
 
 const char *pair_name(PairMode mode) {
@@ -522,6 +868,7 @@ bool load(bool display_detected) {
     settings.pin = random_pin();
     esp_fill_random(settings.token, kTokenBytes);
     publish(settings);
+    publish_owner(OwnerSettings{});
     booted = settings;
     return false;
   }
@@ -547,6 +894,8 @@ bool load(bool display_detected) {
     migrated_pin = true;
     oslog.println("CONFIG SECURITY legacy_pin_rotated=true");
   }
+  // Owner keys have their own record. A `cfg` first boot keeps them.
+  publish_owner(load_owner(store));
   nvs_close(store);
   persistent = true;
   if ((first_boot || migrated_pin) && !save_locked(settings))
@@ -589,6 +938,9 @@ bool apply_lines(const char *text, std::size_t length, char *bad_key,
                  std::size_t bad_key_size, Actions &actions) {
   const Settings previous = get();
   Settings next = previous;
+  const OwnerSettings previous_owner = owner_settings();
+  OwnerSettings next_owner = previous_owner;
+  bool settings_touched = false;
   Actions pending;
   bad_key[0] = '\0';
   std::size_t position = 0;
@@ -632,6 +984,15 @@ bool apply_lines(const char *text, std::size_t length, char *bad_key,
       return false;
     };
     any = true;
+    // Owner keys (#148) are checked here with the rest of the request and
+    // stored in their own record.
+    if (const auto owner = owner_key(key)) {
+      if (!check_owner_value(*owner, value))
+        return reject();
+      store_text(owner_field(next_owner, *owner), value);
+      continue;
+    }
+    settings_touched = true;
     if (std::strcmp(key, "ble.pair") == 0) {
       PairMode mode;
       if (std::strcmp(value, "random") == 0)
@@ -788,11 +1149,12 @@ bool apply_lines(const char *text, std::size_t length, char *bad_key,
   pending.location_changed = !same_location(previous.location, next.location);
   if (pending.rotate_token)
     esp_fill_random(next.token, kTokenBytes);
-  if (persistent && !save_locked(next)) {
+  if (!save_request(!same_owner(previous_owner, next_owner), previous_owner,
+                    next_owner, settings_touched, next)) {
     std::snprintf(bad_key, bad_key_size, "nvs");
     return false;
   }
-  publish(next);
+  publish_with_owner(next, next_owner);
   actions = pending;
   oslog.printf(
       "CONFIG SET pair=%s pin_default=%s wifi_on=%s ssid_set=%s "
@@ -891,6 +1253,8 @@ std::size_t build_page(char *out, std::size_t size, std::uint8_t page,
   } else if (page == 3 || page == 4) {
     written = std::snprintf(out, size, "{\"ntp\":{\"server%u\":\"%s\"}}",
                             unsigned(page - 2), settings.ntp.servers[page - 3]);
+  } else if (page == 5 || page == 6) {
+    written = build_owner_page(out, size, page);
   }
   if (written <= 0 || static_cast<std::size_t>(written) >= size) {
     if (size)

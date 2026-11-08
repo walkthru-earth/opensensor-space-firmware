@@ -161,8 +161,17 @@ void accept(const std::string &lines) {
   assert(apply(lines, actions, bad_key));
   assert(bad_key[0] == '\0');
 }
+bool same_owner(const config::OwnerSettings &a,
+                const config::OwnerSettings &b) {
+  return std::strcmp(a.title.data(), b.title.data()) == 0 &&
+         std::strcmp(a.description.data(), b.description.data()) == 0 &&
+         std::strcmp(a.provider.data(), b.provider.data()) == 0 &&
+         std::strcmp(a.url.data(), b.url.data()) == 0 &&
+         config::same_deployment(a.deployment, b.deployment);
+}
 void reject(const std::string &lines, const char *expected_key) {
   const auto before = config::get();
+  const auto before_owner = config::owner_settings();
   const auto writes = fake_platform::nvs.writes;
   config::Actions actions;
   actions.clear_bonds = true; // output actions must remain unchanged on failure
@@ -171,6 +180,7 @@ void reject(const std::string &lines, const char *expected_key) {
   if (expected_key)
     assert(std::strcmp(bad_key, expected_key) == 0);
   assert(same(before, config::get()));
+  assert(same_owner(before_owner, config::owner_settings()));
   assert(actions.clear_bonds);
   assert(fake_platform::nvs.writes == writes);
 }
@@ -497,7 +507,7 @@ void time_and_location() {
   assert(config::load(false));
   assert(std::strlen(config::get().ntp.servers[0]) == 253);
   assert(!config::build_page(json, 8, 1) && json[0] == '\0');
-  assert(!config::build_page(json, sizeof(json), 5));
+  assert(!config::build_page(json, sizeof(json), config::kLastConfigPage + 1));
   const auto before_failure = config::get();
   fake_platform::nvs.fail_write_key = "cfg";
   assert(!apply("location.country=US", actions, bad_key));
@@ -723,6 +733,289 @@ void torn_blob() {
   assert(std::strcmp(config::get().ssid, "blob-net") == 0);
 }
 
+// Owner site configuration (#148). Pinned `owner` record contract, separate
+// from `cfg`. A layout change must bump the version.
+constexpr std::size_t kOwnerPayloadBytes = 421;
+constexpr std::size_t kTitleAt = 0, kDescriptionAt = 65, kProviderAt = 226,
+                      kUrlAt = 291, kDeploymentAt = 388;
+std::vector<std::uint8_t> &owner_blob() {
+  return fake_platform::nvs.blobs.at("owner");
+}
+char *owner_field(std::size_t offset) {
+  return reinterpret_cast<char *>(owner_blob().data() + kHeaderBytes + offset);
+}
+void reseal_owner() {
+  put_le32(owner_blob().data() + 8,
+           crc32(owner_blob().data() + kHeaderBytes, kOwnerPayloadBytes));
+}
+void check_owner_header() {
+  const auto &blob = owner_blob();
+  assert(fake_platform::nvs.types.at("owner") == 9);
+  assert(blob.size() == kHeaderBytes + kOwnerPayloadBytes);
+  assert(std::memcmp(blob.data(), "OSOW", 4) == 0);
+  assert(blob[4] == 1 && blob[5] == 0);
+  assert(blob[6] == (kOwnerPayloadBytes & 0xff) &&
+         blob[7] == (kOwnerPayloadBytes >> 8));
+  assert(le32(blob.data() + 8) ==
+         crc32(blob.data() + kHeaderBytes, kOwnerPayloadBytes));
+}
+bool owner_empty() {
+  const auto owner = config::owner_settings();
+  return !owner.title[0] && !owner.description[0] && !owner.provider[0] &&
+         !owner.url[0] && !owner.deployment.text[0] &&
+         !config::deployment_id().text[0];
+}
+std::size_t count(const std::string &text, const std::string &needle) {
+  std::size_t found = 0;
+  for (auto at = text.find(needle); at != std::string::npos;
+       at = text.find(needle, at + 1))
+    ++found;
+  return found;
+}
+std::string repeat(const std::string &unit, std::size_t times) {
+  std::string out;
+  for (std::size_t i = 0; i < times; ++i)
+    out += unit;
+  return out;
+}
+
+void owner_configuration() {
+  constexpr const char *kInvalid = "CONFIG OWNER invalid-stored-profile=true";
+  // A first boot seeds only `cfg`. A missing `owner` record is all empty
+  // and prints nothing.
+  assert(config::load(false));
+  assert(owner_empty());
+  assert(!fake_platform::nvs.blobs.count("owner"));
+  assert(fake_platform::nvs.writes == 1);
+  assert(log_text().find("CONFIG OWNER") == std::string::npos);
+
+  // Bounds per key, maximum accepted and one byte more refused.
+  struct Bound {
+    const char *key;
+    std::size_t max;
+    char fill;
+  };
+  for (const auto &bound : {Bound{"owner.title", 64, 't'},
+                            Bound{"owner.description", 160, 'd'},
+                            Bound{"owner.provider", 64, 'p'},
+                            Bound{"thing.deployment_id", 32, 'x'}}) {
+    accept(std::string(bound.key) + "=" + std::string(bound.max, bound.fill));
+    reject(std::string(bound.key) + "=" +
+               std::string(bound.max + 1, bound.fill),
+           bound.key);
+  }
+  const std::string url_max = "https://" + std::string(88, 'u');
+  accept("owner.url=" + url_max);
+  reject("owner.url=" + url_max + "u", "owner.url");
+  auto owner = config::owner_settings();
+  assert(std::strlen(owner.title.data()) == 64 &&
+         std::strlen(owner.description.data()) == 160 &&
+         std::strlen(owner.provider.data()) == 64 &&
+         owner.url.data() == url_max &&
+         std::strlen(config::deployment_id().text.data()) == 32);
+  // Bounds count bytes, not characters.
+  accept("owner.title=" + repeat("\xc3\xa9", 32));
+  reject("owner.title=" + repeat("\xc3\xa9", 32) + "a", "owner.title");
+  accept("owner.provider=" + repeat("\xe2\x82\xac", 21) + "a");
+  accept("owner.description=" + repeat("\xf0\x9f\x8c\x8d", 40));
+  reject("owner.description=" + repeat("\xf0\x9f\x8c\x8d", 40) + "a",
+         "owner.description");
+
+  // Empty clears each key.
+  accept("owner.title=\nowner.description=\nowner.provider=\nowner.url=\n"
+         "thing.deployment_id=");
+  assert(owner_empty());
+
+  // Invalid UTF-8 and control characters.
+  for (const char *bad :
+       {"\xff", "a\xc3", "\xc0\xaf", "\xe0\x80\xaf", "\xed\xa0\x80",
+        "\xf4\x90\x80\x80", "\xf8\x88\x80\x80\x80", "\x80", "tab\there",
+        "bell\x07", "del\x7f", "nel\xc2\x85", "csi\xc2\x9b", "cr\rinside"}) {
+    reject(std::string("owner.title=") + bad, "owner.title");
+    reject(std::string("owner.description=") + bad, "owner.description");
+    reject(std::string("owner.provider=") + bad, "owner.provider");
+  }
+  accept("owner.title=Cairo \xc2\xb7 \xd8\xa7\xd9\x84\xd9\x82\xd8\xa7\xd9"
+         "\x87\xd8\xb1\xd8\xa9 \xc2\xa0");
+  // owner.url needs https:// and a host, and only RFC 3986 characters.
+  for (const char *bad :
+       {"http://example.org", "HTTPS://example.org", "https://", "https:///x",
+        "https://?q", "ftp://example.org", "example.org", "https://a b",
+        "https://a\"b", "https://a\\b", "https://a<b>", "https://a\x01",
+        "https://caf\xc3\xa9.org"})
+    reject(std::string("owner.url=") + bad, "owner.url");
+  accept("owner.url=https://example.org/air?site=7&a=b%20c#top");
+  // thing.deployment_id is [a-z0-9-] only.
+  for (const char *bad : {"Cairo-07", "cairo_07", "cairo 07", "cairo.07",
+                          "cair\xc3\xb6", "cairo/07"})
+    reject(std::string("thing.deployment_id=") + bad, "thing.deployment_id");
+  accept("thing.deployment_id=cairo-07");
+  assert(std::strcmp(config::deployment_id().text.data(), "cairo-07") == 0);
+
+  // One bad owner key refuses the whole request, valid keys included.
+  reject("owner.title=New\nowner.provider=New Org\nowner.url=http://bad\n"
+         "wifi.ssid=other",
+         "owner.url");
+  reject("thing.deployment_id=giza-01\nowner.title=" + std::string(65, 't'),
+         "owner.title");
+  reject("owner.title=New\nble.pin=12", "ble.pin");
+  reject("owner.email=owner@example.org", "owner.email");
+  assert(std::strcmp(config::deployment_id().text.data(), "cairo-07") == 0);
+
+  // Round trip through the record, with escaping characters.
+  const auto cfg_before = cfg();
+  const auto settings_before = config::get();
+  const auto writes = fake_platform::nvs.writes;
+  config::Actions actions;
+  char bad_key[64];
+  assert(apply("owner.title=Cairo \"Air\" \\ Net\nowner.description=Rooftop "
+               "sensors\nowner.provider=Walkthru\nowner.url=https://"
+               "walkthru.earth\nthing.deployment_id=cairo-08",
+               actions, bad_key));
+  assert(!actions.location_changed && !actions.wifi_changed &&
+         !actions.ntp_changed && !actions.ble_changed);
+  // An owner only request writes the owner record once and leaves `cfg`.
+  assert(fake_platform::nvs.writes == writes + 1);
+  assert(cfg() == cfg_before);
+  assert(same(settings_before, config::get()));
+  check_owner_header();
+  assert(std::strcmp(owner_field(kTitleAt), "Cairo \"Air\" \\ Net") == 0);
+  assert(std::strcmp(owner_field(kDescriptionAt), "Rooftop sensors") == 0);
+  assert(std::strcmp(owner_field(kProviderAt), "Walkthru") == 0);
+  assert(std::strcmp(owner_field(kUrlAt), "https://walkthru.earth") == 0);
+  assert(std::strcmp(owner_field(kDeploymentAt), "cairo-08") == 0);
+  const auto saved = config::owner_settings();
+  assert(config::load(false));
+  assert(same_owner(saved, config::owner_settings()));
+  assert(same(settings_before, config::get()));
+  char json[480];
+  assert(config::build_page(json, sizeof(json), 5));
+  assert(std::strcmp(json, "{\"owner\":{\"title\":\"Cairo \\\"Air\\\" \\\\ "
+                           "Net\",\"provider\":\"Walkthru\",\"url\":\"https:"
+                           "//walkthru.earth\"},\"thing\":{\"deployment_id\":"
+                           "\"cairo-08\"}}") == 0);
+  assert(config::build_page(json, sizeof(json), 6));
+  assert(std::strcmp(json,
+                     "{\"owner\":{\"description\":\"Rooftop sensors\"}}") == 0);
+  // Re-sending the same values writes nothing.
+  accept("thing.deployment_id=cairo-08");
+  assert(fake_platform::nvs.writes == writes + 1);
+  // A mixed request saves both records.
+  accept("owner.provider=Walkthru Earth\nlocation.country=EG");
+  assert(fake_platform::nvs.writes == writes + 3);
+  assert(std::strcmp(config::get().location.country, "EG") == 0);
+  assert(config::load(false));
+  assert(std::strcmp(config::owner_settings().provider.data(),
+                     "Walkthru Earth") == 0);
+
+  // A failed owner save changes nothing, live or stored.
+  const auto stored = owner_blob();
+  const auto live = config::owner_settings();
+  for (const bool on_commit : {false, true}) {
+    (on_commit ? fake_platform::nvs.fail_commit_key
+               : fake_platform::nvs.fail_write_key) = "owner";
+    assert(!apply("thing.deployment_id=giza-01", actions, bad_key));
+    assert(std::strcmp(bad_key, "nvs") == 0);
+    assert(same_owner(live, config::owner_settings()));
+    assert(owner_blob() == stored);
+    fake_platform::nvs.fail_write_key.clear();
+    fake_platform::nvs.fail_commit_key.clear();
+  }
+  // A failed `cfg` save after the owner save puts the owner record back.
+  const auto settings_live = config::get();
+  fake_platform::nvs.fail_write_key = "cfg";
+  assert(!apply("thing.deployment_id=giza-01\nwifi.ssid=other", actions,
+                bad_key));
+  assert(std::strcmp(bad_key, "nvs") == 0);
+  fake_platform::nvs.fail_write_key.clear();
+  assert(same_owner(live, config::owner_settings()));
+  assert(same(settings_live, config::get()));
+  assert(owner_blob() == stored);
+  assert(config::load(false));
+  assert(same_owner(live, config::owner_settings()));
+
+  // A damaged record reads as all empty with one line, and stays in NVS.
+  auto good = owner_blob();
+  for (const auto damage : {0, 1, 2, 3, 4}) {
+    owner_blob() = good;
+    if (damage == 0)
+      owner_blob()[kHeaderBytes + kTitleAt] ^= 1; // CRC mismatch
+    else if (damage == 1)
+      owner_blob()[0] = 'X'; // magic
+    else if (damage == 2)
+      owner_blob()[4] = 2; // version
+    else if (damage == 3)
+      owner_blob().pop_back(); // size
+    else {
+      // Sealed, but the value fails the SET_CONFIG rule.
+      std::memcpy(owner_field(kDeploymentAt), "Cairo", 5);
+      reseal_owner();
+    }
+    const auto lines = count(log_text(), kInvalid);
+    assert(config::load(false));
+    assert(owner_empty());
+    assert(count(log_text(), kInvalid) == lines + 1);
+    assert(fake_platform::nvs.blobs.count("owner"));
+    // The rest of the configuration is untouched.
+    assert(std::strcmp(config::get().location.country, "EG") == 0);
+  }
+  // A record of another type is damaged too, and never erased.
+  fake_platform::nvs.blobs.erase("owner");
+  fake_platform::nvs.strings["owner"] = "not-a-blob";
+  fake_platform::nvs.types["owner"] = 8;
+  assert(config::load(false));
+  assert(owner_empty());
+  assert(fake_platform::nvs.strings.at("owner") == "not-a-blob");
+  // A damaged `cfg` is a first boot but keeps a good owner record.
+  fake_platform::nvs.strings.erase("owner");
+  fake_platform::nvs.types.erase("owner");
+  fake_platform::nvs.blobs["owner"] = good;
+  fake_platform::nvs.types["owner"] = 9;
+  cfg()[kHeaderBytes] ^= 1;
+  assert(config::load(false));
+  assert(same_owner(live, config::owner_settings()));
+
+  // Worst case pages. Every field at its maximum, every escapable character
+  // escaped. The test driver parses both pages and checks their size.
+  accept("owner.title=" + std::string(64, '"') + "\nowner.description=" +
+         std::string(160, '\\') + "\nowner.provider=" + std::string(64, '\\') +
+         "\nowner.url=" + url_max + "\nthing.deployment_id=" +
+         std::string(32, 'z'));
+  const auto page5 = config::build_page(json, sizeof(json), 5);
+  assert(page5 == 458);
+  std::printf("%s\n", json);
+  const auto page6 = config::build_page(json, sizeof(json), 6);
+  assert(page6 == 348);
+  std::printf("%s\n", json);
+  // A buffer one byte short of the page fails cleanly.
+  assert(!config::build_page(json, page5, 5) && json[0] == '\0');
+
+  // The split rule compares the deployment text only.
+  config::DeploymentId a{}, b{};
+  std::snprintf(a.text.data(), a.text.size(), "cairo-07");
+  std::snprintf(b.text.data(), b.text.size(), "cairo-07");
+  assert(config::same_deployment(a, b));
+  b.text[7] = '8';
+  assert(!config::same_deployment(a, b));
+  assert(!config::same_deployment(a, config::DeploymentId{}));
+
+  // No owner value ever reaches the serial log.
+  const auto logs = log_text();
+  for (const char *value :
+       {"Cairo", "Rooftop", "Walkthru", "walkthru.earth", "cairo-0", "giza",
+        "example.org", "zzzz", "uuuu"})
+    assert(logs.find(value) == std::string::npos);
+}
+
+void owner_unavailable() {
+  fake_platform::nvs.fail_open = true;
+  assert(!config::load(false));
+  assert(owner_empty());
+  accept("thing.deployment_id=ram-only\nowner.title=RAM");
+  assert(std::strcmp(config::deployment_id().text.data(), "ram-only") == 0);
+  assert(fake_platform::nvs.writes == 0);
+}
+
 void unavailable() {
   fake_platform::nvs.fail_open = true;
   assert(!config::load(false));
@@ -763,6 +1056,10 @@ int main(int argc, char **argv) {
     torn_blob();
   else if (test == "unavailable")
     unavailable();
+  else if (test == "owner")
+    owner_configuration();
+  else if (test == "owner-unavailable")
+    owner_unavailable();
   else
     assert(false);
 }
