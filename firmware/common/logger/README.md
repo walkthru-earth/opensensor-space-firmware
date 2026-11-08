@@ -138,7 +138,10 @@ See [time and location](../../../docs/shared/time-and-location.md) for owner pol
 `Hooks::gnss_fix` is optional and board-neutral. Its type is
 `bool (*)(opensensor::gnss::Fix &fix, void *context)`, with the `Fix` type
 from the [gnss component](../gnss/README.md). OSLogger calls it on the main
-loop once per row when the board dictionary has the four location fields. It must
+loop once per row when the board dictionary has the four location fields. It
+also calls it on the storage worker for GET_CONFIG page 1
+`location.gnss_cell`, so the hook must be safe from any task, and it is never
+called from an ISR. It must
 copy the newest fix and return true, or return false when there is none. It
 must not block, allocate or touch the card. `opensensor::gnss::latest` from
 `gnss_reader` already has this shape.
