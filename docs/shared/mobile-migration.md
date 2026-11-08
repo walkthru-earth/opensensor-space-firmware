@@ -9,7 +9,7 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
-## Config save recovery and the owner.url host (fix-151-coderabbit, PR #151)
+## Config save recovery and no user info in owner.url (fix-151-coderabbit, PR #152)
 
 **Needs a matched reflash and a small app change.** Follows #148. CoreS3
 moves to `idf-cores3-parquet-v6.26` and Waveshare to
@@ -18,10 +18,12 @@ schema and dictionary strings and the `dict` and `desc` digests do not change.
 
 **What changed.**
 
-- `owner.url` now needs a host after any user info. The host is what follows
-  the last `@` before the first `/`, `?` or `#`, and it must start with a
-  letter or digit. `https://a@` and `https://a@:443` answer `ERROR` 12 with
-  detail `owner.url`. `https://medium.com/@name` still passes.
+- `owner.url` refuses user info. Any `@` before the first `/`, `?` or `#`
+  answers `ERROR` 12 with detail `owner.url`, for example
+  `https://a@example.org/x` or `https://a:b@example.org:8443/x`. Page 5
+  echoes the link and STAC metadata publishes it, so credentials must never
+  be stored. `https://medium.com/@name` and `https://example.org?to=a@`
+  still pass.
 - A failed save writes the previous value of each record back, `cfg` as well
   as `owner`, because a save can commit and still fail its readback. A new
   serial line `CONFIG ERROR operation=cfg-rollback` sits beside
@@ -30,11 +32,15 @@ schema and dictionary strings and the `dict` and `desc` digests do not change.
   `SET_CONFIG`, even one that changes nothing in it. The reply is still the
   page 0 snapshot. Before #151 a request equal to the live value skipped the
   write and answered success while flash held the refused value.
+- While `cfg` is unsure, an owner only `SET_CONFIG` also rewrites `cfg`. If
+  that rewrite fails the owner change is refused with `ERROR` 12 detail `nvs`
+  and the owner record is written back. A first boot whose seed write fails
+  leaves `cfg` unsure the same way.
 - Each row takes its location and deployment id from one snapshot, so a
   request that changes both never labels one row with half of it.
 
-**What the app must do.** Check that the `owner.url` host after any `@`
-starts with a letter or digit before sending. After an `nvs` error, send the
+**What the app must do.** Refuse an `owner.url` with an `@` before its
+first `/`, `?` or `#` before sending. After an `nvs` error, send the
 owner keys again or any other `SET_CONFIG` and read pages 0, 1, 5 and 6 back
 once it succeeds. Host tools must assemble BLE `CONFIG_CHUNK` replies,
 `tools/ble_sync.py config` now does.
