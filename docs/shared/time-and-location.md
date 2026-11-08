@@ -105,6 +105,44 @@ Optional `location.country` is an owner-declared assigned ISO 3166-1 alpha-2
 code, such as `EG`. H3 does not provide administrative country lookup. A cell
 may span a border and its center cannot prove a country's assignment.
 
+### Setup needed
+
+A fixed Thing with no `location.cell` needs setup (#147). The board derives
+this from the location settings every time it reads them, and stores no
+extra key. A moving Thing never needs setup. While setup is needed:
+
+- The advert sets flag bit 6 `setup`, so any phone in range can offer the
+  setup wizard without connecting first. `pixi run ble-sync scan` prints it.
+- GET_CONFIG page 1 reports `"thing":{"mobility":"fixed","setup":1}`.
+- The CoreS3 screen shows `Setup needed, open the OpenSensor app` in the
+  footer of every page. Waveshare V2 has no screen.
+
+A `SET_CONFIG` that sets a cell or `thing.mobility=moving` clears the bit at
+once and starts the 60 second fast advertising window, so a scanning phone sees
+the change within a minute. The screen line clears on its next redraw, at most
+10 seconds later. Clearing the cell raises the bit again.
+
+Setup never blocks logging. Rows keep four location nulls until a cell is set,
+and a cell change splits the open file as any location change does.
+
+### GNSS cell readback
+
+On a board with a receiver, GET_CONFIG page 1 also carries
+`location.gnss_cell`. It lets the setup phone show the cell the board's own
+receiver sees next to the map picker. The value is:
+
+- Always an H3 resolution 8 cell, whatever `location.resolution` is.
+- `""` without a fix from the last 15 seconds, the same freshness rule as
+  moving rows.
+- `""` when `location.resolution` is below 8, because the reader never keeps
+  a cell finer than the owner cap and a cell cannot be upsampled.
+- Never a coordinate, never logged and never stored. It is read through the
+  same board-neutral `oslogger::Hooks::gnss_fix` hook that moving rows use.
+
+The key is omitted on a board without a GNSS hook, CoreS3 today. Waveshare V2
+sends it from firmware v2.18. The phone never copies it into `location.cell`
+on its own. The owner confirms the cell on the map first.
+
 ## Parquet provenance
 
 From the Thing release (#83) both boards hold four nullable location columns
