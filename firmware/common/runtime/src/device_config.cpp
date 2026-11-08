@@ -668,6 +668,16 @@ check_url(std::string_view value) {
   if (!value.starts_with(kScheme) || value.size() == kScheme.size() ||
       !ascii_alnum(value[kScheme.size()]))
     return std::unexpected(OwnerValueError::Scheme);
+  // The authority ends at the first /, ? or #. Its host follows the last @ in
+  // it and starts with a letter or digit too, which refuses https://a@ and
+  // https://a@:443. An @ in the path never reaches this check.
+  const auto rest = value.substr(kScheme.size());
+  const auto authority = rest.substr(0, rest.find_first_of("/?#"));
+  const auto at = authority.rfind('@');
+  const auto host =
+      at == std::string_view::npos ? authority : authority.substr(at + 1);
+  if (host.empty() || !ascii_alnum(host.front()))
+    return std::unexpected(OwnerValueError::Scheme);
   if (!std::all_of(value.begin(), value.end(), url_char))
     return std::unexpected(OwnerValueError::Charset);
   return {};

@@ -840,30 +840,23 @@ void owner_configuration() {
          "\x87\xd8\xb1\xd8\xa9 \xc2\xa0");
   // owner.url needs https:// and a host that starts with a letter or digit,
   // and only RFC 3986 characters.
-  for (const char *bad : {"http://example.org",
-                          "HTTPS://example.org",
-                          "https://",
-                          "https:///x",
-                          "https://?q",
-                          "https://@",
-                          "https://@example.org",
-                          "https://:",
-                          "https://:443",
-                          "https://-x.org",
-                          "https://.org",
-                          "https://%41",
-                          "ftp://example.org",
-                          "example.org",
-                          "https://a b",
-                          "https://a\"b",
-                          "https://a\\b",
-                          "https://a<b>",
-                          "https://a\x01",
-                          "https://caf\xc3\xa9.org"})
+  for (const char *bad :
+       {"http://example.org", "HTTPS://example.org", "https://", "https:///x",
+        "https://?q", "https://@", "https://@example.org",
+        "https://:", "https://:443", "https://-x.org", "https://.org",
+        "https://%41", "ftp://example.org", "example.org", "https://a b",
+        "https://a\"b", "https://a\\b", "https://a<b>", "https://a\x01",
+        "https://caf\xc3\xa9.org",
+        // The host after the user info is empty or starts
+        // with another character (#151).
+        "https://a@", "https://a@/x", "https://a@?q", "https://a@#top",
+        "https://a@:443", "https://a@-x.org", "https://a@b@"})
     reject(std::string("owner.url=") + bad, "owner.url");
   accept("owner.url=https://example.org/air?site=7&a=b%20c#top");
-  // An @ after the host is fine.
+  // An @ after the host is fine, and so is a host after user info.
   accept("owner.url=https://medium.com/@name");
+  accept("owner.url=https://example.org?to=@a#@b");
+  accept("owner.url=https://a@example.org/x");
   accept("owner.url=https://1.example.org");
   // thing.deployment_id is [a-z0-9-] only, a letter or digit at each end and
   // never "unknown", the footer fallback.
