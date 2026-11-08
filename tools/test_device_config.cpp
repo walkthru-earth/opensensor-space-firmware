@@ -392,7 +392,8 @@ void persistence_failure() {
       assert(!apply(change, actions, bad_key));
       assert(std::strcmp(bad_key, "nvs") == 0);
       assert(same(before, config::get()));
-      assert(fake_platform::nvs.writes == writes + 1);
+      // The save and the write back of the previous record.
+      assert(fake_platform::nvs.writes == writes + 2);
       assert(cfg() == stored);
       fake_platform::nvs.fail_write_key.clear();
       fake_platform::nvs.fail_commit_key.clear();
@@ -925,21 +926,35 @@ void owner_configuration() {
   assert(std::strcmp(config::owner_settings().provider.data(),
                      "Walkthru Earth") == 0);
 
-  // A failed owner save changes nothing, live or stored.
+  // A failed owner save changes nothing, live or stored. The previous record
+  // is written back, and when that fails too one line names the rollback.
+  constexpr const char *kRollback = "CONFIG ERROR operation=owner-rollback";
+  constexpr const char *kCfgRollback = "CONFIG ERROR operation=cfg-rollback";
   const auto stored = owner_blob();
   const auto live = config::owner_settings();
   for (const bool on_commit : {false, true}) {
     (on_commit ? fake_platform::nvs.fail_commit_key
                : fake_platform::nvs.fail_write_key) = "owner";
+    const auto rollbacks = count(log_text(), kRollback);
     assert(!apply("thing.deployment_id=giza-01", actions, bad_key));
     assert(std::strcmp(bad_key, "nvs") == 0);
+    assert(count(log_text(), kRollback) == rollbacks + 1);
     assert(same_owner(live, config::owner_settings()));
     assert(owner_blob() == stored);
     fake_platform::nvs.fail_write_key.clear();
     fake_platform::nvs.fail_commit_key.clear();
   }
-  // A failed `cfg` save after the owner save puts the owner record back.
+  // The unsure record is written again by the next request, even one with no
+  // owner key in it.
+  const auto unsure_writes = fake_platform::nvs.writes;
+  accept("location.country=EG");
+  assert(fake_platform::nvs.writes == unsure_writes + 2);
+  assert(owner_blob() == stored);
+  accept("location.country=EG");
+  assert(fake_platform::nvs.writes == unsure_writes + 3);
+  // A failed `cfg` save after the owner save puts both records back.
   const auto settings_live = config::get();
+  const auto cfg_live = cfg();
   fake_platform::nvs.fail_write_key = "cfg";
   assert(
       !apply("thing.deployment_id=giza-01\nwifi.ssid=other", actions, bad_key));
@@ -948,15 +963,43 @@ void owner_configuration() {
   assert(same_owner(live, config::owner_settings()));
   assert(same(settings_live, config::get()));
   assert(owner_blob() == stored);
+  assert(cfg() == cfg_live);
   assert(config::load(false));
   assert(same_owner(live, config::owner_settings()));
-  // When the rollback fails too, the reply is still ERROR nvs, one line names
-  // the rollback and the live snapshot keeps the whole previous state. The
-  // record holds the new owner values, and the next boot loads them.
-  constexpr const char *kRollback = "CONFIG ERROR operation=owner-rollback";
+  // A `cfg` readback that fails after its commit puts both records back too,
+  // so a reboot never pairs the new location with the old deployment id
+  // (#151). The write back commits but its readback fails as well, so `cfg`
+  // stays unsure and one line names it.
+  const auto cfg_rollbacks = count(log_text(), kCfgRollback);
+  fake_platform::nvs.corrupt_read_key = "cfg";
+  assert(!apply("thing.deployment_id=giza-01\nlocation.country=US", actions,
+                bad_key));
+  fake_platform::nvs.corrupt_read_key.clear();
+  assert(std::strcmp(bad_key, "nvs") == 0);
+  assert(count(log_text(), kCfgRollback) == cfg_rollbacks + 1);
+  assert(same_owner(live, config::owner_settings()));
+  assert(same(settings_live, config::get()));
+  assert(owner_blob() == stored);
+  assert(cfg() == cfg_live);
+  // The unsure `cfg` is written again by the next request, even one that
+  // changes nothing.
+  const auto cfg_unsure_writes = fake_platform::nvs.writes;
+  accept(std::string("thing.deployment_id=") + live.deployment.text.data());
+  assert(fake_platform::nvs.writes == cfg_unsure_writes + 1);
+  assert(cfg() == cfg_live);
+  accept(std::string("thing.deployment_id=") + live.deployment.text.data());
+  assert(fake_platform::nvs.writes == cfg_unsure_writes + 1);
+  assert(config::load(false));
+  assert(same_owner(live, config::owner_settings()));
+  assert(same(settings_live, config::get()));
+  // When both write backs fail, the reply is still ERROR nvs, one line names
+  // each rollback and the live snapshot keeps the whole previous state. The
+  // owner record holds the new values, and a boot before any other request
+  // loads them.
   const auto rollbacks = count(log_text(), kRollback);
+  const auto cfg_rollbacks_before = count(log_text(), kCfgRollback);
   fake_platform::nvs.fail_write_key = "cfg";
-  fake_platform::nvs.fail_write_at = fake_platform::nvs.writes + 3;
+  fake_platform::nvs.fail_write_at = fake_platform::nvs.writes + 4;
   assert(
       !apply("thing.deployment_id=giza-01\nwifi.ssid=other", actions, bad_key));
   assert(std::strcmp(bad_key, "nvs") == 0);
@@ -964,6 +1007,7 @@ void owner_configuration() {
   fake_platform::nvs.fail_write_key.clear();
   fake_platform::nvs.fail_write_at = 0;
   assert(count(log_text(), kRollback) == rollbacks + 1);
+  assert(count(log_text(), kCfgRollback) == cfg_rollbacks_before + 1);
   assert(same_owner(live, config::owner_settings()));
   assert(same(settings_live, config::get()));
   assert(std::strcmp(owner_field(kDeploymentAt), "giza-01") == 0);
@@ -973,17 +1017,35 @@ void owner_configuration() {
   owner_blob() = stored;
   assert(config::load(false));
   assert(same_owner(live, config::owner_settings()));
+  // Without a reboot the next request writes the unsure record again, even
+  // when it asks for the value the live snapshot already holds (#151). Here
+  // the owner readback fails and so does the write back, which leaves the
+  // refused value in flash.
+  fake_platform::nvs.corrupt_read_key = "owner";
+  fake_platform::nvs.fail_write_at = fake_platform::nvs.writes + 2;
+  assert(!apply("thing.deployment_id=giza-01", actions, bad_key));
+  fake_platform::nvs.corrupt_read_key.clear();
+  fake_platform::nvs.fail_write_at = 0;
+  assert(std::strcmp(owner_field(kDeploymentAt), "giza-01") == 0);
+  assert(same_owner(live, config::owner_settings()));
+  const auto reconcile_writes = fake_platform::nvs.writes;
+  accept(std::string("thing.deployment_id=") + live.deployment.text.data());
+  assert(fake_platform::nvs.writes == reconcile_writes + 1);
+  assert(owner_blob() == stored);
+  assert(config::load(false));
+  assert(same_owner(live, config::owner_settings()));
   // A readback that differs from the written record fails the save. The
-  // committed bytes stay, the live snapshot does not move and `cfg` is
-  // never written for an owner only request.
+  // previous record is committed again, `cfg` is never written for an owner
+  // only request and the live snapshot does not move.
   const auto cfg_kept = cfg();
   const auto readback_writes = fake_platform::nvs.writes;
   fake_platform::nvs.corrupt_read_key = "owner";
   assert(!apply("thing.deployment_id=giza-01", actions, bad_key));
   fake_platform::nvs.corrupt_read_key.clear();
   assert(std::strcmp(bad_key, "nvs") == 0);
-  assert(fake_platform::nvs.writes == readback_writes + 1);
+  assert(fake_platform::nvs.writes == readback_writes + 2);
   assert(same_owner(live, config::owner_settings()));
+  assert(owner_blob() == stored);
   assert(cfg() == cfg_kept);
   // A mixed request stops before `cfg` when the owner readback fails.
   fake_platform::nvs.corrupt_read_key = "owner";
@@ -991,10 +1053,10 @@ void owner_configuration() {
       !apply("thing.deployment_id=giza-01\nwifi.ssid=other", actions, bad_key));
   fake_platform::nvs.corrupt_read_key.clear();
   assert(std::strcmp(bad_key, "nvs") == 0);
-  assert(fake_platform::nvs.writes == readback_writes + 2);
+  assert(fake_platform::nvs.writes == readback_writes + 4);
   assert(cfg() == cfg_kept);
+  assert(owner_blob() == stored);
   assert(same(settings_live, config::get()));
-  owner_blob() = stored;
   assert(config::load(false));
   assert(same_owner(live, config::owner_settings()));
 
