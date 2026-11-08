@@ -385,8 +385,9 @@ void coherent_labels() {
   };
   set(kCairo);
   // The writer starts only after the reader finished its first read, so the
-  // reader always checks at least one sample however the threads are
-  // scheduled, and keeps reading until the writer is done.
+  // first sample is always the cairo record. The reader keeps reading until it
+  // has at least two samples and the writer is done, so the counts below hold
+  // however the threads are scheduled.
   std::atomic<bool> started{false};
   std::atomic<bool> done{false};
   std::thread writer([&] {
@@ -405,7 +406,7 @@ void coherent_labels() {
            (country == "US" && deployment == "giza-01"));
     ++(country == "EG" ? cairo : giza);
     started.store(true);
-  } while (!done.load());
+  } while (cairo + giza < 2 || !done.load());
   writer.join();
   assert(cairo > 0 && cairo + giza > 1);
 }
