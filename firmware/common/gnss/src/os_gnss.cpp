@@ -211,11 +211,13 @@ bool fresh(const Fix &fix, std::int64_t now_us) {
 }
 
 std::expected<location::Cell, ReadbackError>
-readback_cell(const Fix &fix, std::int64_t now_us) {
+readback_cell(const Fix &fix, std::int64_t now_us, int maximum_resolution) {
   if (fix.cell == 0)
     return std::unexpected(ReadbackError::NoFix);
   if (!fresh(fix, now_us))
     return std::unexpected(ReadbackError::Stale);
+  if (maximum_resolution < kReadbackResolution)
+    return std::unexpected(ReadbackError::TooCoarse);
   location::Cell cell = 0;
   if (!location::coarsen(fix.cell, kReadbackResolution, cell))
     return std::unexpected(ReadbackError::Invalid);

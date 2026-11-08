@@ -99,12 +99,15 @@ inline constexpr int kReadbackResolution = 8;
 enum class [[nodiscard]] ReadbackError : std::uint8_t {
   NoFix,     // the reader holds no fix
   Stale,     // older than kFixMaxAgeUs, the same rule as moving rows
-  TooCoarse, // the owner cap is below 8, a cell is never upsampled
+  TooCoarse, // the owner cap or the fix is below 8, never upsampled
   Invalid,   // not an H3 cell
 };
-// The fix as a res 8 cell, when it is fresh at `now_us`. Never a coordinate.
+// The fix as a res 8 cell, when it is fresh at `now_us` and the owner cap
+// `maximum_resolution` (location.resolution) allows res 8. The cap is checked
+// here too, because the reader keeps a fix made at the old cap until its next
+// poll. Never a coordinate.
 [[nodiscard]] std::expected<location::Cell, ReadbackError>
-readback_cell(const Fix &fix, std::int64_t now_us);
+readback_cell(const Fix &fix, std::int64_t now_us, int maximum_resolution);
 
 // The cell and source one row gets. source None means four location nulls.
 struct Selection {

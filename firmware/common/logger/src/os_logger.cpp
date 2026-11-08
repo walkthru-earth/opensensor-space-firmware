@@ -1766,12 +1766,14 @@ ossync::ControlReplies control_replies{
 
 // GET_CONFIG page 1 location.gnss_cell, on the worker. begin() wires it only
 // when the board has a gnss_fix hook. The hook copies the reader's newest fix
-// without blocking, and only a fresh res 8 cell leaves here.
+// without blocking, and only a fresh res 8 cell within the owner cap leaves.
 std::uint64_t gnss_readback(void *) {
   opensensor::gnss::Fix fix;
   if (!hooks.gnss_fix(fix, hooks.context))
     return 0;
-  return opensensor::gnss::readback_cell(fix, esp_timer_get_time()).value_or(0);
+  const int cap = ::config::location_settings().resolution;
+  return opensensor::gnss::readback_cell(fix, esp_timer_get_time(), cap)
+      .value_or(0);
 }
 
 std::int64_t uptime_seconds() { return esp_timer_get_time() / 1000000; }
@@ -2504,10 +2506,11 @@ void storage_worker(void *) {
         oslog.println("OS WIFI_PROFILE ERROR reason=capacity");
     } else if (std::strncmp(command.text, "parquet config-hex ", 19) == 0) {
       const auto result = apply_config_hex(command.text + 19);
-      if (result.ok)
+      if (result.ok) {
+        publish_advert(); // the setup bit flips now, as after a BLE SET_CONFIG
         opensensor::console::printf("OS CONFIG ok=1 reboot_required=%u\n",
                                     result.reboot_required ? 1U : 0U);
-      else
+      } else
         oslog.printf("OS CONFIG ok=0 key=%s\n", result.bad_key);
       std::memset(command.text, 0, sizeof(command.text));
     } else if (std::strcmp(command.text, "parquet status") == 0) {
