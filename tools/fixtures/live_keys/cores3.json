@@ -6,7 +6,7 @@
       "note": "Dictionary cores3-telemetry-v7 (#83). The two H3 centre columns become location_source and geometry, neither has a LIVE key, so the LIVE keys and decimals are those of cores3-telemetry-v6. Older digests are retired and no longer listed.",
       "builds": [
         {
-          "firmware": "idf-cores3-parquet-v6.23",
+          "firmware": "idf-cores3-parquet-v6.24",
           "emitter": "board field table through oslogger::format_live",
           "fields": {
             "seq": "sequence",
