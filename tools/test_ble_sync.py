@@ -90,10 +90,12 @@ class FakeClient:
         # CONFIG replies as BLE CONFIG_CHUNK frames of this slice size, as the
         # firmware sends them when the JSON does not fit the ATT payload.
         # config_drop names the chunk index never sent, config_skew changes the
-        # total from that chunk index on.
+        # total from that chunk index on, config_short lowers the total of
+        # every chunk so the last slice runs past it.
         self.config_chunk = None
         self.config_drop = None
         self.config_skew = None
+        self.config_short = 0
 
     def emit_config(self, flags: int, text: bytes):
         if self.config_chunk is None:
@@ -102,7 +104,8 @@ class FakeClient:
         for index, offset in enumerate(range(0, len(text), self.config_chunk)):
             if index == self.config_drop:
                 continue
-            total = len(text) + (1 if self.config_skew is not None and index >= self.config_skew else 0)
+            total = len(text) - self.config_short
+            total += 1 if self.config_skew is not None and index >= self.config_skew else 0
             self.emit(bytes([ble.F_CONFIG_CHUNK, flags]) + struct.pack("<HH", total, offset)
                       + text[offset:offset + self.config_chunk])
 
@@ -403,6 +406,12 @@ async def run_config_chunks():
     last = -(-len(PAGE6) // slice_bytes) - 1
     assert "no response frame within deadline" in await refused(config_drop=last)
     assert "flags or total changed" in await refused(config_skew=2)
+    # Every chunk names the same short total, so only the last slice runs
+    # past it. That fails at once instead of waiting for the deadline.
+    short = 2
+    assert 0 < short < len(PAGE6) - last * slice_bytes, "the overshoot is in the last slice"
+    overshoot = f"slice of {len(PAGE6) - last * slice_bytes} bytes at {last * slice_bytes}"
+    assert overshoot + f" does not fit total {len(PAGE6) - short}" in await refused(config_short=short)
 
     # The CLI accepts page 6, sends it and prints the assembled JSON.
     seen = []
@@ -433,7 +442,7 @@ async def run_config_chunks():
     assert json.loads(out.getvalue()) == json.loads(PAGE6) | {"reboot_required": False}, out.getvalue()
     assert client.disconnect.await_count == 1
     print("PASS ble_sync CONFIG_CHUNK: page 6 and legacy replies assembled, UTF-8 split across chunks, "
-          "gap, changed total and missing last chunk refused, CLI --page 6 accepted and 7 refused")
+          "gap, changed total, slice past total and missing last chunk refused, CLI --page 6 accepted and 7 refused")
 
 
 def descriptor_offsets(client):
