@@ -7,6 +7,7 @@
 #include <os_gnss.h>
 #include <os_logger_location.h>
 
+#include <atomic>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -14,6 +15,7 @@
 #include <initializer_list>
 #include <optional>
 #include <string_view>
+#include <thread>
 
 using namespace opensensor;
 using gnss::ParseError;
@@ -337,8 +339,9 @@ void deployment_split() {
   };
   const auto snapshot = [] {
     Sample row{};
-    row.location = ::config::get().location;
-    row.deployment = ::config::deployment_id();
+    const auto labels = ::config::sample_labels();
+    row.location = labels.location;
+    row.deployment = labels.deployment;
     return row;
   };
   const auto first = snapshot();
@@ -362,6 +365,43 @@ void deployment_split() {
   moved.location.mobility = config::Mobility::Moving;
   assert(!oslogger::same_file_labels(moved, first));
 }
+
+// One request moves the location and the deployment id together, and a
+// sample read while requests land never pairs one request's location with the
+// other request's deployment id (#151). The writer stands in for the storage
+// worker and the reader for collect() on the main loop.
+void coherent_labels() {
+  fake_platform::nvs = {};
+  assert(config::load(false));
+  constexpr std::string_view kCairo = "location.country=EG\n"
+                                      "thing.deployment_id=cairo-07";
+  constexpr std::string_view kGiza = "location.country=US\n"
+                                     "thing.deployment_id=giza-01";
+  const auto set = [](std::string_view lines) {
+    config::Actions actions{};
+    char bad_key[32]{};
+    assert(config::apply_lines(lines.data(), lines.size(), bad_key,
+                               sizeof bad_key, actions));
+  };
+  set(kCairo);
+  std::atomic<bool> done{false};
+  std::thread writer([&] {
+    for (int i = 0; i < 2000; ++i)
+      set(i % 2 ? kCairo : kGiza);
+    done = true;
+  });
+  unsigned cairo = 0, giza = 0;
+  while (!done) {
+    const auto labels = config::sample_labels();
+    const std::string_view country = labels.location.country;
+    const std::string_view deployment = labels.deployment.text.data();
+    assert((country == "EG" && deployment == "cairo-07") ||
+           (country == "US" && deployment == "giza-01"));
+    ++(country == "EG" ? cairo : giza);
+  }
+  writer.join();
+  assert(cairo + giza > 0);
+}
 } // namespace
 
 int main() {
@@ -373,5 +413,6 @@ int main() {
   row_mapping();
   no_split();
   deployment_split();
+  coherent_labels();
   std::puts("gnss host tests passed");
 }

@@ -196,6 +196,13 @@ check_owner_value(OwnerKey key, std::string_view value);
 // Copies of the published owner settings, safe from any task.
 OwnerSettings owner_settings();
 DeploymentId deployment_id();
+// The location and deployment id a sample carries, copied under one lock so a
+// row never pairs one request's location with another's deployment id.
+struct SampleLabels {
+  LocationSettings location;
+  DeploymentId deployment;
+};
+SampleLabels sample_labels();
 // True when both name the same deployment, the file split rule.
 bool same_deployment(const DeploymentId &, const DeploymentId &);
 

@@ -876,6 +876,15 @@ DeploymentId deployment_id() {
   return copy;
 }
 
+SampleLabels sample_labels() {
+  SampleLabels copy;
+  portENTER_CRITICAL(&settings_mutex);
+  copy.location = current.location;
+  copy.deployment = owner_current.deployment;
+  portEXIT_CRITICAL(&settings_mutex);
+  return copy;
+}
+
 bool same_deployment(const DeploymentId &a, const DeploymentId &b) {
   return text_of(a.text) == text_of(b.text);
 }
