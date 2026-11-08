@@ -3292,6 +3292,12 @@ bool start_links(bool display_detected) {
       ossync::begin(identity, enqueue_request, display_detected, sync_config)
           .ble_started;
   radio_check = started ? selftest::Check::Pass : selftest::Check::Fail;
+  // The worker's startup publish ran before BLE was enabled and was dropped,
+  // and the next sample is up to 10 s away. Publishing here makes the current
+  // flags the flip baseline before a peer can connect, authenticate and send
+  // SET_CONFIG, so a setup change gets its own flag_window_ms (#147).
+  if (started)
+    publish_advert();
   return started;
 }
 

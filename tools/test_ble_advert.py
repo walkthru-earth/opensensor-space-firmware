@@ -105,6 +105,11 @@ def check_setup_wiring(root: Path) -> None:
     assert re.match(
         r"apply_config_hex\(command\.text \+ 19\);\s*if \(result\.ok\) \{\s*publish_advert\(\);",
         serial), "a serial config-hex republishes the advert at once"
+    links = function_body(logger, "bool start_links(bool display_detected) {")
+    assert re.search(
+        r"ossync::begin\([^;]*\.ble_started;[^{}]*?if \(started\)\s*publish_advert\(\);"
+        r"\s*return started;", links), \
+        "start_links publishes the flag baseline right after BLE starts"
 
 
 def main() -> None:
