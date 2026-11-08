@@ -117,9 +117,6 @@ bool reboot_required();
 bool apply_lines(const char *text, std::size_t length, char *bad_key,
                  std::size_t bad_key_size, Actions &actions);
 
-// Replaces the LAN token with fresh random bytes and saves.
-bool rotate_token();
-
 struct WifiView {
   const char *state; // off | connecting | connected | failed
   const char *ip;    // dotted quad or ""
@@ -169,7 +166,8 @@ enum class [[nodiscard]] OwnerValueError : std::uint8_t {
   Encoding, // not valid UTF-8
   Control,  // a C0 or C1 control character or DEL
   Scheme,   // owner.url without https:// and a host that starts with a
-            // letter or digit, after any user info
+            // letter or digit
+  UserInfo, // owner.url with an @ before the first /, ? or #
   Charset,  // a byte outside the key's character set
   Reserved, // thing.deployment_id with a hyphen at an end, or "unknown"
 };

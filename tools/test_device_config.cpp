@@ -209,6 +209,30 @@ void first_boot(bool display) {
   const auto second = config::get();
   assert(second.pin != first.pin);
   assert(std::memcmp(second.token, first.token, config::kTokenBytes) != 0);
+  // A failed seed still boots with the new PIN and token in RAM. It marks
+  // `cfg` unsure, so the next SET_CONFIG writes `cfg` even when it changes
+  // only an owner key, and a reboot then keeps that PIN and token (#152).
+  fake_platform::nvs = {};
+  fake_platform::nvs.fail_write_key = "cfg";
+  assert(config::load(display));
+  fake_platform::nvs.fail_write_key.clear();
+  assert(!fake_platform::nvs.blobs.count("cfg"));
+  assert(log_text().find("CONFIG ERROR operation=nvs-seed-or-migrate") !=
+         std::string::npos);
+  const auto seeded = config::get();
+  const auto seed_writes = fake_platform::nvs.writes;
+  accept("owner.title=Seeded");
+  // The owner record and the unsure `cfg`.
+  assert(fake_platform::nvs.writes == seed_writes + 2);
+  check_blob_header();
+  assert(le32(payload() + kPinAt) == seeded.pin);
+  assert(std::memcmp(payload() + kTokenAt, seeded.token, config::kTokenBytes) ==
+         0);
+  // `cfg` is sure again, so an equal request writes nothing.
+  accept("owner.title=Seeded");
+  assert(fake_platform::nvs.writes == seed_writes + 2);
+  assert(config::load(display));
+  assert(same(seeded, config::get()));
 }
 
 void migration() {
@@ -401,15 +425,8 @@ void persistence_failure() {
   }
   assert(config::load(false));
   assert(same(before, config::get()));
-  fake_platform::nvs.fail_commit_key = "cfg";
-  assert(!config::rotate_token());
-  assert(same(before, config::get()));
-  fake_platform::nvs.fail_commit_key.clear();
-  fake_platform::nvs.fail_write_key = "cfg";
-  assert(!config::rotate_token());
-  assert(same(before, config::get()));
-  fake_platform::nvs.fail_write_key.clear();
-  assert(config::rotate_token());
+  // The loop above covers a failed lan.rotate_token=1, this one saves.
+  accept("lan.rotate_token=1");
   assert(std::memcmp(before.token, config::get().token, config::kTokenBytes) !=
          0);
   fake_platform::nvs.fail_open = true;
@@ -848,16 +865,20 @@ void owner_configuration() {
         "https://%41", "ftp://example.org", "example.org", "https://a b",
         "https://a\"b", "https://a\\b", "https://a<b>", "https://a\x01",
         "https://caf\xc3\xa9.org",
-        // The host after the user info is empty or starts
-        // with another character (#151).
+        // Any user info, an @ before the first /, ? or #, is refused because
+        // page 5 echoes the link and STAC publishes it (#151, #152).
         "https://a@", "https://a@/x", "https://a@?q", "https://a@#top",
-        "https://a@:443", "https://a@-x.org", "https://a@b@"})
+        "https://a@:443", "https://a@-x.org", "https://a@b@",
+        "https://a@example.org/x", "https://a:b@example.org:8443/x",
+        "https://a:b@example.org", "https://example.org@evil.example/x"})
     reject(std::string("owner.url=") + bad, "owner.url");
   accept("owner.url=https://example.org/air?site=7&a=b%20c#top");
-  // An @ after the host is fine, and so is a host after user info.
+  // The authority ends at the first /, ? or #, so an @ after it is fine.
   accept("owner.url=https://medium.com/@name");
+  accept("owner.url=https://example.org/@a/b");
   accept("owner.url=https://example.org?to=@a#@b");
-  accept("owner.url=https://a@example.org/x");
+  accept("owner.url=https://example.org?to=a@");
+  accept("owner.url=https://example.org#a@");
   accept("owner.url=https://1.example.org");
   // thing.deployment_id is [a-z0-9-] only, a letter or digit at each end and
   // never "unknown", the footer fallback.

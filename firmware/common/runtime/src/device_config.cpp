@@ -682,22 +682,18 @@ check_url(std::string_view value) {
         return static_cast<unsigned char>(c) < 0x20 || c == 0x7f;
       }))
     return std::unexpected(OwnerValueError::Control);
-  // The host, or the user info before it, starts with a letter or digit.
-  // That refuses https://@, https://: and https:///x but still allows an @
-  // later, as in https://medium.com/@name.
+  // The host starts with a letter or digit. That refuses https://@,
+  // https://: and https:///x.
   if (!value.starts_with(kScheme) || value.size() == kScheme.size() ||
       !ascii_alnum(value[kScheme.size()]))
     return std::unexpected(OwnerValueError::Scheme);
-  // The authority ends at the first /, ? or #. Its host follows the last @ in
-  // it and starts with a letter or digit too, which refuses https://a@ and
-  // https://a@:443. An @ in the path never reaches this check.
+  // The authority ends at the first /, ? or #, and an @ inside it starts user
+  // info. Page 5 echoes the link and STAC publishes it, so user info is never
+  // stored. An @ in the path, query or fragment is fine, as in
+  // https://medium.com/@name.
   const auto rest = value.substr(kScheme.size());
-  const auto authority = rest.substr(0, rest.find_first_of("/?#"));
-  const auto at = authority.rfind('@');
-  const auto host =
-      at == std::string_view::npos ? authority : authority.substr(at + 1);
-  if (host.empty() || !ascii_alnum(host.front()))
-    return std::unexpected(OwnerValueError::Scheme);
+  if (rest.substr(0, rest.find_first_of("/?#")).contains('@'))
+    return std::unexpected(OwnerValueError::UserInfo);
   if (!std::all_of(value.begin(), value.end(), url_char))
     return std::unexpected(OwnerValueError::Charset);
   return {};
@@ -1265,16 +1261,6 @@ bool apply_lines(const char *text, std::size_t length, char *bad_key,
       next.lan_on ? "true" : "false", pending.clear_bonds ? "true" : "false",
       pending.rotate_token ? "true" : "false",
       reboot_required() ? "true" : "false");
-  return true;
-}
-
-bool rotate_token() {
-  const Settings previous = get();
-  Settings next = previous;
-  esp_fill_random(next.token, kTokenBytes);
-  if (persistent && !save_cfg(next, previous))
-    return false;
-  publish(next);
   return true;
 }
 
