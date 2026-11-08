@@ -6,9 +6,10 @@ pairing policy, JSON generation, log framing or control handlers.
 
 `nvs.h` models native ESP-IDF NVS types, staged values and blobs, explicit
 commits and string lengths including the terminating NUL. Runtime settings are
-one versioned blob. Old per-key values are never read. Tests inject
-namespace-open, key or blob write and commit failures and verify stored value
-types. They
+one versioned `cfg` blob and the owner site keys are a second `owner` blob. Old
+per-key values are never read. Tests inject namespace-open, key or blob write
+and commit failures, a failure at one numbered write and a corrupted blob
+readback, and verify stored value types. They
 establish error reporting and unchanged runtime settings on failure; they do not
 establish transactional NVS writes or power-loss safety.
 

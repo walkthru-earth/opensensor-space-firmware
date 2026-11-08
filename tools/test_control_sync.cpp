@@ -158,7 +158,8 @@ void paged_configuration() {
     Peer peer;
     handle(request(ble::kOpGetConfig, ble::Link::Ble, body), peer);
     assert(peer.successful.empty() && peer.errors.size() == 1);
-    assert(peer.errors[0].code == ble::kErrMalformed);
+    assert(peer.errors[0].code == ble::kErrMalformed &&
+           peer.errors[0].detail == "page");
   }
   const unsigned previous_wifi = wifi_reapplied, previous_time = time_reapplied;
   Peer peer;

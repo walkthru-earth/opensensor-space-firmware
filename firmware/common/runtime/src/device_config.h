@@ -168,8 +168,9 @@ enum class [[nodiscard]] OwnerValueError : std::uint8_t {
   TooLong,  // more bytes than the key allows
   Encoding, // not valid UTF-8
   Control,  // a C0 or C1 control character or DEL
-  Scheme,   // owner.url without https:// and a host
+  Scheme,   // owner.url without https:// and a letter or digit after it
   Charset,  // a byte outside the key's character set
+  Reserved, // thing.deployment_id with a hyphen at an end, or "unknown"
 };
 
 // Footer thing.deployment_id as the owner set it, empty when unset. Each

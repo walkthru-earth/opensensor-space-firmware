@@ -324,14 +324,18 @@ static_assert(sizeof(OwnerPayload) == 421, "owner version 1 payload is pinned");
 static_assert(sizeof(OwnerBlob) == sizeof(BlobHeader) + sizeof(OwnerPayload),
               "owner header and payload are contiguous");
 
-// Only the command worker saves after startup and load runs before it, so
-// the staged record and its readback can share static storage. The cfg and
-// owner records take turns in the same two buffers, because every save and
-// load finishes one record before it touches the other (#148).
+// The staged record and its readback can share static storage, because
+// saves never overlap. After startup only the storage worker saves, one
+// command at a time, and no command source exists before `load` returns. The
+// cfg and owner records take turns in the same two buffers, because every
+// save and load finishes one record before it touches the other (#148).
 union BlobBuffer {
   Blob cfg;
   OwnerBlob owner;
 };
+// The owner record rides in the cfg buffers, so it must never be the larger.
+static_assert(sizeof(OwnerBlob) <= sizeof(Blob),
+              "owner record fits the shared cfg buffers");
 BlobBuffer staged_buffer;
 BlobBuffer readback_buffer;
 Blob &staged_blob = staged_buffer.cfg;
@@ -639,10 +643,14 @@ check_text(std::string_view value) {
   return {};
 }
 
+constexpr bool ascii_alnum(char c) {
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+         (c >= '0' && c <= '9');
+}
+
 // RFC 3986 characters only, so a link never needs JSON escaping.
 constexpr bool url_char(char c) {
-  if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-      (c >= '0' && c <= '9'))
+  if (ascii_alnum(c))
     return true;
   return std::string_view("-._~:/?#[]@!$&'()*+,;=%").contains(c);
 }
@@ -654,8 +662,11 @@ check_url(std::string_view value) {
         return static_cast<unsigned char>(c) < 0x20 || c == 0x7f;
       }))
     return std::unexpected(OwnerValueError::Control);
+  // The host, or the user info before it, starts with a letter or digit.
+  // That refuses https://@, https://: and https:///x but still allows an @
+  // later, as in https://medium.com/@name.
   if (!value.starts_with(kScheme) || value.size() == kScheme.size() ||
-      std::string_view("/?#").contains(value[kScheme.size()]))
+      !ascii_alnum(value[kScheme.size()]))
     return std::unexpected(OwnerValueError::Scheme);
   if (!std::all_of(value.begin(), value.end(), url_char))
     return std::unexpected(OwnerValueError::Charset);
@@ -684,35 +695,42 @@ void encode_owner(OwnerBlob &blob, const OwnerSettings &owner) {
          sizeof(blob.header.crc32));
 }
 
+// Why a stored owner record was refused. Every case loads as empty.
+enum class [[nodiscard]] OwnerDecodeError : std::uint8_t {
+  Header, // size, magic, version or payload length is wrong
+  Crc,    // the payload does not match its CRC
+  Text,   // a field has no terminator or fails the SET_CONFIG rule
+};
+
 // Structure and CRC, then the same value rules as SET_CONFIG.
-bool decode_owner(const OwnerBlob &blob, std::size_t size,
-                  OwnerSettings &owner) {
+[[nodiscard]] std::expected<OwnerSettings, OwnerDecodeError>
+decode_owner(const OwnerBlob &blob, std::size_t size) {
   if (size != sizeof(OwnerBlob) ||
       !std::equal(kOwnerMagic.begin(), kOwnerMagic.end(), blob.header.magic) ||
       get_le(blob.header.version, sizeof(blob.header.version)) !=
           kOwnerVersion ||
       get_le(blob.header.length, sizeof(blob.header.length)) !=
-          sizeof(OwnerPayload) ||
-      get_le(blob.header.crc32, sizeof(blob.header.crc32)) !=
-          crc32(reinterpret_cast<const std::uint8_t *>(&blob.payload),
-                sizeof(blob.payload)))
-    return false;
+          sizeof(OwnerPayload))
+    return std::unexpected(OwnerDecodeError::Header);
+  if (get_le(blob.header.crc32, sizeof(blob.header.crc32)) !=
+      crc32(reinterpret_cast<const std::uint8_t *>(&blob.payload),
+            sizeof(blob.payload)))
+    return std::unexpected(OwnerDecodeError::Crc);
   OwnerSettings decoded;
   for (const auto &info : kOwnerKeys) {
     const auto field = owner_field(blob.payload, info.key);
     if (std::find(field.begin(), field.end(), '\0') == field.end())
-      return false;
+      return std::unexpected(OwnerDecodeError::Text);
     const auto value = text_of(field);
     if (!check_owner_value(info.key, value))
-      return false;
+      return std::unexpected(OwnerDecodeError::Text);
     store_text(owner_field(decoded, info.key), value);
   }
-  owner = decoded;
-  return true;
+  return decoded;
 }
 
 // One write and one commit, then a readback, like save_locked.
-bool save_owner(const OwnerSettings &owner) {
+[[nodiscard]] bool save_owner(const OwnerSettings &owner) {
   nvs_handle_t store;
   if (nvs_open(kNamespace, NVS_READWRITE, &store) != ESP_OK)
     return false;
@@ -730,16 +748,17 @@ bool save_owner(const OwnerSettings &owner) {
 
 // Reads the record through an open handle. Never erases it.
 OwnerSettings load_owner(nvs_handle_t store) {
-  OwnerSettings owner;
   std::size_t size = sizeof(owner_readback);
   const auto result = nvs_get_blob(store, kOwnerKey, &owner_readback, &size);
   if (result == ESP_ERR_NVS_NOT_FOUND)
-    return owner;
-  if (result != ESP_OK || !decode_owner(owner_readback, size, owner)) {
-    owner = OwnerSettings{};
-    oslog.println("CONFIG OWNER invalid-stored-profile=true");
+    return OwnerSettings{};
+  if (result == ESP_OK) {
+    const auto decoded = decode_owner(owner_readback, size);
+    if (decoded)
+      return *decoded;
   }
-  return owner;
+  oslog.println("CONFIG OWNER invalid-stored-profile=true");
+  return OwnerSettings{};
 }
 
 void publish_owner(const OwnerSettings &owner) {
@@ -757,11 +776,14 @@ void publish_with_owner(const Settings &settings, const OwnerSettings &owner) {
   portEXIT_CRITICAL(&settings_mutex);
 }
 
-// Saves the owner record first, then `cfg` when the request touched it. A
-// failed `cfg` save puts the previous owner record back, best effort.
-bool save_request(bool owner_changed, const OwnerSettings &previous_owner,
-                  const OwnerSettings &next_owner, bool settings_touched,
-                  const Settings &next) {
+// Saves the owner record first, then `cfg` when the request touched it. The
+// two writes are not atomic across a power cut. A failed `cfg` save puts the
+// previous owner record back, best effort. On any failure the caller replies
+// ERROR and publishes nothing, so the live snapshot never holds half a request.
+[[nodiscard]] bool save_request(bool owner_changed,
+                                const OwnerSettings &previous_owner,
+                                const OwnerSettings &next_owner,
+                                bool settings_touched, const Settings &next) {
   if (!persistent)
     return true;
   if (owner_changed && !save_owner(next_owner))
@@ -829,6 +851,10 @@ std::expected<void, OwnerValueError> check_owner_value(OwnerKey key,
     });
     if (!allowed)
       return std::unexpected(OwnerValueError::Charset);
+    // A letter or digit at each end. The footer writes "unknown" when the id
+    // is unset, so a stored "unknown" could not be told apart from it.
+    if (value.front() == '-' || value.back() == '-' || value == "unknown")
+      return std::unexpected(OwnerValueError::Reserved);
     return {};
   }
   return check_text(value);

@@ -829,26 +829,50 @@ void owner_configuration() {
   // Invalid UTF-8 and control characters.
   for (const char *bad :
        {"\xff", "a\xc3", "\xc0\xaf", "\xe0\x80\xaf", "\xed\xa0\x80",
-        "\xf4\x90\x80\x80", "\xf8\x88\x80\x80\x80", "\x80", "tab\there",
-        "bell\x07", "del\x7f", "nel\xc2\x85", "csi\xc2\x9b", "cr\rinside"}) {
+        "\xf0\x80\x80\x80", "\xf0\x8f\xbf\xbf", "\xf4\x90\x80\x80",
+        "\xf8\x88\x80\x80\x80", "\x80", "tab\there", "bell\x07", "del\x7f",
+        "nel\xc2\x85", "csi\xc2\x9b", "cr\rinside"}) {
     reject(std::string("owner.title=") + bad, "owner.title");
     reject(std::string("owner.description=") + bad, "owner.description");
     reject(std::string("owner.provider=") + bad, "owner.provider");
   }
   accept("owner.title=Cairo \xc2\xb7 \xd8\xa7\xd9\x84\xd9\x82\xd8\xa7\xd9"
          "\x87\xd8\xb1\xd8\xa9 \xc2\xa0");
-  // owner.url needs https:// and a host, and only RFC 3986 characters.
-  for (const char *bad :
-       {"http://example.org", "HTTPS://example.org", "https://", "https:///x",
-        "https://?q", "ftp://example.org", "example.org", "https://a b",
-        "https://a\"b", "https://a\\b", "https://a<b>", "https://a\x01",
-        "https://caf\xc3\xa9.org"})
+  // owner.url needs https:// and a host that starts with a letter or digit,
+  // and only RFC 3986 characters.
+  for (const char *bad : {"http://example.org",
+                          "HTTPS://example.org",
+                          "https://",
+                          "https:///x",
+                          "https://?q",
+                          "https://@",
+                          "https://@example.org",
+                          "https://:",
+                          "https://:443",
+                          "https://-x.org",
+                          "https://.org",
+                          "https://%41",
+                          "ftp://example.org",
+                          "example.org",
+                          "https://a b",
+                          "https://a\"b",
+                          "https://a\\b",
+                          "https://a<b>",
+                          "https://a\x01",
+                          "https://caf\xc3\xa9.org"})
     reject(std::string("owner.url=") + bad, "owner.url");
   accept("owner.url=https://example.org/air?site=7&a=b%20c#top");
-  // thing.deployment_id is [a-z0-9-] only.
-  for (const char *bad : {"Cairo-07", "cairo_07", "cairo 07", "cairo.07",
-                          "cair\xc3\xb6", "cairo/07"})
+  // An @ after the host is fine.
+  accept("owner.url=https://medium.com/@name");
+  accept("owner.url=https://1.example.org");
+  // thing.deployment_id is [a-z0-9-] only, a letter or digit at each end and
+  // never "unknown", the footer fallback.
+  for (const char *bad :
+       {"Cairo-07", "cairo_07", "cairo 07", "cairo.07", "cair\xc3\xb6",
+        "cairo/07", "-cairo", "cairo-", "-", "---", "unknown"})
     reject(std::string("thing.deployment_id=") + bad, "thing.deployment_id");
+  for (const char *good : {"a", "7", "a-b", "a--b", "unknown-07", "unknowns"})
+    accept(std::string("thing.deployment_id=") + good);
   accept("thing.deployment_id=cairo-07");
   assert(std::strcmp(config::deployment_id().text.data(), "cairo-07") == 0);
 
@@ -931,6 +955,53 @@ void owner_configuration() {
   assert(same_owner(live, config::owner_settings()));
   assert(same(settings_live, config::get()));
   assert(owner_blob() == stored);
+  assert(config::load(false));
+  assert(same_owner(live, config::owner_settings()));
+  // When the rollback fails too, the reply is still ERROR nvs, one line names
+  // the rollback and the live snapshot keeps the whole previous state. The
+  // record holds the new owner values, and the next boot loads them.
+  constexpr const char *kRollback = "CONFIG ERROR operation=owner-rollback";
+  const auto rollbacks = count(log_text(), kRollback);
+  fake_platform::nvs.fail_write_key = "cfg";
+  fake_platform::nvs.fail_write_at = fake_platform::nvs.writes + 3;
+  assert(
+      !apply("thing.deployment_id=giza-01\nwifi.ssid=other", actions, bad_key));
+  assert(std::strcmp(bad_key, "nvs") == 0);
+  assert(fake_platform::nvs.writes == fake_platform::nvs.fail_write_at);
+  fake_platform::nvs.fail_write_key.clear();
+  fake_platform::nvs.fail_write_at = 0;
+  assert(count(log_text(), kRollback) == rollbacks + 1);
+  assert(same_owner(live, config::owner_settings()));
+  assert(same(settings_live, config::get()));
+  assert(std::strcmp(owner_field(kDeploymentAt), "giza-01") == 0);
+  assert(config::load(false));
+  assert(std::strcmp(config::deployment_id().text.data(), "giza-01") == 0);
+  assert(same(settings_live, config::get()));
+  owner_blob() = stored;
+  assert(config::load(false));
+  assert(same_owner(live, config::owner_settings()));
+  // A readback that differs from the written record fails the save. The
+  // committed bytes stay, the live snapshot does not move and `cfg` is
+  // never written for an owner only request.
+  const auto cfg_kept = cfg();
+  const auto readback_writes = fake_platform::nvs.writes;
+  fake_platform::nvs.corrupt_read_key = "owner";
+  assert(!apply("thing.deployment_id=giza-01", actions, bad_key));
+  fake_platform::nvs.corrupt_read_key.clear();
+  assert(std::strcmp(bad_key, "nvs") == 0);
+  assert(fake_platform::nvs.writes == readback_writes + 1);
+  assert(same_owner(live, config::owner_settings()));
+  assert(cfg() == cfg_kept);
+  // A mixed request stops before `cfg` when the owner readback fails.
+  fake_platform::nvs.corrupt_read_key = "owner";
+  assert(
+      !apply("thing.deployment_id=giza-01\nwifi.ssid=other", actions, bad_key));
+  fake_platform::nvs.corrupt_read_key.clear();
+  assert(std::strcmp(bad_key, "nvs") == 0);
+  assert(fake_platform::nvs.writes == readback_writes + 2);
+  assert(cfg() == cfg_kept);
+  assert(same(settings_live, config::get()));
+  owner_blob() = stored;
   assert(config::load(false));
   assert(same_owner(live, config::owner_settings()));
 

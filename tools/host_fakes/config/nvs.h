@@ -26,6 +26,12 @@ struct Nvs : Values {
   bool fail_open = false;
   std::string fail_write_key;
   std::string fail_commit_key;
+  // 1-based write number that fails, 0 for none. Lets one save of a key pass
+  // and a later save of the same key fail.
+  unsigned fail_write_at = 0;
+  // Flips the last byte that nvs_get_blob copies out for this key, so a
+  // readback compare sees a record that differs from the one just written.
+  std::string corrupt_read_key;
   unsigned writes = 0;
   unsigned commits = 0;
   bool opened = false;
@@ -36,7 +42,8 @@ inline Nvs nvs;
 inline bool allow_write(const char *key) {
   ++nvs.writes;
   nvs.pending_key = key;
-  return nvs.opened && nvs.fail_write_key != key;
+  return nvs.opened && nvs.fail_write_key != key &&
+         nvs.writes != nvs.fail_write_at;
 }
 inline unsigned type(const char *key) {
   const auto pending = nvs.pending.types.find(key);
@@ -171,7 +178,10 @@ inline esp_err_t nvs_get_blob(nvs_handle_t, const char *key, void *out,
     return ESP_ERR_NVS_INVALID_LENGTH;
   }
   *size = value.size();
-  if (out)
+  if (out) {
     std::memcpy(out, value.data(), value.size());
+    if (nvs.corrupt_read_key == key && !value.empty())
+      static_cast<std::uint8_t *>(out)[value.size() - 1] ^= 1;
+  }
   return ESP_OK;
 }
