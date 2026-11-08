@@ -145,7 +145,7 @@ Base UUID `255f595e-XXXX-47ed-8e0d-59994199b680`; the 16-bit field selects the a
 ### `info` (read)
 
 ```json
-{"proto":3,"fw":"idf-cores3-parquet-v6.24","schema":"cores3-telemetry-v6","cols":81,
+{"proto":3,"fw":"idf-cores3-parquet-v6.25","schema":"cores3-telemetry-v6","cols":81,
  "dict":"<64 hex, SHA-256 of telemetry_fields.inc>","desc":"<first 16 hex of desc>",
  "thing":"<uuid>","dev":"<12 hex device_id>","boot":"<32 hex boot id>","max_read":16384}
 ```
@@ -153,7 +153,7 @@ Base UUID `255f595e-XXXX-47ed-8e0d-59994199b680`; the 16-bit field selects the a
 `schema`, `cols`, `dict` and `fw` describe the consuming board image. The example
 is CoreS3, while Waveshare advertises its own 62-column schema
 `waveshare-sim7670g-telemetry-v6`, dictionary `waveshare-sim7670g-telemetry-v8`
-and firmware `idf-waveshare-parquet-v2.18`. Clients use that identity to interpret shortened LIVE keys. `thing`, `dev`
+and firmware `idf-waveshare-parquet-v2.19`. Clients use that identity to interpret shortened LIVE keys. `thing`, `dev`
 and `boot` match the archive identities. `max_read` is the largest `length` the
 device honours per `READ`. Firmware reports `proto=3` and older framing is incompatible.
 
@@ -324,7 +324,7 @@ Rules:
 
 ## Device configuration (v2)
 
-`GET_CONFIG` page 0 (empty body or byte 0) returns the legacy snapshot below. Pages 1–4 return additive location/time configuration and pages 5 and 6 the owner site keys, using the same CONFIG or CONFIG_CHUNK envelope. `SET_CONFIG` accepts the keys below and always acknowledges with the legacy page-0 snapshot. `SET_CONFIG` is **partial**: only the keys present change. Values are validated as a whole before anything is stored; one bad key rejects the request with `ERROR` 12 and nothing changes. Keys marked *action* are not stored, they do something once. The firmware persists the complete configuration as one CRC-checked NVS record with a single write and commit, then reads it back. A persistence failure keeps the previous saved record and the live snapshot is not published. A damaged or missing record is a first boot, with a new random PIN and LAN token and Wi-Fi off. Power-cut behavior is not yet measured on hardware. Secrets are write-only: `wifi.psk` is never echoed, `GET_CONFIG` reports `psk_set` instead; the fixed BLE PIN is also not echoed and is represented by `pin_set`.
+`GET_CONFIG` page 0 (empty body or byte 0) returns the legacy snapshot below. Pages 1 to 4 return additive location and time configuration and pages 5 and 6 the owner site keys, using the same CONFIG or CONFIG_CHUNK envelope. `SET_CONFIG` accepts the keys below and always acknowledges with the legacy page-0 snapshot. `SET_CONFIG` is **partial**: only the keys present change. Values are validated as a whole before anything is stored; one bad key rejects the request with `ERROR` 12 and nothing changes. Keys marked *action* are not stored, they do something once. The firmware persists the complete configuration as one CRC-checked NVS record with a single write and commit, then reads it back. A persistence failure keeps the previous saved record and the live snapshot is not published. A damaged or missing record is a first boot, with a new random PIN and LAN token and Wi-Fi off. Power-cut behavior is not yet measured on hardware. Secrets are write-only: `wifi.psk` is never echoed, `GET_CONFIG` reports `psk_set` instead; the fixed BLE PIN is also not echoed and is represented by `pin_set`.
 
 | Key | Value | Applied | Meaning |
 | --- | --- | --- | --- |
@@ -411,7 +411,7 @@ Location is the monitoring Thing deployment, explicitly configured
 from the mobile app. The app sends only a cell; firmware derives its center and
 splits files when cell, cap or country changes. See [time and location](time-and-location.md)
 for country restrictions, offline time and privacy limitations. Host readback:
-`pixi run ble-sync config --page 1` (or pages 2–6).
+`pixi run ble-sync config --page 1` (or pages 2 to 6).
 
 `wifi.state` is one of `off`, `connecting`, `connected`, `failed` (wrong passphrase or no such network; the device keeps retrying every 30 s while `wifi.on`). `pin_set` says a fixed PIN exists without disclosing it. `pin_default` remains for backward-compatible clients and is 0 after automatic migration away from the legacy universal PIN. `display` reports what the device detected at boot.
 
