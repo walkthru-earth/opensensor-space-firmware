@@ -687,7 +687,8 @@ check_url(std::string_view value) {
   if (!value.starts_with(kScheme) || value.size() == kScheme.size() ||
       !ascii_alnum(value[kScheme.size()]))
     return std::unexpected(OwnerValueError::Scheme);
-  // The authority ends at the first /, ? or #, and an @ inside it starts user
+  // The authority runs from after https:// to the first /, ? or # or the
+  // end, and an @ inside it starts user
   // info. Page 5 echoes the link and STAC publishes it, so user info is never
   // stored. An @ in the path, query or fragment is fine, as in
   // https://medium.com/@name.
@@ -811,8 +812,10 @@ void restore_owner(const OwnerSettings &previous) {
     oslog.println("CONFIG ERROR operation=owner-rollback");
 }
 
-// Saves the owner record first, then `cfg`. A record is written when the
-// request changed it or when it is unsure. The two writes are not atomic
+// Saves the owner record first, then `cfg`. The owner record is written when
+// an owner value changed and `cfg` whenever the request carried any other key,
+// even an unchanged one. Either is also written when it is unsure. The two
+// writes are not atomic
 // across a power cut. When either save fails, every record this request wrote
 // gets its previous value back, so flash never pairs one record from this
 // request with the other from before it. On any failure the caller replies

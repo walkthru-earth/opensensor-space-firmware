@@ -167,7 +167,8 @@ enum class [[nodiscard]] OwnerValueError : std::uint8_t {
   Control,  // a C0 or C1 control character or DEL
   Scheme,   // owner.url without https:// and a host that starts with a
             // letter or digit
-  UserInfo, // owner.url with an @ before the first /, ? or #
+  UserInfo, // owner.url with an @ after https:// and before the first /,
+            // ? or # or the end
   Charset,  // a byte outside the key's character set
   Reserved, // thing.deployment_id with a hyphen at an end, or "unknown"
 };
