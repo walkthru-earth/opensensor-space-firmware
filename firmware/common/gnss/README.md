@@ -18,7 +18,9 @@ Board-neutral GNSS support in two ESP-IDF components.
    known.
 3. The reader task stores the newest `Fix` and `latest()` copies it out.
 4. The logger calls `Hooks::gnss_fix` once per row and applies
-   `select_location()`.
+   `select_location()`. The storage worker also calls it for GET_CONFIG
+   page 1 `location.gnss_cell` through `readback_cell()`, so the hook must be
+   safe from any task, never from an ISR. `latest()` is.
 
 | `thing.mobility` | Fresh fix (at most 15 s old) | Row location |
 | --- | --- | --- |

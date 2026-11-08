@@ -728,7 +728,7 @@ async def connect(args):
     return client, session
 
 
-ADVERT_FLAGS = ["no_utc", "new_files", "sd", "lan", "fail", "clk_restored"]
+ADVERT_FLAGS = ["no_utc", "new_files", "sd", "lan", "fail", "clk_restored", "setup"]
 
 
 def decode_advert(payload):

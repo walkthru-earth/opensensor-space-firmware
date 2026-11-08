@@ -41,7 +41,7 @@ def main() -> None:
         subprocess.run(command, check=True)
         for scenario in ("headless", "screen", "migration", "validation",
                          "credentials", "sensor", "nvs", "unavailable", "time-location",
-                         "blob", "old-keys", "torn"):
+                         "setup", "blob", "old-keys", "torn"):
             result = subprocess.run([str(executable), scenario],
                                     capture_output=True, text=True)
             if result.returncode:
@@ -53,6 +53,11 @@ def main() -> None:
                 assert "pin" not in document["ble"]
                 assert "psk" not in document["wifi"]
                 assert "token" not in document["lan"]
+            if scenario == "setup":
+                # Worst-case GET_CONFIG page 1 (#147) within the 480 byte cap.
+                page_one = int(result.stdout)
+                assert page_one < 480, page_one
+                print(f"GET_CONFIG page 1 worst case {page_one} B of 480")
     print("Shared configuration: defaults, PIN rotation, validation, secrecy, "
           "blob, ignored old keys and NVS failures passed")
 

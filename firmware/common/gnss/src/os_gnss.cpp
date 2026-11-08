@@ -210,6 +210,22 @@ bool fresh(const Fix &fix, std::int64_t now_us) {
   return age <= kFixMaxAgeUs && age >= -kFixClockSkewUs;
 }
 
+std::expected<location::Cell, ReadbackError>
+readback_cell(const Fix &fix, std::int64_t now_us, int maximum_resolution) {
+  if (fix.cell == 0)
+    return std::unexpected(ReadbackError::NoFix);
+  if (!fresh(fix, now_us))
+    return std::unexpected(ReadbackError::Stale);
+  if (maximum_resolution < kReadbackResolution)
+    return std::unexpected(ReadbackError::TooCoarse);
+  location::Cell cell = 0;
+  if (!location::coarsen(fix.cell, kReadbackResolution, cell))
+    return std::unexpected(ReadbackError::Invalid);
+  if (location::resolution(cell) != kReadbackResolution)
+    return std::unexpected(ReadbackError::TooCoarse);
+  return cell;
+}
+
 Selection select_location(const config::LocationSettings &row,
                           const std::optional<Fix> &fix, std::int64_t now_us) {
   location::Cell published = 0;

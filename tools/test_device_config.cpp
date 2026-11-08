@@ -420,7 +420,7 @@ void time_and_location() {
   char json[480];
   assert(config::build_page(json, sizeof(json), 1));
   assert(std::strstr(json, "\"lat\":null"));
-  assert(std::strstr(json, "\"thing\":{\"mobility\":\"fixed\"}"));
+  assert(std::strstr(json, "\"thing\":{\"mobility\":\"fixed\",\"setup\":1}"));
   reject("thing.mobility=walking", "thing.mobility");
   reject("thing.mobility=", "thing.mobility");
   reject("thing.mobility=Fixed", "thing.mobility");
@@ -533,6 +533,69 @@ void time_and_location() {
   assert(!config::get().ntp.enabled && !config::get().ntp.public_fallback);
   accept("location.cell=\nlocation.country=");
   assert(config::get().location.cell == 0);
+}
+
+// #147. "Setup needed" is derived from the location settings, never stored.
+// Page 1 carries it as thing.setup and, on a board with a receiver, a fresh
+// res 8 GNSS cell as location.gnss_cell.
+void setup_state() {
+  using config::Mobility;
+  constexpr std::uint64_t kCell = 0x8828308281fffffULL; // res 8
+  static_assert(config::setup_needed({}));
+  static_assert(!config::setup_needed({.cell = kCell}));
+  static_assert(!config::setup_needed({.mobility = Mobility::Moving}));
+  static_assert(
+      !config::setup_needed({.cell = kCell, .mobility = Mobility::Moving}));
+  assert(config::load(false));
+  assert(config::setup_needed(config::location_settings()));
+  char json[480];
+  const auto page = [&](const config::PageInputs &inputs = {}) {
+    const auto length = config::build_page(json, sizeof(json), 1, inputs);
+    assert(length && length == std::strlen(json));
+    return length;
+  };
+  page();
+  assert(std::strstr(json, "\"thing\":{\"mobility\":\"fixed\",\"setup\":1}}"));
+  // A board without a receiver omits the key.
+  assert(!std::strstr(json, "gnss_cell"));
+  page({.gnss = true});
+  assert(std::strstr(json, "\"gnss_cell\":\"\""));
+  page({.gnss = true, .gnss_cell = kCell});
+  assert(std::strstr(json, "\"gnss_cell\":\"8828308281fffff\""));
+  // An invalid cell is never printed.
+  page({.gnss = true, .gnss_cell = 1});
+  assert(std::strstr(json, "\"gnss_cell\":\"\""));
+  // Setting a cell clears it, clearing the cell raises it again.
+  accept("location.cell=8828308281fffff");
+  assert(!config::setup_needed(config::location_settings()));
+  page();
+  assert(std::strstr(json, "\"setup\":0}"));
+  accept("location.cell=");
+  page();
+  assert(std::strstr(json, "\"setup\":1}"));
+  // A moving Thing never needs setup, with or without a cell.
+  accept("thing.mobility=moving");
+  page();
+  assert(std::strstr(json, "\"thing\":{\"mobility\":\"moving\",\"setup\":0}}"));
+  // Worst case. Every field at its widest, a two digit cap and cell
+  // resolution, an 11 and a 12 character centre, a country, "moving" and a
+  // GNSS cell. The frame header takes 2 of the 482 byte budget.
+  opensensor::location::Cell finest = 0, gnss = 0;
+  assert(opensensor::location::from_degrees(-45.1234567, -170.1234567, 15,
+                                            finest));
+  assert(
+      opensensor::location::from_degrees(-45.1234567, -170.1234567, 8, gnss));
+  char text[opensensor::location::kCellTextBytes];
+  assert(opensensor::location::format_cell(finest, text, sizeof(text)));
+  accept(std::string("location.resolution=15\nlocation.country=EG\n"
+                     "location.cell=") +
+         text);
+  const auto worst = page({.gnss = true, .gnss_cell = gnss});
+  assert(std::strstr(json, "\"resolution\":15,\"cell_resolution\":15,"
+                           "\"lat\":-45.") &&
+         std::strstr(json, ",\"lon\":-170."));
+  assert(std::strlen(text) == 15 && worst < 480);
+  std::printf("%zu\n", worst);
 }
 
 void blob_round_trip() {
@@ -690,6 +753,8 @@ int main(int argc, char **argv) {
     persistence_failure();
   else if (test == "time-location")
     time_and_location();
+  else if (test == "setup")
+    setup_state();
   else if (test == "blob")
     blob_round_trip();
   else if (test == "old-keys")

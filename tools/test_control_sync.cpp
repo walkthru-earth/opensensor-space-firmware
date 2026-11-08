@@ -73,9 +73,10 @@ struct Peer {
   std::vector<Reply> successful;
   std::vector<Failure> errors;
   std::span<const char> descriptor{};
+  std::uint64_t (*gnss_cell)(void *) = nullptr;
 
   ossync::ControlReplies callbacks() {
-    return {this, payload_max, respond, error, descriptor};
+    return {this, payload_max, respond, error, descriptor, gnss_cell};
   }
   static std::uint16_t payload_max(void *context, ble::Link) {
     return static_cast<Peer *>(context)->payload;
@@ -132,6 +133,25 @@ void paged_configuration() {
                      : page == 1 ? "\"location\""
                                  : "\"ntp\"") != std::string::npos);
   }
+  // #147. Page 1 carries location.gnss_cell only when the board wires a
+  // receiver, empty while the reader has no fresh cell.
+  const auto page_one = [](std::uint64_t (*gnss_cell)(void *)) {
+    Peer peer;
+    peer.gnss_cell = gnss_cell;
+    handle(request(ble::kOpGetConfig, ble::Link::Ble, std::string(1, char(1))),
+           peer);
+    assert(peer.errors.empty() && peer.successful.size() == 1);
+    const auto &frame = peer.successful[0].bytes;
+    return std::string(frame.begin() + 2, frame.end());
+  };
+  assert(page_one(nullptr).find("gnss_cell") == std::string::npos);
+  assert(page_one([](void *) -> std::uint64_t {
+           return 0;
+         }).find("\"gnss_cell\":\"\"") != std::string::npos);
+  assert(page_one([](void *) -> std::uint64_t {
+           return 0x8828308281fffffULL;
+         }).find("\"gnss_cell\":\"8828308281fffff\"") != std::string::npos);
+  assert(page_one(nullptr).find("\"setup\":") != std::string::npos);
   for (const auto &body : {std::string(1, char(5)), std::string(2, char(0))}) {
     Peer peer;
     handle(request(ble::kOpGetConfig, ble::Link::Ble, body), peer);

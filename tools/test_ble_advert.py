@@ -78,11 +78,46 @@ def wire_uuid(value: bytes) -> str:
     return str(UUID(bytes=bytes(reversed(value))))
 
 
+def function_body(text: str, signature: str) -> str:
+    start = text.index(signature)
+    return text[start:text.index("\n}\n", start)]
+
+
+def check_setup_wiring(root: Path) -> None:
+    """The logger sets bit 6 from config::setup_needed() and republishes the
+    advert right after every handled SET_CONFIG (#147). The bit encoding and
+    the derived state have their own tests, this ties them together."""
+    logger = (root / "firmware/common/logger/src/os_logger.cpp").read_text()
+    advert = function_body(logger, "void publish_advert() {")
+    assert re.search(
+        r"if \(::config::setup_needed\(::config::location_settings\(\)\)\)\s*"
+        r"advert\.flags \|= ble::kAdvSetup;", advert), \
+        "publish_advert sets kAdvSetup from setup_needed()"
+    assert advert.index("kAdvSetup") < advert.index("ble::publish_advert(advert)"), \
+        "the setup bit is set before the advert is published"
+    control = function_body(logger, "void handle_control_request(")
+    assert re.search(
+        r"if \(ossync::handle_common_control\(request, control_replies\)\) \{"
+        r"[^{}]*?if \(request\.bytes\[0\] == ble::kOpSetConfig\)\s*publish_advert\(\);",
+        control), "a BLE or LAN SET_CONFIG republishes the advert at once"
+    worker = function_body(logger, "void storage_worker(void *) {")
+    serial = worker[worker.index("apply_config_hex(command.text + 19)"):]
+    assert re.match(
+        r"apply_config_hex\(command\.text \+ 19\);\s*if \(result\.ok\) \{\s*publish_advert\(\);",
+        serial), "a serial config-hex republishes the advert at once"
+    links = function_body(logger, "bool start_links(bool display_detected) {")
+    assert re.search(
+        r"ossync::begin\([^;]*\.ble_started;[^{}]*?if \(started\)\s*publish_advert\(\);"
+        r"\s*return started;", links), \
+        "start_links publishes the flag baseline right after BLE starts"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sanitize", action="store_true")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
+    check_setup_wiring(root)
     with tempfile.TemporaryDirectory(prefix="aq-ble-advert-") as directory:
         executable = Path(directory) / "advert"
         command = [
@@ -98,11 +133,11 @@ def main() -> None:
         info_sizes = check_info(root, executable)
         packets = [bytes.fromhex(line) for line in subprocess.check_output(
             [str(executable)], text=True).splitlines()]
-    assert len(packets) == 16
+    assert len(packets) == 17
     expected = [client.SERVICE, client.INFO, client.STATUS, client.LIVE,
                 client.CONTROL, client.RESPONSE]
     assert [wire_uuid(value) for value in packets[:6]] == expected
-    for index, packet in enumerate(packets[6:14]):
+    for index, packet in enumerate(packets[6:15]):
         assert len(packet) == 31
         fields = ad_fields(packet)
         assert set(fields) == {0x01, 0x21}
@@ -113,17 +148,17 @@ def main() -> None:
         assert len(payload) == 10 and payload[-2:] == b"\0\0"
         decoded = client.decode_advert(payload)
         assert decoded is not None
-        if index < 6:
+        if index < 7:
             assert decoded == {"ver": 1, "flags": [client.ADVERT_FLAGS[index]],
                                "fin": 0x89abcdef, "boot16": "7654"}
         else:
             assert decoded == {"ver": 1, "flags": [],
-                               "fin": 0 if index == 6 else 0xffffffff,
+                               "fin": 0 if index == 7 else 0xffffffff,
                                "boot16": "ffff"}
         # A platform receiving ADV without SCAN_RSP can still discover the board.
         assert client.advertises_sync_service(SimpleNamespace(
             service_uuids=[], service_data={service: payload}))
-    for packet, name in zip(packets[14:], ["OS-6b40", "12345678901"]):
+    for packet, name in zip(packets[15:], ["OS-6b40", "12345678901"]):
         assert len(packet) <= 31
         fields = ad_fields(packet)
         assert set(fields) == {0x09, 0x07}

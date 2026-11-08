@@ -1573,6 +1573,8 @@ void publish_advert() {
     advert.flags |= ble::kAdvLan;
   if (worker_failed.load())
     advert.flags |= ble::kAdvFail;
+  if (::config::setup_needed(::config::location_settings()))
+    advert.flags |= ble::kAdvSetup;
   ble::publish_advert(advert);
 }
 
@@ -1761,6 +1763,18 @@ ossync::ControlReplies control_replies{
     [](void *, ble::Link, ble::Op op, ble::Error code, const char *detail) {
       return respond_error(op, code, detail);
     }};
+
+// GET_CONFIG page 1 location.gnss_cell, on the worker. begin() wires it only
+// when the board has a gnss_fix hook. The hook copies the reader's newest fix
+// without blocking, and only a fresh res 8 cell within the owner cap leaves.
+std::uint64_t gnss_readback(void *) {
+  opensensor::gnss::Fix fix;
+  if (!hooks.gnss_fix(fix, hooks.context))
+    return 0;
+  const int cap = ::config::location_settings().resolution;
+  return opensensor::gnss::readback_cell(fix, esp_timer_get_time(), cap)
+      .value_or(0);
+}
 
 std::int64_t uptime_seconds() { return esp_timer_get_time() / 1000000; }
 
@@ -2127,9 +2141,15 @@ void handle_control_request(const ble::ControlRequest &request,
       request.link_generation != link_generation(request.link, request.peer))
     return;
   if (archive_session.handle(request, state.storage_ready) ||
-      ossync::ota::handle(request, control_replies) ||
-      ossync::handle_common_control(request, control_replies))
+      ossync::ota::handle(request, control_replies))
     return;
+  if (ossync::handle_common_control(request, control_replies)) {
+    // A cell or mobility change flips the setup bit now, not at the next
+    // sample. The BLE host applies it and starts its 60 s fast window.
+    if (request.bytes[0] == ble::kOpSetConfig)
+      publish_advert();
+    return;
+  }
   const std::size_t body_length = request.length - 1;
   switch (request.bytes[0]) {
   case ble::kOpSetTime: {
@@ -2486,10 +2506,11 @@ void storage_worker(void *) {
         oslog.println("OS WIFI_PROFILE ERROR reason=capacity");
     } else if (std::strncmp(command.text, "parquet config-hex ", 19) == 0) {
       const auto result = apply_config_hex(command.text + 19);
-      if (result.ok)
+      if (result.ok) {
+        publish_advert(); // the setup bit flips now, as after a BLE SET_CONFIG
         opensensor::console::printf("OS CONFIG ok=1 reboot_required=%u\n",
                                     result.reboot_required ? 1U : 0U);
-      else
+      } else
         oslog.printf("OS CONFIG ok=0 key=%s\n", result.bad_key);
       std::memset(command.text, 0, sizeof(command.text));
     } else if (std::strcmp(command.text, "parquet status") == 0) {
@@ -2998,6 +3019,7 @@ bool begin(const Config &configuration, const Hooks &board_hooks,
     return false;
   }
   control_replies.descriptor = {config.descriptor, config.descriptor_bytes};
+  control_replies.gnss_cell = hooks.gnss_fix ? gnss_readback : nullptr;
   sample_us = cadence::period_us(config.sample_interval_ms);
   for (std::size_t i = 0; i < field_count; ++i) {
     const auto &field = config.fields[i];
@@ -3270,6 +3292,12 @@ bool start_links(bool display_detected) {
       ossync::begin(identity, enqueue_request, display_detected, sync_config)
           .ble_started;
   radio_check = started ? selftest::Check::Pass : selftest::Check::Fail;
+  // The worker's startup publish ran before BLE was enabled and was dropped,
+  // and the next sample is up to 10 s away. Publishing here makes the current
+  // flags the flip baseline before a peer can connect, authenticate and send
+  // SET_CONFIG, so a setup change gets its own flag_window_ms (#147).
+  if (started)
+    publish_advert();
   return started;
 }
 

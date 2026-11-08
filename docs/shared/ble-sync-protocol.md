@@ -101,12 +101,12 @@ Service data AD (type `0x21`) under the service UUID `255f595e-0001-…`, in the
 | Offset | Field | Meaning |
 | --- | --- | --- |
 | 0 | `ver` u8 | payload version, **1**; a phone ignores payloads with another version |
-| 1 | `flags` u8 | bit 0 `no_utc` — no UTC anchor this boot (`status.utc == 0`): rows are landing in the `unsynced` tree, a phone in range should send `SET_TIME` now · bit 1 `new_files` — a file finalized since the last `LIST` answered on any link · bit 2 `sd` (`status.sd`) · bit 3 `lan` — Wi-Fi connected and the mDNS/TCP server up, so a woken phone knows whether the LAN browse is worth its 10 s · bit 4 `fail` (`status.fail`) · bit 5 `clk_restored` — `status.clk == 2`, dated from the RTC only, a time refresh is welcome but not urgent · bits 6–7 reserved, 0 |
+| 1 | `flags` u8 | bit 0 `no_utc`, no UTC anchor this boot (`status.utc == 0`). Rows are landing in the `unsynced` tree, a phone in range should send `SET_TIME` now · bit 1 `new_files`, a file finalized since the last `LIST` answered on any link · bit 2 `sd` (`status.sd`) · bit 3 `lan`, Wi-Fi connected and the mDNS/TCP server up, so a woken phone knows whether the LAN browse is worth its 10 s · bit 4 `fail` (`status.fail`) · bit 5 `clk_restored`, `status.clk == 2`, dated from the RTC only, a time refresh is welcome but not urgent · bit 6 `setup`, the Thing needs setup, so any phone in range should offer the setup wizard (GET_CONFIG page 1 `thing.setup`) · bit 7 reserved, 0 |
 | 2–5 | `fin` u32 | `status.fin`, files finalized this boot |
 | 6–7 | `boot16` u16 | the last four hex digits of `info.boot`, so a phone notices a reboot (`fin` restarts at 0) |
 | 8–9 | reserved | 0. **Never an IP address or port**: advertisements are unauthenticated, and a forged one would send the phone's LAN token to an attacker's socket. Discovery stays mDNS |
 
-Rules: `new_files` is set when a window closes or a `FLUSH` finalizes a file and cleared when a `LIST` has been answered on any link and no file finalized during its walk (that phone now knows the file exists; a phone that then fails its download is covered by its own periodic run). `no_utc` and `clk_restored` are mutually exclusive; both clear after a host `SET_TIME`. Advertising runs in two stages (see [link parameters](#link-parameters-and-notify-flow)): fast (30 to 60 ms) for 30 s after enable, disconnect or a wake, and for 60 s after any flag flips, so a low-power scanner filtering on the flag byte still sees the change within a minute. It is slow (1 to 1.28 s) otherwise. `pixi run ble-sync scan` prints the decoded payload (`adv_ver= flags= fin= boot16=`).
+Rules: `new_files` is set when a window closes or a `FLUSH` finalizes a file and cleared when a `LIST` has been answered on any link and no file finalized during its walk (that phone now knows the file exists; a phone that then fails its download is covered by its own periodic run). `no_utc` and `clk_restored` are mutually exclusive; both clear after a host `SET_TIME`. `setup` is derived, never stored. It is set while `thing.mobility` is `fixed` and `location.cell` is empty, and clears as soon as a `SET_CONFIG` sets a cell or `thing.mobility=moving`. A moving Thing never sets it. Advertising runs in two stages (see [link parameters](#link-parameters-and-notify-flow)): fast (30 to 60 ms) for 30 s after enable, disconnect or a wake, and for 60 s after any flag flips, so a low-power scanner filtering on the flag byte still sees the change within a minute. It is slow (1 to 1.28 s) otherwise. `pixi run ble-sync scan` prints the decoded payload (`adv_ver= flags= fin= boot16=`).
 
 ### Link parameters and notify flow
 
@@ -114,7 +114,7 @@ These are `ble::Options` defaults, set per board through `ossync::ServiceConfig:
 
 | Item | Device behavior |
 | --- | --- |
-| Advertising | Fast 30 to 60 ms for `fast_window_ms` (30 s) after the stack starts, after every disconnect and after `ble::wake_advertising()`, and for `flag_window_ms` (60 s) after an advert flag byte changes. A change to `fin` alone does not speed it up. The first advert the logger publishes after boot sets the baseline and is no flip, so a boot advertises fast for 30 s, not 60 s. Then slow 1000 to 1280 ms with no end. The serial log records `BLE ADV mode=fast` or `mode=slow`. There is no separate pairing window, because passkey pairing happens on a connection. |
+| Advertising | Fast 30 to 60 ms for `fast_window_ms` (30 s) after the stack starts, after every disconnect and after `ble::wake_advertising()`, and for `flag_window_ms` (60 s) after an advert flag byte changes. A change to `fin` alone does not speed it up. The first advert the logger publishes after boot sets the baseline and is no flip, so a boot advertises fast for 30 s, not 60 s. The logger publishes it as soon as the stack starts, before any peer can send SET_CONFIG, so a setup change right after boot still gets its 60 s. Then slow 1000 to 1280 ms with no end. The serial log records `BLE ADV mode=fast` or `mode=slow`. There is no separate pairing window, because passkey pairing happens on a connection. |
 | Data length | Once the link is encrypted and authenticated, the device requests LE data length 251 octets (2120 µs), unless the central already set 251. The device sends no link request while it processes the connection, because a request there timed out while a bonded phone started encryption and the host reset that followed crashed the board. |
 | PHY | 2 s after the data length request, the device prefers LE 2M for TX and RX. An MTU exchange, connection update or PHY update from the central starts the 2 s over, and a link already on 2M both ways gets no request. The central decides, and 1M stays valid. |
 | Connection interval | After the PHY update completes (or 2 s without one, or at once when the PHY step sent no request), the device requests 15 to 30 ms, latency 0, 4 s supervision timeout, unless the central already chose an interval in that range. PHY and interval requests never overlap, because both carry an instant and the ESP32-S3 controller asserted when a central's own update crossed them. After 60 s with no `control` write and no `response` frame it requests 100 to 200 ms, latency 4, 4 s. The next `control` write requests the active values again. A request the stack refuses because another procedure is running is tried again every second. Both sets meet Apple's accessory limits. The central decides, so a phone must never assume either. |
@@ -145,7 +145,7 @@ Base UUID `255f595e-XXXX-47ed-8e0d-59994199b680`; the 16-bit field selects the a
 ### `info` (read)
 
 ```json
-{"proto":3,"fw":"idf-cores3-parquet-v6.23","schema":"cores3-telemetry-v6","cols":81,
+{"proto":3,"fw":"idf-cores3-parquet-v6.24","schema":"cores3-telemetry-v6","cols":81,
  "dict":"<64 hex, SHA-256 of telemetry_fields.inc>","desc":"<first 16 hex of desc>",
  "thing":"<uuid>","dev":"<12 hex device_id>","boot":"<32 hex boot id>","max_read":16384}
 ```
@@ -153,7 +153,7 @@ Base UUID `255f595e-XXXX-47ed-8e0d-59994199b680`; the 16-bit field selects the a
 `schema`, `cols`, `dict` and `fw` describe the consuming board image. The example
 is CoreS3, while Waveshare advertises its own 62-column schema
 `waveshare-sim7670g-telemetry-v6`, dictionary `waveshare-sim7670g-telemetry-v8`
-and firmware `idf-waveshare-parquet-v2.17`. Clients use that identity to interpret shortened LIVE keys. `thing`, `dev`
+and firmware `idf-waveshare-parquet-v2.18`. Clients use that identity to interpret shortened LIVE keys. `thing`, `dev`
 and `boot` match the archive identities. `max_read` is the largest `length` the
 device honours per `READ`. Firmware reports `proto=3` and older framing is incompatible.
 
@@ -369,7 +369,7 @@ the requested object means unsupported, not an unset location.
 | Page | Response JSON |
 | --- | --- |
 | 0 or empty | Legacy `ble`, `wifi`, `lan`, `sensor` snapshot |
-| 1 | `{"location":{"cell":"","resolution":8,"cell_resolution":null,"lat":null,"lon":null,"country":""},"thing":{"mobility":"fixed"}}`; populated cells return their actual resolution and derived center in degrees |
+| 1 | `{"location":{"cell":"","resolution":8,"cell_resolution":null,"lat":null,"lon":null,"country":"","gnss_cell":""},"thing":{"mobility":"fixed","setup":1}}`. Populated cells return their actual resolution and derived center in degrees. `thing.setup` is 1 while the advert `setup` bit is set, else 0. `location.gnss_cell` is present only on a board with a GNSS receiver (Waveshare V2, omitted on CoreS3). It holds the newest fix as a res 8 cell, or `""` without a fix from the last 15 s or when `location.resolution` is below 8. It is never a coordinate and never stored. The worst case page is 198 bytes, checked by `pixi run config-test` |
 | 2 | `ntp` policy (`on`, `dhcp`, `public_fallback`, `interval_s`) plus `state`, `running`, `anchored`, `age_s` (null before sync), `stale`, `source`, `last_public`, `sync_count`, `error` |
 | 3 | `{"ntp":{"server1":""}}` |
 | 4 | `{"ntp":{"server2":""}}` |

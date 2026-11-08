@@ -73,7 +73,7 @@ Payload, little-endian, all fields present from byte 0 so a mask can address the
 | Offset | Field | Meaning |
 | --- | --- | --- |
 | 0 | `ver` u8 | advertising payload version, `1` |
-| 1 | `flags` u8 | bit 0 `no_utc` (no UTC anchor this boot: rows are landing in `unsynced`) · bit 1 `new_files` (a file finalized since the last completed `LIST` on any link) · bit 2 `sd` mounted · bit 3 `lan` (Wi-Fi connected and `lan.on`, so a woken phone knows whether the 10 s mDNS browse is worth it) · bit 4 `fail` (storage worker not writing, including a full card or a pending retry, see `status.sd_state`) · bit 5 `clk_restored` (`clk == 2`: dated from the RTC, a refresh is welcome but not urgent) |
+| 1 | `flags` u8 | bit 0 `no_utc` (no UTC anchor this boot: rows are landing in `unsynced`) · bit 1 `new_files` (a file finalized since the last completed `LIST` on any link) · bit 2 `sd` mounted · bit 3 `lan` (Wi-Fi connected and `lan.on`, so a woken phone knows whether the 10 s mDNS browse is worth it) · bit 4 `fail` (storage worker not writing, including a full card or a pending retry, see `status.sd_state`) · bit 5 `clk_restored` (`clk == 2`: dated from the RTC, a refresh is welcome but not urgent) · bit 6 `setup` (a fixed Thing with no `location.cell`, so any phone opens the setup wizard, see [time and location](time-and-location.md#setup-needed)) |
 | 2–5 | `fin` u32 | files finalized this boot, same counter as `status.fin` |
 | 6–7 | `boot16` u16 | low 16 bits of the boot id, so the phone sees a reboot (`fin` restarts at 0) |
 | 8–9 | spare | reserved; **not** an IP address (see security) |

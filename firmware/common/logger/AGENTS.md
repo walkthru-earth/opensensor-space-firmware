@@ -75,7 +75,10 @@ initialization and each board's schema/provenance remain in its own trial.
   the result and the mark. Keep the verdict pure in
   `firmware/common/src/boot_self_test.h`.
 - `Hooks::gnss_fix` is optional and runs on the main loop once per row. It
-  copies the newest H3 fix and never blocks or touches the receiver UART. A
+  also runs on the storage worker for GET_CONFIG page 1 `location.gnss_cell`,
+  so it must be safe from any task, as `gnss::latest()` is, and is never
+  called from an ISR. It copies the newest H3 fix and never blocks or touches
+  the receiver UART. A
   board without a receiver leaves it null, so a moving Thing writes location
   nulls. The per row source rule lives in `firmware/common/gnss`.
 - `os_sensor_module.h` is the sensor module API. Generated `<id>_module.h`

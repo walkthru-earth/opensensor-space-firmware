@@ -9,6 +9,42 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## The board says when it needs setup (fix-147-setup-bit, issue #147)
+
+**Needs a matched reflash and an app change (mobile #272).** CoreS3 moves to
+`idf-cores3-parquet-v6.24` and Waveshare to `idf-waveshare-parquet-v2.18`.
+Columns, field ids, LIVE keys, decimals, status JSON, the schema and
+dictionary strings and the `dict` and `desc` digests do not change. Rows still
+log with null location until a cell is set.
+
+**What changed.**
+
+- Advert flags bit 6 `setup` is set while `thing.mobility` is `fixed` and
+  `location.cell` is empty. It clears as soon as a `SET_CONFIG` sets a cell or
+  `thing.mobility=moving`, and the flip starts the 60 s fast advertising
+  window. A moving Thing never sets it. Nothing new is stored, the board
+  derives it from the location settings.
+- GET_CONFIG page 1 ends with `"thing":{"mobility":"fixed","setup":1}`.
+  `setup` is 1 or 0 and matches the advert bit.
+- Waveshare V2 page 1 adds `location.gnss_cell`, the newest receiver fix as an
+  H3 res 8 cell, or `""` without a fix from the last 15 s or when
+  `location.resolution` is below 8. It is never a coordinate. CoreS3 has no
+  receiver and omits the key.
+- The CoreS3 footer shows `Setup needed, open the OpenSensor app` in yellow
+  while the bit is set. Page 1 stays under 480 bytes, 198 at worst.
+
+**Why.** Workers install about 18 Things on site (owner decision
+2026-11-08). Any phone that sees the bit can open the setup wizard without
+knowing the board first, and the GNSS readback lets the wizard show the
+board's own cell beside the map picker.
+
+**What the app must do.** Decode advert bit 6 as `setup` and offer the setup
+wizard for that board. Read page 1 `thing.setup` after connecting, and read it
+again after the wizard's `SET_CONFIG` to confirm it is 0. Treat a missing
+`location.gnss_cell` as "no receiver" and `""` as "no fresh fix". Show a
+`gnss_cell` as a suggestion on the map only, never write it to `location.cell`
+without the owner confirming the cell. See mobile #272.
+
 ## Moving Things write GNSS cells or nulls (yharby/gnss-moving-thing, issue #83)
 
 **Needs a matched reflash, app change is small.** Waveshare firmware moves to

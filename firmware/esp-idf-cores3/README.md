@@ -1,7 +1,7 @@
 # CoreS3 native ESP-IDF logger
 
 The current source is a pure **ESP-IDF 6.1** application, firmware identity
-**`idf-cores3-parquet-v6.23`**, with an **81-column** CoreS3 schema
+**`idf-cores3-parquet-v6.24`**, with an **81-column** CoreS3 schema
 `cores3-telemetry-v6` and dictionary `cores3-telemetry-v7`. The original 77
 columns retain their order and types. Four nullable location fields follow,
 `h3_cell_id`, `h3_resolution`, `location_source` and the WKB Point `geometry`.
@@ -258,7 +258,7 @@ A physical RST press makes this CoreS3 disappear and re-enumerate on macOS. The 
 6. microSD mount on the display-shared SPI bus, without formatting;
 7. PMSA003 framing, length and checksum on GPIO18 RX and GPIO17 TX.
 
-After bring-up, the UART parser continues draining the active PMS stream. Every 10 seconds the LCD and serial output refresh from the latest checksum-valid frame. The LCD has three pages: atmospheric and CF=1 PM1.0/PM2.5/PM10 mass values; all six particle-count thresholds with sensor and parser integrity; and live SD, power, heap, PSRAM and uptime health. Swipe vertically or tap to move between pages. Page changes redraw immediately without changing the measurement cadence.
+After bring-up, the UART parser continues draining the active PMS stream. Every 10 seconds the LCD and serial output refresh from the latest checksum-valid frame. The LCD has four pages: atmospheric and CF=1 PM1.0/PM2.5/PM10 mass values; all six particle-count thresholds with sensor and parser integrity; live SD, power, heap, PSRAM and uptime health; and Bluetooth. Swipe vertically or tap to move between pages. Page changes redraw immediately without changing the measurement cadence. While the board needs setup (a fixed Thing with no `location.cell`, advert flags bit 6), the footer of every page reads `Setup needed, open the OpenSensor app` in place of the swipe hint. It clears on the next redraw after a `SET_CONFIG` sets a cell or switches the Thing to moving.
 
 The scan excludes reserved I2C addresses `0x00` through `0x07`. Probing that range stopped the ESP32-S3 controller during the first hardware run; M5Unified's own scanner carries the same restriction.
 
