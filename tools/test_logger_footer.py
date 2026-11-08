@@ -143,13 +143,16 @@ def function_body(source: str, signature: str) -> str:
     return source[start:end]
 
 
-# The deployment id path (#148). collect() snapshots it per sample,
-# create_file() copies the first row's value into the open file,
-# finalize_file() hands that copy to the footer, and fits_batch() closes the
-# file when it changes, exactly as it does for the location.
+# The deployment id path (#148). collect() snapshots it per sample with the
+# location from one sample_labels() copy (#151), create_file() copies the
+# first row's value into the open file, finalize_file() hands that copy to the
+# footer, and fits_batch() closes the file when it changes, exactly as it does
+# for the location.
+COLLECT = "void collect(std::int64_t now, std::int64_t scheduled)"
 DEPLOYMENT_WIRING = (
-    ("void collect(std::int64_t now, std::int64_t scheduled)",
-     "row.deployment = ::config::deployment_id();", 1),
+    (COLLECT, "const auto labels = ::config::sample_labels();", 1),
+    (COLLECT, "row.location = labels.location;", 1),
+    (COLLECT, "row.deployment = labels.deployment;", 1),
     ("bool create_file(OutputFile &target", "target.deployment = first_row.deployment;", 1),
     ("bool finalize_file(OutputFile &target)", ".deployment = target.deployment.text.data()}", 1),
     ("bool fits_batch(const Sample &row, std::size_t count)", "same_file_labels(row, open);", 1),
@@ -172,6 +175,11 @@ def check_deployment(logger: str, labels: str, footer: str) -> None:
         logger, "bool fits_batch(const Sample &row, std::size_t count)"), \
         "fits_batch() never rewrites a sample's deployment id"
     assert logger.count("row.deployment =") == 1, "only collect() assigns row.deployment"
+    collect = function_body(logger, COLLECT)
+    for separate in ("::config::get()", "::config::deployment_id()",
+                     "::config::location_settings()"):
+        assert separate not in collect, \
+            f"collect() reads both labels from one sample_labels() copy, never {separate}"
     assert logger.count("same_location(") == 0, \
         "the logger compares file labels only through same_file_labels()"
     assert len(FILE_LABELS.findall(labels)) == 1, \
@@ -194,7 +202,13 @@ def prove_deployment(logger: str, labels: str, footer: str) -> None:
         "deployment not compared": (logger, labels.replace(label_text, label_text.replace(
             " &&\n         config::same_deployment(a.deployment, b.deployment)", "")), footer),
         "deployment not snapshotted": (logger.replace(
-            "  row.deployment = ::config::deployment_id();\n", ""), labels, footer),
+            "  row.deployment = labels.deployment;\n", ""), labels, footer),
+        "labels read under two locks": (logger.replace(
+            "  row.deployment = labels.deployment;\n",
+            "  row.deployment = ::config::deployment_id();\n"), labels, footer),
+        "location read apart": (logger.replace(
+            "  row.location = labels.location;\n",
+            "  row.location = ::config::get().location;\n"), labels, footer),
         "file keeps no snapshot": (logger.replace(
             "  target.deployment = first_row.deployment;\n", ""), labels, footer),
         "footer reads live value": (logger.replace(

@@ -9,9 +9,11 @@ import asyncio
 import contextlib
 import hashlib
 import io
+import json
 import binascii
 from pathlib import Path
 import struct
+import sys
 import tempfile
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -44,6 +46,11 @@ GOLDEN_ABORTED_READ = bytes.fromhex("4d03")
 GOLDEN_LIST_SINCE = bytes.fromhex("10d4c3b2a1db25350100112233445566778899aabbccddeeff0700000000000000")
 GOLDEN_LIST_SINCE_END = bytes.fromhex("4e020000000000e80300000a00000002d4c3b2a1dc253501"
                                       "00112233445566778899aabbccddeeff2a00000000000000")
+
+
+# GET_CONFIG page 6, the owner description, with two byte UTF-8 characters.
+PAGE6 = ('{"owner":{"description":"Air near the Nile, '
+         '\u0627\u0644\u0642\u0627\u0647\u0631\u0629"}}').encode()
 
 
 class FakeClient:
@@ -80,6 +87,31 @@ class FakeClient:
         self.descriptor_next = []
         self.descriptor_stale = False
         self.descriptor_requests = []
+        # CONFIG replies as BLE CONFIG_CHUNK frames of this slice size, as the
+        # firmware sends them when the JSON does not fit the ATT payload.
+        # config_drop names the chunk index never sent, config_skew changes the
+        # total from that chunk index on, config_short lowers the total of
+        # every chunk so the last slice runs past it.
+        self.config_chunk = None
+        self.config_drop = None
+        self.config_skew = None
+        self.config_short = 0
+        # config_body replaces every CONFIG body, to send malformed JSON.
+        self.config_body = None
+
+    def emit_config(self, flags: int, text: bytes):
+        if self.config_body is not None:
+            text = self.config_body
+        if self.config_chunk is None:
+            self.emit(bytes([ble.F_CONFIG, flags]) + text)
+            return
+        for index, offset in enumerate(range(0, len(text), self.config_chunk)):
+            if index == self.config_drop:
+                continue
+            total = len(text) - self.config_short
+            total += 1 if self.config_skew is not None and index >= self.config_skew else 0
+            self.emit(bytes([ble.F_CONFIG_CHUNK, flags]) + struct.pack("<HH", total, offset)
+                      + text[offset:offset + self.config_chunk])
 
     async def start_notify(self, _uuid, callback):
         self.callback = callback
@@ -144,17 +176,19 @@ class FakeClient:
             assert len(data) in (1, 2)
             page = data[1] if len(data) == 2 else 0
             if page == 1:
-                self.emit(bytes([ble.F_CONFIG, 0]) + b'{"location":{"cell":"","resolution":5,"cell_resolution":null,"lat":null,"lon":null,"country":""}}')
+                self.emit_config(0, b'{"location":{"cell":"","resolution":5,"cell_resolution":null,"lat":null,"lon":null,"country":""}}')
             elif page == 5:
-                self.emit(bytes([ble.F_CONFIG, 0]) + b'{"owner":{"title":"","provider":"","url":""},"thing":{"deployment_id":"cairo-07"}}')
+                self.emit_config(0, b'{"owner":{"title":"","provider":"","url":""},"thing":{"deployment_id":"cairo-07"}}')
+            elif page == 6:
+                self.emit_config(0, PAGE6)
             else:
-                self.emit(bytes([ble.F_CONFIG, 0]) + CONFIG)
+                self.emit_config(0, CONFIG)
         elif op == ble.OP_SET_CONFIG:
             lines = data[1:].decode().split("\n")
             if any(line.startswith("ble.pin=") and len(line) != len("ble.pin=") + 6 for line in lines):
                 self.emit(bytes([ble.F_ERROR, op, 12]) + b"ble.pin")
                 return
-            self.emit(bytes([ble.F_CONFIG, 1]) + CONFIG.replace(b'"random"', b'"fixed"'))
+            self.emit_config(1, CONFIG.replace(b'"random"', b'"fixed"'))
         elif op == ble.OP_WIFI_SCAN:
             self.emit(bytes([ble.F_WIFI_AP]) + struct.pack("<bBB", -58, 3, 6) + b"home")
             self.emit(bytes([ble.F_WIFI_AP]) + struct.pack("<bBB", -80, 0, 11) + b"cafe")
@@ -302,12 +336,18 @@ async def run():
     assert location["location"]["cell"] == "" and location["location"]["lat"] is None
     owner = await session.get_config(5)
     assert owner["thing"]["deployment_id"] == "cairo-07", owner
-    try:
-        await session.get_config(ble.LAST_CONFIG_PAGE + 1)
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("Invalid configuration page must fail before transmission")
+    assert ble.LAST_CONFIG_PAGE == 6
+    description = await session.get_config(6)
+    assert description == json.loads(PAGE6) | {"reboot_required": False}, description
+    writes = client.writes
+    for page in (7, -1):
+        try:
+            await session.get_config(page)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"configuration page {page} must fail before transmission")
+    assert client.writes == writes, "an invalid page is never sent"
     changed = await session.set_config(["ble.pair=fixed", "ble.pin=654321"])
     assert changed["ble"]["pair"] == "fixed" and changed["reboot_required"] is True, changed
     try:
@@ -330,7 +370,110 @@ async def run():
     await run_lan_snapshot_deadlines()
     await run_lan_bye()
     await run_descriptor()
+    await run_config_chunks()
     await run_ota()
+
+
+async def run_config_chunks():
+    """BLE CONFIG_CHUNK replies (#151): assembled before decoding, a UTF-8
+    character split across chunks, and a gap, a changed total or a missing
+    last chunk fail instead of returning partial JSON."""
+    slice_bytes = 7
+    split = [offset for offset in range(slice_bytes, len(PAGE6), slice_bytes)
+             if PAGE6[offset] & 0xC0 == 0x80]
+    assert split, "a chunk boundary falls inside a UTF-8 character"
+    client = FakeClient()
+    client.config_chunk = slice_bytes
+    session = ble.Session(client)
+    await session.start()
+    assert await session.get_config(6) == json.loads(PAGE6) | {"reboot_required": False}
+    legacy = await session.get_config()
+    assert legacy["ble"]["pair"] == "random" and legacy["reboot_required"] is False, legacy
+    changed = await session.set_config(["ble.pair=fixed", "ble.pin=654321"])
+    assert changed["ble"]["pair"] == "fixed" and changed["reboot_required"] is True, changed
+
+    async def refused(**fake):
+        client = FakeClient()
+        client.config_chunk = slice_bytes
+        for key, value in fake.items():
+            setattr(client, key, value)
+        session = ble.Session(client)
+        session.frame_timeout = 0.05
+        await session.start()
+        try:
+            await session.get_config(6)
+        except ble.ProtocolError as error:
+            return str(error)
+        raise AssertionError(f"{fake} must not decode")
+
+    assert "CONFIG_CHUNK offset 14, expected 7" in await refused(config_drop=1)
+    last = -(-len(PAGE6) // slice_bytes) - 1
+    assert "no response frame within deadline" in await refused(config_drop=last)
+    assert "flags or total changed" in await refused(config_skew=2)
+    # Every chunk names the same short total, so only the last slice runs
+    # past it. That fails at once instead of waiting for the deadline.
+    short = 2
+    assert 0 < short < len(PAGE6) - last * slice_bytes, "the overshoot is in the last slice"
+    overshoot = f"slice of {len(PAGE6) - last * slice_bytes} bytes at {last * slice_bytes}"
+    assert overshoot + f" does not fit total {len(PAGE6) - short}" in await refused(config_short=short)
+    # A body that is not UTF-8 JSON or not an object is a ProtocolError, in
+    # one CONFIG frame or assembled from chunks, so the CLI prints FAIL.
+    malformed = {b'{"a":"\xff"}': "not valid UTF-8 JSON", '{"a":1}'.encode("utf-16"): "not valid UTF-8 JSON",
+                 b'{"owner":': "not valid UTF-8 JSON",
+                 b"[1,2]": "CONFIG JSON is list, not an object", b'"x"': "CONFIG JSON is str, not an object"}
+    for body, expected in malformed.items():
+        for chunk in (None, 2):
+            assert expected in await refused(config_body=body, config_chunk=chunk), (body, chunk)
+
+    async def malformed_connect(_args):
+        client = FakeClient()
+        client.config_body = b"[]"
+        client.disconnect = AsyncMock()
+        session = ble.Session(client)
+        await session.start()
+        return client, session
+
+    with patch.object(ble, "connect", malformed_connect), \
+            patch.object(sys, "argv", ["ble_sync.py", "config", "--page", "6"]), \
+            contextlib.redirect_stderr(io.StringIO()) as err:
+        try:
+            await asyncio.to_thread(ble.main)
+        except SystemExit as error:
+            assert error.code == 1, error
+        else:
+            raise AssertionError("a list CONFIG must fail the CLI")
+    assert err.getvalue() == "FAIL CONFIG JSON is list, not an object\n", err.getvalue()
+
+    # The CLI accepts page 6, sends it and prints the assembled JSON.
+    seen = []
+
+    async def record(args):
+        seen.append(args.page)
+
+    for argv in (["ble_sync.py", "config", "--page", "6"], ["ble_sync.py", "config"]):
+        with patch.object(ble, "cmd_config", record), patch.object(sys, "argv", argv):
+            await asyncio.to_thread(ble.main)
+    assert seen == [6, 0], seen
+    with patch.object(sys, "argv", ["ble_sync.py", "config", "--page", "7"]), \
+            contextlib.redirect_stderr(io.StringIO()):
+        try:
+            await asyncio.to_thread(ble.main)
+        except SystemExit as error:
+            assert error.code == 2, error
+        else:
+            raise AssertionError("--page 7 must be refused")
+    client = FakeClient()
+    client.config_chunk = slice_bytes
+    client.disconnect = AsyncMock()
+    session = ble.Session(client)
+    await session.start()
+    with patch.object(ble, "connect", AsyncMock(return_value=(client, session))), \
+            contextlib.redirect_stdout(io.StringIO()) as out:
+        await ble.cmd_config(SimpleNamespace(page=6))
+    assert json.loads(out.getvalue()) == json.loads(PAGE6) | {"reboot_required": False}, out.getvalue()
+    assert client.disconnect.await_count == 1
+    print("PASS ble_sync CONFIG_CHUNK: page 6 and legacy replies assembled, UTF-8 split across chunks, "
+          "gap, changed total, slice past total, missing last chunk and malformed JSON refused, CLI --page 6 accepted, 7 refused, bad JSON prints FAIL")
 
 
 def descriptor_offsets(client):

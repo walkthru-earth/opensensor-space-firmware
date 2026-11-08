@@ -117,9 +117,6 @@ bool reboot_required();
 bool apply_lines(const char *text, std::size_t length, char *bad_key,
                  std::size_t bad_key_size, Actions &actions);
 
-// Replaces the LAN token with fresh random bytes and saves.
-bool rotate_token();
-
 struct WifiView {
   const char *state; // off | connecting | connected | failed
   const char *ip;    // dotted quad or ""
@@ -168,7 +165,10 @@ enum class [[nodiscard]] OwnerValueError : std::uint8_t {
   TooLong,  // more bytes than the key allows
   Encoding, // not valid UTF-8
   Control,  // a C0 or C1 control character or DEL
-  Scheme,   // owner.url without https:// and a letter or digit after it
+  Scheme,   // owner.url without https:// and a host that starts with a
+            // letter or digit
+  UserInfo, // owner.url with an @ after https:// and before the first /,
+            // ? or # or the end
   Charset,  // a byte outside the key's character set
   Reserved, // thing.deployment_id with a hyphen at an end, or "unknown"
 };
@@ -196,6 +196,13 @@ check_owner_value(OwnerKey key, std::string_view value);
 // Copies of the published owner settings, safe from any task.
 OwnerSettings owner_settings();
 DeploymentId deployment_id();
+// The location and deployment id a sample carries, copied under one lock so a
+// row never pairs one request's location with another's deployment id.
+struct SampleLabels {
+  LocationSettings location;
+  DeploymentId deployment;
+};
+SampleLabels sample_labels();
 // True when both name the same deployment, the file split rule.
 bool same_deployment(const DeploymentId &, const DeploymentId &);
 

@@ -24,6 +24,12 @@ portMUX_TYPE settings_mutex = portMUX_INITIALIZER_UNLOCKED;
 Settings current;
 Settings booted; // pair/pin the running BLE stack was started with
 bool persistent = false;
+// A record whose save failed and whose write back of the previous value failed
+// too, so flash may hold the refused value. The next SET_CONFIG writes it again
+// from the live snapshot, even when its keys did not change (#151). `load`
+// clears both, because the live snapshot then matches flash.
+bool cfg_unsure = false;
+bool owner_unsure = false;
 SensorPolicy sensor_policy; // installed by the board before load()
 
 std::uint32_t random_pin() { return esp_random() % 1000000U; }
@@ -428,6 +434,20 @@ bool save_locked(const Settings &settings) {
   return ok;
 }
 
+// Saves `cfg`. On failure the previous record is written back, best effort,
+// because the failed save may have committed before its readback failed. When
+// that fails too the record stays unsure until a later save of it succeeds.
+[[nodiscard]] bool save_cfg(const Settings &next, const Settings &previous) {
+  if (save_locked(next)) {
+    cfg_unsure = false;
+    return true;
+  }
+  cfg_unsure = !save_locked(previous);
+  if (cfg_unsure)
+    oslog.println("CONFIG ERROR operation=cfg-rollback");
+  return false;
+}
+
 void clear_sensor(Settings &settings) {
   settings.sensor_vendor[0] = '\0';
   settings.sensor_model[0] = '\0';
@@ -662,12 +682,19 @@ check_url(std::string_view value) {
         return static_cast<unsigned char>(c) < 0x20 || c == 0x7f;
       }))
     return std::unexpected(OwnerValueError::Control);
-  // The host, or the user info before it, starts with a letter or digit.
-  // That refuses https://@, https://: and https:///x but still allows an @
-  // later, as in https://medium.com/@name.
+  // The host starts with a letter or digit. That refuses https://@,
+  // https://: and https:///x.
   if (!value.starts_with(kScheme) || value.size() == kScheme.size() ||
       !ascii_alnum(value[kScheme.size()]))
     return std::unexpected(OwnerValueError::Scheme);
+  // The authority runs from after https:// to the first /, ? or # or the
+  // end, and an @ inside it starts user
+  // info. Page 5 echoes the link and STAC publishes it, so user info is never
+  // stored. An @ in the path, query or fragment is fine, as in
+  // https://medium.com/@name.
+  const auto rest = value.substr(kScheme.size());
+  if (rest.substr(0, rest.find_first_of("/?#")).contains('@'))
+    return std::unexpected(OwnerValueError::UserInfo);
   if (!std::all_of(value.begin(), value.end(), url_char))
     return std::unexpected(OwnerValueError::Charset);
   return {};
@@ -776,22 +803,44 @@ void publish_with_owner(const Settings &settings, const OwnerSettings &owner) {
   portEXIT_CRITICAL(&settings_mutex);
 }
 
-// Saves the owner record first, then `cfg` when the request touched it. The
-// two writes are not atomic across a power cut. A failed `cfg` save puts the
-// previous owner record back, best effort. On any failure the caller replies
+// A failed save may still have committed before its readback failed, so the
+// previous value is written back, best effort. A record whose write back fails
+// too stays unsure until a later save of it succeeds.
+void restore_owner(const OwnerSettings &previous) {
+  owner_unsure = !save_owner(previous);
+  if (owner_unsure)
+    oslog.println("CONFIG ERROR operation=owner-rollback");
+}
+
+// Saves the owner record first, then `cfg`. The owner record is written when
+// an owner value changed and `cfg` whenever the request carried any other key,
+// even an unchanged one. Either is also written when it is unsure. The two
+// writes are not atomic
+// across a power cut. When either save fails, every record this request wrote
+// gets its previous value back, so flash never pairs one record from this
+// request with the other from before it. On any failure the caller replies
 // ERROR and publishes nothing, so the live snapshot never holds half a request.
 [[nodiscard]] bool save_request(bool owner_changed,
                                 const OwnerSettings &previous_owner,
                                 const OwnerSettings &next_owner,
-                                bool settings_touched, const Settings &next) {
+                                bool settings_touched, const Settings &previous,
+                                const Settings &next) {
   if (!persistent)
     return true;
-  if (owner_changed && !save_owner(next_owner))
-    return false;
-  if (settings_touched && !save_locked(next)) {
-    if (owner_changed && !save_owner(previous_owner))
-      oslog.println("CONFIG ERROR operation=owner-rollback");
-    return false;
+  const bool write_owner = owner_changed || owner_unsure;
+  if (write_owner) {
+    if (!save_owner(next_owner)) {
+      restore_owner(previous_owner);
+      return false;
+    }
+    owner_unsure = false;
+  }
+  if (settings_touched || cfg_unsure) {
+    if (!save_cfg(next, previous)) {
+      if (write_owner)
+        restore_owner(previous_owner);
+      return false;
+    }
   }
   return true;
 }
@@ -876,6 +925,15 @@ DeploymentId deployment_id() {
   return copy;
 }
 
+SampleLabels sample_labels() {
+  SampleLabels copy;
+  portENTER_CRITICAL(&settings_mutex);
+  copy.location = current.location;
+  copy.deployment = owner_current.deployment;
+  portEXIT_CRITICAL(&settings_mutex);
+  return copy;
+}
+
 bool same_deployment(const DeploymentId &a, const DeploymentId &b) {
   return text_of(a.text) == text_of(b.text);
 }
@@ -896,6 +954,8 @@ const char *pair_name(PairMode mode) {
 bool load(bool display_detected) {
   Settings settings;
   persistent = false;
+  cfg_unsure = false;
+  owner_unsure = false;
   nvs_handle_t store;
   if (nvs_open(kNamespace, NVS_READWRITE, &store) != ESP_OK) {
     oslog.println("CONFIG ERROR operation=nvs-open persistent=false");
@@ -934,8 +994,12 @@ bool load(bool display_detected) {
   publish_owner(load_owner(store));
   nvs_close(store);
   persistent = true;
-  if ((first_boot || migrated_pin) && !save_locked(settings))
+  // The live snapshot keeps the new values, so a failed seed leaves `cfg`
+  // unsure and the next SET_CONFIG writes it.
+  if ((first_boot || migrated_pin) && !save_locked(settings)) {
+    cfg_unsure = true;
     oslog.println("CONFIG ERROR operation=nvs-seed-or-migrate");
+  }
   publish(settings);
   booted = settings;
   oslog.printf("CONFIG LOADED first_boot=%s display=%s pair=%s pin_default=%s "
@@ -1186,7 +1250,7 @@ bool apply_lines(const char *text, std::size_t length, char *bad_key,
   if (pending.rotate_token)
     esp_fill_random(next.token, kTokenBytes);
   if (!save_request(!same_owner(previous_owner, next_owner), previous_owner,
-                    next_owner, settings_touched, next)) {
+                    next_owner, settings_touched, previous, next)) {
     std::snprintf(bad_key, bad_key_size, "nvs");
     return false;
   }
@@ -1200,15 +1264,6 @@ bool apply_lines(const char *text, std::size_t length, char *bad_key,
       next.lan_on ? "true" : "false", pending.clear_bonds ? "true" : "false",
       pending.rotate_token ? "true" : "false",
       reboot_required() ? "true" : "false");
-  return true;
-}
-
-bool rotate_token() {
-  Settings next = get();
-  esp_fill_random(next.token, kTokenBytes);
-  if (persistent && !save_locked(next))
-    return false;
-  publish(next);
   return true;
 }
 

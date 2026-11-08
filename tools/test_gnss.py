@@ -29,8 +29,10 @@ def check_wiring(root: Path) -> None:
     assert body.count("hooks.gnss_fix(") == 1, "collect calls the GNSS hook once"
     assert "select_location(row.location, fix, now)" in body, "collect applies the source rule"
     assigned = re.findall(r"\brow\.location(?:\.\w+)*\s*=(?!=)\s*([^;]*);", body)
-    assert assigned == ["::config::get().location"], \
+    assert assigned == ["labels.location"], \
         "nothing but the settings snapshot is assigned to row.location"
+    assert body.count("const auto labels = ::config::sample_labels();") == 1, \
+        "collect takes the location from one settings snapshot"
     # Page 1 location.gnss_cell (#147) goes through the same board-neutral
     # hook and the res 8 readback, only when the board has a receiver.
     assert "control_replies.gnss_cell = hooks.gnss_fix ? gnss_readback : nullptr;" in logger

@@ -2654,8 +2654,9 @@ power::Tracker power_tracker;
 
 void collect(std::int64_t now, std::int64_t scheduled) {
   Sample row{};
-  row.location = ::config::get().location;
-  row.deployment = ::config::deployment_id();
+  const auto labels = ::config::sample_labels();
+  row.location = labels.location;
+  row.deployment = labels.deployment;
   if (hooks.collect)
     hooks.collect(row, now, scheduled, hooks.context);
   if (sensor_check == selftest::Check::Pending && sensor_field < field_count &&
