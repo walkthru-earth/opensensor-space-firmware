@@ -523,8 +523,10 @@ class Session:
 
     @staticmethod
     def _config_json(flags: int, text: bytes) -> dict:
+        # Decode as UTF-8 first. json.loads(bytes) would also accept UTF-16
+        # and UTF-32, and the wire contract is UTF-8 only.
         try:
-            config = json.loads(text)
+            config = json.loads(text.decode("utf-8"))
         except ValueError as error:  # JSONDecodeError and UnicodeDecodeError
             raise ProtocolError(f"CONFIG is not valid UTF-8 JSON: {error}") from error
         if not isinstance(config, dict):

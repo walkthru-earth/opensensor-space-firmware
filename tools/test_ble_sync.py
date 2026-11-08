@@ -418,7 +418,8 @@ async def run_config_chunks():
     assert overshoot + f" does not fit total {len(PAGE6) - short}" in await refused(config_short=short)
     # A body that is not UTF-8 JSON or not an object is a ProtocolError, in
     # one CONFIG frame or assembled from chunks, so the CLI prints FAIL.
-    malformed = {b"\xff\xfe{}": "not valid UTF-8 JSON", b'{"owner":': "not valid UTF-8 JSON",
+    malformed = {b'{"a":"\xff"}': "not valid UTF-8 JSON", '{"a":1}'.encode("utf-16"): "not valid UTF-8 JSON",
+                 b'{"owner":': "not valid UTF-8 JSON",
                  b"[1,2]": "CONFIG JSON is list, not an object", b'"x"': "CONFIG JSON is str, not an object"}
     for body, expected in malformed.items():
         for chunk in (None, 2):
