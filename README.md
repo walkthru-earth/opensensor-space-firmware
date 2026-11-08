@@ -16,8 +16,8 @@ here instead of repeating them.
 
 | Board app | Firmware | Schema and dictionary | Columns | Sensor set 1 | Hardware evidence |
 | --- | --- | --- | --- | --- | --- |
-| [M5Stack CoreS3](firmware/esp-idf-cores3/README.md) | v6.24 | `cores3-telemetry-v6`, `cores3-telemetry-v7` | 81 | Optional M134 (PMSA003), onboard IMU, light, RTC and power | Short native USB and SD readback on 2026-10-26. [Bench record](docs/boards/m5stack-cores3/bench-verified.md#main-689bb61-usb-reflash-thing-id-and-first-geo-footer-2026-10-26) |
-| [Waveshare ESP32-S3-SIM7670G-4G V2](firmware/esp-idf-waveshare-sim7670g/README.md) | v2.18 | `waveshare-sim7670g-telemetry-v6`, `waveshare-sim7670g-telemetry-v8` | 62 | PMS5003T with temperature and humidity, MAX17048 battery gauge | Short native USB and SD readback on 2026-10-26. [Bench record](docs/boards/waveshare-esp32-s3-sim7670g/bench-verified.md#main-689bb61-usb-reflash-thing-id-and-first-geo-footer-2026-10-26) |
+| [M5Stack CoreS3](firmware/esp-idf-cores3/README.md) | v6.24 | `cores3-telemetry-v6`, `cores3-telemetry-v7` | 81 | Optional M134 (PMSA003), onboard IMU, light, RTC and power | Short native USB and SD readback of v6.21 on 2026-10-26. [Bench record](docs/boards/m5stack-cores3/bench-verified.md#main-689bb61-usb-reflash-thing-id-and-first-geo-footer-2026-10-26) |
+| [Waveshare ESP32-S3-SIM7670G-4G V2](firmware/esp-idf-waveshare-sim7670g/README.md) | v2.18 | `waveshare-sim7670g-telemetry-v6`, `waveshare-sim7670g-telemetry-v8` | 62 | PMS5003T with temperature and humidity, MAX17048 battery gauge | Short native USB and SD readback of v2.15 on 2026-10-26. [Bench record](docs/boards/waveshare-esp32-s3-sim7670g/bench-verified.md#main-689bb61-usb-reflash-thing-id-and-first-geo-footer-2026-10-26) |
 
 Phone transfers, endurance and power-cut durability remain unqualified on both
 boards. The firmware proves on-device Parquet is feasible, not that it is
