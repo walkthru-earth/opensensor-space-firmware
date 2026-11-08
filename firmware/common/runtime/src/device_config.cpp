@@ -511,8 +511,8 @@ constexpr std::uint16_t kOwnerVersion = 1;
 
 struct OwnerKeyInfo {
   std::string_view name;
-  OwnerKey key;
-  std::size_t max;
+  OwnerKey key = OwnerKey::Title;
+  std::size_t max = 0;
 };
 static constexpr std::array<OwnerKeyInfo, 5> kOwnerKeys = {{
     {.name = "owner.title", .key = OwnerKey::Title, .max = kOwnerTitleMax},
@@ -643,9 +643,10 @@ constexpr bool url_char(char c) {
 [[nodiscard]] std::expected<void, OwnerValueError>
 check_url(std::string_view value) {
   constexpr std::string_view kScheme = "https://";
-  for (const char c : value)
-    if (static_cast<unsigned char>(c) < 0x20 || c == 0x7f)
-      return std::unexpected(OwnerValueError::Control);
+  if (std::any_of(value.begin(), value.end(), [](char c) {
+        return static_cast<unsigned char>(c) < 0x20 || c == 0x7f;
+      }))
+    return std::unexpected(OwnerValueError::Control);
   if (!value.starts_with(kScheme) || value.size() == kScheme.size() ||
       std::string_view("/?#").contains(value[kScheme.size()]))
     return std::unexpected(OwnerValueError::Scheme);
@@ -796,10 +797,12 @@ int build_owner_page(char *out, std::size_t size, std::uint8_t page) {
 } // namespace
 
 std::optional<OwnerKey> owner_key(std::string_view key) {
-  for (const auto &info : kOwnerKeys)
-    if (info.name == key)
-      return info.key;
-  return std::nullopt;
+  const auto info = std::find_if(
+      kOwnerKeys.begin(), kOwnerKeys.end(),
+      [key](const OwnerKeyInfo &entry) { return entry.name == key; });
+  if (info == kOwnerKeys.end())
+    return std::nullopt;
+  return info->key;
 }
 
 std::expected<void, OwnerValueError> check_owner_value(OwnerKey key,
