@@ -307,10 +307,37 @@ static_assert(LocationSettings{}.resolution ==
                   opensensor::location::kDefaultResolution,
               "oscfg defaults to the shared H3 resolution");
 
+// Byte arrays only, like Blob, so the layout has no padding.
+struct OwnerPayload {
+  char title[kOwnerTitleMax + 1];
+  char description[kOwnerDescriptionMax + 1];
+  char provider[kOwnerProviderMax + 1];
+  char url[kOwnerUrlMax + 1];
+  char deployment[kDeploymentIdMax + 1];
+};
+struct OwnerBlob {
+  BlobHeader header;
+  OwnerPayload payload;
+};
+static_assert(alignof(OwnerBlob) == 1, "owner layout must not contain padding");
+static_assert(sizeof(OwnerPayload) == 421, "owner version 1 payload is pinned");
+static_assert(sizeof(OwnerBlob) == sizeof(BlobHeader) + sizeof(OwnerPayload),
+              "owner header and payload are contiguous");
+
 // Only the command worker saves after startup and load runs before it, so
-// the staged record and its readback can share static storage.
-Blob staged_blob;
-Blob readback_blob;
+// the staged record and its readback can share static storage. The cfg and
+// owner records take turns in the same two buffers, because every save and
+// load finishes one record before it touches the other (#148).
+union BlobBuffer {
+  Blob cfg;
+  OwnerBlob owner;
+};
+BlobBuffer staged_buffer;
+BlobBuffer readback_buffer;
+Blob &staged_blob = staged_buffer.cfg;
+Blob &readback_blob = readback_buffer.cfg;
+OwnerBlob &owner_staged = staged_buffer.owner;
+OwnerBlob &owner_readback = readback_buffer.owner;
 
 std::uint32_t crc32(const std::uint8_t *data, std::size_t size) {
   std::uint32_t crc = 0xffffffffU;
@@ -528,27 +555,7 @@ static constexpr std::array<OwnerKeyInfo, 5> kOwnerKeys = {{
      .max = kDeploymentIdMax},
 }};
 
-// Byte arrays only, like Blob, so the layout has no padding.
-struct OwnerPayload {
-  char title[kOwnerTitleMax + 1];
-  char description[kOwnerDescriptionMax + 1];
-  char provider[kOwnerProviderMax + 1];
-  char url[kOwnerUrlMax + 1];
-  char deployment[kDeploymentIdMax + 1];
-};
-struct OwnerBlob {
-  BlobHeader header;
-  OwnerPayload payload;
-};
-static_assert(alignof(OwnerBlob) == 1, "owner layout must not contain padding");
-static_assert(sizeof(OwnerPayload) == 421, "owner version 1 payload is pinned");
-static_assert(sizeof(OwnerBlob) == sizeof(BlobHeader) + sizeof(OwnerPayload),
-              "owner header and payload are contiguous");
-
 OwnerSettings owner_current;
-// Same single writer rule as staged_blob.
-OwnerBlob owner_staged;
-OwnerBlob owner_readback;
 
 // The text field of one key, in settings or in a stored payload.
 template <typename Owner> auto owner_field(Owner &owner, OwnerKey key) {
