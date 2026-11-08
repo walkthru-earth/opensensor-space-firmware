@@ -72,6 +72,7 @@ F_OPENED, F_CHUNK, F_READ_END, F_CLOSED = 0x20, 0x21, 0x22, 0x23
 F_TIME_SET, F_FLUSHED, F_ERROR = 0x30, 0x31, 0x7F
 F_CONFIG, F_WIFI_AP, F_WIFI_SCAN_END, F_REBOOTING = 0x40, 0x41, 0x42, 0x43
 F_LOG, F_LOG_END, F_TOKEN, F_HELLO, F_STATUS, F_LIVE = 0x44, 0x45, 0x46, 0x47, 0x48, 0x49
+F_CONFIG_CHUNK = 0x4A
 F_BYE, F_DIAG, F_ABORTED, F_LIST_SINCE_END = 0x4B, 0x4C, 0x4D, 0x4E
 F_DESCRIPTOR_CHUNK = 0x4F
 F_OTA_STATE = 0x50
@@ -86,6 +87,7 @@ ERRORS = {1: "malformed", 2: "invalid-name", 3: "not-finalized", 4: "open-failed
           12: "invalid-config", 13: "not-on-this-link", 14: "auth-failed", 15: "wifi-unavailable",
           16: "aborted", 17: "no-descriptor", 18: "image-rejected"}
 DESCRIPTOR_HEADER = 9  # type, total u32, offset u32
+CONFIG_CHUNK_HEADER = 6  # type, flags u8, total u16, offset u16
 DESCRIPTOR_TRIES = 3   # attempts per offset before giving up
 # What a person should do about an ERROR. Code 14 is never a busy device, so
 # the client never retries it. Over LAN it means the token was rejected. Over
@@ -476,21 +478,53 @@ class Session:
         if not 0 <= page <= LAST_CONFIG_PAGE:
             raise ValueError(f"Configuration page must be 0..{LAST_CONFIG_PAGE}")
         await self.request(bytes([OP_GET_CONFIG]) + (bytes([page]) if page else b""))
-        return self._config_frame(await self.frame())
+        return await self._config_reply()
 
     async def set_config(self, pairs: list[str]) -> dict:
         for pair in pairs:
             if "=" not in pair:
                 raise ProtocolError(f"expected key=value, got {pair!r}")
         await self.request(bytes([OP_SET_CONFIG]) + "\n".join(pairs).encode("utf-8"))
-        return self._config_frame(await self.frame())
+        return await self._config_reply()
+
+    async def _config_reply(self) -> dict:
+        """One CONFIG frame, or over BLE a CONFIG_CHUNK sequence when the JSON
+        does not fit the ATT payload. Chunks carry contiguous offsets from
+        zero with the same flags and total, and there is no terminal frame.
+        A UTF-8 character may cross chunks, so the bytes are joined before
+        decoding. An incomplete answer ends at the frame deadline."""
+        data = await self.frame()
+        if data[0] == F_CONFIG:
+            return self._config_json(data[1], bytes(data[2:]))
+        if data[0] != F_CONFIG_CHUNK:
+            raise ProtocolError(f"expected CONFIG or CONFIG_CHUNK, got 0x{data[0]:02x}")
+        body = bytearray()
+        flags = total = None
+        while True:
+            if data[0] != F_CONFIG_CHUNK or len(data) < CONFIG_CHUNK_HEADER:
+                raise ProtocolError(f"expected CONFIG_CHUNK, got 0x{data[0]:02x} "
+                                    f"of {len(data)} bytes")
+            chunk_flags = data[1]
+            chunk_total, offset = struct.unpack_from("<HH", data, 2)
+            piece = bytes(data[CONFIG_CHUNK_HEADER:])
+            if flags is None:
+                flags, total = chunk_flags, chunk_total
+            if chunk_flags != flags or chunk_total != total:
+                raise ProtocolError("CONFIG_CHUNK flags or total changed within one answer")
+            if offset != len(body):
+                raise ProtocolError(f"CONFIG_CHUNK offset {offset}, expected {len(body)}")
+            if not piece or offset + len(piece) > total:
+                raise ProtocolError(f"CONFIG_CHUNK slice of {len(piece)} bytes at {offset} "
+                                    f"does not fit total {total}")
+            body += piece
+            if len(body) == total:
+                return self._config_json(flags, bytes(body))
+            data = await self.frame()
 
     @staticmethod
-    def _config_frame(data: bytes) -> dict:
-        if data[0] != F_CONFIG:
-            raise ProtocolError(f"expected CONFIG, got 0x{data[0]:02x}")
-        config = json.loads(bytes(data[2:]))
-        config["reboot_required"] = bool(data[1] & 1)
+    def _config_json(flags: int, text: bytes) -> dict:
+        config = json.loads(text)
+        config["reboot_required"] = bool(flags & 1)
         return config
 
     async def wifi_scan(self) -> list[dict]:
