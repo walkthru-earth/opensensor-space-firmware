@@ -21,9 +21,12 @@ void send_config(ble::Link link, ble::Op op, const ControlReplies &replies,
   config::WifiView view{wifi.state,   wifi.ip,   wifi.rssi,        wifi.mac,
                         wifi.clients, wifi.host, ble::link().bonds};
   std::uint8_t frame[2 + ble::kMaxJson];
+  config::PageInputs inputs{};
+  if (page == 1 && replies.gnss_cell)
+    inputs = {.gnss = true, .gnss_cell = replies.gnss_cell(replies.context)};
   std::size_t length =
       page ? config::build_page(reinterpret_cast<char *>(frame + 2),
-                                ble::kMaxJson, page)
+                                ble::kMaxJson, page, inputs)
            : config::build_json(reinterpret_cast<char *>(frame + 2),
                                 ble::kMaxJson, view);
   if (page == 2 && length >= 2) {

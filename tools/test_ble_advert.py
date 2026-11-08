@@ -98,11 +98,11 @@ def main() -> None:
         info_sizes = check_info(root, executable)
         packets = [bytes.fromhex(line) for line in subprocess.check_output(
             [str(executable)], text=True).splitlines()]
-    assert len(packets) == 16
+    assert len(packets) == 17
     expected = [client.SERVICE, client.INFO, client.STATUS, client.LIVE,
                 client.CONTROL, client.RESPONSE]
     assert [wire_uuid(value) for value in packets[:6]] == expected
-    for index, packet in enumerate(packets[6:14]):
+    for index, packet in enumerate(packets[6:15]):
         assert len(packet) == 31
         fields = ad_fields(packet)
         assert set(fields) == {0x01, 0x21}
@@ -113,17 +113,17 @@ def main() -> None:
         assert len(payload) == 10 and payload[-2:] == b"\0\0"
         decoded = client.decode_advert(payload)
         assert decoded is not None
-        if index < 6:
+        if index < 7:
             assert decoded == {"ver": 1, "flags": [client.ADVERT_FLAGS[index]],
                                "fin": 0x89abcdef, "boot16": "7654"}
         else:
             assert decoded == {"ver": 1, "flags": [],
-                               "fin": 0 if index == 6 else 0xffffffff,
+                               "fin": 0 if index == 7 else 0xffffffff,
                                "boot16": "ffff"}
         # A platform receiving ADV without SCAN_RSP can still discover the board.
         assert client.advertises_sync_service(SimpleNamespace(
             service_uuids=[], service_data={service: payload}))
-    for packet, name in zip(packets[14:], ["OS-6b40", "12345678901"]):
+    for packet, name in zip(packets[15:], ["OS-6b40", "12345678901"]):
         assert len(packet) <= 31
         fields = ad_fields(packet)
         assert set(fields) == {0x09, 0x07}

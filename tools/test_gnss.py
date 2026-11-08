@@ -30,6 +30,13 @@ def check_wiring(root: Path) -> None:
     assigned = re.findall(r"\brow\.location(?:\.\w+)*\s*=(?!=)\s*([^;]*);", body)
     assert assigned == ["::config::get().location"], \
         "nothing but the settings snapshot is assigned to row.location"
+    # Page 1 location.gnss_cell (#147) goes through the same board-neutral
+    # hook and the res 8 readback, only when the board has a receiver.
+    assert "control_replies.gnss_cell = hooks.gnss_fix ? gnss_readback : nullptr;" in logger
+    readback = logger[logger.index("std::uint64_t gnss_readback(void *)"):]
+    readback = readback[:readback.index("\n}\n")]
+    assert "readback_cell(fix, esp_timer_get_time())" in readback, \
+        "page 1 shows only a fresh res 8 readback"
     for component in ("gnss", "gnss_reader"):
         directory = root / "firmware/common" / component
         for path in sorted((directory / "src").glob("*")):

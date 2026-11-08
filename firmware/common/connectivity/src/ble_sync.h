@@ -155,6 +155,7 @@ enum AdvertFlag : std::uint8_t {
   kAdvLan = 1U << 3,           // Wi-Fi connected and the LAN server is up
   kAdvFail = 1U << 4,          // storage worker stopped after an error
   kAdvClockRestored = 1U << 5, // clock_status == 2: dated from the RTC only
+  kAdvSetup = 1U << 6,         // config::setup_needed(), open the setup wizard
 };
 struct AdvertState {
   std::uint8_t flags = 0;

@@ -17,6 +17,10 @@ struct ControlReplies {
   // The board template GET_DESCRIPTOR serves, without its NUL. It must live
   // in .rodata for the program's lifetime. Empty answers ERROR no-descriptor.
   std::span<const char> descriptor{};
+  // GET_CONFIG page 1 location.gnss_cell (#147). Returns the newest fresh fix
+  // as a res 8 cell, or 0 for none. Runs on the worker, so it must not block.
+  // nullptr means the board has no receiver and the key is omitted.
+  std::uint64_t (*gnss_cell)(void *) = nullptr;
 };
 
 // Executes GET/SET_CONFIG, LOG_TAIL, GET_DIAG, idle ABORT, GET_TOKEN,

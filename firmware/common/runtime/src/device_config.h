@@ -42,6 +42,13 @@ struct LocationSettings {
   Mobility mobility = Mobility::Fixed;
 };
 
+// The Thing needs setup (#147). A fixed Thing without a cell needs one, a
+// moving Thing never does. Derived on every read, never stored. Drives the
+// advert `setup` bit, GET_CONFIG page 1 `thing.setup` and the CoreS3 screen.
+[[nodiscard]] constexpr bool setup_needed(const LocationSettings &location) {
+  return location.mobility == Mobility::Fixed && location.cell == 0;
+}
+
 struct Settings {
   PairMode pair = PairMode::Random;
   std::uint32_t pin = 0;
@@ -120,9 +127,15 @@ struct WifiView {
 };
 // Builds the CONFIG JSON (<= 480 bytes). Never includes the PSK or token.
 std::size_t build_json(char *out, std::size_t size, const WifiView &wifi);
+// Board readings page 1 shows beside the stored settings, never stored.
+struct PageInputs {
+  bool gnss = false; // the board has a receiver, adds location.gnss_cell
+  std::uint64_t gnss_cell = 0; // fresh res 8 cell, zero prints ""
+};
 // Optional GET_CONFIG pages keep the legacy document and 480-byte cap intact.
 // 1 = location; 2 = NTP policy; 3/4 = one configured NTP server.
-std::size_t build_page(char *out, std::size_t size, std::uint8_t page);
+std::size_t build_page(char *out, std::size_t size, std::uint8_t page,
+                       const PageInputs &inputs = {});
 bool same_location(const LocationSettings &, const LocationSettings &);
 
 const char *pair_name(PairMode mode);

@@ -182,6 +182,34 @@ void freshness() {
   assert(!gnss::fresh(unset, 1));
 }
 
+// GET_CONFIG page 1 location.gnss_cell (#147). Always res 8, empty without a
+// fresh fix, and never finer than the owner cap the reader converted at.
+void readback() {
+  using gnss::ReadbackError;
+  static_assert(gnss::kReadbackResolution == 8);
+  constexpr std::int64_t now = 100'000'000;
+  constexpr location::Cell kAt8 = 0x8828308281fffffULL;
+  const gnss::Fix fine{
+      .cell = 0x8928308280fffffULL, .resolution = 9, .fix_mono_us = now};
+  auto cell = gnss::readback_cell(fine, now);
+  assert(cell && *cell == kAt8 && location::resolution(*cell) == 8);
+  const gnss::Fix at8{.cell = kAt8, .resolution = 8, .fix_mono_us = now};
+  cell = gnss::readback_cell(at8, now + gnss::kFixMaxAgeUs);
+  assert(cell && *cell == kAt8);
+  assert(gnss::readback_cell(at8, now + gnss::kFixMaxAgeUs + 1).error() ==
+         ReadbackError::Stale);
+  auto unset = at8;
+  unset.fix_mono_us = 0;
+  assert(gnss::readback_cell(unset, now).error() == ReadbackError::Stale);
+  assert(gnss::readback_cell({}, now).error() == ReadbackError::NoFix);
+  // A cap below 8 keeps the reader cell coarse, and it cannot be upsampled.
+  const gnss::Fix coarse{
+      .cell = 0x85283083fffffffULL, .resolution = 5, .fix_mono_us = now};
+  assert(gnss::readback_cell(coarse, now).error() == ReadbackError::TooCoarse);
+  const gnss::Fix broken{.cell = 1, .resolution = 8, .fix_mono_us = now};
+  assert(gnss::readback_cell(broken, now).error() == ReadbackError::Invalid);
+}
+
 constexpr location::Cell kConfigured = 0x85283473fffffffULL; // res 5
 constexpr location::Cell kFineFix = 0x8928308280fffffULL;    // res 9
 constexpr location::Cell kFixAt5 = 0x85283083fffffffULL;
@@ -290,6 +318,7 @@ int main() {
   parser();
   conversion();
   freshness();
+  readback();
   source_rule();
   row_mapping();
   no_split();

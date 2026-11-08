@@ -126,13 +126,16 @@ struct Hooks {
   // action. A board may switch off loads here. It must not block, reset or
   // sleep; the runtime already finalizes the open file on a critical entry.
   void (*power_shed)(opensensor::battery::State, void *) = nullptr;
-  // Optional, main loop only, once per row. Copy the newest GNSS fix into
-  // `fix` and return true, or return false when there is none. The fix holds
-  // an H3 cell and its monotonic time, never coordinates. Must not block or
-  // touch the receiver UART. A moving Thing uses a fix no older than
-  // opensensor::gnss::kFixMaxAgeUs, coarsened to the row's cap, as
+  // Optional. Copy the newest GNSS fix into `fix` and return true, or
+  // return false when there is none. The fix holds an H3 cell and its
+  // monotonic time, never coordinates. Must not block or touch the receiver
+  // UART. Called on the main loop once per row, and on the storage worker for
+  // GET_CONFIG page 1 location.gnss_cell (#147), so it must be safe from any
+  // task, as opensensor::gnss::latest() is. A moving Thing uses a fix no older
+  // than opensensor::gnss::kFixMaxAgeUs, coarsened to the row's cap, as
   // location_source 2, and writes location nulls otherwise. A fixed Thing
-  // ignores it. nullptr means the board has no receiver.
+  // ignores it for rows. nullptr means the board has no receiver, and page 1
+  // then omits location.gnss_cell.
   bool (*gnss_fix)(opensensor::gnss::Fix &fix, void *) = nullptr;
 };
 // One singleton per firmware image; call once after hardware/storage setup.

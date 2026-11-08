@@ -556,9 +556,18 @@ void draw_screen_header(const char *title) {
                       marker_height, TFT_WHITE);
 }
 
+// While the Thing needs setup (#147, the advert setup bit) the footer asks
+// for the app on every page instead of the swipe hint. It clears on the next
+// redraw after a SET_CONFIG sets a cell or switches to moving.
 void draw_screen_footer() {
   M5.Display.setTextSize(1);
   M5.Display.setCursor(8, 228);
+  if (config::setup_needed(config::location_settings())) {
+    M5.Display.setTextColor(TFT_YELLOW, TFT_BLACK);
+    M5.Display.print("Setup needed, open the OpenSensor app");
+    M5.Display.setTextColor(TFT_WHITE, TFT_BLACK);
+    return;
+  }
   M5.Display.print("Swipe up/down or tap for pages");
 }
 

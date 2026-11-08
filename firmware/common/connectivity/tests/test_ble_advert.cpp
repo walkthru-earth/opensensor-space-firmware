@@ -83,7 +83,7 @@ int main(int argc, char **argv) {
   }
   for (const auto flags :
        {ble::kAdvNoUtc, ble::kAdvNewFiles, ble::kAdvSd, ble::kAdvLan,
-        ble::kAdvFail, ble::kAdvClockRestored}) {
+        ble::kAdvFail, ble::kAdvClockRestored, ble::kAdvSetup}) {
     const auto advert = ble::wire::legacy_advert(flags, 0x89abcdefU, 0x7654);
     hex(advert.data(), advert.size());
   }

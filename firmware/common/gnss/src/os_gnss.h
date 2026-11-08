@@ -92,6 +92,20 @@ to_fix(const Reading &reading, int resolution, std::int64_t fix_mono_us);
 
 [[nodiscard]] bool fresh(const Fix &fix, std::int64_t now_us);
 
+// GET_CONFIG page 1 location.gnss_cell (#147) shows the setup phone the cell
+// the receiver sees, always at this resolution whatever the owner cap is.
+inline constexpr int kReadbackResolution = 8;
+// Why the readback is empty. Every error prints "".
+enum class [[nodiscard]] ReadbackError : std::uint8_t {
+  NoFix,     // the reader holds no fix
+  Stale,     // older than kFixMaxAgeUs, the same rule as moving rows
+  TooCoarse, // the owner cap is below 8, a cell is never upsampled
+  Invalid,   // not an H3 cell
+};
+// The fix as a res 8 cell, when it is fresh at `now_us`. Never a coordinate.
+[[nodiscard]] std::expected<location::Cell, ReadbackError>
+readback_cell(const Fix &fix, std::int64_t now_us);
+
 // The cell and source one row gets. source None means four location nulls.
 struct Selection {
   location::Cell cell = 0;

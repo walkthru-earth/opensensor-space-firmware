@@ -845,7 +845,8 @@ const char *mobility_name(Mobility mobility) {
   return mobility == Mobility::Moving ? "moving" : "fixed";
 }
 
-std::size_t build_page(char *out, std::size_t size, std::uint8_t page) {
+std::size_t build_page(char *out, std::size_t size, std::uint8_t page,
+                       const PageInputs &inputs) {
   const Settings settings = get();
   int written = -1;
   if (page == 1) {
@@ -861,13 +862,24 @@ std::size_t build_page(char *out, std::size_t size, std::uint8_t page) {
                     "\"cell_resolution\":%d,\"lat\":%.7f,\"lon\":%.7f",
                     opensensor::location::resolution(settings.location.cell),
                     latitude, longitude);
-    written = std::snprintf(out, size,
-                            "{\"location\":{\"cell\":\"%s\",\"resolution\":%u,%"
-                            "s,\"country\":\"%s\"},\"thing\":{\"mobility\":\"%"
-                            "s\"}}",
-                            cell, unsigned(settings.location.resolution),
-                            center, settings.location.country,
-                            mobility_name(settings.location.mobility));
+    // Present only on a board with a receiver, "" without a fresh cell.
+    char gnss[sizeof(",\"gnss_cell\":\"\"") +
+              opensensor::location::kCellTextBytes]{};
+    if (inputs.gnss) {
+      char text[opensensor::location::kCellTextBytes]{};
+      if (inputs.gnss_cell && !opensensor::location::format_cell(
+                                  inputs.gnss_cell, text, sizeof(text)))
+        text[0] = '\0';
+      std::snprintf(gnss, sizeof(gnss), ",\"gnss_cell\":\"%s\"", text);
+    }
+    written = std::snprintf(
+        out, size,
+        "{\"location\":{\"cell\":\"%s\",\"resolution\":%u,%s,\"country\":"
+        "\"%s\"%s},\"thing\":{\"mobility\":\"%s\",\"setup\":%u}}",
+        cell, unsigned(settings.location.resolution), center,
+        settings.location.country, gnss,
+        mobility_name(settings.location.mobility),
+        setup_needed(settings.location) ? 1U : 0U);
   } else if (page == 2) {
     written = std::snprintf(
         out, size,
