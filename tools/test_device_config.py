@@ -17,6 +17,24 @@ from test_location import compile_h3
 from host_cxx import CXX_STD
 
 
+# GET_CONFIG frames carry at most 480 bytes of JSON (ble::kMaxJson), and the
+# reply must stay below it for the NUL. Every owner key at its maximum with
+# every escapable character must still fit (#148).
+MAX_JSON = 480
+
+
+def check_owner_pages(stdout: str) -> None:
+    page5, page6 = stdout.splitlines()
+    for page in (page5, page6):
+        assert len(page.encode()) < MAX_JSON, len(page.encode())
+    owner = json.loads(page5)
+    assert owner["owner"]["title"] == '"' * 64
+    assert owner["owner"]["provider"] == "\\" * 64
+    assert owner["owner"]["url"] == "https://" + "u" * 88
+    assert owner["thing"]["deployment_id"] == "z" * 32
+    assert json.loads(page6) == {"owner": {"description": "\\" * 160}}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sanitize", action="store_true")
@@ -41,7 +59,8 @@ def main() -> None:
         subprocess.run(command, check=True)
         for scenario in ("headless", "screen", "migration", "validation",
                          "credentials", "sensor", "nvs", "unavailable", "time-location",
-                         "setup", "blob", "old-keys", "torn"):
+                         "setup", "blob", "old-keys", "torn", "owner",
+                         "owner-unavailable"):
             result = subprocess.run([str(executable), scenario],
                                     capture_output=True, text=True)
             if result.returncode:
@@ -58,8 +77,10 @@ def main() -> None:
                 page_one = int(result.stdout)
                 assert page_one < 480, page_one
                 print(f"GET_CONFIG page 1 worst case {page_one} B of 480")
+            if scenario == "owner":
+                check_owner_pages(result.stdout)
     print("Shared configuration: defaults, PIN rotation, validation, secrecy, "
-          "blob, ignored old keys and NVS failures passed")
+          "blob, ignored old keys, owner keys and NVS failures passed")
 
 
 if __name__ == "__main__":

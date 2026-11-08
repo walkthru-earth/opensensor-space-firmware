@@ -8,8 +8,12 @@
 // requests), so the copy handed out by get() is guarded by a spinlock and
 // everything else is single-writer.
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
+#include <expected>
+#include <optional>
+#include <string_view>
 
 namespace config {
 enum class PairMode : std::uint8_t { Random = 0, Fixed = 1, None = 2 };
@@ -133,10 +137,67 @@ struct PageInputs {
   std::uint64_t gnss_cell = 0; // fresh res 8 cell, zero prints ""
 };
 // Optional GET_CONFIG pages keep the legacy document and 480-byte cap intact.
-// 1 = location; 2 = NTP policy; 3/4 = one configured NTP server.
+// 1 = location; 2 = NTP policy; 3/4 = one configured NTP server; 5 = owner
+// title, provider, url and thing.deployment_id; 6 = owner description.
 std::size_t build_page(char *out, std::size_t size, std::uint8_t page,
                        const PageInputs &inputs = {});
 bool same_location(const LocationSettings &, const LocationSettings &);
+
+// Owner site configuration (#148). Free text the owner sets over SET_CONFIG for
+// the STAC Collection and the footer, kept in its own CRC-checked NVS record
+// `owner` beside `cfg`. Values are bounded UTF-8 without control characters.
+// An empty value clears the key. The board never prints these values, they
+// appear only in GET_CONFIG pages 5 and 6 and in the footer.
+constexpr std::size_t kOwnerTitleMax = 64;
+constexpr std::size_t kOwnerDescriptionMax = 160;
+constexpr std::size_t kOwnerProviderMax = 64;
+constexpr std::size_t kOwnerUrlMax = 96;
+constexpr std::size_t kDeploymentIdMax = 32;
+// The highest GET_CONFIG page. Pages 5 and 6 hold the owner keys.
+constexpr std::uint8_t kLastConfigPage = 6;
+
+enum class OwnerKey : std::uint8_t {
+  Title,       // owner.title, the Collection title
+  Description, // owner.description
+  Provider,    // owner.provider, the producer and licensor provider name
+  Url,         // owner.url, https only
+  Deployment,  // thing.deployment_id, footer thing.deployment_id
+};
+// Why one owner value was refused. The request reply names the key only.
+enum class [[nodiscard]] OwnerValueError : std::uint8_t {
+  TooLong,  // more bytes than the key allows
+  Encoding, // not valid UTF-8
+  Control,  // a C0 or C1 control character or DEL
+  Scheme,   // owner.url without https:// and a letter or digit after it
+  Charset,  // a byte outside the key's character set
+  Reserved, // thing.deployment_id with a hyphen at an end, or "unknown"
+};
+
+// Footer thing.deployment_id as the owner set it, empty when unset. Each
+// sample carries a copy so a change splits the file and never relabels rows
+// already buffered.
+struct DeploymentId {
+  std::array<char, kDeploymentIdMax + 1> text{};
+};
+
+struct OwnerSettings {
+  std::array<char, kOwnerTitleMax + 1> title{};
+  std::array<char, kOwnerDescriptionMax + 1> description{};
+  std::array<char, kOwnerProviderMax + 1> provider{};
+  std::array<char, kOwnerUrlMax + 1> url{};
+  DeploymentId deployment{};
+};
+
+// The SET_CONFIG key for an owner field, or nullopt for any other key.
+[[nodiscard]] std::optional<OwnerKey> owner_key(std::string_view key);
+// The rules one SET_CONFIG value must pass, also applied to a stored record.
+[[nodiscard]] std::expected<void, OwnerValueError>
+check_owner_value(OwnerKey key, std::string_view value);
+// Copies of the published owner settings, safe from any task.
+OwnerSettings owner_settings();
+DeploymentId deployment_id();
+// True when both name the same deployment, the file split rule.
+bool same_deployment(const DeploymentId &, const DeploymentId &);
 
 const char *pair_name(PairMode mode);
 // "fixed" or "moving", the SET_CONFIG and footer word.

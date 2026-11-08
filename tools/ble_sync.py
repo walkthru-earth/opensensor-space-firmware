@@ -58,6 +58,8 @@ INFO, STATUS, LIVE, CONTROL, RESPONSE = (BASE.format(i) for i in range(2, 7))
 
 OP_LIST, OP_OPEN, OP_READ, OP_CLOSE, OP_SET_TIME, OP_FLUSH, OP_STATUS = range(1, 8)
 OP_GET_CONFIG, OP_SET_CONFIG, OP_WIFI_SCAN, OP_REBOOT, OP_LOG_TAIL, OP_GET_TOKEN = range(8, 14)
+# GET_CONFIG pages 0..6. Pages 5 and 6 hold the owner keys (#148).
+LAST_CONFIG_PAGE = 6
 OP_GET_DIAG, OP_ABORT = 0x0E, 0x0F
 # Opcodes and frame types are separate number spaces, so OP_LIST_SINCE and
 # F_FILE share the value 0x10.
@@ -471,8 +473,8 @@ class Session:
         return {"rows": rows, "files_finalized": finalized}
 
     async def get_config(self, page: int = 0) -> dict:
-        if not 0 <= page <= 4:
-            raise ValueError("Configuration page must be 0..4")
+        if not 0 <= page <= LAST_CONFIG_PAGE:
+            raise ValueError(f"Configuration page must be 0..{LAST_CONFIG_PAGE}")
         await self.request(bytes([OP_GET_CONFIG]) + (bytes([page]) if page else b""))
         return self._config_frame(await self.frame())
 
@@ -1226,8 +1228,9 @@ def main():
     sub.add_parser("time", help="send host UTC to the device (explicit write)").set_defaults(run=cmd_time)
     sub.add_parser("flush", help="finalize buffered rows on the device (explicit write)").set_defaults(run=cmd_flush)
     config_parser = sub.add_parser("config", help="GET_CONFIG")
-    config_parser.add_argument("--page", type=int, choices=range(5), default=0,
-                               help="0 legacy, 1 location, 2 NTP policy, 3/4 NTP server")
+    config_parser.add_argument("--page", type=int, choices=range(LAST_CONFIG_PAGE + 1), default=0,
+                               help="0 legacy, 1 location, 2 NTP policy, 3/4 NTP server, "
+                                    "5 owner and deployment id, 6 owner description")
     config_parser.set_defaults(run=cmd_config)
     setter = sub.add_parser("set", help="SET_CONFIG key=value ... (explicit write)")
     setter.add_argument("pairs", nargs="+", metavar="key=value")

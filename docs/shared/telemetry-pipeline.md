@@ -61,7 +61,7 @@ Every sample has an identity independent of wall-clock quality. Never turn a tim
 | `clock_status`, `clock_epoch` | Status 0 = unsynchronized, 1 = host estimate supplied on this boot, 2 = restored at boot from the BM8563 RTC (firmware v6.2, source 2026-09-18). Status 3 = a successful network SNTP response. Code 2 is the last external estimate the RTC was written with, at whole-second resolution plus RTC drift since that sync; it is dated (Hive tree, not `unsynced`) but a reader that wants host-fresh time should filter on `clock_status IN (1, 3)` or on `clock_epoch` after the sync. Since CoreS3 v6.10 / Waveshare v2.4, the epoch increments for initial UTC (RTC seed included), an RTC-to-external upgrade, or a correction strictly larger than two seconds; small host/network refreshes preserve the epoch. Files split when the epoch or UTC window changes. Per-row anchors and source retain each accepted estimate; old rows are never relabeled. Older firmware incremented at every anchor. No measured clock-uncertainty bound or synchronized status is claimed. |
 | Measurements | Fixed-width typed fields with units in the schema, not encoded into display strings. |
 | Validity | Per-sensor status and validity bits; preserve missing, warming, stale, checksum error and device error distinctly. |
-| Provenance | File metadata records firmware, board, Thing, boot, cadence, status meanings and unavailable measurements. New source adds dictionary version/SHA-256 and acquisition configuration; deployment/calibration identifiers remain explicitly unknown. Owner-declared sensor/H3 provisioning is implemented; external deployment history and calibration remain future work. |
+| Provenance | File metadata records firmware, board, Thing, boot, cadence, status meanings and unavailable measurements. New source adds dictionary version/SHA-256 and acquisition configuration. The footer `thing.deployment_id` is the owner's stored deployment id, `unknown` while unset (#148). The calibration identifier remains explicitly unknown. Owner-declared sensor/H3 provisioning is implemented; external deployment history and calibration remain future work. |
 | Additional v2 timing | `collection_completed_mono_us`, `pms_received_mono_us`, `clock_anchor_mono_us`, `clock_anchor_utc_us`; see [semantics and validity](table-and-observation-model.md#timing-and-validity-dictionary). |
 
 Use `pixi run parquet-device sync-time --port <port>` to explicitly supply this host's current UTC estimate, or `--sync-time` with `parquet-device bench`. The serial `parquet time <epoch-seconds>` command anchors that value to the device monotonic clock and reports the anchor. This is not NTP; command/transport latency and host error are not measured. The common Android/iOS session refreshes unset/RTC clocks, external anchors older than six hours, or current estimates more than two seconds from the phone, with microsecond precision when supported. Wi-Fi SNTP also establishes UTC without a phone. Accepted anchors affect future rows only and do not flush the current interval. TIME_SET supplies immediate reconciliation evidence. Since #88 the footer holds no anchor. Every row written after an accepted anchor carries it in `clock_anchor_mono_us` and `clock_anchor_utc_us`, which are evidence for that row's device, Thing and boot only. Routine sync lists completed files; explicit FLUSH closes the unfinished window when current stored readings are requested. No synthetic measurement is created. A separate uncertainty-bearing anchor journal is not implemented.
@@ -98,6 +98,15 @@ derives the centre from the published cell, no raw GPS is stored. The
 the file and is not inferred from H3. A fixed Thing writes
 `location_source` 1. A moving Thing with a GNSS hook writes 2 with a fresh fix
 and four nulls without one ([moving Things](time-and-location.md#moving-things-and-gnss)).
+
+The footer `thing.deployment_id` comes from the owner's `thing.deployment_id`
+key ([SET_CONFIG](ble-sync-protocol.md#device-configuration-v2), #148), or
+`unknown` while it is unset. Each sample carries a copy next to its location
+snapshot and the file keeps the value of its first row. A change closes the
+open file the same way a location change does, so every row of a file shares
+one deployment id and a finalized file is never relabelled. The owner title,
+description, provider and url stay on the board for STAC and never split a
+file.
 No phone path writes 3 yet.
 
 Acquisition snapshots cell, maximum precision and country into each queued row.

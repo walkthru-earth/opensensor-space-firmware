@@ -36,9 +36,13 @@ to `/sd/output`; `legacy_directory` is opt-in for previous archives.
 It must pass `cadence::valid_sample_interval()` in `os_logger_cadence.h`, 1 s
 to 300 s and a divisor of 300 s, so every rotation window stays whole. Row
 groups hold one rotation window of rows, at most `cadence::kMaxBatchRows` (90),
-which is also the footer `file.row_group_rows_max`. `Config::deployment_id`
-and `Config::calibration_id` fill `thing.deployment_id` and
-`acquisition.calibration_id` and default to `unknown`. The footer sample
+which is also the footer `file.row_group_rows_max`. `Config::calibration_id`
+fills `acquisition.calibration_id` and defaults to `unknown`. The footer
+`thing.deployment_id` is the owner's stored `thing.deployment_id`, snapshotted
+per sample in `LocationSample::deployment` and kept per file like the
+location. `same_file_labels()` in `os_logger_location.h` closes the file when
+either changes. `Config::deployment_id` (default `unknown`) is written while
+the stored value is unset (#148). The footer sample
 period always comes from the live config value, never a build time default.
 `footer::build` in `os_logger_footer.h` writes the one `opensensor` key, see
 [mobile-migration.md](../../../docs/shared/mobile-migration.md). `Config::ble_name_prefix` is a required

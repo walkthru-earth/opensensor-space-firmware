@@ -65,8 +65,11 @@ Both boards keep the default values. Footer `acquisition.sample_interval_ms`
 comes from the live `Config::sample_interval_ms` (default `10000`), the same
 value that sets the sampling deadline, so it is the truth for each file.
 `file.row_group_rows_max` comes from `cadence::kMaxBatchRows` (`90`), and
-`thing.deployment_id` and `acquisition.calibration_id` from `Config`
-(default `unknown`). `acquisition.sample_interval_ms` and
+`acquisition.calibration_id` from `Config` (default `unknown`).
+`thing.deployment_id` is the owner's stored `thing.deployment_id` from the
+file's per sample snapshot, and falls back to `Config::deployment_id`
+(default `unknown`) while unset. A change splits the file like a location
+change (#148). `acquisition.sample_interval_ms` and
 `file.row_group_rows_max` are JSON numbers, and `thing.deployment_id` and
 `acquisition.calibration_id` are JSON strings, `"unknown"` included, all inside
 the one `opensensor` footer value. The build time `opensensor:sample_interval_s` in

@@ -9,6 +9,55 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## Owner site keys and the deployment id (fix-148-owner-config, issue #148)
+
+**Needs a matched reflash and an app change.** Pairs with mobile #266 and
+#272. Waveshare firmware moves to `idf-waveshare-parquet-v2.19` and CoreS3 to
+`idf-cores3-parquet-v6.25`. Columns, field ids, LIVE keys, decimals and the
+schema and dictionary strings do not change. The `dict` and `desc` digests do
+not move.
+
+**What changed.**
+
+- Five new `SET_CONFIG` keys, see the
+  [key table](ble-sync-protocol.md#device-configuration-v2).
+  `owner.title` (64 bytes), `owner.description` (160), `owner.provider` (64),
+  `owner.url` (`https://` plus a host that starts with a letter or digit, 96
+  bytes, no spaces, `"`, `\` or control characters) and
+  `thing.deployment_id` (`[a-z0-9-]`, 32 bytes, a letter or digit at each end,
+  never the literal `unknown` because that is the footer value while unset).
+  Values are UTF-8, an empty value clears the key, and invalid UTF-8 or a
+  control character rejects the whole request with `ERROR` 12 and a detail
+  that names the key. There is no contact email key.
+- `GET_CONFIG` accepts pages `0..6`. Page 5 is
+  `{"owner":{"title":"","provider":"","url":""},"thing":{"deployment_id":""}}`
+  and page 6 is `{"owner":{"description":""}}`. Values come back raw UTF-8,
+  with JSON escaping only. The worst cases are 458 and 348 bytes. Page 7 and
+  above answer malformed `ERROR` with detail `page`.
+- The footer `thing.deployment_id` is the stored value, or `unknown` while it
+  is unset. A change closes the open file, like a location change, so each
+  file holds one deployment id. Title, description, provider and url never
+  reach Parquet and never split a file.
+- The owner keys live in a new NVS record. A damaged record reads as empty and
+  prints `CONFIG OWNER invalid-stored-profile=true` once at boot. No serial
+  line ever carries an owner value.
+- A `SET_CONFIG` that mixes owner keys with other keys writes two records and
+  is not atomic across a power cut. A failed save answers `ERROR` 12 with
+  detail `nvs` and changes nothing live. If its rollback also fails, the new
+  owner values can appear after the next reboot.
+- `PARQUET BEGIN row_bytes` grows from 880 to 920 on both boards, because each
+  queued sample now carries its deployment id.
+
+**What the app must do.** Send the owner keys in their own `SET_CONFIG`,
+never mixed with other keys, and read them back from pages 5 and 6. After an
+`nvs` error, read pages 5 and 6 again after the next reboot. Check
+`thing.deployment_id` against `[a-z0-9-]`, the letter or digit at each end,
+the `unknown` ban and each byte cap before sending. Check that `owner.url` has
+a letter or digit right after `https://`.
+Expect a new file after a deployment id change. Read `thing.deployment_id`
+from each file's footer, never from the current config, because older files
+keep the value they were written with.
+
 ## The board says when it needs setup (fix-147-setup-bit, issue #147)
 
 **Needs a matched reflash and an app change (mobile #272).** CoreS3 moves to

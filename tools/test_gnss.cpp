@@ -1,7 +1,9 @@
 // Host tests for firmware/common/gnss. Parser dialect, fix to cell,
-// freshness, the per row source rule and that a GNSS cell never splits files.
+// freshness, the per row source rule and that a GNSS cell never splits files
+// while a deployment id change does.
 #include <device_config.h>
 #include <numeric_sample.h>
+#include <nvs.h>
 #include <os_gnss.h>
 #include <os_logger_location.h>
 
@@ -319,6 +321,47 @@ void no_split() {
   parked.mobility = config::Mobility::Fixed;
   assert(!config::same_location(first.location, parked));
 }
+
+// The deployment id is a file label like the location (#148). The logger's
+// fits_batch() compares labels with same_file_labels(), so a deployment id
+// change closes the file and an owner title change never does.
+void deployment_split() {
+  using Sample = oslogger::LocationSample<NumericSample<4>>;
+  fake_platform::nvs = {};
+  assert(config::load(false));
+  const auto set = [](std::string_view lines) {
+    config::Actions actions{};
+    char bad_key[32]{};
+    assert(config::apply_lines(lines.data(), lines.size(), bad_key,
+                               sizeof bad_key, actions));
+  };
+  const auto snapshot = [] {
+    Sample row{};
+    row.location = ::config::get().location;
+    row.deployment = ::config::deployment_id();
+    return row;
+  };
+  const auto first = snapshot();
+  assert(!first.deployment.text[0]);
+  set("owner.title=Cairo plots\nowner.provider=Walkthru\n"
+      "owner.url=https://walkthru.earth\nowner.description=Roof");
+  assert(oslogger::same_file_labels(snapshot(), first));
+  set("thing.deployment_id=cairo-07");
+  const auto second = snapshot();
+  assert(std::string_view(second.deployment.text.data()) == "cairo-07");
+  assert(!oslogger::same_file_labels(second, first));
+  assert(!oslogger::same_file_labels(first, second));
+  // The earlier snapshot keeps its value, rows are never relabelled.
+  assert(!first.deployment.text[0]);
+  set("thing.deployment_id=cairo-07\nowner.title=Other");
+  assert(oslogger::same_file_labels(snapshot(), second));
+  set("thing.deployment_id=");
+  assert(oslogger::same_file_labels(snapshot(), first));
+  // A location change still splits with the same deployment id.
+  auto moved = first;
+  moved.location.mobility = config::Mobility::Moving;
+  assert(!oslogger::same_file_labels(moved, first));
+}
 } // namespace
 
 int main() {
@@ -329,5 +372,6 @@ int main() {
   source_rule();
   row_mapping();
   no_split();
+  deployment_split();
   std::puts("gnss host tests passed");
 }

@@ -145,6 +145,8 @@ class FakeClient:
             page = data[1] if len(data) == 2 else 0
             if page == 1:
                 self.emit(bytes([ble.F_CONFIG, 0]) + b'{"location":{"cell":"","resolution":5,"cell_resolution":null,"lat":null,"lon":null,"country":""}}')
+            elif page == 5:
+                self.emit(bytes([ble.F_CONFIG, 0]) + b'{"owner":{"title":"","provider":"","url":""},"thing":{"deployment_id":"cairo-07"}}')
             else:
                 self.emit(bytes([ble.F_CONFIG, 0]) + CONFIG)
         elif op == ble.OP_SET_CONFIG:
@@ -298,8 +300,10 @@ async def run():
     assert config["ble"]["pair"] == "random" and config["reboot_required"] is False, config
     location = await session.get_config(1)
     assert location["location"]["cell"] == "" and location["location"]["lat"] is None
+    owner = await session.get_config(5)
+    assert owner["thing"]["deployment_id"] == "cairo-07", owner
     try:
-        await session.get_config(5)
+        await session.get_config(ble.LAST_CONFIG_PAGE + 1)
     except ValueError:
         pass
     else:
