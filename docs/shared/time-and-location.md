@@ -161,13 +161,14 @@ next to each other:
 | --- | --- | --- |
 | `h3_cell_id` | INT64 | Valid retained H3 cell, stored as a numeric index |
 | `h3_resolution` | INT32 | Resolution of the row's cell, 8 in every located row (#139) |
-| `location_source` | UINT8 | 0 none, 1 configured, 2 gnss, 3 phone. A fixed Thing writes 1, a moving Thing with a GNSS hook writes 2. Nothing writes 3 yet |
+| `location_source` | UINT8 | 0 none, 1 configured, 2 gnss, 3 phone. A fixed Thing writes 1, a moving Thing with a GNSS hook writes 2, and either writes 3 while `location.phone_cell` is set (#140) |
 | `geometry` | GEOMETRY | 2D WKB Point at the cell centre, no crs (OGC:CRS84), with GeoParquet 2.0 `geo` footer metadata |
 
 Unset or invalid location produces four nulls, and `geometry` is null exactly
 when `h3_cell_id` is null. Each sample captures its
 location settings before entering the worker queue. A cell or
-country change splits the batch/open file, so a later setting never relabels
+country change splits the batch/open file, and so does a phone cell change on
+a fixed Thing, so a later setting never relabels
 buffered readings. The footer carries no location since #88. The rows hold
 the cell, resolution, source and centre point, and the country is not written to the file.
 The owner also sets `thing.mobility` (`fixed` by default, or `moving`), which
@@ -176,13 +177,15 @@ Existing archives are immutable.
 
 ## Moving Things and GNSS
 
-`thing.mobility` picks the source of each row, one row at a time.
+`thing.mobility` picks the source of each row, one row at a time. A phone
+cell, while it is set, wins on both kinds (see the next section).
 
-| Mobility | Fresh GNSS fix | Row location |
-| --- | --- | --- |
-| `fixed` | any | The configured cell, source 1. A receiver never changes it |
-| `moving` | yes | The GNSS cell at resolution 8, source 2 |
-| `moving` | no | Four nulls, `location_source` null too. Never the configured cell and never an older fix |
+| Mobility | Phone cell | Fresh GNSS fix | Row location |
+| --- | --- | --- | --- |
+| any | set | any | The phone cell at resolution 8, source 3 |
+| `fixed` | unset | any | The configured cell, source 1. A receiver never changes it |
+| `moving` | unset | yes | The GNSS cell at resolution 8, source 2 |
+| `moving` | unset | no | Four nulls, `location_source` null too. Never the configured cell and never an older fix |
 
 A fix is fresh for 15 seconds after the reply was read. Polls are about 12
 seconds apart (a 10 second delay plus up to 2 seconds for the reply), so one
@@ -203,22 +206,40 @@ A GNSS cell change never splits a batch or file, because the cell is not part
 of the location snapshot that `fits_batch` compares. A file from a moving
 Thing holds many cells, each row with its own. A change of
 `thing.mobility`, the configured cell or the country still
-splits as before.
+splits as before. A moving Thing does not split on a phone cell change
+either.
 
 GNSS UTC is not a clock anchor. A fix does not set UTC, so rows keep null UTC
 until a host anchor, the RTC or NTP arrives. Using GNSS time as an anchor is
 follow-up work on #83.
 
-### Reserved `location.phone_cell`
+### Phone cell, `location.phone_cell`
 
-The reserved `SET_CONFIG` key `location.phone_cell` is the future source 3
-path, a cell from the phone's own fix that the board keeps in RAM only and
-never persists. This firmware does not accept it yet. Its planned split and
-fallback rules live in the reserved row of the
-[SET_CONFIG table](ble-sync-protocol.md) and are not GNSS rules. GNSS does not
-depend on it. A GNSS cell change never splits a file, and a moving Thing with
-no fresh fix writes nulls with no fallback to a phone cell, the configured
-cell or an older fix.
+From CoreS3 v6.28 and Waveshare V2 v2.22 the board accepts the `SET_CONFIG`
+key `location.phone_cell` (#140). It is the source 3 path, the H3 cell of the
+phone's own fix. The phone sends a cell at resolution 8 or finer and never
+sends coordinates. The board keeps the resolution 8 parent through the same
+`published_cell()` rule as `location.cell`. A coarser cell or a value that is
+not a valid cell answers `ERROR` 12 with detail `location.phone_cell`, and
+nothing changes. An empty value clears it.
+
+The cell lives in RAM only. The `oscfg/cfg` record never holds it, a request
+that carries only this key writes no NVS, and a reboot clears it. There is no
+age bound. The phone updates or clears it. GET_CONFIG page 1 reports it as
+`location.phone_cell`, so the app can tell when a reboot cleared it.
+
+While it is set every row carries it with `location_source` 3, on a fixed and
+on a moving Thing. It wins over the configured cell and over a fresh GNSS fix.
+When it is cleared, rows fall back to the table above. A fixed Thing splits
+its file when the cell its rows carry changes, so setting, updating or
+clearing a phone cell that differs from the configured cell starts a new file.
+A phone cell equal to the configured cell does not split. A moving Thing never
+splits on a phone cell change, since one moving file holds many cells. A
+switch from source 1 to source 3 with the same cell keeps the file, which
+narrows the bridge note that any source switch splits.
+
+The board holds and reports only the res 8 cell. The phone fix itself never
+reaches the board.
 
 Host tests and native builds verify contracts and compilation. Router option
 42, phone permissions/fixes, RTC writes, radio coexistence and physical card

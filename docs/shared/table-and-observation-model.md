@@ -69,7 +69,8 @@ derives the centre from the published cell, no raw GPS is stored. The
 the file and is not inferred from H3. A fixed Thing writes
 `location_source` 1. A moving Thing with a GNSS hook writes 2 with a fresh fix
 and four nulls without one ([moving Things](time-and-location.md#moving-things-and-gnss)).
-No phone path writes 3 yet.
+Either kind writes 3 while the RAM only `location.phone_cell` is set
+([phone cell](time-and-location.md#phone-cell-locationphone_cell), #140).
 
 Acquisition snapshots cell, maximum precision and country into each queued row.
 The worker splits the RAM batch and open file before appending a different

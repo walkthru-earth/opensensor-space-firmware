@@ -9,6 +9,39 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## Phone cell accepted in RAM (fix-140-phone-cell, issue #140)
+
+**Needs a matched reflash and an app change.** CoreS3 moves to
+`idf-cores3-parquet-v6.28` and Waveshare to `idf-waveshare-parquet-v2.22`.
+Columns, field ids, LIVE keys, decimals, the schema and dictionary strings and
+the `dict` and `desc` digests do not change.
+
+**What changed.**
+
+- `SET_CONFIG location.phone_cell` is accepted. It was reserved and answered
+  `ERROR` 12 before. The value is a 15 digit H3 cell hex at resolution 8 or
+  finer, or empty to clear. A finer cell is kept as its resolution 8 parent.
+  A coarser cell or a value that is not a valid cell answers `ERROR` 12 with
+  detail `location.phone_cell` and nothing changes.
+- The board keeps the cell in RAM only. A request that carries only this key
+  writes no NVS. A reboot clears it. There is no age bound.
+- While it is set, every row carries it with `location_source` 3, on fixed and
+  on moving Things. It wins over `location.cell` and over a fresh GNSS fix.
+  When it is cleared, rows go back to source 1 on a fixed Thing, and to source
+  2 or nulls on a moving Thing.
+- A fixed Thing starts a new file when the cell its rows carry changes. A phone
+  cell equal to `location.cell` keeps the file. A moving Thing never splits on
+  a phone cell change.
+- GET_CONFIG page 1 adds `location.phone_cell` after `country`. It holds the
+  res 8 cell, or `""` when unset or after a reboot. The worst case page is now
+  227 bytes.
+
+**What the app must do.** Send `location.phone_cell` with the res 8 cell of
+the phone's own fix, never coordinates. Send it empty to clear it. Read page 1
+and send the cell again when `location.phone_cell` is `""` after a reconnect,
+because a reboot cleared it. Expect `location_source` 3 in rows written while
+the phone cell was set. Do not copy the phone cell into `location.cell`.
+
 ## H3 resolution 8 only (fix-139-h3-res8, issue #139)
 
 **Needs a matched reflash and an app change.** CoreS3 moves to

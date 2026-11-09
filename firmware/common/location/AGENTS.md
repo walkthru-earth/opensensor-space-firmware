@@ -15,8 +15,9 @@ write NVS or infer country. Missing location remains missing.
 - `from_degrees()` indexes a raw position straight at the requested
   resolution. Only `firmware/common/gnss` (`to_fix()`) calls it, at res 8,
   and raw degrees never leave that call.
-- `location.phone_cell` (source 3) is reserved in
-  `docs/shared/time-and-location.md` and not accepted yet (#140).
+- `location.phone_cell` (source 3) goes through `published_cell()` like
+  `location.cell` and lives in RAM only, never in NVS (#140). Rules are in
+  `docs/shared/time-and-location.md`.
 - Country is optional, owner-declared ISO 3166-1 alpha-2; validate assigned codes
   using the documented snapshot and never claim H3 provides country boundaries.
 - Host gates compile actual C++ helpers and exact official C sources through
