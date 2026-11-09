@@ -10,6 +10,7 @@
 #include <os_location.h>
 #include <os_logger_location.h>
 
+#include <array>
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -887,6 +888,26 @@ void phone_cell_age() {
   at(start, 300 * kSecond);
   seen(0);
 
+  // Each reader checks the age itself. Only one reader runs after the
+  // deadline, so none passes because another dropped the cell first.
+  using Reader = std::uint64_t (*)();
+  constexpr std::array<Reader, 3> kReaders{
+      [] { return config::location_settings().phone_cell; },
+      [] { return config::sample_labels().location.phone_cell; },
+      [] { return config::get().location.phone_cell; },
+  };
+  for (const Reader read : kReaders) {
+    start = fake_now_us;
+    accept("location.phone_cell=8828308281fffff");
+    at(start, 300 * kSecond);
+    assert(read() == 0);
+  }
+  // GET_CONFIG page 1 on its own.
+  start = fake_now_us;
+  accept("location.phone_cell=8828308281fffff");
+  at(start, 300 * kSecond);
+  assert(page_has("\"phone_cell\":\"\""));
+
   // An empty value still clears at once.
   start = fake_now_us;
   accept("location.phone_cell=8828308281fffff");
@@ -903,7 +924,8 @@ void phone_cell_age() {
   seen(0);
 
   // On a moving Thing expiry reports no action, there is no request. Sending
-  // the cell again after expiry is a location change, as a first set is.
+  // the cell again after expiry is a location change, as a first set is. No
+  // other reader runs first, so SET_CONFIG checks the age itself.
   config::Actions actions;
   char bad_key[64];
   accept("thing.mobility=moving\nlocation.phone_cell=8828308281fffff");
@@ -911,7 +933,6 @@ void phone_cell_age() {
   assert(apply("location.phone_cell=8828308281fffff", actions, bad_key));
   assert(!actions.location_changed);
   at(start, 300 * kSecond);
-  seen(0);
   assert(apply("location.phone_cell=8828308281fffff", actions, bad_key));
   assert(actions.location_changed);
   seen(kAt8);
