@@ -35,3 +35,7 @@ CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
 # write, erase and read code moves into IRAM, and nothing on that image wrote
 # flash before.
 CONFIG_ESP_COREDUMP_STACK_SIZE=2560
+# mDNS 1.15 turns its console CLI on by default and then fails the configure
+# step unless the IDF console component is in the build. No image registers
+# the mDNS CLI, so it stays off and mDNS does not pull in console.
+CONFIG_MDNS_ENABLE_CONSOLE_CLI=n
