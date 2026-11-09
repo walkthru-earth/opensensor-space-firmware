@@ -217,6 +217,44 @@ with xtensa GCC 15.2.0 cost about 341 KB of flash image and 5 KB of DIRAM
 against the same build with `snprintf`. Device code keeps `snprintf` until a
 later toolchain shows a smaller cost.
 
+### Editor setup
+
+The repo root `.clangd` points clangd at the board compile databases, so build
+each board once to create them. Run `pixi run cores3-build` and
+`pixi run waveshare-build logger`. Shared code under `firmware/common` borrows
+the CoreS3 database. Host tests under `tools/` need no build, `.clangd` gives
+them `-std=c++23` and the include paths `tools/host_cxx.py` uses. Never commit
+`compile_commands.json` or anything under `build/`.
+
+Use the clangd that pixi pins (clang-tools **23.1.3**) and let it ask the
+xtensa compiler for its headers. In VS Code with the clangd extension put this
+in your own `.vscode/settings.json`, which git ignores.
+
+```json
+{
+  "clangd.path": "${workspaceFolder}/.pixi/envs/default/bin/clangd",
+  "clangd.arguments": [
+    "--query-driver=${userHome}/.espressif/tools/xtensa-esp-elf/**/bin/xtensa-esp32s3-elf-*"
+  ]
+}
+```
+
+If `OS_IDF_TOOLS_PATH` moves the SDK tools away from `~/.espressif`, change the
+glob to match. clangd runs every compiler the glob matches, so keep it narrow
+instead of the `**` the ESP-IDF extension docs show. The `esp-clangd` that
+`pixi run idf-setup` installs also works as `clangd.path`.
+
+Check a file from the repo root with the same flags.
+
+```sh
+.pixi/envs/default/bin/clangd --check=firmware/common/logger/src/os_logger.cpp \
+  --check-locations=false \
+  --query-driver="$HOME/.espressif/tools/xtensa-esp-elf/**/bin/xtensa-esp32s3-elf-*"
+```
+
+It ends with `All checks completed, 0 errors` once the databases exist. Spell
+checkers that read `cspell.json` know the project words.
+
 ## Native migration validation 2026-10-09
 
 The migration passed native board and generic component builds plus host

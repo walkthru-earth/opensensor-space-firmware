@@ -31,3 +31,7 @@ tools/fixtures/**/build/
 firmware/common/logger/tests/compile/build/
 tools/fixtures/**/dependencies.lock
 firmware/common/logger/tests/compile/dependencies.lock
+
+# Editor and OS state
+.vscode/
+.DS_Store

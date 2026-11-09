@@ -1,0 +1,42 @@
+{
+  "$schema": "https://raw.githubusercontent.com/streetsidesoftware/cspell/main/cspell.schema.json",
+  "version": "0.2",
+  "language": "en",
+  "ignorePaths": [
+    ".pixi/**",
+    "**/build/**",
+    "**/managed_components/**",
+    "firmware/common/vendor/**"
+  ],
+  "words": [
+    "bringup",
+    "coredump",
+    "espressif",
+    "geoparquet",
+    "Geospatial",
+    "geospatial",
+    "gnss",
+    "maxf",
+    "minf",
+    "nimble",
+    "opensensor",
+    "oscfg",
+    "oslog",
+    "oslogger",
+    "ossensor",
+    "ossync",
+    "otadata",
+    "picolibc",
+    "pixi",
+    "Plantower",
+    "readback",
+    "sdkconfig",
+    "simcom",
+    "stac",
+    "twdt",
+    "unsynced",
+    "vcell",
+    "walkthru",
+    "waveshare"
+  ]
+}

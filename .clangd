@@ -1,0 +1,55 @@
+# clangd settings for the firmware and the host tests. See the Editor setup
+# section of docs/shared/development.md. Paths in If are relative to this
+# file, and so is CompilationDatabase.
+#
+# The board compile databases are written by `pixi run cores3-build` and
+# `pixi run waveshare-build logger`. Shared code under firmware/common is in
+# no database of its own, so it borrows the CoreS3 one. Its own sources are in
+# that database, and headers take the command of a nearby source.
+
+# Waveshare V2 sources use the Waveshare logger build.
+If:
+  PathMatch: firmware/esp-idf-waveshare-sim7670g/.*
+CompileFlags:
+  CompilationDatabase: firmware/esp-idf-waveshare-sim7670g/build/logger
+
+---
+# Everything else under firmware uses the CoreS3 build.
+If:
+  PathMatch: firmware/.*
+  PathExclude: firmware/esp-idf-waveshare-sim7670g/.*
+CompileFlags:
+  CompilationDatabase: firmware/esp-idf-cores3/build/bringup
+
+---
+# Both boards build with xtensa-esp32s3-elf-gcc. clang does not know its
+# -m and -f options, so drop them as the ESP-IDF VS Code extension does, then
+# add back the two that change what the code may use. The C++ dialect stays
+# as the database has it, our sources end with -std=gnu++23 from
+# os_pin_cxx_standard(). BuiltinHeaders reads the GCC headers through
+# --query-driver, which ESP-IDF 6.1 toolchains need.
+If:
+  PathMatch: firmware/.*
+CompileFlags:
+  Remove: [-m*, -f*]
+  Add: [-fno-exceptions, -fno-rtti]
+  BuiltinHeaders: QueryDriver
+
+---
+# Host tests have no database. tools/host_cxx.py builds them with the host
+# clang as -std=c++23, and the fallback command runs in tools/, so the
+# include paths are relative to it.
+If:
+  PathMatch: tools/[^/]*\.(cpp|h)
+CompileFlags:
+  CompilationDatabase: None
+  Add:
+    - -std=c++23
+    - -I../tools/host_fakes/config
+    - -I../firmware/common/src
+    - -I../firmware/common/runtime/src
+    - -I../firmware/common/logger/src
+    - -I../firmware/common/connectivity/src
+    - -I../firmware/common/location/src
+    - -I../firmware/common/gnss/src
+    - -I../firmware/common/vendor/lz4
