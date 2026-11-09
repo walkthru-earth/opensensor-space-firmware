@@ -9,6 +9,35 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## Firmware dependency refresh (deps/firmware-latest)
+
+**Needs a matched reflash. The app needs no code change unless it pins
+`configuration_id`.** CoreS3 moves to `idf-cores3-parquet-v6.29` and Waveshare
+to `idf-waveshare-parquet-v2.23`. Columns, field ids, LIVE keys, decimals, the
+schema and dictionary strings, the `dict` and `desc` digests, the wire protocol
+and the Parquet layout do not change.
+
+**What changed.**
+
+- The images now build with mDNS 1.15.1, led_strip 3.1.1 (Waveshare),
+  M5Unified 0.2.29 and M5GFX 0.2.36 (CoreS3) and vendored LZ4 1.11.0.
+  ESP-IDF stays at 6.1.
+- The CoreS3 footer `acquisition.config_id` moves from `cores3-acquisition-v3`
+  to `cores3-acquisition-v4`, and the `acquisition.config` JSON now records
+  `"m5unified":"0.2.29"`. It said 0.2.26 before.
+- LZ4 1.11.0 may pick different matches than 1.10.0, so the compressed bytes
+  of a page can differ for the same rows. Files stay `LZ4_RAW` and decode to
+  the same values.
+- The mDNS `_ossync._tcp` service name, port and TXT keys are unchanged.
+
+**Why.** Each dependency moves to its latest stable release. M5Unified and
+M5GFX 0.3.0 change rotation, charging and RTC behaviour, so they move in a
+separate change.
+
+**What the app must do.** Accept the new firmware strings. If the app pins
+`configuration_id`, accept `cores3-acquisition-v4`. Reflash both boards with
+the matched build.
+
 ## Phone cell accepted in RAM (fix-140-phone-cell, issue #140)
 
 **Needs a matched reflash and an app change.** CoreS3 moves to
