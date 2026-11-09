@@ -28,6 +28,7 @@ tasks=(
   "lint"
   # Writer, reader, schema and dictionary contracts
   "common-test"
+  "json-test"
   "parquet-test --sanitize"
   "geoparquet-test --sanitize"
   "reader-test"

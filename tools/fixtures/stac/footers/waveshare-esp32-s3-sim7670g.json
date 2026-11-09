@@ -1,0 +1,38 @@
+{
+  "version": "0.1.0",
+  "thing": {
+    "id": "7c1e4b9a-3d52-4f86-a0b7-e9d2c5f81a46",
+    "device_id": "a4cf12b07e3d",
+    "board": "waveshare-esp32-s3-sim7670g",
+    "deployment_id": "unknown",
+    "mobility": "moving"
+  },
+  "firmware": {
+    "version": "idf-waveshare-parquet-v2.17",
+    "schema": "waveshare-sim7670g-telemetry-v6",
+    "boot_id": "5e9d0c7b31a84f62b8d47a10c3e6f295"
+  },
+  "dictionary": {
+    "sha256": "a8605aafb6f76b794e9e7fb32927be6d203afeeb14527206c0e49c1eb0436809",
+    "version": "waveshare-sim7670g-telemetry-v8",
+    "uri": "https://raw.githubusercontent.com/walkthru-earth/opensensor-space-firmware/91c776a17ecadc91f0bd51523c30f691cb9ff5ba/firmware/esp-idf-waveshare-sim7670g/logger/telemetry_fields.inc"
+  },
+  "template": {
+    "href": "https://raw.githubusercontent.com/walkthru-earth/opensensor-space-firmware/bb618f32a8a9bfe6a633a22ad5e99d319d55d46b/docs/shared/templates/waveshare-esp32-s3-sim7670g/a8605aafb6f76b794e9e7fb32927be6d203afeeb14527206c0e49c1eb0436809.json",
+    "sha256": "d4e4fa499e20c414b3b1fd61343982e5735687d67cfb8b4591efaa5ed5f96bd4"
+  },
+  "acquisition": {
+    "sample_interval_ms": 10000,
+    "time_semantics": "event_time_utc_us estimates snapshot start; collection_completed_mono_us bounds sequential reads; pms_received_mono_us is last checksum-valid UART frame receipt, not sensor phenomenon time; result/ingestion time and clock uncertainty unknown; no RTC anchor and no retroactive UTC assignment",
+    "config_id": "waveshare-sim7670g-acquisition-v3",
+    "config": "{\"sample_interval_ms\":10000,\"pms_warmup_us\":30000000,\"pms_stale_after_ms\":5000,\"pms_uart_rx\":1,\"pms_uart_tx\":2,\"pms_baud\":9600,\"pms_model\":\"PMS5003T\",\"battery_presence\":\"explicit-owner-configuration\",\"battery_percent\":\"integer-percent-truncated-capped-at-100\",\"snapshot\":\"latest-available-not-average\",\"sensor_identity\":\"owner-provisioned-nvs-and-per-row\",\"batch_candidate\":\"off-by-default-not-cairo-validated\",\"battery_health\":{\"source\":\"max17048-vcell\",\"external_power_mv\":4240,\"external_power_hysteresis_mv\":20,\"low_enter_mv\":3500,\"critical_enter_mv\":3350,\"hysteresis_mv\":75,\"debounce_samples\":3,\"settling_minutes\":60,\"calibration\":\"uncalibrated-defaults\",\"critical_action\":\"finalize-open-file-once\"}}",
+    "calibration_id": "unknown"
+  },
+  "file": {
+    "rotation_interval_s": 900,
+    "row_groups": 1,
+    "row_group_rows_max": 90,
+    "compression": "LZ4_RAW",
+    "purpose": "telemetry"
+  }
+}
