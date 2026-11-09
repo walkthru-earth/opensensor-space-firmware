@@ -34,7 +34,8 @@ constexpr std::int64_t kI64 = std::numeric_limits<std::int64_t>::max();
 constexpr std::int64_t kUtcUs = kI64 / 1000; // 9223372036854775000 ns
 constexpr std::int64_t kU16 = 65535;
 // `imu_t` is BMI270 int16/512 + 23, so -41.0 is its widest. `vbus` and
-// `bat` are M5Unified int16_t mV. `chg` is is_charging_t (0..2). `t` and `rh`
+// `bat` are M5Unified int16_t mV. `chg` is ChargingStatus (0..2), mapped
+// from M5Unified getChargeState() in telemetry_logger.cpp. `t` and `rh`
 // have no producer yet (sht20_unresolved). They take a signed int16 deci
 // degree and 100.0 so a future sensor cannot push the row over silently.
 constexpr livewidest::Widest kWidest[] = {
