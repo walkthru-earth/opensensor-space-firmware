@@ -236,17 +236,27 @@ too before you edit the Waveshare diagnostic image, which has its own
 database. Shared code under `firmware/common` borrows the CoreS3 database,
 except `firmware/common/gnss_reader`, which only the Waveshare logger builds.
 Never commit `compile_commands.json` or anything under `build/`.
+A database describes the branch it was built on. After you switch branches,
+or when a PR adds a component or a managed dependency, run
+`pixi run cores3-build` or `pixi run waveshare-build logger` again for the
+board you edit, then restart clangd so it reads the new database.
 
-Host tests under `tools/` need no build. Each `tools/test_*.py` passes its own
-`-I` list to the host `clang++`, and `tools/host_cxx.py` holds only the
-dialect flag. `.clangd` adds `-std=c++23` and the shared include folders most
-tests use. The tests with a fakes folder of their own (`wifi_host_fakes`,
-`sd_memory_host_fakes`, `logger_work_host_fakes`) get the exact list their
-script passes. `partial_rebuild_fixture.cpp` reads the Waveshare field table
-and `footer_fixture.h` reads the CoreS3 contract first, as the comments in
-`.clangd` say. On 2026-11-09 every `.cpp` and `.h` directly in `tools/`
-checked with 0 errors. A new test that adds an include folder or a fakes
-folder needs the same line in `.clangd`.
+Host tests under `tools/` run without a board build. Each `tools/test_*.py`
+passes its own `-I` list to the host `clang++`, and `tools/host_cxx.py` holds
+only the dialect flag. `.clangd` adds `-std=c++23` and the shared include
+folders most tests use. The tests with a fakes folder of their own
+(`wifi_host_fakes`, `sd_memory_host_fakes`, `logger_work_host_fakes`) get the
+exact list their script passes, and `test_h3_polygon.cpp` adds
+`host_fakes/h3_alloc`. `test_stac_item.cpp` reads the CoreS3 contract,
+`partial_rebuild_fixture.cpp` reads the Waveshare field table and
+`footer_fixture.h` reads the CoreS3 contract first, as the comments in
+`.clangd` say. The editor needs one CoreS3 build for the tests that include a
+location header. The host scripts build embedded-h3-location from a cache
+clone whose path `.clangd` cannot name, so the editor reads the same commit
+from `firmware/esp-idf-cores3/managed_components` and the `h3api.h` that the
+build generates. On 2026-11-09, after `pixi run cores3-build`, every `.cpp`
+and `.h` directly in `tools/` checked with 0 errors. A new test that adds an
+include folder or a fakes folder needs the same line in `.clangd`.
 
 Use the clangd that pixi pins (the `clang-tools` entry in `pixi.toml`) and let
 it ask the xtensa compiler for its headers. In VS Code with the clangd

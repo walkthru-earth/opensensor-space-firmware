@@ -42,9 +42,13 @@ infers country. Missing location remains missing.
   memory. A `static_assert` fails the build when the prefix is anything else.
   The component links `WHOLE_ARCHIVE` because only the library archive, which
   links after it, calls the hooks. Call it only at finalize in the storage
-  worker. `pixi run h3-polygon-test` proves cleanup on every failed
-  allocation, the globe through the rounding, bit equality with
-  `cellsToLinkedMultiPolygon` and prints the 720 cell heap.
+  worker. `pixi run h3-polygon-test` links the real `src/os_h3_alloc.cpp`
+  over the ESP-IDF heap fake in `tools/host_fakes/h3_alloc`, where a zero
+  size returns NULL as on ESP-IDF 6.1. It proves each hook, cleanup on every
+  failed allocation, the globe through the rounding, bit equality with
+  `cellsToLinkedMultiPolygon` and prints the 720 cell heap. It then drops
+  `nonzero_alloc_size()` from each hook argument in turn and fails if any
+  mutant passes.
 - Host gates build the library at the commit every board lock names, through
   `tools/h3_library.py`, with the pinned Pixi toolchain. They prove indexing,
   validation and privacy logic, not board GPS, persistent storage or hardware

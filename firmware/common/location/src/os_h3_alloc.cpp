@@ -45,7 +45,9 @@ void *os_h3_calloc(std::size_t count, std::size_t size) {
 }
 
 // A NULL pointer allocates. Size 0 is rounded up to 1 like the other hooks,
-// so it returns a 1 byte block instead of freeing. H3 v4.5.0 calls realloc
+// so it returns a 1 byte block instead of freeing, as the library asks of a
+// realloc hook (nonzero_alloc_size in embedded_h3/location.h, v2.0.0) and as
+// tools/test_h3_polygon.cpp checks. H3 v4.5.0 calls realloc
 // only to shrink a traced outline loop of 3 or more vertices
 // (cellsToMultiPoly.c line 367), never with size 0.
 void *os_h3_realloc(void *pointer, std::size_t size) {
