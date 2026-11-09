@@ -2,14 +2,26 @@
 # section of docs/shared/development.md. Paths in If are relative to this
 # file, and so is CompilationDatabase.
 #
-# The board compile databases are written by `pixi run cores3-build` and
-# `pixi run waveshare-build logger`. Shared code under firmware/common is in
-# no database of its own, so it borrows the CoreS3 one. Its own sources are in
-# that database, and headers take the command of a nearby source.
+# The board compile databases are written by `pixi run cores3-build`,
+# `pixi run waveshare-build logger` and `pixi run waveshare-build diagnostic`.
+# Shared code under firmware/common is in no database of its own, so it
+# borrows a board one. Its own sources are in that database, and headers take
+# the command of a nearby source.
 
-# Waveshare V2 sources use the Waveshare logger build.
+# The Waveshare V2 diagnostic image has its own build.
 If:
-  PathMatch: firmware/esp-idf-waveshare-sim7670g/.*
+  PathMatch: firmware/esp-idf-waveshare-sim7670g/diagnostic/.*
+CompileFlags:
+  CompilationDatabase: firmware/esp-idf-waveshare-sim7670g/build/diagnostic
+
+---
+# Other Waveshare V2 sources, and the GNSS reader only the Waveshare logger
+# builds, use the Waveshare logger build.
+If:
+  PathMatch:
+    - firmware/esp-idf-waveshare-sim7670g/.*
+    - firmware/common/gnss_reader/.*
+  PathExclude: firmware/esp-idf-waveshare-sim7670g/diagnostic/.*
 CompileFlags:
   CompilationDatabase: firmware/esp-idf-waveshare-sim7670g/build/logger
 
@@ -17,7 +29,9 @@ CompileFlags:
 # Everything else under firmware uses the CoreS3 build.
 If:
   PathMatch: firmware/.*
-  PathExclude: firmware/esp-idf-waveshare-sim7670g/.*
+  PathExclude:
+    - firmware/esp-idf-waveshare-sim7670g/.*
+    - firmware/common/gnss_reader/.*
 CompileFlags:
   CompilationDatabase: firmware/esp-idf-cores3/build/bringup
 

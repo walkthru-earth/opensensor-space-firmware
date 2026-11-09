@@ -221,8 +221,11 @@ later toolchain shows a smaller cost.
 
 The repo root `.clangd` points clangd at the board compile databases, so build
 each board once to create them. Run `pixi run cores3-build` and
-`pixi run waveshare-build logger`. Shared code under `firmware/common` borrows
-the CoreS3 database. Host tests under `tools/` need no build, `.clangd` gives
+`pixi run waveshare-build logger`. Run `pixi run waveshare-build diagnostic`
+too before you edit the Waveshare diagnostic image, which has its own
+database. Shared code under `firmware/common` borrows the CoreS3 database,
+except `firmware/common/gnss_reader`, which only the Waveshare logger builds.
+Host tests under `tools/` need no build, `.clangd` gives
 them `-std=c++23` and the include paths `tools/host_cxx.py` uses. Never commit
 `compile_commands.json` or anything under `build/`.
 
