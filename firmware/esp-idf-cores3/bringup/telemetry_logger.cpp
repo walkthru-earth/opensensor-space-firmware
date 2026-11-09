@@ -154,9 +154,9 @@ bool rtc_write(std::int64_t seconds, void *) {
 
 // The STAC File Item statistics columns (#142), the numeric measurement
 // columns of the board template in template order.
-constexpr auto kStatColumns = opensensor::stac::stat_columns<
-    opensensor::stac::stat_count(kFields, std::span(kSemantics))>(
-    kFields, std::span(kSemantics));
+constexpr auto kStatColumns =
+    opensensor::stac::stat_columns<opensensor::stac::stat_count(
+        kFields, std::span(kSemantics))>(kFields, std::span(kSemantics));
 static_assert(opensensor::stac::stat_columns_valid(kStatColumns, kFields,
                                                    std::span(kSemantics)),
               "every STAC statistics column must have a gate the Item reads");

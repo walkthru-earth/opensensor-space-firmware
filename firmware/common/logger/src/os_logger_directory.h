@@ -409,7 +409,8 @@ inline bool sidecar_crosslink_pair(const char *partial, const char *json) {
   if (!has_suffix(partial, ".json.partial") || !has_suffix(json, ".json"))
     return false;
   const std::size_t length = std::strlen(partial) - 8; // drop .partial
-  return std::strlen(json) == length && std::strncmp(partial, json, length) == 0;
+  return std::strlen(json) == length &&
+         std::strncmp(partial, json, length) == 0;
 }
 
 // True when `directory` holds the finalized sibling of `partial`, or when the

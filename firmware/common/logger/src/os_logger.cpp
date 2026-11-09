@@ -167,8 +167,7 @@ struct StacState {
   stac::Accumulator accumulator;
   std::array<opensensor::location::LngLat, stac::kGeometryCapacity.points>
       points{};
-  std::array<opensensor::location::Ring, stac::kGeometryCapacity.rings>
-      rings{};
+  std::array<opensensor::location::Ring, stac::kGeometryCapacity.rings> rings{};
   std::array<opensensor::location::Polygon, stac::kGeometryCapacity.polygons>
       polygons{};
   // The Item repeats file:checksum, so finalize hashes the file in the same
@@ -933,7 +932,8 @@ void write_sidecar(const OutputFile &target, const char *ready,
     partial_length =
         std::snprintf(partial, sizeof(partial), "%s.partial", path);
   }
-  if (path_length < 0 || static_cast<std::size_t>(path_length) >= sizeof(path) ||
+  if (path_length < 0 ||
+      static_cast<std::size_t>(path_length) >= sizeof(path) ||
       partial_length < 0 ||
       static_cast<std::size_t>(partial_length) >= sizeof(partial)) {
     oslog.printf("PARQUET STAC result=failed file=%s reason=path-too-long "

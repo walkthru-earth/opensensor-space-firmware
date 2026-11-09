@@ -373,10 +373,10 @@ void check_quarantine_names() {
       "/sd/output",
       "thing=abc/year=2026/month=10/day=11/data_1200_b1_42-131-3.json.partial",
       "b2", 8, directory, sizeof(directory), path, sizeof(path)));
-  assert(std::strcmp(path, "/sd/output/quarantine/thing=abc/"
-                           "year=2026_month=10_day=11/"
-                           "data_1200_b1_42-131-3.json-b2-00000008.partial") ==
-         0);
+  assert(std::strcmp(path,
+                     "/sd/output/quarantine/thing=abc/"
+                     "year=2026_month=10_day=11/"
+                     "data_1200_b1_42-131-3.json-b2-00000008.partial") == 0);
   // Rejections: not a partial, unsafe segments, absolute or too long.
   for (const char *bad :
        {"thing=a/x.parquet", "thing=a/../x.partial", "thing=a//x.partial",
@@ -605,10 +605,10 @@ void check_crosslink_guard() {
   listing.fail_close = false;
   // A sidecar partial beside its final sidecar stays, one beside only its
   // Parquet file is torn and may move.
-  listing.names = {"data_1200_b1_42-131-3.parquet", "data_1200_b1_42-131-3.json",
-                   "data_1200_b1_42-131-3.json.partial",
-                   "data_1215_b1_132-200-4.parquet",
-                   "data_1215_b1_132-200-4.json.partial"};
+  listing.names = {
+      "data_1200_b1_42-131-3.parquet", "data_1200_b1_42-131-3.json",
+      "data_1200_b1_42-131-3.json.partial", "data_1215_b1_132-200-4.parquet",
+      "data_1215_b1_132-200-4.json.partial"};
   assert(crosslink_suspect(listing, "/sd/day",
                            "data_1200_b1_42-131-3.json.partial"));
   assert(!crosslink_suspect(listing, "/sd/day",
