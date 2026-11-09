@@ -217,6 +217,56 @@ with xtensa GCC 15.2.0 cost about 341 KB of flash image and 5 KB of DIRAM
 against the same build with `snprintf`. Device code keeps `snprintf` until a
 later toolchain shows a smaller cost.
 
+### Editor setup
+
+The repo root `.clangd` points clangd at the board compile databases, so build
+each board once to create them. Run `pixi run cores3-build` and
+`pixi run waveshare-build logger`. Run `pixi run waveshare-build diagnostic`
+too before you edit the Waveshare diagnostic image, which has its own
+database. Shared code under `firmware/common` borrows the CoreS3 database,
+except `firmware/common/gnss_reader`, which only the Waveshare logger builds.
+Never commit `compile_commands.json` or anything under `build/`.
+
+Host tests under `tools/` need no build. Each `tools/test_*.py` passes its own
+`-I` list to the host `clang++`, and `tools/host_cxx.py` holds only the
+dialect flag. `.clangd` adds `-std=c++23` and the shared include folders most
+tests use. The tests with a fakes folder of their own (`wifi_host_fakes`,
+`sd_memory_host_fakes`, `logger_work_host_fakes`) get the exact list their
+script passes. `partial_rebuild_fixture.cpp` reads the Waveshare field table
+and `footer_fixture.h` reads the CoreS3 contract first, as the comments in
+`.clangd` say. On 2026-11-09 every `.cpp` and `.h` directly in `tools/`
+checked with 0 errors. A new test that adds an include folder or a fakes
+folder needs the same line in `.clangd`.
+
+Use the clangd that pixi pins (the `clang-tools` entry in `pixi.toml`) and let
+it ask the xtensa compiler for its headers. In VS Code with the clangd
+extension put this in your own `.vscode/settings.json`, which git ignores.
+
+```json
+{
+  "clangd.path": "${workspaceFolder}/.pixi/envs/default/bin/clangd",
+  "clangd.arguments": [
+    "--query-driver=${userHome}/.espressif/tools/xtensa-esp-elf/**/bin/xtensa-esp32s3-elf-*"
+  ]
+}
+```
+
+If `OS_IDF_TOOLS_PATH` moves the SDK tools away from `~/.espressif`, change the
+glob to match. clangd runs every compiler the glob matches, so keep it narrow
+instead of the `**` the ESP-IDF extension docs show. The `esp-clangd` that
+`pixi run idf-setup` installs also works as `clangd.path`.
+
+Check a file from the repo root with the same flags.
+
+```sh
+.pixi/envs/default/bin/clangd --check=firmware/common/logger/src/os_logger.cpp \
+  --check-locations=false \
+  --query-driver="$HOME/.espressif/tools/xtensa-esp-elf/**/bin/xtensa-esp32s3-elf-*"
+```
+
+It ends with `All checks completed, 0 errors` once the databases exist. Spell
+checkers that read `cspell.json` know the project words.
+
 ## Native migration validation 2026-10-09
 
 The migration passed native board and generic component builds plus host
@@ -543,17 +593,18 @@ Run these from the repository root, with `v1.2.0` standing for the new tag.
 
 2. Wait for the Release workflow to finish and the draft to appear. The run
    can take a few seconds to show up after the push, so the loop looks for it
-   every 10 seconds and gives up after 5 minutes, also when `gh` keeps failing.
+   every 10 seconds and gives up after 30 tries, about 5 minutes, also when
+   `gh` keeps failing. It does not sleep after the last try.
    `--exit-status` makes the watch fail when the run fails. The run is also on
    the repository Actions page under Release.
 
    ```sh
    run_id=""
-   for _ in $(seq 30); do
+   for try in $(seq 30); do
      run_id="$(gh run list --workflow release.yml --branch v1.2.0 --event push \
        --limit 1 --json databaseId --jq '.[0].databaseId // empty')" || run_id=""
      [ -n "$run_id" ] && break
-     sleep 10
+     if [ "$try" -lt 30 ]; then sleep 10; fi
    done
    if [ -n "$run_id" ]; then
      gh run watch "$run_id" --exit-status

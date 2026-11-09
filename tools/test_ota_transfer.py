@@ -4,9 +4,42 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 from host_cxx import CXX_STD
+
+# The device glue must route its stale owner decisions through the pure
+# helpers the C++ test covers, so dropping a call cannot pass unseen.
+GLUE_CALLS = (
+    re.compile(r"const auto generation = rules::owner_generation\(owner, ble::kMaxLanClients,\s*lan::connection_generation\);"),
+    re.compile(r"const auto keep =\s*rules::stale_action\(progress, owner, generation, now_us,\s*owner_seen_us\);"),
+    re.compile(r"owner_seen_us = rules::touch_seen\(upload\.progress\(\), upload\.owner\(\), owner,\s*now_us, owner_seen_us\);"),
+    re.compile(r"return rules::lan_owner\(request\.peer, request\.link_generation\);"),
+)
+
+
+# Block and line comments, so a call that is commented out does not count.
+COMMENTS = re.compile(r"/\*.*?\*/|//[^\n]*", re.DOTALL)
+
+
+def missing_calls(source: str) -> list[str]:
+    code = COMMENTS.sub("", source)
+    return [call.pattern for call in GLUE_CALLS if not call.search(code)]
+
+
+def check_glue(root: Path) -> None:
+    text = (root / "firmware/common/connectivity/src/ota_lan.cpp").read_text(encoding="utf-8")
+    missing = missing_calls(text)
+    if missing:
+        raise SystemExit(f"ota_lan.cpp no longer calls the tested OTA helpers, {missing}")
+    # Each call commented out, or deleted, must be reported.
+    for call in GLUE_CALLS:
+        found = call.search(text)
+        assert found, call.pattern
+        start, end = found.span()
+        for replacement in (f"/* {found.group(0)} */", "// " + found.group(0).replace("\n", "\n// "), ""):
+            assert call.pattern in missing_calls(text[:start] + replacement + text[end:]), call.pattern
 
 
 def main() -> None:
@@ -14,6 +47,7 @@ def main() -> None:
     parser.add_argument("--sanitize", action="store_true")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
+    check_glue(root)
     with tempfile.TemporaryDirectory(prefix="os-ota-transfer-") as directory:
         executable = Path(directory) / "ota-transfer-test"
         command = ["clang++", CXX_STD, "-Wall", "-Wextra", "-Werror",
@@ -27,7 +61,7 @@ def main() -> None:
         subprocess.run([str(executable)], check=True)
     print("OTA begin size and slot cap, contiguous chunks, header chip and "
           "project match, SHA-256 before activate, abort on mismatch, "
-          "ownership and STATE frame passed")
+          "ownership, stale owner glue and STATE frame passed")
 
 
 if __name__ == "__main__":

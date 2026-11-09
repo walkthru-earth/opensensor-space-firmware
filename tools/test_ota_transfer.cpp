@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <optional>
 #include <string_view>
 #include <vector>
 
@@ -223,7 +224,7 @@ void test_begin_rules() {
   // The slot size itself is allowed.
   CHECK(transfer.handle(begin_request(kSlot, digest_a()), kOwner).has_value());
   CHECK(flash.begins == 1);
-  static_cast<void>(transfer.handle(kCancel, kOwner));
+  CHECK(transfer.handle(kCancel, kOwner).has_value());
   CHECK(!transfer.active() && flash.aborts == 1);
   // Missing digest bytes.
   auto short_begin = begin_request(1000, digest_a());
@@ -543,6 +544,116 @@ void test_stall() {
   CHECK(
       transfer.handle(begin_request(4096, digest_a()), kOwner + 1).has_value());
 }
+// The drop_stale() and handle() glue in ota_lan.cpp, decided by stale_action()
+// and touch_seen().
+void test_stale_owner() {
+  constexpr std::uint8_t kPeer = 2;
+  constexpr std::uint32_t kGen = 9;
+  constexpr ota::Owner owner = ota::lan_owner(kPeer, kGen);
+  static_assert(owner == ((ota::Owner{kPeer} << 32) | kGen));
+  static_assert(ota::owner_peer(owner) == kPeer);
+  static_assert(ota::owner_peer(ota::lan_owner(255, 0xFFFFFFFF)) == 255);
+  constexpr ota::Progress receiving{.phase = ota::Phase::Receiving};
+  constexpr std::int64_t seen = 5'000'000;
+  constexpr std::int64_t stall_us = ota::kStallMs * 1000;
+
+  // Open session, recent request, keeps the upload.
+  CHECK(ota::stale_action(receiving, owner, kGen, seen, seen) ==
+        ota::Keep::Keep);
+  CHECK(ota::stale_action(receiving, owner, kGen, seen + stall_us - 1, seen) ==
+        ota::Keep::Keep);
+  // Idle time is now minus the owner's last request, not now alone.
+  CHECK(ota::stale_action(receiving, owner, kGen, seen + stall_us, seen) ==
+        ota::Keep::Stalled);
+  CHECK(ota::stale_action(receiving, owner, kGen, stall_us + 1, 0) ==
+        ota::Keep::Stalled);
+  // A new generation on the slot means the owner's session closed, even when
+  // the owner was seen a moment ago.
+  CHECK(ota::stale_action(receiving, owner, kGen + 1, seen, seen) ==
+        ota::Keep::SessionClosed);
+  CHECK(ota::stale_action(receiving, owner, kPeer, seen, seen) ==
+        ota::Keep::SessionClosed);
+  CHECK(ota::stale_action(receiving, owner, std::nullopt, seen, seen) ==
+        ota::Keep::SessionClosed);
+  // Idle and a staged image are never dropped as stale.
+  for (const auto phase : {ota::Phase::Idle, ota::Phase::Ready}) {
+    const ota::Progress still{.phase = phase};
+    CHECK(ota::stale_action(still, owner, std::nullopt, seen + stall_us, 0) ==
+          ota::Keep::Keep);
+  }
+
+  // owner_generation() is the slot lookup drop_stale() runs. It asks for the
+  // owner's own slot and returns what the slot holds now, so a reconnect on
+  // that slot closes the owner's session. A slot past the table is never
+  // looked up.
+  constexpr std::uint8_t kSlots = 3;
+  int lookups = 0;
+  std::uint8_t asked = 0xFF;
+  const auto slot_now = [&](std::uint32_t now_gen) {
+    return [&lookups, &asked, now_gen](std::uint8_t peer) {
+      ++lookups;
+      asked = peer;
+      return now_gen;
+    };
+  };
+  CHECK(ota::owner_generation(owner, kSlots, slot_now(kGen)) ==
+        std::optional<std::uint32_t>(kGen));
+  CHECK(lookups == 1 && asked == kPeer);
+  CHECK(ota::owner_generation(owner, kSlots, slot_now(kGen + 1)) ==
+        std::optional<std::uint32_t>(kGen + 1));
+  CHECK(ota::stale_action(receiving, owner,
+                          ota::owner_generation(owner, kSlots, slot_now(kGen)),
+                          seen, seen) == ota::Keep::Keep);
+  CHECK(ota::stale_action(
+            receiving, owner,
+            ota::owner_generation(owner, kSlots, slot_now(kGen + 1)), seen,
+            seen) == ota::Keep::SessionClosed);
+  lookups = 0;
+  CHECK(!ota::owner_generation(ota::lan_owner(kSlots, kGen), kSlots,
+                               slot_now(kGen))
+             .has_value());
+  CHECK(
+      !ota::owner_generation(ota::lan_owner(255, kGen), kSlots, slot_now(kGen))
+           .has_value());
+  CHECK(lookups == 0);
+  CHECK(ota::owner_generation(ota::lan_owner(kSlots - 1, kGen), kSlots,
+                              slot_now(kGen + 2)) ==
+        std::optional<std::uint32_t>(kGen + 2));
+  CHECK(lookups == 1 && asked == kSlots - 1);
+
+  // Only the requester that owns a Receiving upload moves the seen time.
+  constexpr ota::Owner other = ota::lan_owner(kPeer + 1, kGen);
+  CHECK(ota::touch_seen(receiving, owner, owner, seen + 7, seen) == seen + 7);
+  CHECK(ota::touch_seen(receiving, owner, other, seen + 7, seen) == seen);
+  CHECK(ota::touch_seen({.phase = ota::Phase::Idle}, owner, owner, seen + 7,
+                        seen) == seen);
+  CHECK(ota::touch_seen({.phase = ota::Phase::Ready}, owner, owner, seen + 7,
+                        seen) == seen);
+
+  // Through a Transfer, as handle() runs it. BEGIN takes the upload and
+  // touches. A busy second session does not touch, so the owner still stalls
+  // on time. Each owner request pushes the stall out again.
+  FakeFlash flash;
+  ota::Transfer transfer(target(), sink_for(flash));
+  std::int64_t seen_us = 0;
+  std::int64_t now_us = 1'000'000;
+  CHECK(transfer.handle(begin_request(4096, digest_a()), owner).has_value());
+  seen_us = ota::touch_seen(transfer.progress(), transfer.owner(), owner,
+                            now_us, seen_us);
+  CHECK(seen_us == now_us);
+  now_us += stall_us - 1;
+  CHECK(!transfer.handle(begin_request(4096, digest_a()), other).has_value());
+  seen_us = ota::touch_seen(transfer.progress(), transfer.owner(), other,
+                            now_us, seen_us);
+  CHECK(seen_us == 1'000'000);
+  CHECK(ota::stale_action(transfer.progress(), transfer.owner(), kGen,
+                          now_us + 1, seen_us) == ota::Keep::Stalled);
+  CHECK(transfer.handle(begin_request(4096, digest_a()), owner).has_value());
+  seen_us = ota::touch_seen(transfer.progress(), transfer.owner(), owner,
+                            now_us, seen_us);
+  CHECK(ota::stale_action(transfer.progress(), transfer.owner(), kGen,
+                          now_us + 1, seen_us) == ota::Keep::Keep);
+}
 } // namespace
 
 int main() {
@@ -555,6 +666,7 @@ int main() {
   test_wire();
   test_routing();
   test_stall();
+  test_stale_owner();
   if (failures) {
     std::fprintf(stderr, "%d OTA transfer check(s) failed\n", failures);
     return EXIT_FAILURE;

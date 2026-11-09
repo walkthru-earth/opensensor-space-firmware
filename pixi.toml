@@ -65,9 +65,10 @@ ota-slot-check-test = "python tools/test_ota_slot_check.py"
 # Chunked LAN OTA rules and the boot self test decision, host only (#40).
 ota-transfer-test = "python tools/test_ota_transfer.py --sanitize"
 boot-self-test-test = "python tools/test_boot_self_test.py --sanitize"
-# Serial only. Prints the core dump with esp_coredump, then erases only the
-# coredump partition, since a raw dump can hold the PSK or the LAN token (#40).
-# pixi run coredump-read {cores3|waveshare} <checked-port> [logger|diagnostic]
+# Serial only. Prints the core dump with esp_coredump. With --erase it then
+# clears only the coredump partition, since a raw dump can hold the PSK or the
+# LAN token (#40).
+# pixi run coredump-read {cores3|waveshare} <checked-port> [logger|diagnostic] [--erase] [--dry-run]
 coredump-read = "tools/coredump-read.sh"
 coredump-read-test = "python tools/test_coredump_read.py"
 # Sign app images with the owner's local key in secrets/, never in CI (#45).
