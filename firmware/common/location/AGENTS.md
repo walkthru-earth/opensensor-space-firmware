@@ -20,6 +20,14 @@ write NVS or infer country. Missing location remains missing.
   `docs/shared/time-and-location.md`.
 - Country is optional, owner-declared ISO 3166-1 alpha-2; validate assigned codes
   using the documented snapshot and never claim H3 provides country boundaries.
+- `cells_to_multipolygon()` traces a cell set into caller buffers through
+  H3's internal `cellsToMultiPolygon`. It depends only on H3 and the standard
+  library so it can move to embedded-h3-location as is. It is the one H3 call
+  that allocates. CMake sets `H3_ALLOC_PREFIX=os_h3_` and
+  `src/os_h3_alloc.cpp` sends every H3 allocation to PSRAM, with no internal
+  RAM fallback. Call it only at finalize in the storage worker.
+  `pixi run h3-polygon-test` proves cleanup on every failed allocation, bit
+  equality with `cellsToLinkedMultiPolygon` and prints the 720 cell heap.
 - Host gates compile actual C++ helpers and exact official C sources through
   pinned Pixi. They prove indexing/validation/privacy logic, not board GPS,
   persistent storage or hardware behavior.

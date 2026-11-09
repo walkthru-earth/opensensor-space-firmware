@@ -11,8 +11,13 @@ import tempfile
 from host_cxx import CXX_STD
 
 
-def compile_h3(root: Path, directory: Path, sanitize: bool = False) -> list[str]:
-    """Shared host-test linkage; validate pinned vendor bytes, compile C as C."""
+def compile_h3(root: Path, directory: Path, sanitize: bool = False,
+               extra_flags: tuple[str, ...] = ()) -> list[str]:
+    """Shared host-test linkage; validate pinned vendor bytes, compile C as C.
+
+    extra_flags go to every H3 source, for example the H3_ALLOC_PREFIX
+    allocator hook the H3 polygon test counts allocations with.
+    """
     vendor = root / "firmware/common/location/vendor/h3"
     manifest = json.loads((vendor / "manifest.json").read_text())
     assert manifest["tag"] == "v4.5.0"
@@ -33,7 +38,7 @@ def compile_h3(root: Path, directory: Path, sanitize: bool = False) -> list[str]
         command = ["clang", "-std=c99", "-O1", "-Wall", "-Wextra", "-Werror",
                    "-Wno-sign-compare", "-Wno-deprecated-declarations",
                    "-I", str(vendor / "h3lib/include"), "-I", str(h3_build),
-                   "-c", str(source), "-o", str(object_path)]
+                   *extra_flags, "-c", str(source), "-o", str(object_path)]
         if sanitize:
             command += ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
         subprocess.run(command, check=True)

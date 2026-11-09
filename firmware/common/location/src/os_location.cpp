@@ -5,6 +5,29 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <numbers>
+#include <utility>
+
+// cellsToMultiPolygon is internal in H3 4.5.0 (cellsToMultiPoly.h, "will be
+// moved to h3api.h.in when it is ready"), so it is declared here. Where the
+// H3 private headers are on the include path, the header comes first and the
+// compiler rejects any mismatch with the declaration below.
+// Its inline overflow check compares int64_t with uint64_t, valid C that C++
+// -Wsign-compare flags, so that warning is off for the header alone.
+#if __has_include("cellsToMultiPoly.h")
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsign-compare"
+extern "C" {
+#include "cellsToMultiPoly.h"
+}
+#pragma GCC diagnostic pop
+#endif
+extern "C" {
+H3Error H3_EXPORT(cellsToMultiPolygon)(const H3Index *cells,
+                                       const int64_t numCells,
+                                       GeoMultiPolygon *out);
+void H3_EXPORT(destroyGeoMultiPolygon)(GeoMultiPolygon *mpoly);
+}
 
 namespace opensensor::location {
 bool valid_cell(Cell cell) { return isValidCell(cell) != 0; }
@@ -107,5 +130,139 @@ bool valid_country(const char *country) {
     if (kIsoAlpha2[i] == country[0] && kIsoAlpha2[i + 1] == country[1])
       return true;
   return false;
+}
+
+const char *multipolygon_error_name(MultiPolygonError error) {
+  switch (error) {
+  case MultiPolygonError::Empty:
+    return "empty";
+  case MultiPolygonError::InvalidCell:
+    return "invalid-cell";
+  case MultiPolygonError::MixedResolution:
+    return "mixed-resolution";
+  case MultiPolygonError::DuplicateCell:
+    return "duplicate-cell";
+  case MultiPolygonError::TooManyCells:
+    return "too-many-cells";
+  case MultiPolygonError::Memory:
+    return "memory";
+  case MultiPolygonError::PointsFull:
+    return "points-full";
+  case MultiPolygonError::RingsFull:
+    return "rings-full";
+  case MultiPolygonError::PolygonsFull:
+    return "polygons-full";
+  case MultiPolygonError::Failed:
+    return "failed";
+  }
+  return "unknown";
+}
+
+namespace {
+// Frees what a successful cellsToMultiPolygon returned. H3 frees its own
+// partial work before it returns an error, and leaves `polygons` NULL for
+// zero cells, so this is only armed on success.
+class OwnedMultiPolygon {
+public:
+  GeoMultiPolygon value{};
+  bool armed = false;
+  OwnedMultiPolygon() = default;
+  OwnedMultiPolygon(const OwnedMultiPolygon &) = delete;
+  OwnedMultiPolygon &operator=(const OwnedMultiPolygon &) = delete;
+  ~OwnedMultiPolygon() {
+    if (armed)
+      H3_EXPORT(destroyGeoMultiPolygon)(&value);
+  }
+};
+
+MultiPolygonError map_h3_error(H3Error error) {
+  switch (error) {
+  case E_CELL_INVALID:
+    return MultiPolygonError::InvalidCell;
+  case E_RES_MISMATCH:
+    return MultiPolygonError::MixedResolution;
+  case E_DUPLICATE_INPUT:
+    return MultiPolygonError::DuplicateCell;
+  case E_MEMORY_BOUNDS:
+    return MultiPolygonError::TooManyCells;
+  case E_MEMORY_ALLOC:
+    return MultiPolygonError::Memory;
+  default:
+    return MultiPolygonError::Failed;
+  }
+}
+
+// h3-js 4.5.0 converts with `rad * 180 / Math.PI`, left to right. H3's own
+// radsToDegs multiplies by a rounded 180/pi constant, which can differ in the
+// last bit, so it is not used here.
+double degrees(double radians) { return radians * 180.0 / std::numbers::pi; }
+} // namespace
+
+std::expected<MultiPolygonView, MultiPolygonError>
+cells_to_multipolygon(std::span<const Cell> cells, std::span<LngLat> points,
+                      std::span<Ring> rings, std::span<Polygon> polygons) {
+  if (cells.empty())
+    return std::unexpected(MultiPolygonError::Empty);
+  // H3 takes an int64_t count, and rings and polygons index points and rings
+  // with 32 bits. Both conversions are checked rather than assumed.
+  if (std::cmp_greater(cells.size(), INT64_MAX))
+    return std::unexpected(MultiPolygonError::TooManyCells);
+  if (std::cmp_greater(points.size(), UINT32_MAX) ||
+      std::cmp_greater(rings.size(), UINT32_MAX))
+    return std::unexpected(MultiPolygonError::Failed);
+  OwnedMultiPolygon result;
+  const H3Error error = H3_EXPORT(cellsToMultiPolygon)(
+      cells.data(), static_cast<int64_t>(cells.size()), &result.value);
+  if (error != E_SUCCESS)
+    return std::unexpected(map_h3_error(error));
+  result.armed = true;
+  const GeoMultiPolygon &h3 = result.value;
+  if (h3.numPolygons <= 0 || h3.polygons == nullptr)
+    return std::unexpected(MultiPolygonError::Failed);
+
+  std::size_t point_count = 0;
+  std::size_t ring_count = 0;
+  std::size_t polygon_count = 0;
+  // Copies one loop and closes it. Ring and point bounds are checked before
+  // any write, so a full buffer never takes a partial ring.
+  const auto add_ring =
+      [&](const GeoLoop &loop) -> std::expected<void, MultiPolygonError> {
+    // geoMultiPolygonToLinkedGeoPolygon, which h3-js reads, fails the same way.
+    if (loop.numVerts < 3 || loop.verts == nullptr)
+      return std::unexpected(MultiPolygonError::Failed);
+    const auto count = static_cast<std::size_t>(loop.numVerts) + 1;
+    if (ring_count == rings.size())
+      return std::unexpected(MultiPolygonError::RingsFull);
+    if (count > points.size() - point_count)
+      return std::unexpected(MultiPolygonError::PointsFull);
+    rings[ring_count++] = {.first = static_cast<std::uint32_t>(point_count),
+                           .count = static_cast<std::uint32_t>(count)};
+    for (int i = 0; i < loop.numVerts; ++i)
+      points[point_count++] = {.lng = degrees(loop.verts[i].lng),
+                               .lat = degrees(loop.verts[i].lat)};
+    points[point_count] =
+        points[point_count - static_cast<std::size_t>(loop.numVerts)];
+    ++point_count;
+    return {};
+  };
+  for (int p = 0; p < h3.numPolygons; ++p) {
+    const GeoPolygon &polygon = h3.polygons[p];
+    if (polygon.numHoles < 0 || (polygon.numHoles > 0 && !polygon.holes))
+      return std::unexpected(MultiPolygonError::Failed);
+    if (polygon_count == polygons.size())
+      return std::unexpected(MultiPolygonError::PolygonsFull);
+    const auto first_ring = static_cast<std::uint32_t>(ring_count);
+    if (const auto added = add_ring(polygon.geoloop); !added)
+      return std::unexpected(added.error());
+    for (int h = 0; h < polygon.numHoles; ++h)
+      if (const auto added = add_ring(polygon.holes[h]); !added)
+        return std::unexpected(added.error());
+    polygons[polygon_count++] = {
+        .first_ring = first_ring,
+        .ring_count = static_cast<std::uint32_t>(ring_count) - first_ring};
+  }
+  return MultiPolygonView{.polygons = polygons.first(polygon_count),
+                          .rings = rings.first(ring_count),
+                          .points = points.first(point_count)};
 }
 } // namespace opensensor::location
