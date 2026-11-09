@@ -1,6 +1,6 @@
 # CoreS3 hardware: pins, ownership, power
 
-Current firmware uses native ESP-IDF 6.1 with M5Unified 0.2.26/M5GFX 0.2.33.
+Current firmware uses native ESP-IDF 6.1 with M5Unified 0.2.29/M5GFX 0.2.36.
 Pins, power and controller ownership remain board-specific. Native builds pass;
 the [native bench record](bench-verified.md#board-1-first-native-esp-idf-flash-and-readback)
 adds a short SD/USB/sensor/network-time run. Earlier dependency/source snapshots

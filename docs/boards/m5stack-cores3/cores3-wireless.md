@@ -1,7 +1,7 @@
 # CoreS3 wireless: constraints and tuning
 
 The current application uses native ESP-IDF 6.1 NimBLE, Wi-Fi events/netif/SNTP
-and managed mDNS 1.14.0. See [native source and qualification](../../../firmware/esp-idf-cores3/README.md#native-board-ownership-and-qualification)
+and managed mDNS 1.15.1. See [native source and qualification](../../../firmware/esp-idf-cores3/README.md#native-board-ownership-and-qualification)
 and the [shared wire contract](../../shared/ble-sync-protocol.md). Native radio
 checks restored the original Bluetooth identity and two bonds, and observed
 network UTC; bonded reconnect and transfers remain pending. Arduino APIs, performance and phone behavior

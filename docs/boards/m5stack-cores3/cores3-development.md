@@ -1,7 +1,7 @@
 # CoreS3 C/C++ development
 
 The current application is pure **ESP-IDF 6.1**, with native M5Unified
-**0.2.26** and M5GFX **0.2.33** components. Native board and fixture builds plus
+**0.2.29** and M5GFX **0.2.36** components. Native board and fixture builds plus
 host gates pass. A [short native SD/USB/network-time run](bench-verified.md#board-1-first-native-esp-idf-flash-and-readback)
 also passed; phone transfers and endurance remain pending. Use the
 [current workflow](../../../firmware/esp-idf-cores3/README.md#current-build-and-flash-workflow)
@@ -9,13 +9,13 @@ and [shared development guide](../../shared/development.md).
 
 ## Current exact pins and documentation
 
-| Layer | Pin observed 2026-10-09 | Integration |
+| Layer | Pin observed 2026-11-09 | Integration |
 | --- | --- | --- |
 | ESP-IDF | [6.1](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32s3/get-started/index.html) | Native ESP32-S3 C/C++, Kconfig, FreeRTOS, drivers, NimBLE, Wi-Fi/netif/SNTP |
-| M5Unified | [0.2.26](https://github.com/m5stack/M5Unified/releases/tag/0.2.26) | Native component owns board services and power; [manifest](../../../firmware/esp-idf-cores3/components/os_cores3/idf_component.yml) |
-| M5GFX | [0.2.33](https://github.com/m5stack/M5GFX/releases/tag/0.2.33) | Native display and SPI2 bus owner; SD borrows that controller |
-| mDNS | [1.14.0](https://components.espressif.com/components/espressif/mdns/versions/1.14.0) | Managed component used by shared LAN transport |
-| LZ4 | [1.10.0](https://github.com/lz4/lz4/releases/tag/v1.10.0) | Vendored bytes and license remain hash-checked |
+| M5Unified | [0.2.29](https://github.com/m5stack/M5Unified/releases/tag/0.2.29) | Native component owns board services and power; [manifest](../../../firmware/esp-idf-cores3/components/os_cores3/idf_component.yml) |
+| M5GFX | [0.2.36](https://github.com/m5stack/M5GFX/releases/tag/0.2.36) | Native display and SPI2 bus owner; SD borrows that controller |
+| mDNS | [1.15.1](https://components.espressif.com/components/espressif/mdns/versions/1.15.1) | Managed component used by shared LAN transport |
+| LZ4 | [1.11.0](https://github.com/lz4/lz4/releases/tag/v1.11.0) | Vendored bytes and license remain hash-checked |
 
 Before adding/changing dependencies, check the latest stable upstream release
 and current official documentation; pin exact source/version identities and
@@ -44,7 +44,7 @@ belong to each board adapter.
 - Initialize M5 board services once. Disable unused services through `M5.config()`
   before `M5.begin(cfg)`. M5Unified owns internal I²C; never create another
   driver on the same controller. Shared register drivers borrow board callbacks.
-  [M5 source](https://github.com/m5stack/M5Unified/blob/0.2.26/src/M5Unified.hpp).
+  [M5 source](https://github.com/m5stack/M5Unified/blob/0.2.29/src/M5Unified.hpp).
 - M5GFX owns SPI2. Native SDSPI attaches the card without independently
   initializing/freeing that controller. Finish display DMA/transactions and
   guard complete display/card operations with the application mutex.
