@@ -58,7 +58,7 @@ Updated 2026-11-04. The last column now shows the current phone reader. In Octob
 
 ### Firmware DELTA encoder on the host
 
-Added 2026-11-09 for [#135](https://github.com/walkthru-earth/opensensor-space-firmware/issues/135) step 1. These numbers come from the firmware writer itself, built on the host by `pixi run parquet-test`. The fixture is [`tools/delta_fixture.cpp`](../../tools/delta_fixture.cpp). It has the 84 columns of the CoreS3 dictionary in order, 43 INT32, 28 INT64, 11 FLOAT and the geometry, with synthetic values that move the way a bench window does. It is not a captured file, so treat the numbers as direction, not as a device figure. Bytes are whole files with the footer.
+Added 2026-11-09 for [#135](https://github.com/walkthru-earth/opensensor-space-firmware/issues/135) step 1. These numbers come from the firmware writer itself, built on the host by `pixi run parquet-test`. The fixture is [`tools/delta_fixture.cpp`](../../tools/delta_fixture.cpp). It has the 81 columns of the CoreS3 dictionary in order, 43 INT32, 28 INT64, 9 FLOAT and the geometry, with synthetic values that move the way a bench window does. It is not a captured file, so treat the numbers as direction, not as a device figure. Bytes are whole files with the footer.
 
 | Variant | 1 x 90 rows | Change | 4 x 90 rows | Change |
 |---|---|---|---|---|

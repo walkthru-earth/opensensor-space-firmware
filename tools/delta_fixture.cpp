@@ -11,7 +11,7 @@
 // and GEOMETRY columns that must stay PLAIN.
 //
 // real-<groups>-<plain|delta>-<none|lz4>.parquet hold 90 row groups shaped
-// like the CoreS3 telemetry dictionary, with its 84 columns in order and
+// like the CoreS3 telemetry dictionary, with its 81 columns in order and
 // values that move the way the bench files do. One JSON line per real file
 // on stdout gives its size for docs/shared/parquet-small-files.md.
 //
