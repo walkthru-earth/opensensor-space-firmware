@@ -474,10 +474,11 @@ void stored_resolution_reset() {
     set_field(kLocationAt, 40, record);
     reseal();
     const auto stored = cfg();
+    const auto writes = fake_platform::nvs.writes;
     mark = log_mark();
     assert(config::load(false));
     // Boot writes nothing back, the old text stays until the next save.
-    assert(cfg() == stored);
+    assert(cfg() == stored && fake_platform::nvs.writes == writes);
     return config::location_settings();
   };
   const auto logged = [&mark](const char *needle) {
