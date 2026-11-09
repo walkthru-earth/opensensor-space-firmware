@@ -124,8 +124,8 @@ footerless completed row groups need explicit host recovery. fsync is not proof
 of power-cut durability.
 
 The optional [location component](../location/README.md) supplies validated H3
-cells and their grid centers. OSLogger snapshots cell, maximum resolution and
-optional declared country at acquisition, copies them through the queue and
+cells and their grid centers. OSLogger snapshots cell, resolution (always 8
+since #139) and optional declared country at acquisition, copies them through the queue and
 uses the first row's snapshot for file metadata. Changing any of those settings
 closes the previous file before adding new-location rows, including while a RAM
 batch is waiting. Four nullable fields are mapped only when the board dictionary
@@ -152,12 +152,12 @@ must not block, allocate or touch the card. `opensensor::gnss::latest` from
 
 `collect` applies `opensensor::gnss::select_location`. A fixed Thing keeps the
 configured cell with `location_source` 1 and ignores the fix. A moving
-Thing gets the fix cell coarsened to the row's resolution cap with
+Thing gets the resolution 8 fix cell with
 `location_source` 2 when the fix is at most `kFixMaxAgeUs` (15 s) old, and four
 location nulls otherwise. A moving Thing with no hook writes nulls on every
 row. The fix cell is written only to the row, never to the location snapshot,
-so a GNSS cell change never splits a batch or file. A change of mobility, cell,
-cap or country still does.
+so a GNSS cell change never splits a batch or file. A change of mobility, cell
+or country still does.
 
 Serial commands remain `parquet status`, `schema`, `list`, `get`, `time`, `flush`,
 `interval` (600/900/1800/3600), `codec none`, `codec lz4`, `codec-test` and `mem`.

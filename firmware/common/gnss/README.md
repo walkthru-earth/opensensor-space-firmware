@@ -12,10 +12,10 @@ Board-neutral GNSS support in two ESP-IDF components.
 1. A `Dialect` parses one receiver line into a `Reading` (raw degrees, stack
    only). `SimcomDialect` speaks `AT+CGNSSPWR` and `AT+CGNSSINFO` per the
    [SIM767XX AT manual](https://files.waveshare.com/wiki/SIM7670G-LTE-Cat-1-GNSS-HAT/SIM767XX_Series_AT_Command_Manual_V1.01.pdf).
-2. `to_fix()` turns it at once into an H3 cell with `from_degrees` at the
-   owner `location.resolution` and drops the degrees. A `Fix` holds the cell,
-   its resolution, the fix monotonic time, the fix mode and the satellites if
-   known.
+2. `to_fix()` turns it at once into an H3 resolution 8 cell with
+   `from_degrees` and drops the degrees. No finer cell is computed (#139). A
+   `Fix` holds the cell, its resolution, the fix monotonic time, the fix mode
+   and the satellites if known.
 3. The reader task stores the newest `Fix` and `latest()` copies it out.
 4. The logger calls `Hooks::gnss_fix` once per row and applies
    `select_location()`. The storage worker also calls it for GET_CONFIG
@@ -25,7 +25,7 @@ Board-neutral GNSS support in two ESP-IDF components.
 | `thing.mobility` | Fresh fix (at most 15 s old) | Row location |
 | --- | --- | --- |
 | `fixed` | any | Configured cell, `location_source` 1 |
-| `moving` | yes | GNSS cell coarsened to the row cap, `location_source` 2 |
+| `moving` | yes | GNSS cell at resolution 8, `location_source` 2 |
 | `moving` | no | Four nulls |
 
 A reply without a fix clears the stored fix at once. A silent receiver keeps

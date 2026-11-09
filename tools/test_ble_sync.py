@@ -176,7 +176,7 @@ class FakeClient:
             assert len(data) in (1, 2)
             page = data[1] if len(data) == 2 else 0
             if page == 1:
-                self.emit_config(0, b'{"location":{"cell":"","resolution":5,"cell_resolution":null,"lat":null,"lon":null,"country":""}}')
+                self.emit_config(0, b'{"location":{"cell":"","resolution":8,"cell_resolution":null,"lat":null,"lon":null,"country":""}}')
             elif page == 5:
                 self.emit_config(0, b'{"owner":{"title":"","provider":"","url":""},"thing":{"deployment_id":"cairo-07"}}')
             elif page == 6:

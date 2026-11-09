@@ -32,7 +32,8 @@ struct Reading {
   std::int16_t satellites = -1; // per system visible counts summed, -1 unknown
 };
 
-// What the logger may keep. cell is already at most the owner resolution.
+// What the logger may keep. to_fix() makes cell res 8, the published
+// resolution (#139), so nothing finer leaves the reader.
 struct Fix {
   location::Cell cell = 0;
   std::uint8_t resolution = 0;
@@ -86,28 +87,25 @@ constexpr std::int64_t kFixMaxAgeUs = 15'000'000;
 // A row timestamped just before the reply was stored still counts.
 constexpr std::int64_t kFixClockSkewUs = 1'000'000;
 
-// Convert at once to a cell at `resolution` (0..15). The Reading is not kept.
-[[nodiscard]] std::expected<Fix, ParseError>
-to_fix(const Reading &reading, int resolution, std::int64_t fix_mono_us);
+// Convert at once to a res 8 cell. The Reading is not kept.
+[[nodiscard]] std::expected<Fix, ParseError> to_fix(const Reading &reading,
+                                                    std::int64_t fix_mono_us);
 
 [[nodiscard]] bool fresh(const Fix &fix, std::int64_t now_us);
 
 // GET_CONFIG page 1 location.gnss_cell (#147) shows the setup phone the cell
-// the receiver sees, always at this resolution whatever the owner cap is.
-inline constexpr int kReadbackResolution = 8;
+// the receiver sees, always at the published resolution.
+inline constexpr int kReadbackResolution = location::kPublishedResolution;
 // Why the readback is empty. Every error prints "".
 enum class [[nodiscard]] ReadbackError : std::uint8_t {
   NoFix,     // the reader holds no fix
   Stale,     // older than kFixMaxAgeUs, the same rule as moving rows
-  TooCoarse, // the owner cap or the fix is below 8, never upsampled
+  TooCoarse, // the fix is below res 8, never upsampled
   Invalid,   // not an H3 cell
 };
-// The fix as a res 8 cell, when it is fresh at `now_us` and the owner cap
-// `maximum_resolution` (location.resolution) allows res 8. The cap is checked
-// here too, because the reader keeps a fix made at the old cap until its next
-// poll. Never a coordinate.
+// The fix as a res 8 cell, when it is fresh at `now_us`. Never a coordinate.
 [[nodiscard]] std::expected<location::Cell, ReadbackError>
-readback_cell(const Fix &fix, std::int64_t now_us, int maximum_resolution);
+readback_cell(const Fix &fix, std::int64_t now_us);
 
 // The cell and source one row gets. source None means four location nulls.
 struct Selection {
@@ -115,10 +113,10 @@ struct Selection {
   telemetry::LocationSource source = telemetry::LocationSource::None;
 };
 
-// Fixed keeps the configured cell, source 1, whatever the receiver says.
-// Moving takes a fresh fix coarsened to the row's resolution cap, source 2.
+// Fixed keeps the configured cell, source 1, whatever the receiver says, when
+// that cell is res 8. Moving takes a fresh fix as a res 8 cell, source 2.
 // Moving without a fresh fix gets nulls, never the configured cell or a stale
-// fix.
+// fix. A cell coarser than res 8 is never published (#139).
 [[nodiscard]] Selection select_location(const config::LocationSettings &row,
                                         const std::optional<Fix> &fix,
                                         std::int64_t now_us);

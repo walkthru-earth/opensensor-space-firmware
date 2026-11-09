@@ -1,7 +1,6 @@
 #include "os_gnss_reader.h"
 
 #include <debug_log.h>
-#include <device_config.h>
 #include <driver/uart.h>
 #include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
@@ -122,7 +121,7 @@ void report(State &shown, State now) {
                settings.tx_pin, settings.rx_pin);
 }
 
-// One AT poll. Converts at once at the owner resolution and keeps the cell.
+// One AT poll. Converts at once to a res 8 cell and keeps only the cell.
 bool poll_fix(const Dialect &dialect, State &shown) {
   bool answered = false;
   std::optional<Fix> fix;
@@ -133,9 +132,7 @@ bool poll_fix(const Dialect &dialect, State &shown) {
     answered = true;
     if (!reading)
       return;
-    const auto mono = esp_timer_get_time();
-    if (auto converted =
-            to_fix(*reading, config::location_settings().resolution, mono))
+    if (auto converted = to_fix(*reading, esp_timer_get_time()))
       fix = *converted;
   });
   // No CGNSSINFO line, a timeout or ERROR, counts as a silent poll.
@@ -160,9 +157,7 @@ void stream_fix(const Dialect &dialect, State &shown) {
       continue;
     std::optional<Fix> fix;
     if (reading)
-      if (auto converted =
-              to_fix(*reading, config::location_settings().resolution,
-                     esp_timer_get_time()))
+      if (auto converted = to_fix(*reading, esp_timer_get_time()))
         fix = *converted;
     store(fix);
     report(shown, fix ? State::Fix : State::NoFix);

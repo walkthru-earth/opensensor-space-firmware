@@ -38,10 +38,8 @@ def check_wiring(root: Path) -> None:
     assert "control_replies.gnss_cell = hooks.gnss_fix ? gnss_readback : nullptr;" in logger
     readback = logger[logger.index("std::uint64_t gnss_readback(void *)"):]
     readback = readback[:readback.index("\n}\n")]
-    assert "readback_cell(fix, esp_timer_get_time(), cap)" in readback, \
+    assert "readback_cell(fix, esp_timer_get_time())" in readback, \
         "page 1 shows only a fresh res 8 readback"
-    assert "const int cap = ::config::location_settings().resolution;" in readback, \
-        "page 1 applies the owner cap at read time"
     for component in ("gnss", "gnss_reader"):
         directory = root / "firmware/common" / component
         for path in sorted((directory / "src").glob("*")):

@@ -32,8 +32,8 @@ template <typename A, typename B>
 // the GEOMETRY slot, a 2D point at the cell centre packed by
 // telemetry::pack_point_e7. Source None or an invalid cell produces four
 // nulls. The point is always calculated from the published cell, never from
-// an incoming GPS position. The caller has already coarsened the cell to the
-// row's resolution cap, see opensensor::gnss::select_location.
+// an incoming GPS position. The caller has already made the cell res 8, see
+// opensensor::gnss::select_location.
 template <typename Row>
 bool apply_cell(Row &row, opensensor::location::Cell published,
                 telemetry::LocationSource source,
@@ -55,16 +55,14 @@ bool apply_cell(Row &row, opensensor::location::Cell published,
   return true;
 }
 
-// The configured cell, source 1. Invalid or unset snapshots, and a cell finer
-// than the snapshot's cap, produce four nulls.
+// The configured cell, source 1. Invalid or unset snapshots, and any cell that
+// is not already res 8, produce four nulls (#139).
 template <typename Row>
 bool apply_location(Row &row, const config::LocationSettings &snapshot,
                     const std::array<std::size_t, 4> &fields) {
-  opensensor::location::Cell published = 0;
-  if (!opensensor::location::coarsen(snapshot.cell, snapshot.resolution,
-                                     published) ||
-      published != snapshot.cell)
-    published = 0;
+  const auto checked = opensensor::location::published_cell(snapshot.cell);
+  const opensensor::location::Cell published =
+      checked && *checked == snapshot.cell ? *checked : 0;
   return apply_cell(row, published,
                     published ? telemetry::LocationSource::Configured
                               : telemetry::LocationSource::None,

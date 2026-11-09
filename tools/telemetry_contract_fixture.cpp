@@ -144,7 +144,7 @@ int main(int argc, char **argv) {
   const bool anchored = std::strcmp(argv[3], "anchored") == 0;
   oslogger::LocationSample<Sample> rows[90]{};
   const config::LocationSettings location =
-      located ? config::LocationSettings{0x85283473fffffffULL, 5, "US"}
+      located ? config::LocationSettings{0x8828308281fffffULL, 8, "US"}
               : config::LocationSettings{};
   Column columns[field_count]{};
   Workspace workspace{};
