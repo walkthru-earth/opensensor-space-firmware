@@ -512,7 +512,8 @@ void check_find_partials() {
   assert(fs::exists(deep / "past/below-cap.partial"));
   assert(fs::exists(root / "quarantine/thing=a/day/old-0.partial"));
   assert(fs::exists(root / "kept.parquet"));
-  assert(fs::exists(root / "thing=a/year=2026/month=10/day=11/data-1-2-3.json"));
+  assert(
+      fs::exists(root / "thing=a/year=2026/month=10/day=11/data-1-2-3.json"));
   // A second walk finds only what was left behind on purpose.
   moved.clear();
   reported.clear();
