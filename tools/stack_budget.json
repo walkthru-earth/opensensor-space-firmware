@@ -313,8 +313,8 @@
       "tasks": {
         "parquet-sd": {
           "stack_bytes": 24576,
-          "measured": 11104,
-          "budget": 12224
+          "measured": 11232,
+          "budget": 12416
         },
         "nimble_host": {
           "measured": 5840,
@@ -333,8 +333,8 @@
         "board": {
           "task_name": "cores3-board",
           "stack_bytes": 16384,
-          "measured": 5216,
-          "budget": 5760
+          "measured": 4752,
+          "budget": 5248
         },
         "esp_timer": {
           "measured": 592,
@@ -348,17 +348,17 @@
       "sections": {
         ".iram0.text": 129792,
         ".dram0.data": 37120,
-        ".dram0.bss": 60416,
-        ".flash.text": 1235456,
-        ".flash.rodata": 295424,
+        ".dram0.bss": 60928,
+        ".flash.text": 1287168,
+        ".flash.rodata": 436224,
         ".noinit": 256
       },
       "sections_measured": {
         ".iram0.text": 127031,
-        ".dram0.data": 36229,
-        ".dram0.bss": 59208,
-        ".flash.text": 1211142,
-        ".flash.rodata": 289416,
+        ".dram0.data": 36325,
+        ".dram0.bss": 59656,
+        ".flash.text": 1261710,
+        ".flash.rodata": 427528,
         ".noinit": 3
       }
     },
@@ -367,8 +367,8 @@
       "tasks": {
         "parquet-sd": {
           "stack_bytes": 24576,
-          "measured": 10496,
-          "budget": 11584
+          "measured": 11104,
+          "budget": 12224
         },
         "nimble_host": {
           "measured": 5840,
@@ -386,14 +386,14 @@
         },
         "os-gnss": {
           "stack_bytes": 4096,
-          "measured": 2672,
+          "measured": 2656,
           "budget": 2944
         },
         "board": {
           "task_name": "os-board",
           "stack_bytes": 12288,
-          "measured": 4880,
-          "budget": 5376
+          "measured": 4800,
+          "budget": 5312
         },
         "esp_timer": {
           "measured": 592,
@@ -406,18 +406,18 @@
       },
       "sections": {
         ".iram0.text": 122624,
-        ".dram0.data": 34816,
-        ".dram0.bss": 57856,
-        ".flash.text": 1129984,
-        ".flash.rodata": 265472,
+        ".dram0.data": 35072,
+        ".dram0.bss": 58112,
+        ".flash.text": 1175808,
+        ".flash.rodata": 399616,
         ".noinit": 0
       },
       "sections_measured": {
         ".iram0.text": 120035,
-        ".dram0.data": 34084,
-        ".dram0.bss": 56472,
-        ".flash.text": 1107766,
-        ".flash.rodata": 260264,
+        ".dram0.data": 34164,
+        ".dram0.bss": 56904,
+        ".flash.text": 1152566,
+        ".flash.rodata": 391604,
         ".noinit": 0
       }
     },

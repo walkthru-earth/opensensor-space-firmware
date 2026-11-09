@@ -183,7 +183,7 @@ def main() -> None:
         require(all(f["decimals"] == 0 if f["type"] != 4 else 0 <= f["decimals"] <= live_key_fixture.MAX_LIVE_DECIMALS
                     for f in fields),
                 f"decimals is 0 for integer fields and at most {live_key_fixture.MAX_LIVE_DECIMALS} for Float")
-        require(dictionary["firmware"] == "idf-cores3-parquet-v6.29", "firmware identity")
+        require(dictionary["firmware"] == "idf-cores3-parquet-v6.30", "firmware identity")
         footer_contract.check_board(executable, firmware, dictionary, "m5stack-cores3")
         live = subprocess.check_output([str(executable), "live"], text=True).strip()
         live_key_fixture.assert_rejects_drift("cores3", dictionary["sha256"], dictionary["firmware"], live)

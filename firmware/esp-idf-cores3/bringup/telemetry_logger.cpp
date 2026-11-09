@@ -7,6 +7,7 @@
 #include <ctime>
 #include <esp_vfs_fat.h>
 #include <os_logger.h>
+#include <os_stac_item.h>
 #include <utc_clock.h>
 
 namespace telemetry {
@@ -151,6 +152,15 @@ bool rtc_write(std::int64_t seconds, void *) {
          readback - seconds <= 1;
 }
 
+// The STAC File Item statistics columns (#142), the numeric measurement
+// columns of the board template in template order.
+constexpr auto kStatColumns =
+    opensensor::stac::stat_columns<opensensor::stac::stat_count(
+        kFields, std::span(kSemantics))>(kFields, std::span(kSemantics));
+static_assert(opensensor::stac::stat_columns_valid(kStatColumns, kFields,
+                                                   std::span(kSemantics)),
+              "every STAC statistics column must have a gate the Item reads");
+
 // OpenSensor BLE name prefix, so the board advertises OS-xxxx.
 constexpr char kBleNamePrefix[] = "OS-";
 oslogger::Config logger_config;
@@ -199,6 +209,8 @@ void begin_logger(bool sd_mounted) {
       .descriptor_sha256 = kDescriptorSha256,
       .template_href = kTemplateHref,
       .self_test_field = "pm25_atmospheric_ug_m3",
+      .stac_columns = kStatColumns.data(),
+      .stac_column_count = kStatColumns.size(),
   };
   const oslogger::Hooks hooks{
       .collect = collect,

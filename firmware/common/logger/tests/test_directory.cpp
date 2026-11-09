@@ -368,6 +368,15 @@ void check_quarantine_names() {
                            sizeof(directory), path, sizeof(path)));
   assert(std::strcmp(path, "/sd/output/quarantine/no-thing/root/"
                            "stray-0-b1-00000002.partial") == 0);
+  // A torn STAC sidecar (#142) keeps its provenance like any partial.
+  assert(quarantine_target(
+      "/sd/output",
+      "thing=abc/year=2026/month=10/day=11/data_1200_b1_42-131-3.json.partial",
+      "b2", 8, directory, sizeof(directory), path, sizeof(path)));
+  assert(std::strcmp(path,
+                     "/sd/output/quarantine/thing=abc/"
+                     "year=2026_month=10_day=11/"
+                     "data_1200_b1_42-131-3.json-b2-00000008.partial") == 0);
   // Rejections: not a partial, unsafe segments, absolute or too long.
   for (const char *bad :
        {"thing=a/x.parquet", "thing=a/../x.partial", "thing=a//x.partial",
@@ -467,6 +476,10 @@ void check_find_partials() {
   touch(root / "quarantine/thing=a/day/old-0.partial");
   touch(root / "thing=a/year=2026/month=10/day=11/data-1.partial");
   touch(root / "thing=a/year=2026/month=10/day=11/data-1-2-3.parquet");
+  // A sidecar torn by a reset is found like a Parquet partial (#142). A
+  // finished sidecar is not.
+  touch(root / "thing=a/year=2026/month=10/day=11/data-1-2-3.json");
+  touch(root / "thing=a/year=2026/month=10/day=11/data-4-5-6.json.partial");
   // The deepest directory the walk opens sits at kMaxDepth, so a partial
   // there is found and one more level is reported.
   fs::path deep = root;
@@ -489,14 +502,18 @@ void check_find_partials() {
   auto unreadable = [](const char *, int) { assert(false); };
   assert(find_partials(io, root.c_str(), move, too_deep, unreadable));
   std::sort(moved.begin(), moved.end());
-  assert(moved.size() == 3);
+  assert(moved.size() == 4);
   assert(moved[0] == "l1/l2/l3/l4/l5/l6/at-cap.partial");
   assert(moved[1] == "thing=a/year=2026/month=10/day=11/data-1.partial");
-  assert(moved[2] == "top-0.partial");
+  assert(moved[2] ==
+         "thing=a/year=2026/month=10/day=11/data-4-5-6.json.partial");
+  assert(moved[3] == "top-0.partial");
   assert(reported.size() == 1 && reported[0] == "l1/l2/l3/l4/l5/l6/past");
   assert(fs::exists(deep / "past/below-cap.partial"));
   assert(fs::exists(root / "quarantine/thing=a/day/old-0.partial"));
   assert(fs::exists(root / "kept.parquet"));
+  assert(
+      fs::exists(root / "thing=a/year=2026/month=10/day=11/data-1-2-3.json"));
   // A second walk finds only what was left behind on purpose.
   moved.clear();
   reported.clear();
@@ -561,6 +578,22 @@ void check_crosslink_guard() {
   assert(!crosslink_pair("data_1200_b1_42-3.partial", "other.parquet"));
   assert(!crosslink_pair("nodash.partial", "nodash-1-2.parquet"));
   assert(!crosslink_pair("x-.partial", "x-1-.parquet"));
+  // A STAC sidecar partial (#142) never pairs with a Parquet file, since its
+  // last segment is not an attempt number.
+  assert(!crosslink_pair("data_1200_b1_42-131-3.json.partial",
+                         "data_1200_b1_42-131-3.parquet"));
+  using opensensor::logger::detail::sidecar_crosslink_pair;
+  assert(sidecar_crosslink_pair("data_1200_b1_42-131-3.json.partial",
+                                "data_1200_b1_42-131-3.json"));
+  assert(!sidecar_crosslink_pair("data_1200_b1_42-131-3.json.partial",
+                                 "data_1200_b1_42-131-4.json"));
+  assert(!sidecar_crosslink_pair("data_1200_b1_42-131-3.json.partial",
+                                 "data_1200_b1_42-131-3.parquet"));
+  assert(!sidecar_crosslink_pair("data_1200_b1_42-131-3.json.partial",
+                                 "xdata_1200_b1_42-131-3.json"));
+  assert(!sidecar_crosslink_pair("data_1200_b1_42-3.partial",
+                                 "data_1200_b1_42-3"));
+  assert(!sidecar_crosslink_pair(".json.partial", ".json"));
 
   FakeListing listing;
   listing.names = {"data_1200_b1_42-131-3.parquet", "data_1200_b1_42-3.partial",
@@ -577,6 +610,17 @@ void check_crosslink_guard() {
   listing.fail_open = false;
   listing.fail_close = true;
   assert(crosslink_suspect(listing, "/sd/day", "data_1215_b1_132-4.partial"));
+  listing.fail_close = false;
+  // A sidecar partial beside its final sidecar stays, one beside only its
+  // Parquet file is torn and may move.
+  listing.names = {
+      "data_1200_b1_42-131-3.parquet", "data_1200_b1_42-131-3.json",
+      "data_1200_b1_42-131-3.json.partial", "data_1215_b1_132-200-4.parquet",
+      "data_1215_b1_132-200-4.json.partial"};
+  assert(crosslink_suspect(listing, "/sd/day",
+                           "data_1200_b1_42-131-3.json.partial"));
+  assert(!crosslink_suspect(listing, "/sd/day",
+                            "data_1215_b1_132-200-4.json.partial"));
 }
 } // namespace
 

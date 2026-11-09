@@ -1,0 +1,38 @@
+{
+  "version": "0.1.0",
+  "thing": {
+    "id": "3f2b9c1e-6a7d-4e58-9b1c-2d4f6a8e0c13",
+    "device_id": "441bf6e26b40",
+    "board": "m5stack-cores3",
+    "deployment_id": "unknown",
+    "mobility": "fixed"
+  },
+  "firmware": {
+    "version": "idf-cores3-parquet-v6.23",
+    "schema": "cores3-telemetry-v6",
+    "boot_id": "0f3a9c2e5b7d41e8a6c3f0b2d9e4a713"
+  },
+  "dictionary": {
+    "sha256": "3b4d8500a19f42c6743b0f7d725276c96ca14a0c249f613048603afbc3cfaff9",
+    "version": "cores3-telemetry-v7",
+    "uri": "https://raw.githubusercontent.com/walkthru-earth/opensensor-space-firmware/093f2b8e45cd2b9e24e1324ad9fa2e6e20ad1d47/firmware/esp-idf-cores3/bringup/telemetry_fields.inc"
+  },
+  "template": {
+    "href": "https://raw.githubusercontent.com/walkthru-earth/opensensor-space-firmware/bb618f32a8a9bfe6a633a22ad5e99d319d55d46b/docs/shared/templates/m5stack-cores3/3b4d8500a19f42c6743b0f7d725276c96ca14a0c249f613048603afbc3cfaff9.json",
+    "sha256": "4dd6c4b1ef19187ed2c011ab86018e43be0f28edc3af63a0f6a27b70ff203ef3"
+  },
+  "acquisition": {
+    "sample_interval_ms": 10000,
+    "time_semantics": "event_time_utc_us estimates snapshot start; collection_completed_mono_us bounds sequential reads; pms_received_mono_us is last checksum-valid UART frame receipt, not sensor phenomenon time; result/ingestion time and clock uncertainty unknown; no retroactive UTC assignment",
+    "config_id": "cores3-acquisition-v3",
+    "config": "{\"sample_interval_ms\":10000,\"pms_warmup_us\":30000000,\"pms_stale_after_ms\":5000,\"pms_uart_rx\":18,\"pms_uart_tx\":17,\"pms_baud\":9600,\"m5unified\":\"0.2.26\",\"esp_idf\":\"6.1\",\"ltr553\":\"raw-v1\",\"snapshot\":\"latest-available-not-average\"}",
+    "calibration_id": "unknown"
+  },
+  "file": {
+    "rotation_interval_s": 900,
+    "row_groups": 1,
+    "row_group_rows_max": 90,
+    "compression": "LZ4_RAW",
+    "purpose": "telemetry"
+  }
+}

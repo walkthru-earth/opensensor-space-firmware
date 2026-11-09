@@ -187,7 +187,7 @@ void footer_bytes() {
              {.device = "d", .thing = "", .boot = kBoot, .mobility = "fixed"},
              kFile)
              .has_value());
-  // thing.board is the board slug, never free text (stac-opensensor 4408c4e).
+  // thing.board is the board slug, never free text (stac-opensensor 83787768).
   for (const char *board :
        {"CoreS3 ESP32-S3 rev0.2", "M5Stack-CoreS3", "a_b"}) {
     auto bad = base_config();

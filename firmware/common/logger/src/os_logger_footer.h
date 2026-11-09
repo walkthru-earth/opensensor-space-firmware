@@ -3,6 +3,8 @@
 #include "os_logger.h"
 #include "os_logger_cadence.h"
 
+#include "json_writer.h"
+
 #include <array>
 #include <charconv>
 #include <cstddef>
@@ -15,10 +17,10 @@
 // The two Parquet key-value entries of every telemetry file.
 //
 // `opensensor` is compact UTF-8 JSON per stac-opensensor json-schema/
-// footer.json v0.1.0 at commit 4408c4e52366bb3d154d22bbfffc88ff09aed6f1,
+// footer.json v0.1.0 at commit 83787768cc8451109d48a03d4ef5493ffcd403dd,
 // pinned in tools/stac_opensensor/v0.1.0/footer.json. Members follow the
 // schema's property order, which matches its example
-// footers/cores3-telemetry-v5.json. It holds no location.
+// footers/m5stack-cores3.json. It holds no location.
 //
 // `geo` is GeoParquet 2.0.0 file metadata for the native GEOMETRY column
 // `geometry`, validated against the GeoParquet schema.json pinned in
@@ -84,105 +86,14 @@ enum class Error : std::uint8_t {
 }
 
 namespace detail {
-// Appends to a fixed buffer and remembers the first overflow. No heap, no
-// formatting library.
-class Json {
-public:
-  explicit Json(std::span<char> out) : out_(out) {}
-
-  void open(std::string_view key) {
-    name(key);
-    put('{');
-    fresh_ = true;
-  }
-  void close() {
-    put('}');
-    fresh_ = false;
-  }
-  void text(std::string_view key, std::string_view value) {
-    name(key);
-    string(value);
-  }
-  void number(std::string_view key, std::uint64_t value) {
-    name(key);
-    char digits[20];
-    const auto [end, error] =
-        std::to_chars(digits, digits + sizeof(digits), value);
-    if (error != std::errc{}) {
-      ok_ = false;
-      return;
-    }
-    append({digits, static_cast<std::size_t>(end - digits)});
-  }
-  // A member whose value the caller has already formatted as JSON.
-  void raw(std::string_view key, std::string_view json) {
-    name(key);
-    append(json);
-  }
-  void begin() {
-    put('{');
-    fresh_ = true;
-  }
-  [[nodiscard]] std::expected<std::size_t, Error> finish() {
-    if (!ok_ || used_ >= out_.size())
-      return std::unexpected(Error::Overflow);
-    out_[used_] = '\0';
-    return used_;
-  }
-
-private:
-  std::span<char> out_;
-  std::size_t used_ = 0;
-  bool ok_ = true;
-  bool fresh_ = true;
-
-  void put(char c) {
-    if (used_ >= out_.size()) {
-      ok_ = false;
-      return;
-    }
-    out_[used_++] = c;
-  }
-  void append(std::string_view bytes) {
-    for (const char c : bytes)
-      put(c);
-  }
-  void name(std::string_view key) {
-    if (!fresh_)
-      put(',');
-    fresh_ = false;
-    string(key);
-    put(':');
-  }
-  // RFC 8259 escapes, the two character form where one exists. Bytes from
-  // 0x80 pass through, so UTF-8 stays UTF-8.
-  void string(std::string_view value) {
-    static constexpr char kHex[] = "0123456789abcdef";
-    put('"');
-    for (const char c : value) {
-      const auto byte = static_cast<unsigned char>(c);
-      const char shorthand = c == '"'    ? '"'
-                             : c == '\\' ? '\\'
-                             : c == '\b' ? 'b'
-                             : c == '\f' ? 'f'
-                             : c == '\n' ? 'n'
-                             : c == '\r' ? 'r'
-                             : c == '\t' ? 't'
-                                         : '\0';
-      if (shorthand != '\0') {
-        put('\\');
-        put(shorthand);
-      } else if (byte < 0x20) {
-        append("\\u00");
-        put(kHex[byte >> 4]);
-        put(kHex[byte & 0x0f]);
-      } else {
-        put(c);
-      }
-    }
-    put('"');
-  }
-};
+// The shared bounded writer in buffer mode. It fails closed on overflow.
+using Json = opensensor::json::Writer;
+[[nodiscard]] inline std::expected<std::size_t, Error> finish(Json &json) {
+  const auto length = json.finish();
+  if (!length)
+    return std::unexpected(Error::Overflow);
+  return *length;
+}
 
 [[nodiscard]] constexpr bool present(const char *value) {
   return value != nullptr && value[0] != '\0';
@@ -347,7 +258,7 @@ build(std::span<char> out, const Config &config, const Ids &ids,
             file.benchmark ? "codec-comparison-duplicate-rows" : "telemetry");
   json.close();
   json.close();
-  return json.finish();
+  return detail::finish(json);
 }
 
 // Writes the `geo` JSON and a NUL into `out` and returns its length without
@@ -394,7 +305,7 @@ build_geo(std::span<char> out,
   json.close();
   json.close();
   json.close();
-  return json.finish();
+  return detail::finish(json);
 }
 
 // The key-value list a file ends with, in footer order. `opensensor` comes

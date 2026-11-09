@@ -112,7 +112,7 @@ def validator() -> Draft7Validator:
 
 
 # (type, roles, has unit, aggregate) per stac-opensensor PROFILE at
-# 4408c4e52366bb3d154d22bbfffc88ff09aed6f1.
+# 83787768cc8451109d48a03d4ef5493ffcd403dd.
 LOCATION_COLUMNS = {
     "h3_cell_id": ("int64", ["referenceInformation"], True, "mode"),
     "h3_resolution": ("int32", ["referenceInformation"], True, "mode"),
@@ -155,7 +155,7 @@ def validate(template: dict, dictionary: dict, dictionary_uri: str) -> None:
                 f"unit label: {field['name']}")
         require(field["name"] not in firmware["unit_labels"] or unit != field["unit"],
                 f"unit label only where it differs: {field['name']}")
-        # stac-opensensor 4408c4e PROFILE location columns.
+        # stac-opensensor 83787768 PROFILE location columns.
         spelled = LOCATION_COLUMNS.get(field["name"])
         if spelled is not None:
             got = (column["type"], column["roles"], "unit" in column, column["opensensor:aggregate"])

@@ -403,6 +403,16 @@ inline bool crosslink_pair(const char *partial, const char *parquet) {
   return true;
 }
 
+// The STAC sidecar (#142) is written as "<F>.json.partial" and renamed to
+// "<F>.json". A power cut inside that rename leaves the same kind of pair.
+inline bool sidecar_crosslink_pair(const char *partial, const char *json) {
+  if (!has_suffix(partial, ".json.partial") || !has_suffix(json, ".json"))
+    return false;
+  const std::size_t length = std::strlen(partial) - 8; // drop .partial
+  return std::strlen(json) == length &&
+         std::strncmp(partial, json, length) == 0;
+}
+
 // True when `directory` holds the finalized sibling of `partial`, or when the
 // directory cannot be read completely. Callers leave suspects untouched.
 template <class IO>
@@ -418,7 +428,8 @@ bool crosslink_suspect(IO &io, const char *directory, const char *partial) {
       suspect = errno != 0;
       break;
     }
-    if (crosslink_pair(partial, entry->d_name)) {
+    if (crosslink_pair(partial, entry->d_name) ||
+        sidecar_crosslink_pair(partial, entry->d_name)) {
       suspect = true;
       break;
     }

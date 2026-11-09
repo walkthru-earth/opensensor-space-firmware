@@ -22,6 +22,7 @@
 #include "os_logger_work_queue.h"
 #include "ota_lan.h"
 #include "parquet_writer.h"
+#include "sha256_stream.h"
 #include "storage_governor.h"
 #include "telemetry_logical.h"
 #include "wifi_link.h"
@@ -32,6 +33,7 @@
 #include <boot_self_test.h>
 #include <control_sync.h>
 #include <os_gnss.h>
+#include <os_stac_item.h>
 #include <sync_codec.h>
 #include <sync_service.h>
 #include <time_sync.h>
@@ -156,6 +158,30 @@ struct WriterState {
 // buffer. codec-test staging is PSRAM, allocated only while the test runs.
 constexpr std::size_t kStagingBytes = 4096;
 char staging_telemetry[kStagingBytes];
+// The STAC File Item of the telemetry file (#142). Allocated in PSRAM by
+// begin() only when the board passes Config::stac_columns, and null
+// otherwise. Worker only. The geometry buffers hold the outline of any file,
+// so the Item never needs more than this and the transient H3 heap.
+namespace stac = opensensor::stac;
+struct StacState {
+  stac::Accumulator accumulator;
+  std::array<opensensor::location::LngLat, stac::kGeometryCapacity.points>
+      points{};
+  std::array<opensensor::location::Ring, stac::kGeometryCapacity.rings> rings{};
+  std::array<opensensor::location::Polygon, stac::kGeometryCapacity.polygons>
+      polygons{};
+  // The Item repeats file:checksum, so finalize hashes the file in the same
+  // read as its CRC-32.
+  opensensor::hash::Sha256Stream sha;
+  // True while every row of the open telemetry file goes to the accumulator,
+  // that is when the file is dated.
+  bool feeding = false;
+};
+StacState *stac_state = nullptr;
+// Every row a telemetry file can hold fits the accumulator.
+static_assert(std::size_t{kMaxRowGroups} * cadence::kMaxBatchRows <=
+                  stac::kMaxRows,
+              "the STAC accumulator must hold every row of one file");
 struct Command {
   enum class Source : std::uint8_t { Serial, Control, Network };
   Source source = Source::Serial;
@@ -298,9 +324,11 @@ bool crc_key(const char *path, opensensor::storage::CrcKey &key) {
 // Structural completion check and CRC-32 of `file`, an open stream. PyArrow +
 // DuckDB perform conformance. With use_cache, an entry matching path, size
 // and mtime replaces the full read, and a computed CRC is remembered. A
-// failed seek or a short read sets check.io_error.
+// failed seek or a short read sets check.io_error. A started `sha` gets the
+// same bytes as the CRC from the same reads, and the caller finishes it. A
+// cache hit skips the read, so a caller that hashes passes use_cache false.
 bool check_file(const char *path, FILE *file, ossync::FileCheck &check,
-                bool use_cache) {
+                bool use_cache, opensensor::hash::Sha256Stream *sha = nullptr) {
   std::uint8_t magic[4]{}, tail[8]{};
   bool ok = false;
   {
@@ -342,6 +370,8 @@ bool check_file(const char *path, FILE *file, ossync::FileCheck &check,
       return false;
     }
     crc = crc32_update(crc, writer_state->crc_scratch, count);
+    if (sha)
+      sha->update({writer_state->crc_scratch, count});
     read_bytes += count;
     stamp_heartbeat(); // a 1 MiB CRC pass is progress, not a stall
   }
@@ -353,7 +383,10 @@ bool check_file(const char *path, FILE *file, ossync::FileCheck &check,
   return true;
 }
 
-bool finalized_file(const char *path, std::uint32_t &size, std::uint32_t &crc) {
+// Size and CRC-32 of a closed file, read once. A started `sha` gets the same
+// bytes, see check_file.
+bool finalized_file(const char *path, std::uint32_t &size, std::uint32_t &crc,
+                    opensensor::hash::Sha256Stream *sha = nullptr) {
   FILE *file = nullptr;
   {
     BusLock lock;
@@ -362,7 +395,7 @@ bool finalized_file(const char *path, std::uint32_t &size, std::uint32_t &crc) {
   if (!file)
     return false;
   ossync::FileCheck check;
-  bool ok = check_file(path, file, check, false);
+  bool ok = check_file(path, file, check, false, sha);
   {
     BusLock lock;
     ok = std::fclose(file) == 0 && ok;
@@ -783,6 +816,12 @@ bool create_file(OutputFile &target, Codec codec, bool benchmark) {
     close_failed(target, "begin", result.error);
     return false;
   }
+  // Only a dated telemetry file can get an Item. A codec-test copy never
+  // touches the accumulator, which may be feeding the open telemetry file.
+  if (stac_state && !benchmark) {
+    stac_state->accumulator.reset();
+    stac_state->feeding = target.dated;
+  }
   return true;
 }
 
@@ -823,6 +862,12 @@ bool append_group(OutputFile &target, std::size_t count) {
   if (!target.benchmark) {
     open_rows = target.rows;
     open_groups = target.writer.row_groups();
+    // The Item describes the rows on the card, so it reads them only once
+    // their row group is durable.
+    if (stac_state && stac_state->feeding)
+      for (std::size_t i = 0; i < count; ++i)
+        stac_state->accumulator.add_row(writer_state->rows[i].data,
+                                        writer_state->rows[i].valid);
   }
   oslog.printf("PARQUET GROUP file=%s ordinal=%u rows=%u first=%lld last=%lld "
                "bytes=%llu writer_us=%lld codec=%s codec_us=%llu\n",
@@ -833,6 +878,186 @@ bool append_group(OutputFile &target, std::size_t count) {
                static_cast<long long>(elapsed), codec_name(target.codec),
                static_cast<unsigned long long>(writer_state->lz4.codec_us));
   return true;
+}
+
+// One open sidecar `.json.partial` for the STAC sink.
+struct SidecarFile {
+  int fd = -1;
+  int error = 0; // errno of the failed write, 0 when none failed
+};
+
+// json::Sink write for SidecarFile. Each staging chunk goes to the card with
+// the bus lock held. A short write continues where it stopped.
+bool write_sidecar_bytes(void *context, std::span<const char> bytes) {
+  auto &out = *static_cast<SidecarFile *>(context);
+  while (!bytes.empty()) {
+    ssize_t written;
+    {
+      BusLock lock;
+      written = ::write(out.fd, bytes.data(), bytes.size());
+    }
+    if (written <= 0) {
+      out.error = written < 0 ? errno : EIO;
+      return false;
+    }
+    bytes = bytes.subspan(static_cast<std::size_t>(written));
+    stamp_heartbeat(); // bytes on the card are progress
+  }
+  return true;
+}
+
+// Writes the STAC File Item of a finalized telemetry file as `<file>.json`
+// beside `ready`, its `.parquet` path (stac-opensensor PROFILE "Writers").
+// It goes to `<file>.json.partial` first, is synced and closed, then renamed.
+// The Parquet file is finalized and listed before this runs, and nothing
+// here reads, moves or deletes it. Any failure removes the partial this call
+// created and prints one PARQUET STAC line. Logging goes on either way.
+// `sha256` is the file digest, or null with `sha_error` when hashing failed.
+void write_sidecar(const OutputFile &target, const char *ready,
+                   std::uint32_t size,
+                   const opensensor::hash::Sha256Digest *sha256,
+                   const char *sha_error) {
+  const auto started = esp_timer_get_time();
+  const std::string_view ready_path{ready};
+  constexpr std::string_view kParquet = ".parquet";
+  const std::string_view root{target.root};
+  char path[416], partial[424];
+  // <root>/<stem>-<last>-<attempt>, the name both files share.
+  int path_length = -1, partial_length = -1;
+  if (ready_path.ends_with(kParquet) &&
+      ready_path.size() > root.size() + 1 + kParquet.size()) {
+    path_length = std::snprintf(
+        path, sizeof(path), "%.*s.json",
+        static_cast<int>(ready_path.size() - kParquet.size()), ready);
+    partial_length =
+        std::snprintf(partial, sizeof(partial), "%s.partial", path);
+  }
+  if (path_length < 0 ||
+      static_cast<std::size_t>(path_length) >= sizeof(path) ||
+      partial_length < 0 ||
+      static_cast<std::size_t>(partial_length) >= sizeof(partial)) {
+    oslog.printf("PARQUET STAC result=failed file=%s reason=path-too-long "
+                 "errno=0\n",
+                 target.stem);
+    return;
+  }
+  const char *shown = path + root.size() + 1; // below the output root
+  const auto skipped = [shown](const char *reason) {
+    oslog.printf("PARQUET STAC result=skipped file=%s reason=%s\n", shown,
+                 reason);
+  };
+  const auto failed = [shown](const char *reason, int error) {
+    oslog.printf("PARQUET STAC result=failed file=%s reason=%s errno=%d\n",
+                 shown, reason, error);
+  };
+  // canonical.mjs buildItem refuses every file that is not dated first.
+  if (!target.dated) {
+    skipped(stac::item_error_name(stac::ItemError::NotDated));
+    return;
+  }
+  if (!sha256) {
+    failed(sha_error ? sha_error : "sha256", 0);
+    return;
+  }
+  const char *name = std::strrchr(ready, '/');
+  name = name ? name + 1 : ready;
+  const stac::ItemFile file{
+      .name = name,
+      .size = size,
+      .sha256 = *sha256,
+      .thing = thing_text,
+      .mobility = target.location.mobility == ::config::Mobility::Moving
+                      ? stac::Mobility::Moving
+                      : stac::Mobility::Fixed,
+      .sample_interval_ms = config.sample_interval_ms,
+  };
+  const stac::GeometryBuffers buffers{
+      .points = stac_state->points,
+      .rings = stac_state->rings,
+      .polygons = stac_state->polygons,
+  };
+  const auto item =
+      stac::ItemBuilder::prepare(stac_state->accumulator, file, buffers);
+  if (!item) {
+    if (stac::no_item(item.error()))
+      skipped(stac::item_error_name(item.error()));
+    else
+      failed(stac::item_error_name(item.error()), 0);
+    return;
+  }
+  stamp_heartbeat(); // the outline is traced
+  SidecarFile out;
+  {
+    BusLock lock;
+    out.fd = ::open(partial, O_WRONLY | O_CREAT | O_EXCL, 0600);
+  }
+  if (out.fd < 0) {
+    // Not created here, so not removed here either.
+    ++errors;
+    failed("open", errno);
+    return;
+  }
+  // The telemetry file is closed, so its stdio buffer is free. It is internal
+  // RAM, which the SD host reads by DMA without a bounce buffer.
+  const auto written = stac::ItemBuilder::write(
+      *item, stac_state->accumulator, file, {target.staging, kStagingBytes},
+      {.write = write_sidecar_bytes, .context = &out}, stac::kMaxItemBytes);
+  const char *reason = nullptr;
+  int error = 0;
+  bool io = false;
+  if (!written) {
+    reason = stac::item_error_name(written.error());
+    error = out.error;
+    io = written.error() == stac::ItemError::JsonSink;
+  }
+  {
+    BusLock lock;
+    if (!reason && ::fsync(out.fd) != 0) {
+      reason = "sync";
+      error = errno;
+      io = true;
+    }
+    if (::close(out.fd) != 0 && !reason) {
+      reason = "close";
+      error = errno;
+      io = true;
+    }
+    if (!reason) {
+      // Never replace a sidecar that is already there.
+      if (::access(path, F_OK) == 0) {
+        reason = "exists";
+        error = EEXIST;
+      } else if (::rename(partial, path) != 0) {
+        reason = "rename";
+        error = errno;
+        io = true;
+      }
+    }
+  }
+  if (reason) {
+    int removed;
+    {
+      BusLock lock;
+      removed = ::unlink(partial);
+    }
+    if (io)
+      ++errors;
+    failed(reason, error);
+    if (removed != 0) {
+      ++errors;
+      oslog.printf("PARQUET STAC result=failed file=%s.partial "
+                   "reason=unlink errno=%d\n",
+                   shown, errno);
+    }
+    return;
+  }
+  stamp_heartbeat(); // the sidecar is durable under its final name
+  oslog.printf("PARQUET STAC result=written file=%s bytes=%u rows=%u "
+               "polygons=%u write_us=%lld\n",
+               shown, unsigned(*written),
+               unsigned(stac_state->accumulator.rows()),
+               unsigned(item->geometry.polygons.size()),
+               static_cast<long long>(esp_timer_get_time() - started));
 }
 
 // Writes the footer, syncs, closes, checks the structure and renames to
@@ -891,8 +1116,19 @@ bool finalize_file(OutputFile &target) {
                 target.stem, static_cast<long long>(target.last),
                 static_cast<unsigned long>(target.attempt));
   std::uint32_t size = 0, crc = 0;
+  // A dated telemetry file gets a STAC sidecar, which repeats the file
+  // SHA-256. The digest comes from the same read as the CRC-32.
+  const bool sidecar = stac_state && !target.benchmark;
+  opensensor::hash::Sha256Stream *sha = nullptr;
+  const char *sha_error = nullptr;
+  if (ok && sidecar && target.dated) {
+    if (const auto begun = stac_state->sha.begin(); begun)
+      sha = &stac_state->sha;
+    else
+      sha_error = opensensor::hash::sha256_error_name(begun.error());
+  }
   if (ok)
-    ok = finalized_file(target.partial, size, crc) &&
+    ok = finalized_file(target.partial, size, crc, sha) &&
          size == result.bytes_written;
   if (ok) {
     BusLock lock;
@@ -905,6 +1141,8 @@ bool finalize_file(OutputFile &target) {
   write_us =
       static_cast<std::uint32_t>(esp_timer_get_time() - target.opened_us);
   if (!ok) {
+    if (sha)
+      sha->abort();
     close_failed(target, "finalize", "io-or-validation");
     return false;
   }
@@ -940,6 +1178,16 @@ bool finalize_file(OutputFile &target) {
           MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL)),
       static_cast<unsigned long>(heap_caps_get_minimum_free_size(
           MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL)));
+  if (sidecar) {
+    std::optional<opensensor::hash::Sha256Digest> digest;
+    if (sha) {
+      if (const auto finished = sha->finish(); finished)
+        digest = *finished;
+      else
+        sha_error = opensensor::hash::sha256_error_name(finished.error());
+    }
+    write_sidecar(target, ready, size, digest ? &*digest : nullptr, sha_error);
+  }
   return true;
 }
 
@@ -2986,6 +3234,47 @@ void start_worker_watchdog() {
 const char *watchdog_mode_name() { return "off"; }
 #endif
 
+// Sets up the optional STAC sidecar (#142). A failure here prints one line
+// and leaves the sidecar off. It never stops logging.
+void begin_stac() {
+  if (!config.stac_columns || config.stac_column_count == 0)
+    return;
+  const stac::Accumulator::Layout layout{
+      .columns = {config.stac_columns, config.stac_column_count},
+      .time_field = event_time_utc_us,
+      .cell_field = field_index("h3_cell_id"),
+      .field_count = field_count,
+  };
+  if (config.stac_column_count > stac::kMaxColumns ||
+      layout.cell_field >= field_count) {
+    oslog.println("PARQUET ERROR operation=stac-config reason=bad-layout "
+                  "sidecar=false");
+    return;
+  }
+  void *memory = heap_caps_calloc(1, sizeof(StacState),
+                                  MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (!memory) {
+    oslog.printf("PARQUET ERROR operation=allocate mem=psram bytes=%u "
+                 "purpose=stac-item sidecar=false\n",
+                 unsigned(sizeof(StacState)));
+    return;
+  }
+  auto *state = static_cast<StacState *>(memory);
+  new (state) StacState{};
+  const auto configured = state->accumulator.configure(layout);
+  if (!configured) {
+    oslog.printf("PARQUET ERROR operation=stac-config reason=%s "
+                 "sidecar=false\n",
+                 stac::item_error_name(configured.error()));
+    state->~StacState();
+    heap_caps_free(memory);
+    return;
+  }
+  stac_state = state;
+  oslog.printf("PARQUET STAC sidecar=true columns=%u psram_bytes=%u\n",
+               unsigned(config.stac_column_count), unsigned(sizeof(StacState)));
+}
+
 bool begin(const Config &configuration, const Hooks &board_hooks,
            bool sd_mounted) {
   if (writer_state || accepting || !configuration.fields ||
@@ -3143,6 +3432,7 @@ bool begin(const Config &configuration, const Hooks &board_hooks,
   new (writer_state) WriterState{};
   writer_state->telemetry.staging = staging_telemetry;
   prepare_columns();
+  begin_stac();
   // Before the worker starts, so the first row of the boot is already dated
   // when the RTC holds an earlier host sync.
   seed_clock_from_rtc();

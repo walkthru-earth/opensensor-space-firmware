@@ -1,0 +1,253 @@
+{
+  "type": "Feature",
+  "stac_version": "1.1.0",
+  "stac_extensions": [
+    "https://stac-extensions.github.io/table/v1.3.0/schema.json",
+    "https://stac-extensions.github.io/file/v2.1.0/schema.json",
+    "https://stac-extensions.github.io/anonymized-location/v1.0.0/schema.json",
+    "https://walkthru-earth.github.io/stac-opensensor/v0.1.0/schema.json",
+    "https://walkthru-earth.github.io/stac-opensensor/v0.1.0/profile.json"
+  ],
+  "id": "data_0815_5e9d0c7b31a84f62b8d47a10c3e6f295_412-487-0",
+  "collection": "7c1e4b9a-3d52-4f86-a0b7-e9d2c5f81a46",
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [
+          31.26070644322702,
+          30.04162701583852
+        ],
+        [
+          31.26324747040906,
+          30.04634104795571
+        ],
+        [
+          31.259829638284863,
+          30.05063219298801
+        ],
+        [
+          31.25387048570393,
+          30.050209144315733
+        ],
+        [
+          31.251329696972434,
+          30.045494883980734
+        ],
+        [
+          31.245370678310426,
+          30.045071384286565
+        ],
+        [
+          31.241951916723245,
+          30.049362211412824
+        ],
+        [
+          31.23599250057747,
+          30.04893832717151
+        ],
+        [
+          31.23345237773389,
+          30.044223549458206
+        ],
+        [
+          31.236871432181157,
+          30.03993288406646
+        ],
+        [
+          31.242830316666684,
+          30.04035683465431
+        ],
+        [
+          31.24624873503418,
+          30.036066012887776
+        ],
+        [
+          31.25220722207681,
+          30.036489579075116
+        ],
+        [
+          31.254747822316556,
+          30.041203900535017
+        ],
+        [
+          31.26070644322702,
+          30.04162701583852
+        ]
+      ]
+    ]
+  },
+  "bbox": [
+    31.23345237773389,
+    30.036066012887776,
+    31.26324747040906,
+    30.05063219298801
+  ],
+  "properties": {
+    "datetime": null,
+    "start_datetime": "2026-10-24T08:17:20Z",
+    "end_datetime": "2026-10-24T08:29:50.375Z",
+    "opensensor:mobility": "moving",
+    "opensensor:sample_interval_s": 10,
+    "anon:size": 0.01,
+    "anon:warning": "The geometry is the H3 cells the device visited, not its track."
+  },
+  "links": [
+    {
+      "rel": "root",
+      "href": "../../../../catalog.json",
+      "type": "application/json"
+    },
+    {
+      "rel": "parent",
+      "href": "../../../collection.json",
+      "type": "application/json"
+    },
+    {
+      "rel": "collection",
+      "href": "../../../collection.json",
+      "type": "application/json"
+    }
+  ],
+  "assets": {
+    "data": {
+      "href": "./data_0815_5e9d0c7b31a84f62b8d47a10c3e6f295_412-487-0.parquet",
+      "type": "application/vnd.apache.parquet",
+      "roles": [
+        "data"
+      ],
+      "file:size": 12107,
+      "file:checksum": "122047f8a481f1a8960faaf5cf3551e82b65383a4492c91e2384f436b324c2257dcf",
+      "table:row_count": 76,
+      "table:columns": [
+        {
+          "name": "pm1_cf1_ug_m3",
+          "type": "int32",
+          "statistics": {
+            "minimum": 27,
+            "maximum": 72,
+            "mean": 47.91,
+            "valid_percent": 97.37
+          }
+        },
+        {
+          "name": "pm25_cf1_ug_m3",
+          "type": "int32",
+          "statistics": {
+            "minimum": 33,
+            "maximum": 76,
+            "mean": 52.77,
+            "valid_percent": 97.37
+          }
+        },
+        {
+          "name": "pm10_cf1_ug_m3",
+          "type": "int32",
+          "statistics": {
+            "minimum": 36,
+            "maximum": 112,
+            "mean": 74.09,
+            "valid_percent": 97.37
+          }
+        },
+        {
+          "name": "pm1_atmospheric_ug_m3",
+          "type": "int32",
+          "statistics": {
+            "minimum": 26,
+            "maximum": 71,
+            "mean": 46.91,
+            "valid_percent": 97.37
+          }
+        },
+        {
+          "name": "pm25_atmospheric_ug_m3",
+          "type": "int32",
+          "statistics": {
+            "minimum": 31,
+            "maximum": 74,
+            "mean": 50.77,
+            "valid_percent": 97.37
+          }
+        },
+        {
+          "name": "pm10_atmospheric_ug_m3",
+          "type": "int32",
+          "statistics": {
+            "minimum": 34,
+            "maximum": 110,
+            "mean": 72.09,
+            "valid_percent": 97.37
+          }
+        },
+        {
+          "name": "particles_gt03_per_01l",
+          "type": "int32",
+          "statistics": {
+            "minimum": 5662,
+            "maximum": 13528,
+            "mean": 9291.74,
+            "valid_percent": 97.37
+          }
+        },
+        {
+          "name": "particles_gt05_per_01l",
+          "type": "int32",
+          "statistics": {
+            "minimum": 1613,
+            "maximum": 3923,
+            "mean": 2680.08,
+            "valid_percent": 97.37
+          }
+        },
+        {
+          "name": "particles_gt10_per_01l",
+          "type": "int32",
+          "statistics": {
+            "minimum": 283,
+            "maximum": 677,
+            "mean": 473.19,
+            "valid_percent": 97.37
+          }
+        },
+        {
+          "name": "particles_gt25_per_01l",
+          "type": "int32",
+          "statistics": {
+            "minimum": 5,
+            "maximum": 40,
+            "mean": 23.39,
+            "valid_percent": 97.37
+          }
+        },
+        {
+          "name": "pm25_batch_candidate_ug_m3",
+          "type": "float",
+          "statistics": {
+            "valid_percent": 0
+          }
+        },
+        {
+          "name": "ambient_temperature_c",
+          "type": "float",
+          "statistics": {
+            "minimum": 24.700000762939453,
+            "maximum": 27.899999618530273,
+            "mean": 26.18,
+            "valid_percent": 100
+          }
+        },
+        {
+          "name": "relative_humidity_percent",
+          "type": "float",
+          "statistics": {
+            "minimum": 48,
+            "maximum": 55.400001525878906,
+            "mean": 51.03,
+            "valid_percent": 98.68
+          }
+        }
+      ]
+    }
+  }
+}

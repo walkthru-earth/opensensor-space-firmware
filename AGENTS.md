@@ -86,7 +86,10 @@ in `firmware/common/`. Device protocol and telemetry contracts live in
 - Preserve 10-second monotonic sampling, absent/null measurements and null UTC until
   a real time anchor exists. The storage worker alone accesses files after
   startup. Finalized Parquet is immutable. Retain failed `.partial` files in
-  provenance quarantine and leave crosslink suspects in place. The SD governor
+  provenance quarantine and leave crosslink suspects in place. A failed STAC
+  sidecar `.json.partial` (#142) holds no owner rows and can be rebuilt from its
+  Parquet, so the worker removes it at runtime and quarantines one a reset left
+  behind, see `firmware/common/logger/AGENTS.md`. The SD governor
   alarms and resumes after space or storage recovers, without automatic deletion. Do not
   silently repair, delete or rewrite owner data.
 - The card is the origin. The local phone or laptop archive is the first copy.

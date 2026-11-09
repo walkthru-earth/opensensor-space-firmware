@@ -35,7 +35,7 @@ namespace contract {
 constexpr std::int32_t kSchemaVersion = 6;
 constexpr const char *kSchemaName = "cores3-telemetry-v6";
 constexpr const char *kDictionaryVersion = "cores3-telemetry-v7";
-constexpr const char *kFirmware = "idf-cores3-parquet-v6.29";
+constexpr const char *kFirmware = "idf-cores3-parquet-v6.30";
 constexpr const char *kCreatedBy = "opensensor-space-firmware version 0.3";
 // Raw telemetry_fields.inc at a pinned commit on main (#89), so the bytes at
 // the URI hash to kDictionarySha256. It is also the template describedby href.
@@ -59,7 +59,7 @@ constexpr const char *kConfiguration =
     "\"snapshot\":\"latest-available-not-average\"}";
 constexpr const char *kUnknown = "unknown";
 // Footer thing.board, the board slug of the template path. The free text name
-// is the template title (stac-opensensor 4408c4e).
+// is the template title (stac-opensensor 83787768).
 constexpr const char *kBoard = "m5stack-cores3";
 constexpr const char *kTimeSemantics =
     "event_time_utc_us estimates snapshot start; collection_completed_mono_us "

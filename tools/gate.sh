@@ -28,6 +28,8 @@ tasks=(
   "lint"
   # Writer, reader, schema and dictionary contracts
   "common-test"
+  "json-test"
+  "sha256-test"
   "parquet-test --sanitize"
   "geoparquet-test --sanitize"
   "reader-test"
@@ -79,6 +81,8 @@ tasks=(
   "config-test"
   "network-time-test"
   "location-test"
+  "h3-polygon-test"
+  "stac-item-test"
   "gnss-test"
   # Logger lifecycle, storage and persistence
   "debug-log-test"

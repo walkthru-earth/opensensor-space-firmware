@@ -205,6 +205,56 @@ only allowlisted key identifiers. Embedded NULs, invalid hex, oversize input and
 invalid settings are rejected. Hosts must handle credential output in memory and
 exclude it from captures and artifacts.
 
+## STAC File Item sidecar
+
+A board opts in by setting `Config::stac_columns` and `Config::stac_column_count`
+to the table that `opensensor::stac::stat_columns()` builds at compile time from
+its FIELD and SEM tables (#142). A null table writes no sidecar. `begin()` then
+places the [STAC builder](../stac/AGENTS.md) state in PSRAM and prints
+`PARQUET STAC sidecar=true columns=<n> psram_bytes=<n>`. A failed allocation
+prints `PARQUET ERROR operation=allocate mem=psram bytes=<n> purpose=stac-item sidecar=false`
+and a table without `h3_cell_id` prints
+`PARQUET ERROR operation=stac-config reason=bad-layout sidecar=false`. Logging
+goes on without a sidecar in both cases.
+
+Every row a dated telemetry file gets is also fed to the builder. At finalize
+the read back that checks structure and CRC-32 also feeds a SHA-256 of the
+whole file through PSA, so the file is read once. After the Parquet rename and
+the `PARQUET READY` line the worker writes the STAC File Item of the canonical
+form of stac-opensensor commit `83787768cc8451109d48a03d4ef5493ffcd403dd` as
+`<stem>-<last>-<attempt>.json` beside the `.parquet` file, in the same folder.
+
+- It writes `<file>.json.partial` with `O_EXCL`, syncs, closes and renames it
+  to `<file>.json`. It never replaces a `.json` that is already there.
+- The Parquet file is finalized, listed and immutable before this starts.
+  Nothing in the sidecar path reads, moves or deletes it, and a sidecar
+  failure never stops logging.
+- The JSON streams through the 4 KiB internal stdio buffer of the closed
+  telemetry file, so the SD host reads it without a bounce buffer. The Item
+  is capped at 426,832 bytes (`stac::kMaxItemBytes`).
+- The worker stamps its heartbeat after the geometry is traced, after each
+  chunk reaches the card and after the rename.
+- Success prints
+  `PARQUET STAC result=written file=<path> bytes=<n> rows=<n> polygons=<n> write_us=<n>`,
+  where `<path>` is below the output root.
+- A file that the profile gives no Item prints
+  `PARQUET STAC result=skipped file=<path> reason=<r>` with `not-dated`,
+  `no-thing`, `no-rows`, `null-time`, `not-located`, `not-resolution-8` or
+  `fixed-many-cells`. Every `unsynced` file is `not-dated`.
+- Any other failure prints one
+  `PARQUET STAC result=failed file=<path> reason=<r> errno=<n>` line and
+  removes the partial it created. Open, write, sync, close and rename failures
+  also count in `storage_errors` and STATUS `err`. A partial that cannot be
+  removed prints a second line with `reason=unlink` and counts too.
+
+A reset during the sidecar write leaves a `<file>.json.partial`. At boot it is
+moved to quarantine like any other partial, unless its `.json` already exists,
+then it stays in place as a crosslink suspect. A reset between the Parquet
+rename and the sidecar rename leaves a finalized file with no sidecar. The
+firmware does not write it again later. LIST and the archive transfer still
+show only `.parquet` files, so a phone does not see the sidecar yet (#143).
+The serial archive reset removes `.json` files with everything else.
+
 ## Battery emergency close
 
 A critical battery asks the storage worker to finish the open Parquet file
