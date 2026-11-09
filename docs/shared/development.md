@@ -543,17 +543,18 @@ Run these from the repository root, with `v1.2.0` standing for the new tag.
 
 2. Wait for the Release workflow to finish and the draft to appear. The run
    can take a few seconds to show up after the push, so the loop looks for it
-   every 10 seconds and gives up after 5 minutes, also when `gh` keeps failing.
+   every 10 seconds and gives up after 30 tries, about 5 minutes, also when
+   `gh` keeps failing. It does not sleep after the last try.
    `--exit-status` makes the watch fail when the run fails. The run is also on
    the repository Actions page under Release.
 
    ```sh
    run_id=""
-   for _ in $(seq 30); do
+   for try in $(seq 30); do
      run_id="$(gh run list --workflow release.yml --branch v1.2.0 --event push \
        --limit 1 --json databaseId --jq '.[0].databaseId // empty')" || run_id=""
      [ -n "$run_id" ] && break
-     sleep 10
+     if [ "$try" -lt 30 ]; then sleep 10; fi
    done
    if [ -n "$run_id" ]; then
      gh run watch "$run_id" --exit-status

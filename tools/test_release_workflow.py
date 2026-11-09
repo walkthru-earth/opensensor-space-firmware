@@ -55,7 +55,10 @@ def uses(step: dict) -> str:
 def if_blocks(run: str, opener: re.Pattern[str]) -> list[list[str]]:
     """The stripped `then` branch lines of every `if` whose first line matches
     opener. An `else` or `elif` branch is left out, so an `exit 1` there cannot
-    pass for the failure exit. Nested ifs are not used in release.yml."""
+    pass for the failure exit. Lines before the opener are skipped, so the
+    opener may sit inside an outer if, as the tag check in release.yml does.
+    The block ends at the first `fi` after the opener, so an if nested inside
+    the `then` branch would end it early."""
     blocks, body, in_then = [], None, False
     for line in (raw.strip() for raw in run.splitlines()):
         if body is None:
@@ -239,7 +242,8 @@ def check_wait_loop() -> None:
     assert "until " not in snippet and "while true" not in snippet, snippet
     with tempfile.TemporaryDirectory() as raw:
         bin_dir = Path(raw)
-        for name, body in (("gh", FAKE_GH), ("sleep", "#!/usr/bin/env bash\nexit 0\n")):
+        fake_sleep = '#!/usr/bin/env bash\necho "sleep $*" >> "${FAKE_LOG}"\n'
+        for name, body in (("gh", FAKE_GH), ("sleep", fake_sleep)):
             (bin_dir / name).write_text(body)
             (bin_dir / name).chmod(0o755 | stat.S_IXUSR)
         for fails, want_rc in ((1000, 1), (3, 0)):
@@ -251,6 +255,9 @@ def check_wait_loop() -> None:
             assert result.returncode == want_rc, (fails, result.returncode, result.stderr)
             calls = log.read_text().splitlines()
             lists = [call for call in calls if call.startswith("run list")]
+            sleeps = [call for call in calls if call.startswith("sleep")]
+            # One sleep between tries, none after the last or after a hit.
+            assert sleeps == ["sleep 10"] * (len(lists) - 1), (len(lists), sleeps)
             if want_rc:
                 assert len(lists) == 30 and "after 5 minutes" in result.stderr, (len(lists), result.stderr)
                 assert not any(call.startswith("run watch") for call in calls), calls
