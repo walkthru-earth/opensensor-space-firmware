@@ -245,6 +245,22 @@ def elf_symbols(path: Path) -> set[str]:
     return names
 
 
+def check_board_settings(board: boards.Board, telemetry: bool, lines: set[str]) -> None:
+    """sdkconfig lines from board.json, the telemetry PSRAM mode and tooling.sdkconfig."""
+    required = [f"CONFIG_SPIRAM_MODE_{board.psram_mode}=y"] if telemetry else []
+    for setting in [*required, *board.sdkconfig]:
+        require(setting in lines, f"native target missing {setting}")
+
+
+def check_board_components(board: boards.Board, components: list[str]) -> None:
+    """Build components from board.json, such as M5 drivers on CoreS3 only."""
+    forbidden = sorted(name for name in components for part in board.components_forbidden
+                       if part.lower() in name.lower())
+    require(not forbidden, f"{board.alias} must not build {', '.join(forbidden)}")
+    missing = sorted(set(board.components_required) - set(components))
+    require(not missing, f"{board.alias} components missing, {', '.join(missing)}")
+
+
 def check_target(build: Path, board: boards.Board, variant: str) -> tuple[str, dict[str, str]]:
     """Check one build of a registry board (#141).
 
@@ -266,8 +282,7 @@ def check_target(build: Path, board: boards.Board, variant: str) -> tuple[str, d
         require("CONFIG_BT_ENABLED=y" not in lines and "CONFIG_BT_NIMBLE_ENABLED=y" not in lines,
                 f"{variant} unexpectedly enables Bluetooth")
     else:
-        required += ["CONFIG_SPIRAM=y", f"CONFIG_SPIRAM_MODE_{board.psram_mode}=y",
-                     "CONFIG_SPIRAM_SPEED_80M=y", "CONFIG_SPIRAM_USE_MALLOC=y",
+        required += ["CONFIG_SPIRAM=y", "CONFIG_SPIRAM_SPEED_80M=y", "CONFIG_SPIRAM_USE_MALLOC=y",
                      "CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y",
                      "CONFIG_ESP_WIFI_STATIC_TX_BUFFER=y",
                      "CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=16",
@@ -289,12 +304,12 @@ def check_target(build: Path, board: boards.Board, variant: str) -> tuple[str, d
                      "CONFIG_ESP_MAC_UNIVERSAL_MAC_ADDRESSES=2",
                      "# CONFIG_BT_NIMBLE_SM_LEGACY is not set",
                      "# CONFIG_BT_NIMBLE_SM_SC_DEBUG_KEYS is not set"]
-    # The console and any other per board line, from board.json tooling.sdkconfig.
-    required += board.sdkconfig
     # Every image saves a panic core dump to the coredump partition below.
     required += COREDUMP_SETTINGS
     for setting in required:
         require(setting in lines, f"native target missing {setting}")
+    # The PSRAM mode, the console and any other per board line.
+    check_board_settings(board, telemetry, lines)
     require("CONFIG_ESP_CONSOLE_USB_CDC=y" not in lines, "unexpected USB CDC console")
     commands = json.loads(build_file(build, "compile_commands.json").read_text())
     require(bool(commands), "empty compiler database")
@@ -330,12 +345,7 @@ def check_target(build: Path, board: boards.Board, variant: str) -> tuple[str, d
                 "logger runtime component missing")
     require(not any("arduino" in component.lower() for component in components),
             "native target depends on Arduino")
-    # Per board components from board.json, such as M5 drivers on CoreS3 only.
-    forbidden = sorted(name for name in components for part in board.components_forbidden
-                       if part.lower() in name.lower())
-    require(not forbidden, f"{board.alias} must not build {', '.join(forbidden)}")
-    missing = sorted(set(board.components_required) - set(components))
-    require(not missing, f"{board.alias} components missing, {', '.join(missing)}")
+    check_board_components(board, components)
     require(partitions(build_file(build, "partition_table/partition-table.bin").read_bytes()) ==
             PARTITIONS, "partition table differs from the existing owner-data layout")
     plan = json.loads(build_file(build, "flasher_args.json").read_text())

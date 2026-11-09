@@ -15,6 +15,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -25,6 +26,7 @@ from jsonschema import Draft7Validator
 import yaml
 
 import boards
+import check_idf_target
 
 ROOT = boards.ROOT
 SCHEMA = ROOT / "docs/shared/plugins/v0.1.0/board.json"
@@ -159,6 +161,13 @@ def check_failure_modes(directory: Path) -> None:
     rejects(directory, "a restore only prefix two boards share",
             shared("backup_prefixes", [second.backup_prefix, first.backup_prefixes[-1]]),
             [f"name {first.backup_prefixes[-1]!r} is already used by"])
+    rejects(directory, "a backup prefix that starts with another board's prefix and a dash",
+            shared("backup_prefixes", [second.backup_prefix, f"{first.backup_prefix}-flash-old"]),
+            [f"backup prefix '{first.backup_prefix}-flash-old' starts with {first.backup_prefix}-",
+             first.manifest, second.manifest])
+    rejects(directory, "two backup prefixes of one board where one starts with the other and a dash",
+            on_first(tooling("backup_prefixes", [first.backup_prefix, f"{first.backup_prefix}-v2"])),
+            [f"{manifest}: backup prefix '{first.backup_prefix}-v2' starts with {first.backup_prefix}-"])
     rejects(directory, "a slug two boards share",
             lambda root, every: edit_json(root / second.manifest, lambda m: m.update(board=first.slug)),
             [f"name {first.slug!r} is already used by"])
@@ -244,7 +253,100 @@ def check_schema() -> None:
                            ("variants", []), ("extra", 1)):
             bad = {**manifest["tooling"], key: value}
             require(any(validator.iter_errors(bad)), f"schema accepts tooling.{key}={value!r}")
+    # Draft 7 validation 6.1.1 counts any number with a zero fractional part
+    # as an integer, so no schema keyword can refuse 16777216.0. boards.py
+    # refuses it (a Python float after json.loads) and stays the strict side.
+    flash = Draft7Validator(properties["flash_bytes"])
+    require(flash.is_valid(json.loads("16777216.0")) and not flash.is_valid(True) and
+            not flash.is_valid(str(BACKUP_BYTES)), "the Draft 7 flash_bytes rule changed, review boards.py")
     print("PASS the plugin board schema and boards.py agree on tooling", flush=True)
+
+
+def partition_table() -> bytes:
+    """The owner data partition table check_idf_target expects, then the end marker."""
+    table = b"".join(struct.pack("<HBBII16sI", 0x50AA, kind, subtype, start, size, label.encode(), flags)
+                     for label, kind, subtype, start, size, flags in check_idf_target.PARTITIONS)
+    return table + b"\xff" * 32
+
+
+def check_target_rules(directory: Path) -> None:
+    """check_idf_target applies the board.json rules, components, sdkconfig, PSRAM mode and backup prefix."""
+    def refuses(what: str, action: Callable[[], object], text: str) -> None:
+        try:
+            action()
+        except ValueError as error:
+            require(text in str(error), f"{what}, error lacks {text!r}, {error}")
+        else:
+            raise AssertionError(f"check_idf_target accepts {what}")
+
+    every = boards.boards()
+    common = ["espcoredump", "logger", "connectivity", "runtime", "common", "esp_wifi", "bt"]
+    for board in every:
+        components = [*common, *board.components_required]
+        check_idf_target.check_board_components(board, components)
+        for name in board.components_required:
+            refuses(f"{board.alias} without {name}",
+                    lambda: check_idf_target.check_board_components(board, [c for c in components if c != name]),
+                    f"{board.alias} components missing, {name}")
+        for part in board.components_forbidden:
+            for name in (f"vendor__{part}_driver", f"{part.upper()}Stack"):
+                refuses(f"{board.alias} building {name}",
+                        lambda: check_idf_target.check_board_components(board, [*components, name]),
+                        f"{board.alias} must not build {name}")
+        # A component another board requires is refused where that board's rules forbid it.
+        for other in every:
+            for name in other.components_required:
+                if any(part.lower() in name.lower() for part in board.components_forbidden):
+                    refuses(f"{board.alias} building {other.alias} component {name}",
+                            lambda: check_idf_target.check_board_components(board, [*components, name]),
+                            f"{board.alias} must not build {name}")
+
+        mode = f"CONFIG_SPIRAM_MODE_{board.psram_mode}=y"
+        lines = {mode, *board.sdkconfig}
+        check_idf_target.check_board_settings(board, True, lines)
+        check_idf_target.check_board_settings(board, False, set(board.sdkconfig))
+        refuses(f"{board.alias} telemetry without {mode}",
+                lambda: check_idf_target.check_board_settings(board, True, lines - {mode}), mode)
+        for other in boards.PSRAM_MODES:
+            if other != board.psram_mode:
+                wrong = {f"CONFIG_SPIRAM_MODE_{other}=y", *board.sdkconfig}
+                refuses(f"{board.alias} with PSRAM mode {other}",
+                        lambda: check_idf_target.check_board_settings(board, True, wrong), mode)
+        for line in board.sdkconfig:
+            refuses(f"{board.alias} without {line}",
+                    lambda: check_idf_target.check_board_settings(board, False, set(board.sdkconfig) - {line}), line)
+    require(any(b.components_forbidden for b in every) and any(b.components_required for b in every) and
+            all(b.sdkconfig for b in every), "the real boards exercise every board.json build rule")
+
+    # check_backup takes the first backup prefix only, as flash-idf-board.sh does.
+    backups = directory / "target-backups"
+    backups.mkdir()
+
+    def backup(name: str, size: int = BACKUP_BYTES) -> Path:
+        path = backups / name
+        with path.open("wb") as stream:
+            stream.truncate(size)
+            stream.seek(0x8000)
+            stream.write(partition_table())
+        return path
+
+    stamp = "20261109T000000Z"
+    for board in every:
+        check_idf_target.check_backup(backup(f"{board.backup_prefix}-flash-{stamp}.bin"), board)
+        expected = f"expected {board.backup_prefix}-flash-*.bin"
+        names = [f"{prefix}-flash-{stamp}.bin" for prefix in board.backup_prefixes[1:]]
+        names += [f"{b.backup_prefix}-flash-{stamp}.bin" for b in every if b != board]
+        names += [f"{board.backup_prefix}-flashx-{stamp}.bin", f"{board.backup_prefix}-flash-{stamp}.img",
+                  f"x{board.backup_prefix}-flash-{stamp}.bin"]
+        for name in names:
+            refuses(f"{board.alias} backup {name}", lambda: check_idf_target.check_backup(backup(name), board),
+                    expected)
+        short = backup(f"{board.backup_prefix}-flash-short.bin", BACKUP_BYTES - 4096)
+        refuses(f"{board.alias} backup of 16 MiB less 4 KiB", lambda: check_idf_target.check_backup(short, board),
+                "backup must be exactly 16777216 bytes")
+    require(any(len(b.backup_prefixes) > 1 for b in every), "some board has a restore only backup prefix")
+    print("PASS check_idf_target applies board.json components, sdkconfig, PSRAM mode and the backup prefix",
+          flush=True)
 
 
 def check_drift() -> None:
@@ -428,6 +530,12 @@ def check_shell(directory: Path) -> None:
         for name in board.names:
             expect(run(root, env, "flash-idf-board.sh", name, "/dev/null", good), 2,
                    "build and verify the selected native firmware first", f"flash-idf-board.sh {name}")
+        # A restore only prefix is for restore-flash.sh. Flashing a new image
+        # needs a backup taken with the current prefix.
+        for prefix in board.backup_prefixes[1:]:
+            restore_only = image(f"{prefix}-flash-20261109T000000Z.bin")
+            expect(run(root, env, "flash-idf-board.sh", board.alias, "/dev/null", restore_only), 2,
+                   f"expected {board.backup_prefix}-flash-*.bin", f"flash-idf-board.sh {board.alias} {prefix}")
         other = next(b for b in every if b != board)
         wrong = image(f"{other.backup_prefix}-flash-20261109T000000Z.bin")
         expect(run(root, env, "flash-idf-board.sh", board.alias, "/dev/null", wrong), 2,
@@ -457,6 +565,18 @@ def check_shell(directory: Path) -> None:
     expect(run(root, env, "check_repro_paths.sh", every[0].alias, "nope"), 2, "invalid board variant",
            "check_repro_paths.sh bad variant")
 
+    # A name that looks like an option is a board name, so argparse never
+    # prints help into the eval. Each script exits 2 naming it.
+    for name in ("-h", "--help"):
+        for script, arguments in (("build-idf-board.sh", [name]),
+                                  ("flash-idf-board.sh", [name, "/dev/null", good]),
+                                  ("restore-flash.sh", ["--board", name, "--port", "/dev/null", path]),
+                                  ("backup-flash.sh", ["--board", name, "--port", "/dev/null"]),
+                                  ("check_repro_paths.sh", [name])):
+            result = run(root, env, script, *arguments)
+            expect(result, 2, f"unknown board {name!r}", f"{script} {name}")
+            require("usage: boards.py" not in result.stdout + result.stderr, f"{script} {name} printed help")
+
     # A broken registry stops every script with the file named.
     (root / every[0].manifest).write_text("{")
     for script, arguments in (("build-idf-board.sh", [every[1].alias]),
@@ -476,6 +596,7 @@ def main() -> None:
         check_failure_modes(directory)
         check_resolution()
         check_schema()
+        check_target_rules(directory)
         check_drift()
         check_shell(directory)
     print("PASS board registry", flush=True)

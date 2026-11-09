@@ -33,7 +33,6 @@ INDEX = "index.json"
 README = "README.md"
 
 
-
 @dataclass(frozen=True)
 class Source:
     board: boards.Board
