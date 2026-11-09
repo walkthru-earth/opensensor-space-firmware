@@ -1,22 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-board="${1:-}"
-case "${board}" in
-  cores3) trial_dir="${repo_root}/firmware/esp-idf-cores3"; variant=bringup ;;
-  waveshare) trial_dir="${repo_root}/firmware/esp-idf-waveshare-sim7670g"; variant="${2:-logger}" ;;
-  *) printf 'usage: %s {cores3|waveshare} [logger|diagnostic]\n' "$0" >&2; exit 2 ;;
-esac
-case "${board}/${variant}" in
-  cores3/bringup|waveshare/logger|waveshare/diagnostic) ;;
-  *) printf 'invalid board variant: %s/%s\n' "${board}" "${variant}" >&2; exit 2 ;;
-esac
+if [[ $# -lt 1 || $# -gt 2 ]]; then
+  printf 'usage: %s <board> [variant]\n' "$0" >&2
+  python "${repo_root}/tools/boards.py" list >&2 || true
+  exit 2
+fi
+# The board list is every board.json (#141). A board is its alias (cores3),
+# its footer slug (m5stack-cores3) or its backup prefix. No variant means the
+# telemetry app, which holds board.json. Unknown names fail, never default.
+assignments="$(python "${repo_root}/tools/boards.py" resolve "$1" "${2:-}")"
+eval "${assignments}"
+trial_dir="${repo_root}/${project}"
+board="${alias}"
 source "${trial_dir}/dependencies.env"
 printf '%s  %s\n' \
   "${LZ4_C_SHA256}" "${repo_root}/firmware/common/vendor/lz4/lz4.c" \
   "${LZ4_H_SHA256}" "${repo_root}/firmware/common/vendor/lz4/lz4.h" \
   "${LZ4_LICENSE_SHA256}" "${repo_root}/firmware/common/vendor/lz4/LICENSE" | shasum -a 256 -c -
-if [[ "${variant}" != diagnostic ]]; then
+if [[ "${telemetry}" == 1 ]]; then
   digest="$(sed -n 's/.*"\([0-9a-f]\{64\}\)".*/\1/p' "${trial_dir}/${variant}/telemetry_dictionary_digest.h")"
   test "${#digest}" -eq 64
   printf '%s  %s\n' "${digest}" "${trial_dir}/${variant}/telemetry_fields.inc" | shasum -a 256 -c -
@@ -31,8 +33,8 @@ idf_args=(-D "OS_VARIANT=${variant}")
 case "${OS_BENCH:-}" in
   "") ;;
   stall)
-    if [[ "${variant}" == diagnostic ]]; then
-      printf 'OS_BENCH=stall needs the logger runtime, not the diagnostic variant\n' >&2; exit 2
+    if [[ "${telemetry}" != 1 ]]; then
+      printf 'OS_BENCH=stall needs the logger runtime of the telemetry app, not %s\n' "${variant}" >&2; exit 2
     fi
     build_dir="${build_dir}-bench-stall"
     target="${target} bench=stall"
@@ -41,7 +43,7 @@ case "${OS_BENCH:-}" in
 esac
 rm -f "${build_dir}/os-build-target.txt" "${build_dir}/os-build-sha256.json"
 "${repo_root}/tools/idf.sh" -C "${trial_dir}" -B "${build_dir}" "${idf_args[@]}" build
-if [[ "${variant}" != diagnostic ]]; then
+if [[ "${telemetry}" == 1 ]]; then
   python "${repo_root}/tools/check_board_template.py" "${trial_dir}/${variant}" --build "${build_dir}"
 fi
 python "${repo_root}/tools/check_idf_target.py" "${build_dir}" --board "${board}" --variant "${variant}" --write-manifest

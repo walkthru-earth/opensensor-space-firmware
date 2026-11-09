@@ -12,17 +12,21 @@
 # compiler database and project description hold absolute paths by design,
 # every other file, the flashed images included, must match byte for byte.
 #
-# Usage: tools/check_repro_paths.sh [cores3|waveshare] [logger|diagnostic]
-#   Defaults to waveshare logger, which builds every common component.
+# Usage: tools/check_repro_paths.sh <board> [variant]
+#   The board is any name tools/boards.py resolves, read from board.json
+#   (#141). There is no default board. CI runs waveshare logger, which builds
+#   every common component. No variant means the board's telemetry app.
 #   OS_REPRO_KEEP=1 keeps both worktrees for inspection.
 set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-board="${1:-waveshare}"
-case "${board}" in
-  cores3) trial=esp-idf-cores3; variant=bringup ;;
-  waveshare) trial=esp-idf-waveshare-sim7670g; variant="${2:-logger}" ;;
-  *) printf 'usage: %s [cores3|waveshare] [logger|diagnostic]\n' "$0" >&2; exit 2 ;;
-esac
+if [[ $# -lt 1 || $# -gt 2 ]]; then
+  printf 'usage: %s <board> [variant]\n' "$0" >&2
+  python "${repo_root}/tools/boards.py" list >&2 || true
+  exit 2
+fi
+assignments="$(python "${repo_root}/tools/boards.py" resolve "$1" "${2:-}")"
+eval "${assignments}"
+board="${alias}"
 
 if [[ -n "$(git -C "${repo_root}" status --porcelain --untracked-files=no)" ]]; then
   printf 'note: uncommitted changes are not built, the check uses HEAD\n' >&2
@@ -51,5 +55,5 @@ for checkout in "${first}" "${second}"; do
 done
 
 python "${repo_root}/tools/repro_paths.py" \
-  "${first}" "${first}/firmware/${trial}/build/${variant}" \
-  "${second}" "${second}/firmware/${trial}/build/${variant}"
+  "${first}" "${first}/${project}/build/${variant}" \
+  "${second}" "${second}/${project}/build/${variant}"
