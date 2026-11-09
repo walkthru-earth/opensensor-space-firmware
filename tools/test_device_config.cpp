@@ -811,10 +811,11 @@ void phone_cell_age() {
     assert(config::location_settings().phone_cell == cell);
     assert(config::sample_labels().location.phone_cell == cell);
     assert(config::get().location.phone_cell == cell);
-    char text[opensensor::location::kCellTextBytes]{};
+    std::array<char, opensensor::location::kCellTextBytes> text{};
     if (cell)
-      assert(opensensor::location::format_cell(cell, text, sizeof(text)));
-    const std::string needle = std::string("\"phone_cell\":\"") + text + "\"";
+      assert(opensensor::location::format_cell(cell, text));
+    const std::string needle =
+        std::string("\"phone_cell\":\"") + text.data() + "\"";
     assert(page_has(needle.c_str()));
   };
   const auto at = [](std::int64_t start, std::int64_t offset) {
@@ -989,23 +990,24 @@ void setup_state() {
   // resolution (#139), an 11 and a 12 character centre, a country, "moving",
   // a phone cell (#140) and a GNSS cell. The frame header takes 2 of the 482
   // byte budget.
-  opensensor::location::Cell finest = 0, gnss = 0;
-  assert(opensensor::location::from_degrees(-45.1234567, -170.1234567, 15,
-                                            finest));
-  assert(
-      opensensor::location::from_degrees(-45.1234567, -170.1234567, 8, gnss));
-  char text[opensensor::location::kCellTextBytes];
-  assert(opensensor::location::format_cell(finest, text, sizeof(text)));
+  const opensensor::location::Cell finest =
+      opensensor::location::from_degrees(-45.1234567, -170.1234567, 15)
+          .value_or(0);
+  const opensensor::location::Cell gnss =
+      opensensor::location::from_degrees(-45.1234567, -170.1234567, 8)
+          .value_or(0);
+  std::array<char, opensensor::location::kCellTextBytes> text{};
+  assert(opensensor::location::format_cell(finest, text));
   accept(std::string("location.resolution=8\nlocation.country=EG\n"
                      "location.cell=") +
-         text + "\nlocation.phone_cell=" + text);
+         text.data() + "\nlocation.phone_cell=" + text.data());
   const auto worst = page({.gnss = true, .gnss_cell = gnss});
   assert(std::strstr(json, "\"resolution\":8,\"cell_resolution\":8,"
                            "\"lat\":-45.") &&
          std::strstr(json, ",\"lon\":-170."));
   assert(std::strstr(json, "\"phone_cell\":\"") &&
          !std::strstr(json, "\"phone_cell\":\"\""));
-  assert(std::strlen(text) == 15 && worst < 480);
+  assert(std::strlen(text.data()) == 15 && worst < 480);
   std::printf("%zu\n", worst);
 }
 

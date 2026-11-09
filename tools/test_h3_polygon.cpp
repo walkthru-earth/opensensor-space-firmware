@@ -1,8 +1,10 @@
-// Host checks for opensensor::location::cells_to_multipolygon, run by
-// tools/test_h3_polygon.py against the pinned H3 4.5.0 sources compiled with
-// H3_ALLOC_PREFIX=os_h3_. The allocator below counts every H3 allocation,
-// can fail any one of them, and proves nothing is left after each call.
-// Host numbers are 64-bit. They bound, not measure, the device heap.
+// Host checks for cells_to_multipolygon as the firmware uses it, run by
+// tools/test_h3_polygon.py against the pinned embedded-h3-location library
+// compiled with H3_ALLOC_PREFIX=os_h3_, the device setting. The hooks below
+// keep the device semantics, ESP-IDF malloc(0) returns NULL and every size
+// goes through nonzero_alloc_size (os_h3_alloc.cpp). They count every H3
+// allocation, can fail any one of them, and prove nothing is left after each
+// call. Host numbers are 64-bit. They bound, not measure, the device heap.
 #include "os_location.h"
 
 #include <h3api.h>
@@ -20,14 +22,18 @@
 #include <vector>
 
 namespace {
+using embedded_h3::location::nonzero_alloc_size;
 using opensensor::location::Cell;
 using opensensor::location::cells_to_multipolygon;
+using opensensor::location::Error;
 using opensensor::location::LngLat;
+using opensensor::location::MultiPolygon;
 using opensensor::location::multipolygon_capacity;
-using opensensor::location::MultiPolygonError;
-using opensensor::location::MultiPolygonView;
 using opensensor::location::Polygon;
 using opensensor::location::Ring;
+
+// Not an Error value (they start at 1), for a call that did not fail.
+constexpr Error kNoError{};
 
 int failures = 0;
 
@@ -54,6 +60,7 @@ struct Heap {
   std::size_t small_peak = 0;
   std::size_t small_allocations = 0;
   std::size_t fail_at = SIZE_MAX; // allocation index to fail
+  bool round_zero_up = true;      // false drops nonzero_alloc_size
 };
 Heap heap;
 
@@ -64,8 +71,10 @@ void reset_heap(std::size_t fail_at = SIZE_MAX) {
 
 constexpr std::size_t kHeader = alignof(std::max_align_t);
 
+// heap_caps_malloc(0) returns NULL on ESP-IDF 6.1 (heap_caps_base.c), so a
+// zero size fails here too.
 void *take(std::size_t size, bool zero) {
-  if (heap.allocations++ == heap.fail_at)
+  if (heap.allocations++ == heap.fail_at || size == 0)
     return nullptr;
   auto *block = static_cast<unsigned char *>(std::malloc(kHeader + size));
   if (!block)
@@ -104,22 +113,25 @@ void give(void *pointer) {
 }
 } // namespace
 
+namespace {
+std::size_t hook_size(std::size_t size) {
+  return heap.round_zero_up ? nonzero_alloc_size(size) : size;
+}
+} // namespace
+
 // Same semantics as the device hooks over heap_caps_* (os_h3_alloc.cpp).
 extern "C" {
-void *os_h3_malloc(std::size_t size) { return take(size, false); }
+void *os_h3_malloc(std::size_t size) { return take(hook_size(size), false); }
 void *os_h3_calloc(std::size_t count, std::size_t size) {
   std::size_t bytes = 0;
-  if (__builtin_mul_overflow(count, size, &bytes))
+  if (__builtin_mul_overflow(hook_size(count), hook_size(size), &bytes))
     return nullptr;
   return take(bytes, true);
 }
 void *os_h3_realloc(void *pointer, std::size_t size) {
+  size = hook_size(size);
   if (!pointer)
     return take(size, false);
-  if (size == 0) {
-    give(pointer);
-    return nullptr;
-  }
   void *moved = take(size, false);
   if (!moved)
     return nullptr; // the old block stays, as libc realloc leaves it
@@ -158,9 +170,12 @@ struct Buffers {
   std::vector<Polygon> polygons;
   explicit Buffers(std::size_t cells, int res) {
     const auto capacity = multipolygon_capacity(cells, res);
-    points.resize(capacity.points);
-    rings.resize(capacity.rings);
-    polygons.resize(capacity.polygons);
+    check(capacity.has_value(), "capacity");
+    if (!capacity)
+      return;
+    points.resize(capacity->points);
+    rings.resize(capacity->rings);
+    polygons.resize(capacity->polygons);
   }
 };
 
@@ -170,29 +185,29 @@ auto run(const std::vector<Cell> &cells, Buffers &buffers) {
 }
 
 // Twice the signed area in the lng/lat plane, positive counterclockwise.
-double signed_area(const MultiPolygonView &view, const Ring &ring) {
+double signed_area(const MultiPolygon &view, const Ring &ring) {
   double sum = 0;
   for (std::uint32_t i = 0; i + 1 < ring.count; ++i) {
     const auto &a = view.points[ring.first + i];
     const auto &b = view.points[ring.first + i + 1];
-    sum += a.lng * b.lat - b.lng * a.lat;
+    sum += a.longitude * b.latitude - b.longitude * a.latitude;
   }
   return sum;
 }
 
-bool closed(const MultiPolygonView &view) {
+bool closed(const MultiPolygon &view) {
   for (const auto &ring : view.rings) {
     if (ring.count < 4)
       return false;
     const auto &first = view.points[ring.first];
     const auto &last = view.points[ring.first + ring.count - 1];
-    if (first.lng != last.lng || first.lat != last.lat)
+    if (first.longitude != last.longitude || first.latitude != last.latitude)
       return false;
   }
   return true;
 }
 
-bool covers_buffers(const MultiPolygonView &view) {
+bool covers_buffers(const MultiPolygon &view) {
   // Rings follow one another and polygons cover every ring, in order.
   std::uint32_t point = 0;
   for (const auto &ring : view.rings) {
@@ -214,8 +229,7 @@ double degrees(double radians) { return radians * 180.0 / std::numbers::pi; }
 // The output must equal, bit for bit, what cellsToLinkedMultiPolygon gives,
 // which is the call h3-js 4.5.0 makes for cellsToMultiPolygon(cells, true).
 // h3-js then closes each ring with its first point.
-bool equals_linked(const std::vector<Cell> &cells,
-                   const MultiPolygonView &view) {
+bool equals_linked(const std::vector<Cell> &cells, const MultiPolygon &view) {
   LinkedGeoPolygon linked{};
   if (cellsToLinkedMultiPolygon(cells.data(), static_cast<int>(cells.size()),
                                 &linked) != E_SUCCESS)
@@ -242,12 +256,12 @@ bool equals_linked(const std::vector<Cell> &cells,
       const LinkedLatLng *first = loop->first;
       for (const LinkedLatLng *v = first; v; v = v->next, ++count, ++at)
         if (count >= view.rings[r].count ||
-            view.points[at].lng != degrees(v->vertex.lng) ||
-            view.points[at].lat != degrees(v->vertex.lat))
+            view.points[at].longitude != degrees(v->vertex.lng) ||
+            view.points[at].latitude != degrees(v->vertex.lat))
           same = false;
       if (!first || count + 1 != view.rings[r].count ||
-          view.points[at].lng != degrees(first->vertex.lng) ||
-          view.points[at].lat != degrees(first->vertex.lat))
+          view.points[at].longitude != degrees(first->vertex.lng) ||
+          view.points[at].latitude != degrees(first->vertex.lat))
         same = false;
     }
     if (rings_here != view.polygons[p].ring_count)
@@ -295,11 +309,10 @@ void single_cell() {
   for (int i = 0; i < boundary.numVerts; ++i) {
     bool found = false;
     for (std::size_t j = 0; j < 6; ++j)
-      found = found ||
-              (std::fabs(view->points[j].lng - degrees(boundary.verts[i].lng)) <
-                   1e-12 &&
-               std::fabs(view->points[j].lat - degrees(boundary.verts[i].lat)) <
-                   1e-12);
+      found = found || (std::fabs(view->points[j].longitude -
+                                  degrees(boundary.verts[i].lng)) < 1e-12 &&
+                        std::fabs(view->points[j].latitude -
+                                  degrees(boundary.verts[i].lat)) < 1e-12);
     check(found, "single corner matches cellToBoundary");
   }
   check(equals_linked(cells, *view), "single equals linked");
@@ -369,20 +382,19 @@ void errors() {
     reset_heap();
     const auto view = run(cells, buffers);
     check(heap.live_blocks == 0, "error path frees all");
-    return view ? MultiPolygonError::Failed : view.error();
+    return view ? kNoError : view.error();
   };
-  check(error_of({}) == MultiPolygonError::Empty, "empty");
-  check(error_of({0}) == MultiPolygonError::InvalidCell, "zero is invalid");
+  check(error_of({}) == Error::NoCells, "empty");
+  check(error_of({0}) == Error::InvalidCell, "zero is invalid");
   // The reserved high bit set makes any index invalid (H3 isValidCell).
-  check(error_of({a, b | (1ULL << 63)}) == MultiPolygonError::InvalidCell,
+  check(error_of({a, b | (1ULL << 63)}) == Error::InvalidCell,
         "high bit is invalid");
-  check(error_of({a, cell_at(30.0444, 31.2357, 9)}) ==
-            MultiPolygonError::MixedResolution,
+  check(error_of({a, cell_at(30.0444, 31.2357, 9)}) == Error::MixedResolution,
         "mixed resolution");
-  check(error_of({a, b, a}) == MultiPolygonError::DuplicateCell,
+  check(error_of({a, b, a}) == Error::DuplicateCell,
         "duplicate (H3 E_DUPLICATE_INPUT)");
-  check(std::string_view(opensensor::location::multipolygon_error_name(
-            MultiPolygonError::DuplicateCell)) == "duplicate-cell",
+  check(std::string_view(opensensor::location::error_name(
+            Error::DuplicateCell)) == "duplicate_cell",
         "error name");
 }
 
@@ -412,18 +424,15 @@ void full_buffers() {
     reset_heap();
     const auto result = cells_to_multipolygon(cells, sp, sr, sg);
     check(heap.live_blocks == 0, "full buffer frees all");
-    return result ? MultiPolygonError::Empty : result.error();
+    return result ? kNoError : result.error();
   };
-  check(error_with(points - 1, rings, polygons) ==
-            MultiPolygonError::PointsFull,
+  check(error_with(points - 1, rings, polygons) == Error::PointBufferFull,
         "one point short");
-  check(error_with(points, rings - 1, polygons) == MultiPolygonError::RingsFull,
+  check(error_with(points, rings - 1, polygons) == Error::RingBufferFull,
         "one ring short");
-  check(error_with(points, rings, polygons - 1) ==
-            MultiPolygonError::PolygonsFull,
+  check(error_with(points, rings, polygons - 1) == Error::PolygonBufferFull,
         "one polygon short");
-  check(error_with(0, 0, 0) == MultiPolygonError::PolygonsFull,
-        "no buffers at all");
+  check(error_with(0, 0, 0) == Error::PolygonBufferFull, "no buffers at all");
 }
 
 void out_of_memory() {
@@ -443,7 +452,7 @@ void out_of_memory() {
     const auto view = run(cells, buffers);
     check(heap.live_blocks == 0 && heap.live_bytes == 0,
           "every failed allocation frees all");
-    if (!view && view.error() == MultiPolygonError::Memory)
+    if (!view && view.error() == Error::OutOfMemory)
       ++memory_errors;
     else
       check(false, "a failed allocation reports Memory");
@@ -503,13 +512,37 @@ void random_sets() {
               sets);
 }
 
+// The whole globe asks H3 for a zero byte block (cellsToMultiPoly.c line 388
+// in H3 v4.5.0). The device hooks round it up, without that the ESP-IDF heap
+// returns NULL and the call fails with OutOfMemory.
+void globe() {
+  std::vector<Cell> cells(static_cast<std::size_t>(res0CellCount()));
+  check(getRes0Cells(cells.data()) == E_SUCCESS, "getRes0Cells");
+  std::ranges::sort(cells);
+  Buffers buffers(cells.size(), 0);
+  reset_heap();
+  const auto view = run(cells, buffers);
+  check(heap.live_blocks == 0, "globe frees all");
+  check(view && closed(*view) && equals_linked(cells, *view),
+        "globe succeeds through the hooks and equals linked");
+  reset_heap();
+  heap.round_zero_up = false;
+  const auto bare = run(cells, buffers);
+  check(heap.live_blocks == 0, "bare globe frees all");
+  check(!bare && bare.error() == Error::OutOfMemory,
+        "globe without nonzero_alloc_size fails on a NULL zero malloc");
+  reset_heap();
+}
+
 void worst_case(const char *name, const std::vector<Cell> &cells) {
   Buffers buffers(cells.size(), 8);
   reset_heap();
   const auto view = run(cells, buffers);
   check(view.has_value(), "worst case succeeds");
   check(heap.live_blocks == 0, "worst case frees all");
-  const auto capacity = multipolygon_capacity(cells.size(), 8);
+  const auto capacity =
+      multipolygon_capacity(cells.size(), 8)
+          .value_or(opensensor::location::MultiPolygonCapacity{});
   std::printf(
       "h3 polygon heap %s: %zu cells, %zu polygons %zu rings %zu points, "
       "peak %zu B in %zu allocations, largest %zu B, %zu allocations <= %zu B "
@@ -554,12 +587,13 @@ int main() {
   full_buffers();
   out_of_memory();
   random_sets();
+  globe();
   worst_cases();
   if (failures) {
     std::fprintf(stderr, "%d failures\n", failures);
     return 1;
   }
   std::printf("h3 polygon: shapes, winding, closure, errors, buffer bounds, "
-              "out of memory and parity passed\n");
+              "out of memory, globe and parity passed\n");
   return 0;
 }

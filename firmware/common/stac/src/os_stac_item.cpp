@@ -160,19 +160,19 @@ Date civil_from_days(std::int64_t days) {
 }
 
 // Writes the distinct sorted cells' outline in GeoJSON coordinate nesting.
-void ring(json::Writer &json, const location::MultiPolygonView &geometry,
+void ring(json::Writer &json, const location::MultiPolygon &geometry,
           const location::Ring &r) {
   json.begin_array();
   for (std::uint32_t i = 0; i < r.count; ++i) {
     const auto &point = geometry.points[r.first + i];
     json.begin_array();
-    json.real_value(point.lng);
-    json.real_value(point.lat);
+    json.real_value(point.longitude);
+    json.real_value(point.latitude);
     json.end_array();
   }
   json.end_array();
 }
-void polygon(json::Writer &json, const location::MultiPolygonView &geometry,
+void polygon(json::Writer &json, const location::MultiPolygon &geometry,
              const location::Polygon &p) {
   json.begin_array();
   for (std::uint32_t i = 0; i < p.ring_count; ++i)
@@ -359,18 +359,17 @@ ItemBuilder::prepare(Accumulator &accumulator, const ItemFile &file,
   const auto geometry = location::cells_to_multipolygon(
       distinct, buffers.points, buffers.rings, buffers.polygons);
   if (!geometry)
-    return std::unexpected(geometry.error() ==
-                                   location::MultiPolygonError::Memory
+    return std::unexpected(geometry.error() == location::Error::OutOfMemory
                                ? ItemError::GeometryMemory
                                : ItemError::Geometry);
   Item item{.id = *id, .geometry = *geometry, .bbox = {}};
   constexpr double kInf = std::numeric_limits<double>::infinity();
   item.bbox = {kInf, kInf, -kInf, -kInf};
   for (const auto &point : geometry->points) {
-    item.bbox[0] = std::min(item.bbox[0], point.lng);
-    item.bbox[1] = std::min(item.bbox[1], point.lat);
-    item.bbox[2] = std::max(item.bbox[2], point.lng);
-    item.bbox[3] = std::max(item.bbox[3], point.lat);
+    item.bbox[0] = std::min(item.bbox[0], point.longitude);
+    item.bbox[1] = std::min(item.bbox[1], point.latitude);
+    item.bbox[2] = std::max(item.bbox[2], point.longitude);
+    item.bbox[3] = std::max(item.bbox[3], point.latitude);
   }
   return item;
 }
@@ -389,8 +388,9 @@ ItemBuilder::write(const Item &item, const Accumulator &accumulator,
     return std::unexpected(end_length.error());
   const bool fixed = file.mobility == Mobility::Fixed;
   std::array<char, 3 + location::kCellTextBytes> grid{'H', '3', '-'};
-  if (fixed && !location::format_cell(accumulator.cells_[0], grid.data() + 3,
-                                      location::kCellTextBytes))
+  if (fixed && !location::format_cell(
+                   accumulator.cells_[0],
+                   std::span(grid).subspan<3, location::kCellTextBytes>()))
     return std::unexpected(ItemError::NotResolution8);
   static constexpr std::string_view kHex = "0123456789abcdef";
   std::array<char, 4 + 2 * 32> checksum{'1', '2', '2', '0'};

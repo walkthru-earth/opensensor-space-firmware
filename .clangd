@@ -73,6 +73,10 @@ CompileFlags:
     - -I../firmware/common/logger/src
     - -I../firmware/common/connectivity/src
     - -I../firmware/common/location/src
+    # embedded_h3/location.h. The host tests build the library from a cache
+    # clone (tools/h3_library.py), the editor reads the same tag from the copy
+    # `pixi run cores3-build` leaves in managed_components.
+    - -I../firmware/esp-idf-cores3/managed_components/walkthru-earth__embedded-h3-location/include
     - -I../firmware/common/gnss/src
     - -I../firmware/common/power/src
     - -I../firmware/common/sensors/src

@@ -40,18 +40,20 @@ bool apply_cell(Row &row, opensensor::location::Cell published,
                 const std::array<std::size_t, 4> &fields) {
   for (auto index : fields)
     row.valid[index] = 0;
-  std::int64_t lat = 0, lon = 0;
-  if (source == telemetry::LocationSource::None ||
-      !opensensor::location::center_e7(published, lat, lon))
+  if (source == telemetry::LocationSource::None)
+    return false;
+  const auto center = opensensor::location::center_e7(published);
+  const auto resolution = opensensor::location::resolution(published);
+  if (!center || !resolution)
     return false;
   row.counter(fields[0], static_cast<std::int64_t>(published));
-  row.integer(fields[1], opensensor::location::resolution(published));
+  row.integer(fields[1], *resolution);
   row.integer(fields[2], std::to_underlying(source));
   // center_e7 keeps latitude within 90 and longitude within 180 degrees, so
   // both fit an int32.
-  row.counter(fields[3],
-              telemetry::pack_point_e7(static_cast<std::int32_t>(lon),
-                                       static_cast<std::int32_t>(lat)));
+  row.counter(fields[3], telemetry::pack_point_e7(
+                             static_cast<std::int32_t>(center->longitude),
+                             static_cast<std::int32_t>(center->latitude)));
   return true;
 }
 

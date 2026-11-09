@@ -172,6 +172,10 @@ COREDUMP_SETTINGS = ["CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y", "CONFIG_ESP_COREDU
 # flash backend (esp_core_dump_init alone has a weak fallback).
 COREDUMP_SYMBOLS = {"esp_core_dump_init", "esp_core_dump_write", "esp_core_dump_write_elf",
                     "esp_core_dump_checksum_finish", "esp_core_dump_image_check"}
+# A telemetry image traces each STAC Item outline through H3, and H3 allocates
+# only through these PSRAM hooks in firmware/common/location/src/os_h3_alloc.cpp.
+H3_ALLOC_PREFIX = 'CONFIG_EMBEDDED_H3_LOCATION_ALLOC_PREFIX="os_h3_"'
+H3_HOOKS = {"os_h3_malloc", "os_h3_calloc", "os_h3_realloc", "os_h3_free"}
 
 
 def kconfig_names(node: object, names: set[str]) -> set[str]:
@@ -335,7 +339,8 @@ def check_target(build: Path, board: boards.Board, variant: str) -> tuple[str, d
                          [description["idf_path"], *description["build_component_paths"]])
     components = description["build_components"]
     require("espcoredump" in components, "core dump component is not built")
-    missing = COREDUMP_SYMBOLS - elf_symbols(build_file(build, description["app_elf"]))
+    symbols = elf_symbols(build_file(build, description["app_elf"]))
+    missing = COREDUMP_SYMBOLS - symbols
     require(not missing, "application ELF lacks core dump symbols: " + ", ".join(sorted(missing)))
     if not telemetry:
         require("connectivity" not in components and "logger" not in components,
@@ -343,6 +348,9 @@ def check_target(build: Path, board: boards.Board, variant: str) -> tuple[str, d
     else:
         require({"logger", "connectivity", "runtime", "common"}.issubset(components),
                 "logger runtime component missing")
+        require(H3_ALLOC_PREFIX in lines, f"native target missing {H3_ALLOC_PREFIX}")
+        missing = H3_HOOKS - symbols
+        require(not missing, "application ELF lacks H3 PSRAM hooks: " + ", ".join(sorted(missing)))
     require(not any("arduino" in component.lower() for component in components),
             "native target depends on Arduino")
     check_board_components(board, components)

@@ -8,6 +8,7 @@
 #include <os_gnss.h>
 #include <os_logger_location.h>
 
+#include <array>
 #include <atomic>
 #include <cassert>
 #include <cmath>
@@ -224,9 +225,12 @@ struct CairoCells {
 };
 CairoCells cairo() {
   CairoCells cells;
-  assert(location::from_degrees(30.0444, 31.2357, 15, cells.at15));
-  assert(location::coarsen(cells.at15, 9, cells.at9));
-  assert(location::coarsen(cells.at15, 8, cells.at8));
+  const auto at15 = location::from_degrees(30.0444, 31.2357, 15);
+  assert(at15);
+  cells.at15 = *at15;
+  cells.at9 = location::coarsen(cells.at15, 9).value_or(0);
+  cells.at8 = location::coarsen(cells.at15, 8).value_or(0);
+  assert(location::resolution(cells.at9) == 9);
   assert(location::resolution(cells.at8) == 8 && cells.at8 != kConfigured);
   return cells;
 }
@@ -297,11 +301,10 @@ void row_mapping() {
   assert(row.data[0] == static_cast<std::int64_t>(fix_at8) && row.data[1] == 8);
   assert(row.data[2] == 2 && row.valid[0] && row.valid[1] && row.valid[2] &&
          row.valid[3]);
-  std::int64_t lat = 0, lon = 0;
-  assert(location::center_e7(fix_at8, lat, lon));
+  const auto center = location::center_e7(fix_at8);
+  assert(center);
   assert(row.data[3] ==
-         telemetry::pack_point_e7(static_cast<std::int32_t>(lon),
-                                  static_cast<std::int32_t>(lat)));
+         telemetry::pack_point_e7(center->longitude, center->latitude));
   // None clears every location field.
   assert(
       !oslogger::apply_cell(row, fix_at8, LocationSource::None, {0, 1, 2, 3}));
@@ -411,16 +414,18 @@ void phone_cell_rule() {
     return gnss::select_location(row.location, fresh_fix, now);
   };
   // A res 8 phone cell (Cairo), and another res 8 cell next to it.
-  location::Cell neighbour = 0;
-  assert(location::from_degrees(30.0644, 31.2357, 8, neighbour));
+  const location::Cell neighbour =
+      location::from_degrees(30.0644, 31.2357, 8).value_or(0);
   assert(neighbour != cells.at8 && location::resolution(neighbour) == 8);
-  char phone_text[location::kCellTextBytes]{};
-  char fine_text[location::kCellTextBytes]{};
-  char neighbour_text[location::kCellTextBytes]{};
-  assert(location::format_cell(cells.at8, phone_text, sizeof phone_text));
-  assert(location::format_cell(cells.at15, fine_text, sizeof fine_text));
-  assert(
-      location::format_cell(neighbour, neighbour_text, sizeof neighbour_text));
+  std::array<char, location::kCellTextBytes> phone_buffer{};
+  std::array<char, location::kCellTextBytes> fine_buffer{};
+  std::array<char, location::kCellTextBytes> neighbour_buffer{};
+  assert(location::format_cell(cells.at8, phone_buffer));
+  assert(location::format_cell(cells.at15, fine_buffer));
+  assert(location::format_cell(neighbour, neighbour_buffer));
+  const char *const phone_text = phone_buffer.data();
+  const char *const fine_text = fine_buffer.data();
+  const char *const neighbour_text = neighbour_buffer.data();
   const auto phone_line = [](const char *text) {
     return std::string("location.phone_cell=") + text;
   };
@@ -545,10 +550,10 @@ void phone_cell_age_rule() {
     return gnss::Fix{
         .cell = cells.at9, .resolution = 9, .fix_mono_us = now - kSecond};
   };
-  char phone_text[location::kCellTextBytes]{};
-  assert(location::format_cell(cells.at8, phone_text, sizeof phone_text));
+  std::array<char, location::kCellTextBytes> phone_text{};
+  assert(location::format_cell(cells.at8, phone_text));
   const std::string phone_line =
-      std::string("location.phone_cell=") + phone_text;
+      std::string("location.phone_cell=") + phone_text.data();
 
   // Moving. Phone cell rows up to 299 s, then GNSS with a fresh fix or nulls.
   set("thing.mobility=moving\n" + phone_line);

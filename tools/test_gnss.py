@@ -17,7 +17,7 @@ import subprocess
 import tempfile
 
 from host_cxx import CXX_STD
-from test_location import compile_h3
+from h3_library import library_flags
 
 
 def check_wiring(root: Path) -> None:
@@ -63,23 +63,20 @@ def main() -> None:
     common = root / "firmware/common"
     with tempfile.TemporaryDirectory(prefix="os-gnss-test-") as temporary:
         directory = Path(temporary)
-        objects = compile_h3(root, directory, args.sanitize)
+        library = library_flags(root, directory, args.sanitize)
         executable = directory / "gnss-test"
         command = ["clang++", CXX_STD, "-Wall", "-Wextra", "-Werror", "-pthread",
                    "-I", str(root / "tools/host_fakes/config"),
                    "-I", str(common / "gnss/src"),
-                   "-I", str(common / "location/src"),
                    "-I", str(common / "logger/src"),
                    "-I", str(common / "runtime/src"),
                    "-I", str(common / "src"),
-                   "-I", str(directory / "h3"),
                    str(root / "tools/test_gnss.cpp"),
                    str(common / "gnss/src/os_gnss.cpp"),
-                   str(common / "location/src/os_location.cpp"),
                    str(common / "runtime/src/device_config.cpp"),
                    str(common / "runtime/src/debug_log.cpp"),
                    str(root / "tools/host_fakes/config/os_console.cpp"),
-                   *objects, "-o", str(executable)]
+                   *library, "-o", str(executable)]
         if args.sanitize:
             command += ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
         subprocess.run(command, check=True)

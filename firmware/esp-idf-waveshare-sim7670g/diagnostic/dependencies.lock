@@ -23,10 +23,21 @@ dependencies:
     source:
       type: idf
     version: 6.1.0
+  walkthru-earth/embedded-h3-location:
+    component_hash: 832d32762f2af5c5a1748dc99d8122c932812191ef803a8d52f64523142a2bcc
+    dependencies:
+    - name: idf
+      version: '>=6.1'
+    source:
+      git: https://github.com/walkthru-earth/embedded-h3-location.git
+      path: .
+      type: git
+    version: 49753cb9a8795ff1ae6bc6eed461fee0fc30cdc7
 direct_dependencies:
 - espressif/led_strip
 - espressif/mdns
 - idf
-manifest_hash: 3b50e25ae8a79ff0d3641faa574ecb15127e9cc38ba9463acb66730c439befbc
+- walkthru-earth/embedded-h3-location
+manifest_hash: bf51f219c0d018071ad6297a2127c1d4e4a1a1f492a21f5bf8eb5673c6742784
 target: esp32s3
 version: 3.0.0

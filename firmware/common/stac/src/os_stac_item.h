@@ -34,8 +34,10 @@ static_assert(kResolution == location::kPublishedResolution,
 inline constexpr std::size_t kMaxRows = 720;
 inline constexpr std::size_t kMaxColumns = telemetry::kMaxColumns;
 // Geometry buffers that always hold the outline of kMaxRows distinct cells.
+// Computed at build time. An error has no value, so a resolution or row count
+// the library refuses fails the build here.
 inline constexpr location::MultiPolygonCapacity kGeometryCapacity =
-    location::multipolygon_capacity(kMaxRows, kResolution);
+    *location::multipolygon_capacity(kMaxRows, kResolution);
 
 // canonical.mjs EXT, ANON_SIZE and WARNING.
 inline constexpr std::string_view kStacVersion = "1.1.0";
@@ -326,7 +328,7 @@ struct GeometryBuffers {
 // the file name and the geometry buffers do.
 struct Item {
   std::string_view id;
-  location::MultiPolygonView geometry;
+  location::MultiPolygon geometry;
   std::array<double, 4> bbox{};
 };
 

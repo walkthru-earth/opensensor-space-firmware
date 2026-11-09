@@ -31,11 +31,22 @@ dependencies:
       registry_url: https://components.espressif.com/
       type: service
     version: 0.3.0
+  walkthru-earth/embedded-h3-location:
+    component_hash: 832d32762f2af5c5a1748dc99d8122c932812191ef803a8d52f64523142a2bcc
+    dependencies:
+    - name: idf
+      version: '>=6.1'
+    source:
+      git: https://github.com/walkthru-earth/embedded-h3-location.git
+      path: .
+      type: git
+    version: 49753cb9a8795ff1ae6bc6eed461fee0fc30cdc7
 direct_dependencies:
 - espressif/mdns
 - idf
 - m5stack/m5gfx
 - m5stack/m5unified
-manifest_hash: ca3fe8e6fd7984d25b5f117079d0eaa94808f846fd6556767d219026750530ce
+- walkthru-earth/embedded-h3-location
+manifest_hash: 20751eff09bab16fd530fb42864437dc76f29611ba35e660c543f4fb5b0404d3
 target: esp32s3
 version: 3.0.0
