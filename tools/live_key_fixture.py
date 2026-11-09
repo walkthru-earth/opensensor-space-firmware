@@ -19,9 +19,11 @@ import re
 from decimal import Decimal
 from pathlib import Path
 
-FIXTURES = Path(__file__).resolve().parent / "fixtures/live_keys"
+import boards
+
+FIXTURE_DIR = Path("tools/fixtures/live_keys")
+FIXTURES = Path(__file__).resolve().parents[1] / FIXTURE_DIR
 PROTOCOL = Path(__file__).resolve().parents[1] / "docs/shared/ble-sync-protocol.md"
-BOARDS = ("cores3", "waveshare")
 LIVE_HEADER = Path(__file__).resolve().parents[1] / "firmware/common/logger/src/os_logger_live.h"
 
 
@@ -49,8 +51,13 @@ def unique_pairs(items: list[tuple[str, object]]) -> dict[str, object]:
     return dict(items)
 
 
-def load(board: str) -> dict:
-    fixture = json.loads((FIXTURES / f"{board}.json").read_text(), object_pairs_hook=unique_pairs)
+def fixture_names() -> tuple[str, ...]:
+    """The LIVE fixture of every board in the registry (#141), one per board.json."""
+    return tuple(board.fixture for board in boards.boards())
+
+
+def load(board: str, directory: Path = FIXTURES) -> dict:
+    fixture = json.loads((directory / f"{board}.json").read_text(), object_pairs_hook=unique_pairs)
     require(fixture["board"] == board, "fixture board")
     return fixture
 
@@ -132,7 +139,7 @@ def key_fields(fixtures: dict[str, dict] | None = None) -> dict[str, str]:
 
     Returns the key to field map.
     """
-    fixtures = fixtures if fixtures is not None else {board: load(board) for board in BOARDS}
+    fixtures = fixtures if fixtures is not None else {board: load(board) for board in fixture_names()}
     seen: dict[str, dict[str, list[str]]] = {}
     for board, fixture in fixtures.items():
         for digest, entry in fixture["digests"].items():
@@ -172,6 +179,24 @@ def check_documented(keys: list[str], text: str) -> None:
     require(not missing, f"LIVE keys missing from the LIVE table in docs/shared/ble-sync-protocol.md: {missing}")
 
 
+def cross_board_relabel(fixtures: dict[str, dict], board: str, keys: list[str]) -> dict[str, dict]:
+    """A copy of fixtures where another board maps one of this board's LIVE keys to another field.
+
+    It relabels a key the two boards share. When no other board shares one, it
+    gives the first other board this board's first key under another field, so
+    the cross board conflict exists either way.
+    """
+    others = [name for name in fixtures if name != board]
+    require(bool(others), f"{board} cross board LIVE key check needs a second board in the registry")
+    require(bool(keys), f"{board} cross board LIVE key check needs a LIVE key")
+    crossed = copy.deepcopy(fixtures)
+    latest = {name: next(iter(crossed[name]["digests"].values()))["builds"][-1] for name in others}
+    other, key = next(((name, key) for name in others for key in keys if key in latest[name]["fields"]),
+                      (others[0], keys[0]))
+    latest[other]["fields"][key] = "relabelled_field"
+    return crossed
+
+
 def check_key_meaning(board: str, digest: str, dictionary_fields: list[dict]) -> None:
     """Run the key to field and documentation checks, and prove each one rejects a mutation."""
     key_fields()
@@ -179,16 +204,12 @@ def check_key_meaning(board: str, digest: str, dictionary_fields: list[dict]) ->
     keys = [field["live"] for field in dictionary_fields if field["live"]]
     text = PROTOCOL.read_text()
     check_documented(keys, text)
-    fixtures = {name: load(name) for name in BOARDS}
+    fixtures = {name: load(name) for name in fixture_names()}
     # A current key reused for another key's field, on this board and across boards.
     reused = copy.deepcopy(fixtures)
     fields = reused[board]["digests"][digest]["builds"][-1]["fields"]
     fields[keys[0]] = fields[keys[1]]
-    other = next(name for name in BOARDS if name != board)
-    crossed = copy.deepcopy(fixtures)
-    other_build = next(iter(crossed[other]["digests"].values()))["builds"][-1]
-    shared = next(key for key in keys if key in other_build["fields"])
-    other_build["fields"][shared] = "relabelled_field"
+    crossed = cross_board_relabel(fixtures, board, keys)
     for case in (reused, crossed):
         try:
             key_fields(case)

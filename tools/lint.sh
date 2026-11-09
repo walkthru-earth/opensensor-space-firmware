@@ -42,12 +42,27 @@ case "${secrets_rc}" in
   1) exit 1 ;;
   *) printf '!!! tracked secrets check failed to run (exit %s)\n' "${secrets_rc}" >&2; exit 1 ;;
 esac
+# Board sources come from the board registry (#141), tracked .cpp files of
+# each board.json project. The telemetry app holds board.json, every other
+# file is a board helper or a bench diagnostic. A failing registry stops lint.
+telemetry_list="$(python tools/boards.py sources telemetry)"
+other_list="$(python tools/boards.py sources other)"
+board_telemetry=()
+while IFS= read -r file; do
+  if [[ -n "${file}" ]]; then board_telemetry+=("${file}"); fi
+done <<<"${telemetry_list}"
+board_other=()
+while IFS= read -r file; do
+  if [[ -n "${file}" ]]; then board_other+=("${file}"); fi
+done <<<"${other_list}"
+if [[ ${#board_telemetry[@]} -eq 0 ]]; then
+  printf '!!! board registry listed no telemetry app sources\n' >&2; exit 1
+fi
 options=(--language=c++ --enable=warning,style,performance,portability
   --inline-suppr --error-exitcode=1 --std=c++23 --max-configs=1
   '--suppress=*:*/vendor/lz4/*')
 cppcheck "${options[@]}" \
-  firmware/esp-idf-cores3/bringup/main.cpp \
-  firmware/esp-idf-cores3/bringup/telemetry_logger.cpp \
+  ${board_other[@]+"${board_other[@]}"} \
   firmware/common/connectivity/src/ble_sync.cpp \
   firmware/common/connectivity/src/ble_policy.cpp \
   firmware/common/connectivity/src/wifi_link.cpp \
@@ -62,7 +77,6 @@ cppcheck "${options[@]}" \
   firmware/common/runtime/src/debug_log.cpp \
   firmware/common/runtime/src/os_console.cpp \
   firmware/common/runtime/src/coredump_report.cpp \
-  firmware/esp-idf-waveshare-sim7670g/board_io.cpp \
   firmware/common/src/parquet_writer.cpp \
   firmware/common/src/parquet_reader.cpp \
   firmware/common/src/lz4_codec.cpp \
@@ -76,12 +90,10 @@ cppcheck "${options[@]}" \
   firmware/common/logger/src/os_logger.cpp \
   firmware/common/logger/src/os_logger_status.cpp \
   firmware/common/logger/src/os_logger_provision.cpp \
-  firmware/common/logger/src/os_logger_live.cpp \
-  firmware/esp-idf-waveshare-sim7670g/diagnostic/main.cpp
-# The diagnostic explicitly rejects PSRAM; the application explicitly needs it.
-# Check each sketch in the configuration it is actually compiled with.
-cppcheck "${options[@]}" -DCONFIG_SPIRAM=1 \
-  firmware/esp-idf-waveshare-sim7670g/logger/main.cpp
+  firmware/common/logger/src/os_logger_live.cpp
+# A diagnostic explicitly rejects PSRAM, every telemetry app needs it for the
+# writer workspace. Check each file in the configuration it is compiled with.
+cppcheck "${options[@]}" -DCONFIG_SPIRAM=1 "${board_telemetry[@]}"
 # The bench only parquet bench-stall branch is off in every shipped image, so
 # check os_logger.cpp once more with it on (CONFIG_OS_LOGGER_BENCH_STALL).
 cppcheck "${options[@]}" -DCONFIG_OS_LOGGER_BENCH_STALL=1 \

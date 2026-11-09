@@ -72,5 +72,26 @@
       "host",
       "network"
     ]
+  },
+  "tooling": {
+    "alias": "waveshare",
+    "variants": [
+      "logger",
+      "diagnostic"
+    ],
+    "backup_prefixes": [
+      "waveshare-sim7670g-v2"
+    ],
+    "flash_bytes": 16777216,
+    "psram_mode": "OCT",
+    "sdkconfig": [
+      "CONFIG_ESP_CONSOLE_UART_DEFAULT=y",
+      "CONFIG_ESP_CONSOLE_UART_NUM=0",
+      "CONFIG_ESP_CONSOLE_UART_BAUDRATE=115200"
+    ],
+    "components_required": [],
+    "components_forbidden": [
+      "m5"
+    ]
   }
 }

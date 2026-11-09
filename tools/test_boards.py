@@ -1,0 +1,753 @@
+"""Host tests for the board registry, tools/boards.py (#141). No serial port is opened.
+
+Every failure mode starts from a scratch copy of the real board.json files
+that loads, applies one mutation and requires a BoardError naming the file,
+so each check is proven to fire. The drift checks hold pixi.toml, the board
+wrapper scripts, the CI and release build matrices and the stack budget to
+exactly the registry boards. The shell checks run each board script from a
+scratch tree whose `python` runs tools/boards.py and nothing else, so no
+esptool command can ever start.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+import posixpath
+import shutil
+import struct
+import subprocess
+import sys
+import tempfile
+import tomllib
+from typing import Callable
+
+from jsonschema import Draft7Validator
+import yaml
+
+import boards
+import check_idf_target
+import live_key_fixture
+
+ROOT = boards.ROOT
+SCHEMA = ROOT / "docs/shared/plugins/v0.1.0/board.json"
+BACKUP_BYTES = 16 * 1024 * 1024
+
+
+def require(condition: bool, message: str) -> None:
+    """Raise AssertionError with message unless condition holds."""
+    if not condition:
+        raise AssertionError(message)
+
+
+def scratch(directory: Path) -> Path:
+    """A root holding every real board.json and an empty folder per variant."""
+    root = directory / "repo"
+    if root.exists():
+        shutil.rmtree(root)
+    for board in boards.boards():
+        target = root / board.manifest
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / board.manifest, target)
+        for variant in board.variants:
+            (root / board.project / variant).mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def edit_json(path: Path, change: Callable[[dict], None]) -> None:
+    """Rewrite one JSON file through change."""
+    manifest = json.loads(path.read_text())
+    change(manifest)
+    path.write_text(json.dumps(manifest, indent=2) + "\n")
+
+
+def tooling(key: str, value: object) -> Callable[[dict], None]:
+    """An edit that sets one tooling key."""
+    def change(manifest: dict) -> None:
+        manifest["tooling"][key] = value
+    return change
+
+
+def rejects(directory: Path, mutation: str, edit: Callable[[Path, list[boards.Board]], None],
+            expected: list[str], action: Callable[[Path], object] = boards.boards) -> None:
+    """A fresh scratch root loads, then edit makes action raise BoardError holding every expected text."""
+    root = scratch(directory)
+    every = list(boards.boards(root))
+    require(len(every) == len(boards.boards()), f"{mutation}: the scratch root loads before the mutation")
+    edit(root, every)
+    try:
+        action(root)
+    except boards.BoardError as error:
+        missing = [text for text in expected if text not in str(error)]
+        require(not missing, f"{mutation}: error lacks {missing}, {error}")
+    else:
+        raise AssertionError(f"{mutation}: accepted")
+    print(f"PASS rejects {mutation}", flush=True)
+
+
+def accepts(directory: Path, change: str, edit: Callable[[Path, list[boards.Board]], None]) -> None:
+    """A fresh scratch root still loads every board after edit."""
+    root = scratch(directory)
+    edit(root, list(boards.boards(root)))
+    require(len(boards.boards(root)) == len(boards.boards()), f"{change}: refused")
+    print(f"PASS accepts {change}", flush=True)
+
+
+def check_failure_modes(directory: Path) -> None:
+    """Every registry defect raises BoardError naming the file, and the near misses still load."""
+    first = boards.boards()[0]
+    second = boards.boards()[1]
+    manifest = first.manifest
+
+    def on_first(change: Callable[[dict], None]) -> Callable[[Path, list[boards.Board]], None]:
+        return lambda root, every: edit_json(root / manifest, change)
+
+    def write_first(text: str) -> Callable[[Path, list[boards.Board]], None]:
+        return lambda root, every: (root / manifest).write_text(text)
+
+    rejects(directory, "no board project", lambda root, every: shutil.rmtree(root / "firmware"),
+            ["no board project matches firmware/esp-idf-*"])
+    rejects(directory, "a project without board.json", lambda root, every: (root / manifest).unlink(),
+            [f"{first.project}: no */board.json"])
+
+    def second_manifest(root: Path, every: list[boards.Board]) -> None:
+        (root / first.project / "extra").mkdir()
+        shutil.copy2(root / manifest, root / first.project / "extra/board.json")
+
+    rejects(directory, "two board.json in one project", second_manifest,
+            [f"{first.project}: more than one board.json", manifest, f"{first.project}/extra/board.json"])
+    rejects(directory, "malformed JSON", write_first('{"board": "m5stack-cores3",'),
+            [f"{manifest}: not readable JSON"])
+    rejects(directory, "a JSON array", write_first("[]\n"), [f"{manifest}: not a JSON object"])
+    # json.loads keeps the last of two members with one name, so a repeat is refused, nested or not.
+    text = (ROOT / manifest).read_text()
+    require(text.count('"tooling": {') == 1 and text.startswith("{"), f"{manifest} layout for the repeat cases")
+    rejects(directory, "a repeated backup_prefixes member",
+            write_first(text.replace('"tooling": {', '"tooling": {\n    "backup_prefixes": ["other"],')),
+            [f"{manifest}: repeated JSON member backup_prefixes"])
+    rejects(directory, "a repeated board member", write_first(text.replace("{", '{\n  "board": "other-board",', 1)),
+            [f"{manifest}: repeated JSON member board"])
+    rejects(directory, "non UTF-8 bytes", lambda root, every: (root / manifest).write_bytes(b"\xff\xfe{}"),
+            [f"{manifest}: not readable JSON"])
+    rejects(directory, "a board slug with a space", on_first(lambda m: m.update(board="m5stack cores3")),
+            [f"{manifest}: board 'm5stack cores3' is not a slug"])
+    rejects(directory, "a missing board slug", on_first(lambda m: m.pop("board")),
+            [f"{manifest}: board None is not a slug"])
+    rejects(directory, "a missing tooling object", on_first(lambda m: m.pop("tooling")),
+            [f"{manifest}: no tooling object"])
+    rejects(directory, "tooling that is a list", on_first(lambda m: m.update(tooling=[])),
+            [f"{manifest}: no tooling object"])
+    rejects(directory, "an unknown tooling key", on_first(tooling("port", "/dev/x")),
+            [f"{manifest}: tooling keys, unknown ['port'], missing []"])
+    rejects(directory, "a missing tooling key", on_first(lambda m: m["tooling"].pop("psram_mode")),
+            [f"{manifest}: tooling keys, unknown [], missing ['psram_mode']"])
+    rejects(directory, "an alias with a dash", on_first(tooling("alias", "core-s3")),
+            [f"{manifest}: tooling.alias 'core-s3'"])
+    rejects(directory, "an alias that is not a string", on_first(tooling("alias", 3)),
+            [f"{manifest}: tooling.alias 3"])
+    rejects(directory, "no variants", on_first(tooling("variants", [])),
+            [f"{manifest}: tooling.variants must be a non empty list"])
+    rejects(directory, "variants that do not start with the board.json folder",
+            on_first(tooling("variants", ["other", first.telemetry_variant])),
+            [f"{manifest}: tooling.variants starts with 'other'"])
+    rejects(directory, "a repeated variant",
+            on_first(tooling("variants", [first.telemetry_variant, first.telemetry_variant])),
+            [f"{manifest}: tooling.variants repeats an entry"])
+    rejects(directory, "a variant with a slash", on_first(tooling("variants", [first.telemetry_variant, "a/b"])),
+            [f"{manifest}: tooling.variants entry 'a/b'"])
+    rejects(directory, "no backup prefix", on_first(tooling("backup_prefixes", [])),
+            [f"{manifest}: tooling.backup_prefixes must be a non empty list"])
+    rejects(directory, "a backup prefix with a glob", on_first(tooling("backup_prefixes", ["m5stack-*"])),
+            [f"{manifest}: tooling.backup_prefixes entry 'm5stack-*'"])
+    for value in (8 * 1024 * 1024, float(BACKUP_BYTES), True, str(BACKUP_BYTES)):
+        rejects(directory, f"flash_bytes {value!r}", on_first(tooling("flash_bytes", value)),
+                [f"{manifest}: tooling.flash_bytes {value!r} is not 16777216"])
+    rejects(directory, "an unknown PSRAM mode", on_first(tooling("psram_mode", "OPI")),
+            [f"{manifest}: tooling.psram_mode 'OPI'"])
+    rejects(directory, "an sdkconfig line that is not a setting", on_first(tooling("sdkconfig", ["rm -rf /"])),
+            [f"{manifest}: tooling.sdkconfig entry 'rm -rf /'"])
+    rejects(directory, "a component with a space", on_first(tooling("components_required", ["m5 unified"])),
+            [f"{manifest}: tooling.components_required entry 'm5 unified'"])
+    rejects(directory, "a forbidden component that is not a string", on_first(tooling("components_forbidden", [1])),
+            [f"{manifest}: tooling.components_forbidden entry 1"])
+
+    # A name two boards share is ambiguous, the error names both manifests.
+    def shared(key: str, value: object) -> Callable[[Path, list[boards.Board]], None]:
+        return lambda root, every: edit_json(root / second.manifest, tooling(key, value))
+
+    rejects(directory, "an alias two boards share", shared("alias", first.alias),
+            [f"name {first.alias!r} is already used by", first.manifest, second.manifest])
+    rejects(directory, "a backup prefix that is another board's slug", shared("backup_prefixes", [first.slug]),
+            [f"name {first.slug!r} is already used by", first.manifest, second.manifest])
+    rejects(directory, "a restore only prefix two boards share",
+            shared("backup_prefixes", [second.backup_prefix, first.backup_prefixes[-1]]),
+            [f"name {first.backup_prefixes[-1]!r} is already used by"])
+    # One backup name matches two <prefix>-flash-*.bin globs exactly when one
+    # literal <prefix>-flash- starts with the other.
+    for tail in ("-flash-old", "-flash"):
+        rejects(directory, f"a backup prefix that is another board's prefix plus {tail}",
+                shared("backup_prefixes", [second.backup_prefix, f"{first.backup_prefix}{tail}"]),
+                [f"{second.manifest}: backup prefix '{first.backup_prefix}{tail}' overlaps '{first.backup_prefix}' of "
+                 f"{first.manifest}, {first.backup_prefix}{tail}-flash-<stamp>.bin would match both"])
+        rejects(directory, f"two backup prefixes of one board where one is the other plus {tail}",
+                on_first(tooling("backup_prefixes", [first.backup_prefix, f"{first.backup_prefix}{tail}"])),
+                [f"{manifest}: backup prefix '{first.backup_prefix}{tail}' overlaps '{first.backup_prefix}' of {manifest}"])
+    accepts(directory, "a backup prefix that starts with another board's prefix and a dash only",
+            shared("backup_prefixes", [second.backup_prefix, f"{first.backup_prefix}-mini"]))
+    accepts(directory, "two backup prefixes of one board where one starts with the other and a dash only",
+            on_first(tooling("backup_prefixes", [first.backup_prefix, f"{first.backup_prefix}-v2"])))
+    accepts(directory, "a backup prefix that is another board's prefix plus -fl, a part of -flash- that cannot overlap",
+            shared("backup_prefixes", [second.backup_prefix, f"{first.backup_prefix}-fl"]))
+    rejects(directory, "a slug two boards share",
+            lambda root, every: edit_json(root / second.manifest, lambda m: m.update(board=first.slug)),
+            [f"name {first.slug!r} is already used by"])
+
+    # Names nobody declares and variants a board does not list never default.
+    for name in ("nope", "", "M5STACK-CORES3", f"{first.alias} "):
+        rejects(directory, f"unknown board name {name!r}", lambda root, every: None,
+                [f"unknown board {name!r}, expected one of"], lambda root, name=name: boards.find(name, root))
+    rejects(directory, "a variant the board does not list", lambda root, every: None,
+            [f"invalid board variant {first.alias}/nope"], lambda root: boards.resolve(first.alias, "nope", root))
+    multi = next(b for b in boards.boards() if len(b.variants) > 1)
+    rejects(directory, "a listed variant missing on disk",
+            lambda root, every: shutil.rmtree(root / multi.project / multi.variants[1]),
+            [f"{multi.manifest}: variant directory {multi.project}/{multi.variants[1]} is missing"],
+            lambda root: boards.resolve(multi.alias, multi.variants[1], root))
+    rejects(directory, "a project outside git", lambda root, every: None,
+            [f"git ls-files failed for {first.project}"], lambda root: boards.tracked_sources(first, root))
+
+
+def check_resolution() -> None:
+    """Every name of every real board resolves to it, and the CLI exits 2 on a bad name."""
+    every = boards.boards()
+    require(len(every) >= 2, "the repo has at least the two shipped boards")
+    require([b.slug for b in every] == sorted(b.slug for b in every), "boards are sorted by slug")
+    for board in every:
+        require(board.app == f"{board.project}/{board.telemetry_variant}", f"{board.slug} app")
+        require((ROOT / board.app / "board.json").is_file(), f"{board.slug} board.json is in the telemetry app")
+        require(board.fixture == board.alias and (ROOT / "tools/fixtures/live_keys" / f"{board.alias}.json").is_file(),
+                f"{board.slug} LIVE fixture")
+        require((ROOT / "docs/boards" / board.slug).is_dir(), f"{board.slug} has docs/boards/<slug>")
+        require((ROOT / "docs/shared/templates" / board.slug).is_dir(), f"{board.slug} has a published template")
+        for name in board.names:
+            require(boards.find(name) == board, f"{name} resolves to {board.slug}")
+        for variant in board.variants:
+            require(boards.resolve(board.slug, variant) == (board, variant), f"{board.slug}/{variant} resolves")
+        require(boards.resolve(board.alias) == (board, board.telemetry_variant), f"{board.alias} defaults to telemetry")
+        telemetry, other = boards.tracked_sources(board)
+        require(f"{board.app}/main.cpp" in telemetry, f"{board.slug} telemetry sources hold main.cpp")
+        require(not set(telemetry) & set(other), f"{board.slug} source lists are disjoint")
+    # The CLI prints the same assignments for every name of a board and exits 2 otherwise.
+    tool = [sys.executable, str(ROOT / "tools/boards.py")]
+    for board in every:
+        outputs = {subprocess.run([*tool, "resolve", name], capture_output=True, text=True, check=True).stdout
+                   for name in board.names}
+        require(outputs == {boards.shell_assignments(board, board.telemetry_variant)},
+                f"{board.slug} resolves the same by every name")
+        require(f"alias={board.alias}\n" in next(iter(outputs)) and f"slug={board.slug}\n" in next(iter(outputs)),
+                f"{board.slug} assignments")
+    for arguments, text in ((["resolve", "nope"], "board registry: unknown board 'nope'"),
+                            (["resolve", every[0].alias, "nope"], "board registry: invalid board variant")):
+        result = subprocess.run([*tool, *arguments], capture_output=True, text=True)
+        require(result.returncode == 2 and text in result.stderr and result.stdout == "", f"CLI {arguments}, {result}")
+    listed = subprocess.run([*tool, "list"], capture_output=True, text=True, check=True).stdout.splitlines()
+    require(listed == [f"{b.slug} {b.alias} {b.project} {','.join(b.variants)}" for b in every], "CLI list")
+    print(f"PASS {len(every)} boards resolve by alias, slug and backup prefix, CLI exits 2 on a bad name", flush=True)
+
+
+def check_schema() -> None:
+    """The plugin board schema and boards.py agree on every tooling rule."""
+    schema = json.loads(SCHEMA.read_text())
+    tool = schema["properties"]["tooling"]
+    properties = tool["properties"]
+    require(set(tool["required"]) == set(properties) == boards.TOOLING_KEYS and
+            tool["additionalProperties"] is False, "schema tooling keys are boards.TOOLING_KEYS")
+    require("tooling" not in schema["required"], "tooling stays optional in the plugin schema, a patch change")
+    pairs = {
+        "alias": (properties["alias"]["pattern"], boards.ALIAS.pattern),
+        "variants": (properties["variants"]["items"]["pattern"], boards.VARIANT.pattern),
+        "backup_prefixes": (properties["backup_prefixes"]["items"]["pattern"], boards.SLUG.pattern),
+        "sdkconfig": (properties["sdkconfig"]["items"]["pattern"], boards.SDKCONFIG.pattern),
+        "components_required": (properties["components_required"]["items"]["pattern"], boards.COMPONENT.pattern),
+        "components_forbidden": (properties["components_forbidden"]["items"]["pattern"], boards.COMPONENT.pattern),
+    }
+    for key, (in_schema, in_tool) in pairs.items():
+        require(in_schema == in_tool, f"tooling.{key} pattern differs, schema {in_schema}, boards.py {in_tool}")
+    require(properties["flash_bytes"]["enum"] == [boards.FLASH_BYTES], "flash_bytes enum")
+    require(properties["psram_mode"]["enum"] == list(boards.PSRAM_MODES), "psram_mode enum")
+    validator = Draft7Validator(tool)
+    for board in boards.boards():
+        manifest = json.loads((ROOT / board.manifest).read_text())
+        errors = [e.message for e in validator.iter_errors(manifest["tooling"])]
+        require(not errors, f"{board.manifest} tooling, {errors}")
+        for key, value in (("alias", "core-s3"), ("flash_bytes", 8388608), ("psram_mode", "OPI"),
+                           ("variants", []), ("extra", 1)):
+            bad = {**manifest["tooling"], key: value}
+            require(any(validator.iter_errors(bad)), f"schema accepts tooling.{key}={value!r}")
+    # Draft 7 validation 6.1.1 counts any number with a zero fractional part
+    # as an integer, so no schema keyword can refuse 16777216.0. boards.py
+    # refuses it (a Python float after json.loads) and stays the strict side.
+    flash = Draft7Validator(properties["flash_bytes"])
+    require(flash.is_valid(json.loads("16777216.0")) and not flash.is_valid(True) and
+            not flash.is_valid(str(BACKUP_BYTES)), "the Draft 7 flash_bytes rule changed, review boards.py")
+    print("PASS the plugin board schema and boards.py agree on tooling", flush=True)
+
+
+def check_example(directory: Path) -> None:
+    """The plugin README weather example joins the registry as a third board, and the README shows the same tooling."""
+    example = ROOT / "docs/shared/plugins/examples/weather.board.json"
+    manifest = json.loads(example.read_text())
+    readme = (ROOT / "docs/shared/plugins/README.md").read_text()
+    section = readme.split("## 9. Worked example, a weather board", 1)[1].split("```json\n", 1)[1].split("\n```", 1)[0]
+    require(json.loads(section)["tooling"] == manifest["tooling"], "README section 9 and the example share tooling")
+    root = scratch(directory)
+    path = Path("firmware/esp-idf-example-weather-s3/app/board.json")
+    (root / path.parent).mkdir(parents=True)
+    shutil.copy2(example, root / path)
+    weather = boards.find("weather", root)
+    require(weather.slug == manifest["board"] and weather.manifest == path.as_posix() and
+            weather.backup_prefix == "example-weather-s3" and len(boards.boards(root)) == len(boards.boards()) + 1,
+            f"the weather example resolves beside the shipped boards, {weather}")
+    print("PASS the plugin README weather example joins the registry beside the shipped boards", flush=True)
+
+
+def partition_table() -> bytes:
+    """The owner data partition table check_idf_target expects, then the end marker."""
+    table = b"".join(struct.pack("<HBBII16sI", 0x50AA, kind, subtype, start, size, label.encode(), flags)
+                     for label, kind, subtype, start, size, flags in check_idf_target.PARTITIONS)
+    return table + b"\xff" * 32
+
+
+def check_target_rules(directory: Path) -> None:
+    """check_idf_target applies the board.json rules, components, sdkconfig, PSRAM mode and backup prefix."""
+    def refuses(what: str, action: Callable[[], object], text: str) -> None:
+        try:
+            action()
+        except ValueError as error:
+            require(text in str(error), f"{what}, error lacks {text!r}, {error}")
+        else:
+            raise AssertionError(f"check_idf_target accepts {what}")
+
+    every = boards.boards()
+    common = ["espcoredump", "logger", "connectivity", "runtime", "common", "esp_wifi", "bt"]
+    for board in every:
+        components = [*common, *board.components_required]
+        check_idf_target.check_board_components(board, components)
+        for name in board.components_required:
+            refuses(f"{board.alias} without {name}",
+                    lambda: check_idf_target.check_board_components(board, [c for c in components if c != name]),
+                    f"{board.alias} components missing, {name}")
+        for part in board.components_forbidden:
+            for name in (f"vendor__{part}_driver", f"{part.upper()}Stack"):
+                refuses(f"{board.alias} building {name}",
+                        lambda: check_idf_target.check_board_components(board, [*components, name]),
+                        f"{board.alias} must not build {name}")
+        # A component another board requires is refused where that board's rules forbid it.
+        for other in every:
+            for name in other.components_required:
+                if any(part.lower() in name.lower() for part in board.components_forbidden):
+                    refuses(f"{board.alias} building {other.alias} component {name}",
+                            lambda: check_idf_target.check_board_components(board, [*components, name]),
+                            f"{board.alias} must not build {name}")
+
+        mode = f"CONFIG_SPIRAM_MODE_{board.psram_mode}=y"
+        lines = {mode, *board.sdkconfig}
+        check_idf_target.check_board_settings(board, True, lines)
+        check_idf_target.check_board_settings(board, False, set(board.sdkconfig))
+        refuses(f"{board.alias} telemetry without {mode}",
+                lambda: check_idf_target.check_board_settings(board, True, lines - {mode}), mode)
+        for other in boards.PSRAM_MODES:
+            if other != board.psram_mode:
+                wrong = {f"CONFIG_SPIRAM_MODE_{other}=y", *board.sdkconfig}
+                refuses(f"{board.alias} with PSRAM mode {other}",
+                        lambda: check_idf_target.check_board_settings(board, True, wrong), mode)
+        for line in board.sdkconfig:
+            refuses(f"{board.alias} without {line}",
+                    lambda: check_idf_target.check_board_settings(board, False, set(board.sdkconfig) - {line}), line)
+    require(any(b.components_forbidden for b in every) and any(b.components_required for b in every) and
+            all(b.sdkconfig for b in every), "the real boards exercise every board.json build rule")
+
+    # check_backup takes the first backup prefix only, as flash-idf-board.sh does.
+    backups = directory / "target-backups"
+    backups.mkdir()
+
+    def backup(name: str, size: int = BACKUP_BYTES) -> Path:
+        path = backups / name
+        with path.open("wb") as stream:
+            stream.truncate(size)
+            stream.seek(0x8000)
+            stream.write(partition_table())
+        return path
+
+    stamp = "20261109T000000Z"
+    for board in every:
+        check_idf_target.check_backup(backup(f"{board.backup_prefix}-flash-{stamp}.bin"), board)
+        expected = f"expected {board.backup_prefix}-flash-*.bin"
+        names = [f"{prefix}-flash-{stamp}.bin" for prefix in board.backup_prefixes[1:]]
+        names += [f"{b.backup_prefix}-flash-{stamp}.bin" for b in every if b != board]
+        names += [f"{board.backup_prefix}-flashx-{stamp}.bin", f"{board.backup_prefix}-mini-flash-{stamp}.bin", f"{board.backup_prefix}-flash-{stamp}.img",
+                  f"x{board.backup_prefix}-flash-{stamp}.bin"]
+        for name in names:
+            refuses(f"{board.alias} backup {name}", lambda: check_idf_target.check_backup(backup(name), board),
+                    expected)
+        short = backup(f"{board.backup_prefix}-flash-short.bin", BACKUP_BYTES - 4096)
+        refuses(f"{board.alias} backup of 16 MiB less 4 KiB", lambda: check_idf_target.check_backup(short, board),
+                "backup must be exactly 16777216 bytes")
+    require(any(len(b.backup_prefixes) > 1 for b in every), "some board has a restore only backup prefix")
+    print("PASS check_idf_target applies board.json components, sdkconfig, PSRAM mode and the backup prefix",
+          flush=True)
+
+
+def stall_findings(legs: list[dict], every: tuple[boards.Board, ...]) -> list[str]:
+    """Each board's telemetry app is built by some ci.yml bench stall leg."""
+    stalls = [leg for leg in legs if leg.get("bench") == "stall"]
+    if not stalls:
+        return ["ci.yml has no bench stall leg"]
+    # A board may get a stall leg of its own or share one through extra_task.
+    ran = {task for leg in stalls for task in (leg["task"], leg.get("extra_task"))} - {None}
+    return [f"ci.yml bench stall legs do not build {board.alias}" for board in every
+            if not ran & {f"{board.alias}-build", f"{board.alias}-build {board.telemetry_variant}"}]
+
+
+def check_stall_legs() -> None:
+    """Stall legs count together, so a board with a stall leg of its own passes."""
+    every = boards.boards()
+    first, second = every[0], every[1]
+    own = [{"name": f"{b.alias}-stall", "bench": "stall", "task": f"{b.alias}-build"} for b in every]
+    require(stall_findings(own, every) == [], "one stall leg per board passes")
+    shared = [{"name": "stall", "bench": "stall", "task": f"{first.alias}-build",
+               "extra_task": f"{second.alias}-build {second.telemetry_variant}"}]
+    require(stall_findings(shared, every[:2]) == [], "one stall leg with extra_task passes")
+    require(stall_findings(own[1:], every) == [f"ci.yml bench stall legs do not build {first.alias}"],
+            "a board without a stall leg fails")
+    require(stall_findings([{"name": "x", "task": f"{first.alias}-build"}], every) ==
+            ["ci.yml has no bench stall leg"], "no stall leg fails")
+    print("PASS bench stall legs are collected from every matrix leg", flush=True)
+
+
+def clangd_findings(text: str, every: tuple[boards.Board, ...]) -> list[str]:
+    """.clangd routes each board variant to <project>/build/<variant> and names no other board build."""
+    findings: list[str] = []
+    expected = {f"{b.project}/build/{v}" for b in every for v in b.variants}
+    projects = {b.project for b in every}
+    used: set[str] = set()
+    for fragment in yaml.safe_load_all(text):
+        database = ((fragment or {}).get("CompileFlags") or {}).get("CompilationDatabase")
+        if isinstance(database, str):
+            # clangd resolves the path against the .clangd folder, so ./firmware/x and firmware/x/ are the same build.
+            database = posixpath.normpath(database)
+        if isinstance(database, str) and database.startswith("firmware/"):
+            used.add(database)
+            if database not in expected:
+                findings.append(f".clangd CompilationDatabase {database} is no registry board variant build")
+        conditions = (fragment or {}).get("If") or {}
+        for key in ("PathMatch", "PathExclude"):
+            patterns = conditions.get(key, [])
+            for pattern in [patterns] if isinstance(patterns, str) else patterns:
+                if pattern.startswith("firmware/esp-idf-") and "/".join(pattern.split("/")[:2]) not in projects:
+                    findings.append(f".clangd {key} {pattern} names no registry board project")
+    findings += [f".clangd routes no source to {path}, add a fragment for it" for path in sorted(expected - used)]
+    return findings
+
+
+def check_clangd() -> None:
+    """The .clangd check refuses a missing board build and a build no board owns."""
+    every = boards.boards()
+    text = (ROOT / ".clangd").read_text()
+    require(clangd_findings(text, every) == [], ".clangd routes every registry variant")
+    victim = next(b for b in every if len(b.variants) > 1)
+    path = f"{victim.project}/build/{victim.variants[1]}"
+    require(text.count(f"CompilationDatabase: {path}\n") == 1, f".clangd names {path} once")
+    missing = clangd_findings(text.replace(f"CompilationDatabase: {path}\n", "CompilationDatabase: None\n"), every)
+    require(missing == [f".clangd routes no source to {path}, add a fragment for it"], f"missing build, {missing}")
+    dotted = text.replace(f"CompilationDatabase: {path}\n", f"CompilationDatabase: ./{path}/\n")
+    require(clangd_findings(dotted, every) == [], f".clangd may spell {path} as ./{path}/, {clangd_findings(dotted, every)}")
+    stranger = text + "\n---\nIf:\n  PathMatch: firmware/esp-idf-other/.*\nCompileFlags:\n" \
+        "  CompilationDatabase: firmware/esp-idf-other/build/app\n"
+    found = clangd_findings(stranger, every)
+    require(found == [".clangd CompilationDatabase firmware/esp-idf-other/build/app is no registry board variant build",
+                      ".clangd PathMatch firmware/esp-idf-other/.* names no registry board project"],
+            f"unknown board build, {found}")
+    print("PASS .clangd routes every registry board variant and names no other board", flush=True)
+
+
+def check_live_cross_board() -> None:
+    """The LIVE cross board mutation builds a conflict whether or not the boards share a key."""
+    def fixture(board: str, fields: dict[str, str]) -> dict:
+        return {"board": board, "digests": {"0" * 64: {"builds": [{"firmware": "test", "fields": fields}]}}}
+
+    for what, other_fields in (("shared", {"t": "temp_c", "x": "other_c"}), ("disjoint", {"x": "other_c"})):
+        fixtures = {"aaa": fixture("aaa", other_fields), "zzz": fixture("zzz", {"t": "temp_c", "h": "rh_pct"})}
+        live_key_fixture.key_fields(fixtures)
+        crossed = live_key_fixture.cross_board_relabel(fixtures, "zzz", ["t", "h"])
+        require(fixtures["aaa"]["digests"]["0" * 64]["builds"][0]["fields"] == other_fields, f"{what} input kept")
+        require(crossed["aaa"]["digests"]["0" * 64]["builds"][0]["fields"]["t"] == "relabelled_field",
+                f"{what} relabels key t on the other board")
+        try:
+            live_key_fixture.key_fields(crossed)
+        except AssertionError as error:
+            require("LIVE key t maps to more than one dictionary field" in str(error), f"{what}, {error}")
+        else:
+            raise AssertionError(f"key_fields accepts the {what} cross board relabel")
+    print("PASS the LIVE cross board mutation conflicts with shared and disjoint key sets", flush=True)
+
+
+def check_drift() -> None:
+    """Static lists that name boards hold exactly the registry boards."""
+    every = boards.boards()
+    by_alias = {b.alias: b for b in every}
+    findings: list[str] = []
+
+    tasks = tomllib.loads((ROOT / "pixi.toml").read_text())["tasks"]
+    for board in every:
+        for action in ("setup", "build", "flash"):
+            name = f"{board.alias}-{action}"
+            if tasks.get(name) != f"{board.project}/{action}.sh":
+                findings.append(f"pixi.toml {name} is {tasks.get(name)!r}, expected {board.project}/{action}.sh")
+        for action, tool in (("build", "build-idf-board.sh"), ("flash", "flash-idf-board.sh")):
+            wrapper = (ROOT / board.project / f"{action}.sh").read_text()
+            if f'tools/{tool}" {board.alias} "$@"' not in wrapper:
+                findings.append(f"{board.project}/{action}.sh does not run tools/{tool} {board.alias}")
+    projects = {b.project: b for b in every}
+    for name, command in tasks.items():
+        if not isinstance(command, str) or not command.startswith("firmware/esp-idf-"):
+            continue
+        words = command.split()
+        project = str(Path(words[0]).parent)
+        board = projects.get(project)
+        if board is None:
+            findings.append(f"pixi.toml {name} runs {words[0]}, which no board.json project owns")
+        elif len(words) > 2 or (len(words) == 2 and words[1] not in board.variants):
+            findings.append(f"pixi.toml {name} passes {words[1:]}, not one of {board.slug} variants")
+
+    ci = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
+    legs = ci["jobs"]["board-build"]["strategy"]["matrix"]["include"]
+    images = [leg for leg in legs if "project" in leg]
+    built = sorted((leg["project"], leg["variant"]) for leg in images)
+    expected = sorted((b.project, v) for b in every for v in b.variants)
+    if built != expected:
+        findings.append(f"ci.yml board-build image legs {built}, expected every registry variant {expected}")
+    for leg in images:
+        alias = leg["name"].split("-")[0]
+        board = by_alias.get(alias)
+        if board is None or leg["project"] != board.project:
+            findings.append(f"ci.yml leg {leg['name']} is not <alias>[-variant] of the board building {leg['project']}")
+            continue
+        if leg["variant"] == board.telemetry_variant:
+            tasks_ok = {f"{alias}-build", f"{alias}-build {leg['variant']}"}
+        else:
+            tasks_ok = {f"{alias}-build {leg['variant']}"}
+        if leg["task"] not in tasks_ok:
+            findings.append(f"ci.yml leg {leg['name']} task {leg['task']!r}, expected one of {sorted(tasks_ok)}")
+    findings += stall_findings(legs, every)
+    repro = ci["jobs"]["repro-paths"]["steps"][-1]["run"].split()
+    if repro[:3] != ["pixi", "run", "repro-paths-check"] or len(repro) not in (4, 5):
+        findings.append(f"ci.yml repro-paths runs {repro}, expected repro-paths-check <board> [variant]")
+    else:
+        try:
+            boards.resolve(repro[3], repro[4] if len(repro) == 5 else None)
+        except boards.BoardError as error:
+            findings.append(f"ci.yml repro-paths board, {error}")
+
+    release = yaml.safe_load((ROOT / ".github/workflows/release.yml").read_text())
+    release_legs = next(job["strategy"]["matrix"]["include"] for job in release["jobs"].values()
+                        if "strategy" in job)
+    shipped = sorted((leg["project"], leg["variant"]) for leg in release_legs)
+    if shipped != sorted((b.project, b.telemetry_variant) for b in every):
+        findings.append(f"release.yml legs {shipped}, expected the telemetry app of every board")
+    for leg in release_legs:
+        board = projects.get(leg["project"])
+        if board is None:
+            continue
+        cmake = (ROOT / board.project / "CMakeLists.txt").read_text()
+        if f"project({leg['app']})" not in cmake:
+            findings.append(f"release.yml leg {leg['name']} app {leg['app']} is not the project() of {board.project}")
+        if leg["name"].split("-")[0] != board.alias or leg["task"] not in {
+                f"{board.alias}-build", f"{board.alias}-build {leg['variant']}"}:
+            findings.append(f"release.yml leg {leg['name']} does not build {board.alias}")
+
+    findings += clangd_findings((ROOT / ".clangd").read_text(), every)
+
+    budget = json.loads((ROOT / "tools/stack_budget.json").read_text())["images"]
+    if sorted(budget) != sorted(f"{b.alias}/{v}" for b in every for v in b.variants):
+        findings.append(f"tools/stack_budget.json images {sorted(budget)} differ from the registry variants")
+
+    require(not findings, "board list drift, add the board everywhere or remove it:\n  " + "\n  ".join(findings))
+    print("PASS pixi.toml, wrappers, ci.yml, release.yml, .clangd and stack_budget.json list exactly the registry boards",
+          flush=True)
+
+
+def shell_tree(directory: Path) -> tuple[Path, dict[str, str]]:
+    """A scratch tree with the board scripts, the registry and a python that refuses everything else."""
+    root = scratch(directory)
+    (root / "tools").mkdir()
+    for name in ("boards.py", "build-idf-board.sh", "flash-idf-board.sh", "check_repro_paths.sh",
+                 "restore-flash.sh", "backup-flash.sh"):
+        shutil.copy2(ROOT / "tools" / name, root / "tools" / name)
+    lz4 = Path("firmware/common/vendor/lz4")
+    (root / lz4).mkdir(parents=True)
+    for name in ("lz4.c", "lz4.h", "LICENSE"):
+        shutil.copy2(ROOT / lz4 / name, root / lz4 / name)
+    for board in boards.boards():
+        # build-idf-board.sh sources this right after it resolves the board,
+        # so the dry run prints the resolution and stops before any build.
+        # OS_DRY_CONTINUE goes on with the real pins to reach later checks.
+        shutil.copy2(ROOT / board.project / "dependencies.env", root / board.project / "dependencies.real.env")
+        (root / board.project / "dependencies.env").write_text(
+            'printf "RESOLVED board=%s variant=%s project=%s telemetry=%s\\n" '
+            '"${board}" "${variant}" "${trial_dir#"${repo_root}/"}" "${telemetry}"\n'
+            '[ -n "${OS_DRY_CONTINUE:-}" ] || exit 0\n'
+            'source "${trial_dir}/dependencies.real.env"\n')
+    fake = directory / "fake-bin"
+    fake.mkdir(exist_ok=True)
+    (fake / "python").write_text(
+        "#!/bin/sh\n"
+        'case "$1" in */tools/boards.py) exec "$OS_REAL_PYTHON" "$@" ;; esac\n'
+        'printf "BLOCKED python %s\\n" "$*" >&2\n'
+        "exit 97\n")
+    (fake / "python").chmod(0o755)
+    env = {**os.environ, "PATH": f"{fake}{os.pathsep}{os.environ['PATH']}", "OS_REAL_PYTHON": sys.executable}
+    env.pop("OS_BENCH", None)
+    return root, env
+
+
+def run(root: Path, env: dict[str, str], script: str, *arguments: str) -> subprocess.CompletedProcess[str]:
+    """Run one board script from the scratch tree with the fake tools first on PATH."""
+    return subprocess.run(["bash", str(root / "tools" / script), *arguments], env=env, capture_output=True,
+                          text=True, check=False)
+
+
+def expect(result: subprocess.CompletedProcess[str], code: int, text: str, what: str) -> None:
+    """Require the exit code and text, and that no python command ran unless code 97 says it did."""
+    require(result.returncode == code and text in result.stdout + result.stderr,
+            f"{what}, expected exit {code} with {text!r}, got {result.returncode}\n{result.stdout}{result.stderr}")
+    require("BLOCKED python" not in result.stderr or code == 97, f"{what} reached a python command, {result.stderr}")
+
+
+def check_shell(directory: Path) -> None:
+    """The board scripts resolve through the registry and stop before esptool or idf.py."""
+    root, env = shell_tree(directory)
+    every = boards.boards()
+    for board in every:
+        for name in board.names:
+            for variant in (None, *board.variants):
+                chosen = variant or board.telemetry_variant
+                telemetry = "1" if chosen == board.telemetry_variant else "0"
+                arguments = [name] if variant is None else [name, variant]
+                expect(run(root, env, "build-idf-board.sh", *arguments), 0,
+                       f"RESOLVED board={board.alias} variant={chosen} project={board.project} telemetry={telemetry}",
+                       f"build-idf-board.sh {' '.join(arguments)}")
+    for arguments, text in (([], "usage"), (["nope"], "unknown board 'nope'"),
+                            ([every[0].alias, "nope"], "invalid board variant"),
+                            ([every[0].alias, every[0].telemetry_variant, "x"], "usage")):
+        expect(run(root, env, "build-idf-board.sh", *arguments), 2, text, f"build-idf-board.sh {arguments}")
+    # OS_DRY_CONTINUE lets the dry run go past dependencies.env and the lz4
+    # pins. A diagnostic variant has no digest check, so the bench refusal is next.
+    stall = {**env, "OS_BENCH": "stall", "OS_DRY_CONTINUE": "1"}
+    refused = 0
+    for board in every:
+        for variant in board.variants[1:]:
+            result = subprocess.run(["bash", str(root / "tools/build-idf-board.sh"), board.slug, variant], env=stall,
+                                    capture_output=True, text=True, check=False)
+            expect(result, 2, f"OS_BENCH=stall needs the logger runtime of the telemetry app, not {variant}",
+                   f"build-idf-board.sh {board.slug} {variant} with OS_BENCH=stall")
+            refused += 1
+    require(refused > 0, "some board has a diagnostic variant to refuse a bench build")
+
+    # flash-idf-board.sh. /dev/null passes the character device test and is
+    # never opened. The scratch tree has no build, so a resolved board stops at
+    # the build check, before check_idf_target and esptool.
+    backups = directory / "backups"
+    backups.mkdir(exist_ok=True)
+
+    def image(name: str) -> str:
+        path = backups / name
+        with path.open("wb") as stream:
+            stream.truncate(BACKUP_BYTES)
+        return str(path)
+
+    for board in every:
+        good = image(f"{board.backup_prefix}-flash-20261109T000000Z.bin")
+        for name in board.names:
+            expect(run(root, env, "flash-idf-board.sh", name, "/dev/null", good), 2,
+                   "build and verify the selected native firmware first", f"flash-idf-board.sh {name}")
+        # A restore only prefix is for restore-flash.sh. Flashing a new image
+        # needs a backup taken with the current prefix.
+        for prefix in board.backup_prefixes[1:]:
+            restore_only = image(f"{prefix}-flash-20261109T000000Z.bin")
+            expect(run(root, env, "flash-idf-board.sh", board.alias, "/dev/null", restore_only), 2,
+                   f"expected {board.backup_prefix}-flash-*.bin", f"flash-idf-board.sh {board.alias} {prefix}")
+        other = next(b for b in every if b != board)
+        wrong = image(f"{other.backup_prefix}-flash-20261109T000000Z.bin")
+        expect(run(root, env, "flash-idf-board.sh", board.alias, "/dev/null", wrong), 2,
+               f"expected {board.backup_prefix}-flash-*.bin", f"flash-idf-board.sh {board.alias} wrong backup")
+    for arguments, text in (([], "usage"), (["nope", "/dev/null", good], "unknown board 'nope'"),
+                            ([every[0].alias, "/dev/null", good, "nope"], "invalid board variant")):
+        expect(run(root, env, "flash-idf-board.sh", *arguments), 2, text, f"flash-idf-board.sh {arguments[:1]}")
+
+    # restore-flash.sh accepts every backup prefix of the board, then stops at
+    # the blocked python that would run esptool.
+    for board in every:
+        for prefix in board.backup_prefixes:
+            path = image(f"{prefix}-flash-20261109T000000Z.bin")
+            expect(run(root, env, "restore-flash.sh", "--board", board.slug, "--port", "/dev/null", path), 97,
+                   "BLOCKED python -m esptool", f"restore-flash.sh {board.slug} {prefix}")
+        other = next(b for b in every if b != board)
+        path = image(f"{other.backup_prefix}-flash-20261109T000000Z.bin")
+        expect(run(root, env, "restore-flash.sh", "--board", board.alias, "--port", "/dev/null", path), 2,
+               "backup name does not match board", f"restore-flash.sh {board.alias} wrong image")
+    expect(run(root, env, "restore-flash.sh", "--board", "nope", "--port", "/dev/null", path), 2,
+           "unknown board 'nope'", "restore-flash.sh unknown board")
+    expect(run(root, env, "restore-flash.sh", "--port", "/dev/null", path), 2, "usage", "restore-flash.sh no board")
+
+    # check_repro_paths.sh needs a board, there is no default.
+    expect(run(root, env, "check_repro_paths.sh"), 2, "usage", "check_repro_paths.sh with no board")
+    expect(run(root, env, "check_repro_paths.sh", "nope"), 2, "unknown board 'nope'", "check_repro_paths.sh nope")
+    expect(run(root, env, "check_repro_paths.sh", every[0].alias, "nope"), 2, "invalid board variant",
+           "check_repro_paths.sh bad variant")
+
+    # A name that looks like an option is a board name, so argparse never
+    # prints help into the eval. Each script exits 2 naming it.
+    for name in ("-h", "--help"):
+        for script, arguments in (("build-idf-board.sh", [name]),
+                                  ("flash-idf-board.sh", [name, "/dev/null", good]),
+                                  ("restore-flash.sh", ["--board", name, "--port", "/dev/null", path]),
+                                  ("backup-flash.sh", ["--board", name, "--port", "/dev/null"]),
+                                  ("check_repro_paths.sh", [name])):
+            result = run(root, env, script, *arguments)
+            expect(result, 2, f"unknown board {name!r}", f"{script} {name}")
+            require("usage: boards.py" not in result.stdout + result.stderr, f"{script} {name} printed help")
+
+    # A broken registry stops every script with the file named.
+    (root / every[0].manifest).write_text("{")
+    for script, arguments in (("build-idf-board.sh", [every[1].alias]),
+                              ("flash-idf-board.sh", [every[1].alias, "/dev/null", good]),
+                              ("restore-flash.sh", ["--board", every[1].alias, "--port", "/dev/null", path]),
+                              ("backup-flash.sh", ["--board", every[1].alias, "--port", "/dev/null"]),
+                              ("check_repro_paths.sh", [every[1].alias])):
+        expect(run(root, env, script, *arguments), 2, f"{every[0].manifest}: not readable JSON",
+               f"{script} with a malformed board.json")
+    print("PASS board scripts resolve every name and variant, refuse unknown ones and a broken registry, "
+          "and never reach esptool", flush=True)
+
+
+def main() -> None:
+    """Run every registry check in a scratch directory."""
+    with tempfile.TemporaryDirectory(prefix="os-boards-") as temporary:
+        directory = Path(temporary)
+        check_failure_modes(directory)
+        check_resolution()
+        check_schema()
+        check_target_rules(directory)
+        check_example(directory)
+        check_stall_legs()
+        check_clangd()
+        check_live_cross_board()
+        check_drift()
+        check_shell(directory)
+    print("PASS board registry", flush=True)
+
+
+if __name__ == "__main__":
+    main()

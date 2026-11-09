@@ -35,6 +35,7 @@ from pathlib import Path
 import re
 import subprocess
 
+import boards
 import published_templates
 
 ROOT = published_templates.ROOT
@@ -80,15 +81,15 @@ def read_constant(contract: Path, name: str) -> str:
 def pins(root: Path) -> list[Pin]:
     result = []
     for s in published_templates.sources(root):
-        result.append(Pin(s.board.name, DICTIONARY, f"{s.board.firmware}/telemetry_fields.inc", s.dict))
-        result.append(Pin(s.board.name, TEMPLATE, (published_templates.TEMPLATES / s.href).as_posix(), s.desc))
+        result.append(Pin(s.board.slug, DICTIONARY, f"{s.board.app}/telemetry_fields.inc", s.dict))
+        result.append(Pin(s.board.slug, TEMPLATE, (published_templates.TEMPLATES / s.href).as_posix(), s.desc))
     return result
 
 
 def contract_path(root: Path, board: str) -> Path:
-    matches = [b for b in published_templates.BOARDS if b.name == board]
+    matches = [b for b in boards.boards(root) if b.slug == board]
     require(len(matches) == 1, f"{board} is not a published board")
-    return root / matches[0].firmware / "telemetry_contract.h"
+    return root / matches[0].app / "telemetry_contract.h"
 
 
 def check_history(root: Path) -> None:
@@ -142,7 +143,7 @@ def check(root: Path = ROOT) -> list[tuple[Pin, str]]:
         check_pin(root, pin, uri)
         found.append((pin, uri))
     for s in published_templates.sources(root):
-        check_describedby(s.raw, s.board.name, read_constant(root / s.board.firmware / "telemetry_contract.h",
+        check_describedby(s.raw, s.board.slug, read_constant(root / s.board.app / "telemetry_contract.h",
                                                              DICTIONARY))
     return found
 
@@ -164,12 +165,16 @@ def last_commit(root: Path, path: str) -> str:
 def write(root: Path = ROOT) -> list[str]:
     """Pin each URL to the commit that last changed its path. Return the changed pins."""
     check_history(root)
+    # The pins and headers below come from the registry, so a board.json
+    # added, edited or removed on disk would steer them. Refuse that first.
+    manifests = git(root, "status", "--porcelain", "--untracked-files=all", "--", boards.BOARD_GLOB).stdout.decode()
+    require(not manifests.strip(), f"pin-uris needs every board.json committed, commit it first, {manifests.strip()}")
     todo = pins(root)
     # Every file pin-uris reads or writes must be committed. The pinned bytes
     # and their digests, so the commit that last changed a path holds what is
     # on disk. The template header the digests describe, and the contract this
     # rewrites, so a pin never lands on top of an uncommitted edit.
-    headers = [f"{b.firmware}/{name}" for b in published_templates.BOARDS
+    headers = [f"{b.app}/{name}" for b in boards.boards(root)
                for name in ("telemetry_dictionary_digest.h", "telemetry_descriptor_digest.h",
                             "telemetry_template.h", "telemetry_contract.h")]
     dirty = git(root, "status", "--porcelain", "--", *(p.path for p in todo), *headers).stdout.decode().strip()

@@ -16,10 +16,12 @@ with the same accepted and rejected URLs.
 from __future__ import annotations
 
 from pathlib import Path
+import json
 import shutil
 import subprocess
 import tempfile
 
+import boards
 from host_cxx import CXX_STD
 import pinned_uris as gate
 import published_templates
@@ -53,12 +55,12 @@ def scratch_repo(scratch: Path) -> Path:
     """A git repository with the board files the gate reads, at the current bytes."""
     repo = scratch / "repo"
     shutil.copytree(ROOT / published_templates.TEMPLATES, repo / published_templates.TEMPLATES)
-    for board in published_templates.BOARDS:
-        for name in ("telemetry_template.h", "telemetry_descriptor_digest.h", "telemetry_dictionary_digest.h",
-                     "telemetry_contract.h", "telemetry_fields.inc"):
-            target = repo / board.firmware / name
+    for board in boards.boards(ROOT):
+        for name in ("board.json", "telemetry_template.h", "telemetry_descriptor_digest.h",
+                     "telemetry_dictionary_digest.h", "telemetry_contract.h", "telemetry_fields.inc"):
+            target = repo / board.app / name
             target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy(ROOT / board.firmware / name, target)
+            shutil.copy(ROOT / board.app / name, target)
     run(repo, "init", "-q", "-b", "main")
     run(repo, "config", "user.email", "gate@example.invalid")
     run(repo, "config", "user.name", "gate")
@@ -165,8 +167,8 @@ def main() -> None:
             except AssertionError as error:
                 gate.require(gate.RULE in str(error), "the gate failure states the merge commit rule")
 
-        source = published_templates.source(repo, published_templates.BOARDS[0])
-        rejects(lambda: gate.check_describedby(source.raw, source.board.name, f"{gate.RAW}{content}/x"),
+        source = published_templates.source(repo, boards.boards(repo)[0])
+        rejects(lambda: gate.check_describedby(source.raw, source.board.slug, f"{gate.RAW}{content}/x"),
                 "describedby href is not kDictionaryUri", "describedby link that is not kDictionaryUri")
 
         # A template changed on disk but not committed cannot be pinned.
@@ -174,15 +176,38 @@ def main() -> None:
         rejects(lambda: gate.write(repo), "needs the pinned files committed", "pin-uris with uncommitted content")
         run(repo, "checkout", "-q", "--", template.path)
         # Nor with any other file pin-uris reads or writes left uncommitted.
-        for board in published_templates.BOARDS:
+        for board in boards.boards(ROOT):
             for name in ("telemetry_contract.h", "telemetry_template.h", "telemetry_dictionary_digest.h",
                          "telemetry_descriptor_digest.h"):
-                header = repo / board.firmware / name
+                header = repo / board.app / name
                 original = header.read_bytes()
                 header.write_bytes(original + b"\n")
                 rejects(lambda: gate.write(repo), "needs the pinned files committed",
-                        f"pin-uris with uncommitted {board.name} {name}")
+                        f"pin-uris with uncommitted {board.slug} {name}")
                 header.write_bytes(original)
+        # The registry steers every pin, so a board.json added, edited or
+        # removed on disk stops pin-uris before it reads anything.
+        manifest = repo / boards.boards(repo)[0].manifest
+        original = manifest.read_bytes()
+        manifest.write_bytes(original + b"\n")
+        rejects(lambda: gate.write(repo), "needs every board.json committed", "pin-uris with an edited board.json")
+        manifest.unlink()
+        rejects(lambda: gate.write(repo), "needs every board.json committed", "pin-uris with a removed board.json")
+        manifest.write_bytes(original)
+        # A user config that hides untracked files must not hide a new board,
+        # so pin-uris asks for --untracked-files=all itself.
+        subprocess.run(["git", "-C", str(repo), "config", "status.showUntrackedFiles", "no"], check=True)
+        # The added board is valid on its own, so only the committed check
+        # stands between it and the pins.
+        fresh = json.loads(original)
+        fresh["board"] = "new-board"
+        fresh["tooling"].update(alias="newboard", variants=["app"], backup_prefixes=["new-board"])
+        added = repo / "firmware/esp-idf-new-board/app/board.json"
+        added.parent.mkdir(parents=True)
+        added.write_text(json.dumps(fresh))
+        gate.require(len(boards.boards(repo)) == len(boards.boards()) + 1, "the added board.json is a valid board")
+        rejects(lambda: gate.write(repo), "needs every board.json committed", "pin-uris with an added board.json")
+        shutil.rmtree(repo / "firmware/esp-idf-new-board")
         gate.require(gate.write(repo) == [], "pin-uris runs once the headers are clean again")
         (repo / template.path).write_bytes((repo / template.path).read_bytes() + b" ")
         # Committed bytes that do not hash to desc are refused, never pinned.

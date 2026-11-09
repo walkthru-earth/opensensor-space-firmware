@@ -203,6 +203,7 @@ The excerpt leaves out `id`, `buses`, `requires`, `status` and the
 | local_modules | \[path] | Manifests that live in the board app, such as the CoreS3 M5 IMU, AXP2101, BM8563 and FT6336 and the Waveshare `pms_identity` segment |
 | segments | \[\{module, segment\}] | **REQUIRED**. Ordered segment list. `module` is a module id or `system`. Each segment appears at most once |
 | class_subsets | Map\<string, \[string]> | Class names a board ships for a column, in the module's value order. Absent means all |
+| tooling | object | Host tool facts read by `tools/boards.py` (#141). `alias`, `variants` with the `board.json` folder first, `backup_prefixes`, `flash_bytes`, `psram_mode`, `sdkconfig`, `components_required` and `components_forbidden`. Optional in the schema, required by the registry on every board app. Not hashed into `dict`, `desc` or `shipped.lock` |
 
 Segments, not one block per module, because field ids are append only. A
 module that grows later adds a new segment at the end. Both boards already
@@ -249,6 +250,10 @@ in the Waveshare app with per column procedures.
 
 ### Writing a new board, once
 
+Write the `board.json` with its `tooling` object first, as in the
+[weather example](#9-worked-example-a-weather-board). The board registry
+refuses a board app without one, and the other boards' aliases, slugs and
+backup prefixes must stay distinct.
 `pixi run plugin-new-board firmware/esp-idf-<board>/<variant>/board.json`
 writes `telemetry_fields.inc`, `telemetry_semantics.inc`,
 `telemetry_classes.inc` and a first `shipped.lock` beside that `board.json`.
@@ -403,6 +408,9 @@ that it stays here.
 
 A hypothetical ESP32-S3 weather Thing with a BME280, a cup anemometer with a
 wind vane and a tipping bucket rain gauge, plus the existing MAX17048 module.
+It lives at `firmware/esp-idf-example-weather-s3/app/board.json`. The
+`tooling` object is what `tools/boards.py` reads, so the board resolves as
+`weather` and its backups are named `example-weather-s3-flash-*.bin`.
 
 ```json
 {
@@ -423,7 +431,17 @@ wind vane and a tipping bucket rain gauge, plus the existing MAX17048 module.
     {"module": "system", "segment": "clock_close"},
     {"module": "system", "segment": "clock_anchor"},
     {"module": "system", "segment": "location"}
-  ]
+  ],
+  "tooling": {
+    "alias": "weather",
+    "variants": ["app"],
+    "backup_prefixes": ["example-weather-s3"],
+    "flash_bytes": 16777216,
+    "psram_mode": "QUAD",
+    "sdkconfig": ["CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y"],
+    "components_required": [],
+    "components_forbidden": ["m5"]
+  }
 }
 ```
 

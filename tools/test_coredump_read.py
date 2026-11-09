@@ -10,6 +10,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import boards  # noqa: E402
 import coredump_read as cd  # noqa: E402
 
 TABLE = """# Name, Type, SubType, Offset, Size, Flags
@@ -24,8 +25,12 @@ storage,    data, fat,     0xc20000, 0x3e0000,
 
 def layout(root: Path, board: str = "cores3", variant: str = "bringup",
            table: str = TABLE, target: str | None = None) -> None:
-    folder = root / cd.BOARDS[board][0]
-    (folder / variant).mkdir(parents=True)
+    found = boards.find(board)
+    folder = root / found.project
+    # The registry under root needs the board.json of the telemetry app (#141).
+    (root / found.manifest).parent.mkdir(parents=True, exist_ok=True)
+    (root / found.manifest).write_bytes((boards.ROOT / found.manifest).read_bytes())
+    (folder / variant).mkdir(parents=True, exist_ok=True)
     (folder / variant / "partitions.csv").write_text(table)
     build = folder / "build" / variant
     build.mkdir(parents=True)
@@ -73,15 +78,21 @@ def test_plan_refusals() -> None:
         expect_error(lambda: cd.plan("cores3", None, "", "py", root=root),
                      "checked serial port")
         expect_error(lambda: cd.plan("cores3", "logger", "/dev/x", "py", root=root),
-                     "invalid variant")
+                     "invalid board variant cores3/logger")
         expect_error(lambda: cd.plan("m5", None, "/dev/x", "py", root=root),
-                     "unknown board")
+                     "unknown board 'm5'")
     with tempfile.TemporaryDirectory(prefix="os-coredump-") as name:
         root = Path(name)
         layout(root, board="waveshare", variant="diagnostic")
         steps = cd.plan("waveshare", "diagnostic", "/dev/x", "py", root=root,
                         erase=True)
         assert steps[1][-2:] == ["0xc10000", "0x10000"]
+        # The footer slug names the same board as the alias (#141).
+        assert cd.plan("waveshare-esp32-s3-sim7670g", "diagnostic", "/dev/x", "py",
+                       root=root, erase=True) == steps
+        # No variant means the telemetry app, which has no build here.
+        expect_error(lambda: cd.plan("waveshare", None, "/dev/x", "py", root=root),
+                     "build the selected firmware first")
 
 
 def table_error(table: str, text: str) -> None:

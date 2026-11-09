@@ -2,6 +2,18 @@
 
 Newest first. Versions follow section 7 of the [README](README.md).
 
+## 0.1.5, 2026-11-09
+
+- The board schema gains an optional `tooling` object (#141). It carries
+  the host tool facts of a board, the short alias, the app variants with the
+  `board.json` folder first, the backup prefixes, the 16 MiB flash size, the
+  PSRAM mode, required sdkconfig lines and the required and forbidden build
+  components. `tools/boards.py` requires it on every
+  `firmware/esp-idf-*/*/board.json` and fails closed when it is missing or
+  wrong. Both boards set it.
+- A new optional field is a patch under section 7. No `dict`, `desc`,
+  `shipped.lock` or row moves.
+
 ## 0.1.4, 2026-10-27
 
 - Step 5 of section 11. The Waveshare logger collect runs a `static

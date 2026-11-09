@@ -137,6 +137,10 @@ def check_repo() -> None:
     names = rn.tracked(rn.ROOT)
     assert names is not None and "tools/check_retired_names.py" in names
     assert rn.findings(rn.ROOT, names) == []
+    # Every board.json board's dated bench record is history, and exists (#141).
+    records = {name for name in rn.exempt() if name.startswith("docs/boards/")}
+    assert records == {f"docs/boards/{b.slug}/bench-verified.md" for b in rn.boards.boards()}, records
+    assert records and all(name in names for name in records), records
 
 
 def check_exit_codes() -> None:

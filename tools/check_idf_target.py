@@ -11,6 +11,8 @@ import shlex
 import struct
 import subprocess
 
+import boards
+
 ROOT = Path(__file__).resolve().parents[1]
 FLASH_BYTES = 16 * 1024 * 1024
 PARTITIONS = [
@@ -243,10 +245,31 @@ def elf_symbols(path: Path) -> set[str]:
     return names
 
 
-def check_target(build: Path, board: str, variant: str) -> tuple[str, dict[str, str]]:
-    require((board == "cores3") == (variant == "bringup"), "board and variant disagree")
-    trial = ROOT / "firmware" / ("esp-idf-cores3" if board == "cores3"
-                                 else "esp-idf-waveshare-sim7670g")
+def check_board_settings(board: boards.Board, telemetry: bool, lines: set[str]) -> None:
+    """sdkconfig lines from board.json, the telemetry PSRAM mode and tooling.sdkconfig."""
+    required = [f"CONFIG_SPIRAM_MODE_{board.psram_mode}=y"] if telemetry else []
+    for setting in [*required, *board.sdkconfig]:
+        require(setting in lines, f"native target missing {setting}")
+
+
+def check_board_components(board: boards.Board, components: list[str]) -> None:
+    """Build components from board.json, such as M5 drivers on CoreS3 only."""
+    forbidden = sorted(name for name in components for part in board.components_forbidden
+                       if part.lower() in name.lower())
+    require(not forbidden, f"{board.alias} must not build {', '.join(forbidden)}")
+    missing = sorted(set(board.components_required) - set(components))
+    require(not missing, f"{board.alias} components missing, {', '.join(missing)}")
+
+
+def check_target(build: Path, board: boards.Board, variant: str) -> tuple[str, dict[str, str]]:
+    """Check one build of a registry board (#141).
+
+    The telemetry app, the board.json directory, runs the logger with PSRAM
+    and NimBLE. Every other variant is a bench diagnostic without them.
+    """
+    require(variant in board.variants, f"{board.alias} has no variant {variant}")
+    telemetry = variant == board.telemetry_variant
+    trial = ROOT / board.project
     lines = set(build_file(build, "sdkconfig").read_text().splitlines())
     required = ["CONFIG_IDF_TARGET_ESP32S3=y", "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y",
                 "CONFIG_ESPTOOLPY_FLASHMODE_QIO=y", "CONFIG_PARTITION_TABLE_CUSTOM=y",
@@ -254,14 +277,12 @@ def check_target(build: Path, board: str, variant: str) -> tuple[str, dict[str, 
                 "CONFIG_FATFS_MAX_LFN=255", "CONFIG_FREERTOS_HZ=1000",
                 'CONFIG_ESPTOOLPY_FLASHFREQ="80m"',
                 f'CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="{variant}/partitions.csv"']
-    if variant == "diagnostic":
+    if not telemetry:
         required.append("# CONFIG_SPIRAM is not set")
         require("CONFIG_BT_ENABLED=y" not in lines and "CONFIG_BT_NIMBLE_ENABLED=y" not in lines,
-                "diagnostic unexpectedly enables Bluetooth")
+                f"{variant} unexpectedly enables Bluetooth")
     else:
-        mode = "QUAD" if board == "cores3" else "OCT"
-        required += ["CONFIG_SPIRAM=y", f"CONFIG_SPIRAM_MODE_{mode}=y",
-                     "CONFIG_SPIRAM_SPEED_80M=y", "CONFIG_SPIRAM_USE_MALLOC=y",
+        required += ["CONFIG_SPIRAM=y", "CONFIG_SPIRAM_SPEED_80M=y", "CONFIG_SPIRAM_USE_MALLOC=y",
                      "CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y",
                      "CONFIG_ESP_WIFI_STATIC_TX_BUFFER=y",
                      "CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=16",
@@ -283,13 +304,12 @@ def check_target(build: Path, board: str, variant: str) -> tuple[str, dict[str, 
                      "CONFIG_ESP_MAC_UNIVERSAL_MAC_ADDRESSES=2",
                      "# CONFIG_BT_NIMBLE_SM_LEGACY is not set",
                      "# CONFIG_BT_NIMBLE_SM_SC_DEBUG_KEYS is not set"]
-    required += (["CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y"] if board == "cores3" else
-                 ["CONFIG_ESP_CONSOLE_UART_DEFAULT=y", "CONFIG_ESP_CONSOLE_UART_NUM=0",
-                  "CONFIG_ESP_CONSOLE_UART_BAUDRATE=115200"])
     # Every image saves a panic core dump to the coredump partition below.
     required += COREDUMP_SETTINGS
     for setting in required:
         require(setting in lines, f"native target missing {setting}")
+    # The PSRAM mode, the console and any other per board line.
+    check_board_settings(board, telemetry, lines)
     require("CONFIG_ESP_CONSOLE_USB_CDC=y" not in lines, "unexpected USB CDC console")
     commands = json.loads(build_file(build, "compile_commands.json").read_text())
     require(bool(commands), "empty compiler database")
@@ -317,20 +337,15 @@ def check_target(build: Path, board: str, variant: str) -> tuple[str, dict[str, 
     require("espcoredump" in components, "core dump component is not built")
     missing = COREDUMP_SYMBOLS - elf_symbols(build_file(build, description["app_elf"]))
     require(not missing, "application ELF lacks core dump symbols: " + ", ".join(sorted(missing)))
-    if variant == "diagnostic":
+    if not telemetry:
         require("connectivity" not in components and "logger" not in components,
-                "diagnostic unexpectedly includes application/radio runtime")
+                f"{variant} unexpectedly includes application/radio runtime")
     else:
         require({"logger", "connectivity", "runtime", "common"}.issubset(components),
                 "logger runtime component missing")
     require(not any("arduino" in component.lower() for component in components),
             "native target depends on Arduino")
-    if board == "waveshare":
-        require(not any("m5" in name.lower() for name in components),
-                "Waveshare depends on M5 drivers")
-    else:
-        require({"m5stack__m5unified", "m5stack__m5gfx"}.issubset(components),
-                "CoreS3 native M5 components missing")
+    check_board_components(board, components)
     require(partitions(build_file(build, "partition_table/partition-table.bin").read_bytes()) ==
             PARTITIONS, "partition table differs from the existing owner-data layout")
     plan = json.loads(build_file(build, "flasher_args.json").read_text())
@@ -371,11 +386,10 @@ def check_target(build: Path, board: str, variant: str) -> tuple[str, dict[str, 
     return sdk_commit, hashes
 
 
-def check_backup(backup: Path, board: str) -> None:
-    prefix = "m5stack-cores3" if board == "cores3" else "waveshare-sim7670g-v2"
-    require(backup.name.startswith(prefix + "-flash-") and backup.suffix == ".bin",
-            "backup does not match the selected board")
-    require(backup.stat().st_size == FLASH_BYTES, "backup must be exactly 16777216 bytes")
+def check_backup(backup: Path, board: boards.Board) -> None:
+    require(backup.name.startswith(board.backup_prefix + "-flash-") and backup.suffix == ".bin",
+            f"backup does not match the selected board, expected {board.backup_prefix}-flash-*.bin")
+    require(backup.stat().st_size == board.flash_bytes == FLASH_BYTES, "backup must be exactly 16777216 bytes")
     with backup.open("rb") as source:
         source.seek(0x8000)
         previous = partitions(source.read(0xC00))
@@ -388,8 +402,8 @@ def check_backup(backup: Path, board: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("build", type=Path, nargs="?")
-    parser.add_argument("--board", choices=["cores3", "waveshare"])
-    parser.add_argument("--variant", choices=["bringup", "logger", "diagnostic"])
+    parser.add_argument("--board", help="any board name tools/boards.py resolves, from board.json (#141)")
+    parser.add_argument("--variant", help="an app directory listed in the board's tooling.variants")
     parser.add_argument("--sdk-only", type=Path)
     parser.add_argument("--cxx-dialect", action="store_true",
                         help="only check that every C++ dialect source names the same standard")
@@ -418,8 +432,10 @@ def main() -> None:
         require(args.build is not None and args.board is not None and args.variant is not None,
                 "build, --board and --variant are required")
         build = args.build.resolve()
-        commit, hashes = check_target(build, args.board, args.variant)
-        manifest = {"board": args.board, "variant": args.variant, "sdk_commit": commit, "files": hashes}
+        board, variant = boards.resolve(args.board, args.variant)
+        commit, hashes = check_target(build, board, variant)
+        # The manifest names the alias, the build target os-build-target.txt names.
+        manifest = {"board": board.alias, "variant": variant, "sdk_commit": commit, "files": hashes}
         manifest_path = build / "os-build-sha256.json"
         if args.verify_manifest:
             require(json.loads(manifest_path.read_text()) == manifest,
@@ -429,8 +445,8 @@ def main() -> None:
             temporary.write_text(json.dumps(manifest, indent=2) + "\n")
             temporary.replace(manifest_path)
         if args.backup:
-            check_backup(args.backup, args.board)
-        print(f"Verified native ESP32-S3 {args.board}/{args.variant}: "
+            check_backup(args.backup, board)
+        print(f"Verified native ESP32-S3 {board.alias}/{variant}: "
               "SDK, memory, console, components, C++ dialect, source path map, core dump, partitions and flash plan")
     except (ValueError, OSError, KeyError, subprocess.CalledProcessError) as error:
         raise SystemExit(f"native target rejected: {error}") from error

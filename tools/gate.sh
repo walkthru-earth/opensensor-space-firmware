@@ -101,6 +101,8 @@ tasks=(
   "sd-transfer-buffer-test"
   # Offline backup publication with a fake esptool
   "backup-test"
+  # Board registry, board.json failure modes and board list drift
+  "boards-test"
   # Serial capture send-on-cue with a fake port
   "capture-serial-test"
 )

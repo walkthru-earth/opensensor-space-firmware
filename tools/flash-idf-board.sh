@@ -1,28 +1,28 @@
 #!/usr/bin/env bash
 set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-board="${1:-}"
-port="${2:-}"
-backup="${3:-}"
-case "${board}" in
-  cores3) trial_dir="${repo_root}/firmware/esp-idf-cores3"; variant=bringup; backup_board=m5stack-cores3 ;;
-  waveshare) trial_dir="${repo_root}/firmware/esp-idf-waveshare-sim7670g"; variant="${4:-logger}"; backup_board=waveshare-sim7670g-v2 ;;
-  *) printf 'usage: %s {cores3|waveshare} <checked-port> <full-backup> [logger|diagnostic]\n' "$0" >&2; exit 2 ;;
-esac
+if [[ $# -lt 3 || $# -gt 4 ]]; then
+  printf 'usage: %s <board> <checked-port> <full-backup> [variant]\n' "$0" >&2
+  python "${repo_root}/tools/boards.py" list >&2 || true
+  exit 2
+fi
+port="$2"
+backup="$3"
+# Board names and variants come from board.json (#141), see build-idf-board.sh.
+assignments="$(python "${repo_root}/tools/boards.py" resolve -- "$1" "${4:-}")"
+eval "${assignments}"
+trial_dir="${repo_root}/${project}"
+board="${alias}"
 if [[ -z "${port}" || ! -c "${port}" || ! -f "${backup}" ]]; then
   printf 'checked serial device and full backup required\n' >&2; exit 2
 fi
 case "$(basename "${backup}")" in
-  "${backup_board}"-flash-*.bin) ;;
-  *) printf 'backup does not match selected board\n' >&2; exit 2 ;;
+  "${backup_prefix}"-flash-*.bin) ;;
+  *) printf 'backup does not match selected board, expected %s-flash-*.bin\n' "${backup_prefix}" >&2; exit 2 ;;
 esac
 if [[ "$(wc -c <"${backup}" | tr -d " ")" != 16777216 ]]; then
   printf 'backup must be exactly 16777216 bytes\n' >&2; exit 2
 fi
-case "${board}/${variant}" in
-  cores3/bringup|waveshare/logger|waveshare/diagnostic) ;;
-  *) printf 'invalid board variant\n' >&2; exit 2 ;;
-esac
 build_dir="${trial_dir}/build/${variant}"
 target="${board}/${variant}"
 case "${OS_BENCH:-}" in

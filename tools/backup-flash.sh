@@ -11,10 +11,16 @@ while [[ $# -gt 0 ]]; do
     *) printf 'unknown argument: %s\n' "$1" >&2; exit 2 ;;
   esac
 done
-case "${board}" in
-  m5stack-cores3|waveshare-sim7670g-v2) ;;
-  *) printf 'usage: %s --board {m5stack-cores3|waveshare-sim7670g-v2} --port <checked-port>\n' "$0" >&2; exit 2 ;;
-esac
+if [[ -z "${board}" ]]; then
+  printf 'usage: %s --board <board> --port <checked-port>\n' "$0" >&2
+  python "${repo_root}/tools/boards.py" list >&2 || true
+  exit 2
+fi
+# Any name of a board.json board (#141). The image is named by the board's
+# first backup prefix, tooling.backup_prefixes[0].
+assignments="$(python "${repo_root}/tools/boards.py" resolve -- "${board}")"
+eval "${assignments}"
+board="${backup_prefix}"
 if [[ -z "${port}" ]]; then
   printf 'a checked --port is required\n' >&2
   exit 2

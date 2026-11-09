@@ -24,7 +24,7 @@ C++ contract tests and cannot prove behavior on a physical board.
 | Native FAT mount root and archive directory creation | `logger-directory-test` |
 | Storage worker units on host fakes. Queue and wakeups, watchdog supervisor, persisted codec, STATUS formatter, UTC rotation, LIST_SINCE ring and walk, SD space governor, OPEN CRC cache, SD DMA buffer, archive reset, UART provisioning and ring only radio diagnostics | `logger-work-queue-test`, `logger-watchdog-test`, `logger-codec-store-test`, `logger-status-test`, `logger-rotation-test`, `logger-list-since-test`, `storage-governor-test`, `crc-cache-test`, `sd-transfer-buffer-test`, `logger-archive-reset-test`, `logger-provision-test`, `debug-log-test` |
 | Per-file C++ dialect and source path map of an SDK fixture build, and every fixture entry point calling it without swallowing its exit | `check_idf_target.py --compile-dialect <build>`, `compile-dialect-test` |
-| One board built from two checkout paths gives the same images (SDK, CI job) | `repro-paths-check [board] [variant]`, `repro-paths-test` |
+| One board built from two checkout paths gives the same images (SDK, CI job) | `repro-paths-check <board> [variant]`, `repro-paths-test` |
 | Native SDK and affected board builds | `idf-setup`, `cores3-build`, `waveshare-build [logger|diagnostic]` |
 | SDK compile fixtures for shared connectivity and logger, no board target, C++ dialect check only. They need ESP-IDF, so the gate skips them | `connectivity-build-test`, `logger-build-test` |
 | Bench only `parquet bench-stall` image, parser bounds and default-off guard | `OS_BENCH=stall cores3-build` or `waveshare-build logger`, `logger-bench-stall-test` |
@@ -63,7 +63,12 @@ C++ contract tests and cannot prove behavior on a physical board.
 - `owner-pin` and provisioning output are secrets. Do not retain them in logs,
   artifacts, fixtures, tests or documentation. Keep LAN tokens in ignored
   artifacts and never print them.
-- Many tools still hard code the two boards (`BOARDS` tuples, `--board` choices). A new board goes into each list by hand until #141 derives them from `board.json`.
+- The board list is every `firmware/esp-idf-*/*/board.json`, read by
+  `tools/boards.py` (#141). Tools and board scripts take the alias, the footer
+  slug or the backup prefix and never name a board themselves. The registry
+  fails closed on a missing, malformed or duplicated `board.json` and on an
+  unknown name. `boards-test` fails when `pixi.toml`, `ci.yml`, `release.yml`
+  or `tools/stack_budget.json` list a different board set.
 - Keep host fixtures deterministic. Record actual hardware evidence only in
   the relevant board's `bench-verified.md` with date, image hash and limits.
 

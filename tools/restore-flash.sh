@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 board=""
 port=""
 image=""
@@ -17,14 +18,26 @@ while [[ $# -gt 0 ]]; do
       image="$1"; shift ;;
   esac
 done
-if [[ -z "${port}" || -z "${image}" ]]; then
-  printf 'usage: %s --board {m5stack-cores3|waveshare-sim7670g-v2} --port <checked-port> backup/<matching-file>.bin\n' "$0" >&2
+if [[ -z "${board}" || -z "${port}" || -z "${image}" ]]; then
+  printf 'usage: %s --board <board> --port <checked-port> backup/<matching-file>.bin\n' "$0" >&2
+  python "${repo_root}/tools/boards.py" list >&2 || true
   exit 2
 fi
-case "${board}:$(basename "${image}")" in
-  m5stack-cores3:m5stack-cores3-flash-*.bin|m5stack-cores3:cores3-flash-*.bin|waveshare-sim7670g-v2:waveshare-sim7670g-v2-flash-*.bin) ;;
-  *) printf 'backup name does not match board %s: %s\n' "${board}" "${image}" >&2; exit 2 ;;
-esac
+# Any name of a board.json board (#141). The image name starts with one of
+# the board's backup prefixes, cores3-flash-*.bin included for CoreS3.
+assignments="$(python "${repo_root}/tools/boards.py" resolve -- "${board}")"
+eval "${assignments}"
+matched=0
+for prefix in ${backup_prefixes}; do
+  case "$(basename "${image}")" in
+    "${prefix}"-flash-*.bin) matched=1 ;;
+  esac
+done
+if [[ "${matched}" != 1 ]]; then
+  printf 'backup name does not match board %s, expected one of %s followed by -flash-*.bin: %s\n' \
+    "${board}" "${backup_prefixes}" "${image}" >&2
+  exit 2
+fi
 if [[ ! -f "${image}" || "$(wc -c <"${image}" | tr -d " ")" != 16777216 ]]; then
   printf 'expected a complete 16777216-byte image: %s\n' "${image}" >&2
   exit 2
