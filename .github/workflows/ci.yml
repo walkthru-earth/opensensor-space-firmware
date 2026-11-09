@@ -40,9 +40,9 @@ jobs:
           persist-credentials: false
       # Only the pixi binary is needed. The linters come from exact conda-forge
       # pins through pixi exec, so local runs use the same versions.
-      - uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
+      - uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
         with:
-          pixi-version: v0.83.0
+          pixi-version: v0.84.1
           run-install: false
       - name: actionlint
         run: pixi exec -s actionlint==1.7.12 -s shellcheck==0.11.0 -- actionlint -color
@@ -67,9 +67,9 @@ jobs:
           # pinned-uris-test (#89) proves each pinned commit is an ancestor of
           # HEAD and reads its bytes with git show, so it needs full history.
           fetch-depth: 0
-      - uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
+      - uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
         with:
-          pixi-version: v0.83.0
+          pixi-version: v0.84.1
           locked: true
           cache: true
           cache-write: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
@@ -130,9 +130,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
+      - uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
         with:
-          pixi-version: v0.83.0
+          pixi-version: v0.84.1
           locked: true
           cache: true
           cache-write: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
@@ -366,9 +366,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
+      - uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
         with:
-          pixi-version: v0.83.0
+          pixi-version: v0.84.1
           locked: true
           cache: true
           cache-write: false

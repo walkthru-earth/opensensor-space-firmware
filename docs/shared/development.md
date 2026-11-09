@@ -9,7 +9,7 @@ OSLogger, OSLocation, `power` and `upload`) belong to [`firmware/common`](../../
 ## Host and toolchain
 
 Host dependencies are pinned in root `pixi.toml` and `pixi.lock`. The manifest
-sets `requires-pixi = ">=0.83.0"` and CI runs pixi **0.83.0**, so an older pixi
+sets `requires-pixi = ">=0.84.1"` and CI runs pixi **0.84.1**, so an older pixi
 stops with a clear error. Start with
 `pixi install`; run host and firmware commands through `pixi run`. Add host
 packages with `pixi add`. The SDK is installed separately by the pinned

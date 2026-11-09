@@ -4,7 +4,7 @@ channels = ["conda-forge"]
 name = "opensensor-space-firmware"
 platforms = ["osx-arm64", "linux-64"]
 # CI pins the same pixi in setup-pixi (pixi-version).
-requires-pixi = ">=0.83.0"
+requires-pixi = ">=0.84.1"
 version = "0.1.0"
 
 [tasks]
