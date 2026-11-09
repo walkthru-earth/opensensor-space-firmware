@@ -14,6 +14,9 @@ establish error reporting and unchanged runtime settings on failure; they do not
 establish transactional NVS writes or power-loss safety.
 
 The deterministic random source supplies test fixtures, never production entropy.
+`esp_timer.h` is a settable monotonic clock in microseconds. Tests move it to
+drive the `location.phone_cell` age limit (#140). It does not model timers or
+callbacks.
 The host mutex models mutual exclusion, not interrupt latency or radio scheduling.
 The fake native console sink keeps synthetic test logs out of terminal output; the real
 `DebugLog` ring remains exercised. Control tests replace only BLE/LAN observations

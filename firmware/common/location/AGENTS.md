@@ -16,8 +16,9 @@ write NVS or infer country. Missing location remains missing.
   resolution. Only `firmware/common/gnss` (`to_fix()`) calls it, at res 8,
   and raw degrees never leave that call.
 - `location.phone_cell` (source 3) goes through `published_cell()` like
-  `location.cell` and lives in RAM only, never in NVS (#140). Rules are in
-  `docs/shared/time-and-location.md`.
+  `location.cell` and lives in RAM only, never in NVS (#140). The runtime
+  drops it `config::kPhoneCellMaxAgeUs` (300 s) after the last SET of the key.
+  Rules are in `docs/shared/time-and-location.md`.
 - Country is optional, owner-declared ISO 3166-1 alpha-2; validate assigned codes
   using the documented snapshot and never claim H3 provides country boundaries.
 - `cells_to_multipolygon()` traces a cell set into caller buffers through

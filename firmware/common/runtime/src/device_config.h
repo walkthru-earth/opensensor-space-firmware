@@ -46,10 +46,27 @@ struct LocationSettings {
   Mobility mobility = Mobility::Fixed;
   // location.phone_cell (#140), the res 8 cell of the phone's own fix, zero
   // when unset. RAM only. The `cfg` record has no field for it, so it is never
-  // stored and a reboot clears it. While it is set a moving Thing writes it
-  // with location_source 3. A fixed Thing ignores it for rows.
+  // stored and a reboot clears it, and so does kPhoneCellMaxAgeUs. While it is
+  // set a moving Thing writes it with location_source 3. A fixed Thing ignores
+  // it for rows.
   std::uint64_t phone_cell = 0;
 };
+
+// The board drops location.phone_cell this long after the last accepted
+// SET_CONFIG that carried the key, a new value or the same one again (#140,
+// owner decision 2026-11-09). Measured on the esp_timer_get_time() clock,
+// microseconds since boot, never UTC. BLE and LAN behave the same, and a
+// disconnect does not clear it. The app resends it about every 60 s while it
+// is connected.
+inline constexpr std::int64_t kPhoneCellMaxAgeUs = 300'000'000;
+// True once a cell set at `set_mono_us` has reached the age limit. A cell is
+// kept for ages up to 299.999999 s and dropped at 300 s exactly. A negative
+// age, a reader that read the clock just before a SET_CONFIG landed, keeps it.
+// int64 microseconds wrap after about 292,000 years of uptime.
+[[nodiscard]] constexpr bool phone_cell_expired(std::int64_t set_mono_us,
+                                                std::int64_t now_mono_us) {
+  return now_mono_us - set_mono_us >= kPhoneCellMaxAgeUs;
+}
 
 // The Thing needs setup (#147). A fixed Thing without a cell needs one, a
 // moving Thing never does. Derived on every read, never stored. Drives the

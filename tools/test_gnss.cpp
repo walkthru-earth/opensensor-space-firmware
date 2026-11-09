@@ -2,6 +2,7 @@
 // freshness, the per row source rule and that a GNSS cell never splits files
 // while a deployment id change does.
 #include <device_config.h>
+#include <esp_timer.h>
 #include <numeric_sample.h>
 #include <nvs.h>
 #include <os_gnss.h>
@@ -514,6 +515,82 @@ void phone_cell_rule() {
          LocationSource::Configured);
 }
 
+// The phone cell age limit (#140). kPhoneCellMaxAgeUs after the last SET of
+// location.phone_cell the board drops it. A moving Thing then writes a fresh
+// GNSS cell (source 2) or nulls, a fixed Thing keeps source 1 throughout, and
+// neither splits a file.
+void phone_cell_age_rule() {
+  using Sample = oslogger::LocationSample<NumericSample<4>>;
+  constexpr std::int64_t kSecond = 1'000'000;
+  const auto cells = cairo();
+  fake_now_us = kSecond;
+  fake_platform::nvs = {};
+  assert(config::load(false));
+  const auto set = [](std::string_view lines) {
+    config::Actions actions{};
+    char bad_key[32]{};
+    assert(config::apply_lines(lines.data(), lines.size(), bad_key,
+                               sizeof bad_key, actions));
+  };
+  // The row the logger builds at fake_now_us, as collect() does.
+  const auto row_at = [&](std::int64_t now) {
+    fake_now_us = now;
+    Sample row{};
+    const auto labels = ::config::sample_labels();
+    row.location = labels.location;
+    row.deployment = labels.deployment;
+    return row;
+  };
+  const auto fix_at = [&](std::int64_t now) {
+    return gnss::Fix{
+        .cell = cells.at9, .resolution = 9, .fix_mono_us = now - kSecond};
+  };
+  char phone_text[location::kCellTextBytes]{};
+  assert(location::format_cell(cells.at8, phone_text, sizeof phone_text));
+  const std::string phone_line =
+      std::string("location.phone_cell=") + phone_text;
+
+  // Moving. Phone cell rows up to 299 s, then GNSS with a fresh fix or nulls.
+  set("thing.mobility=moving\n" + phone_line);
+  std::int64_t start = fake_now_us;
+  const auto before = row_at(start + 299 * kSecond);
+  auto pick =
+      gnss::select_location(before.location, fix_at(fake_now_us), fake_now_us);
+  assert(pick.cell == cells.at8 && pick.source == LocationSource::Phone);
+  const auto after = row_at(start + 300 * kSecond);
+  assert(after.location.phone_cell == 0);
+  pick =
+      gnss::select_location(after.location, fix_at(fake_now_us), fake_now_us);
+  assert(pick.cell == cells.at8 && pick.source == LocationSource::Gnss);
+  pick = gnss::select_location(after.location, std::nullopt, fake_now_us);
+  assert(pick.cell == 0 && pick.source == LocationSource::None);
+  // Expiry never splits the file.
+  assert(oslogger::same_file_labels(after, before));
+  assert(oslogger::same_file_labels(before, after));
+  // Sending it again labels rows with source 3 once more.
+  set(phone_line);
+  start = fake_now_us;
+  pick = gnss::select_location(row_at(start + 10 * kSecond).location,
+                               std::nullopt, fake_now_us);
+  assert(pick.cell == cells.at8 && pick.source == LocationSource::Phone);
+
+  // Fixed. Source 1 before and after expiry, in the same file.
+  set("thing.mobility=fixed\nlocation.cell=8828308281fffff\n" + phone_line);
+  start = fake_now_us;
+  const auto fixed_before = row_at(start + 299 * kSecond);
+  assert(fixed_before.location.phone_cell == cells.at8);
+  pick = gnss::select_location(fixed_before.location, fix_at(fake_now_us),
+                               fake_now_us);
+  assert(pick.cell == kConfigured && pick.source == LocationSource::Configured);
+  const auto fixed_after = row_at(start + 300 * kSecond);
+  assert(fixed_after.location.phone_cell == 0);
+  pick = gnss::select_location(fixed_after.location, fix_at(fake_now_us),
+                               fake_now_us);
+  assert(pick.cell == kConfigured && pick.source == LocationSource::Configured);
+  assert(oslogger::same_file_labels(fixed_after, fixed_before));
+  fake_now_us = kSecond;
+}
+
 // One request moves the location and the deployment id together, and a
 // sample read while requests land never pairs one request's location with the
 // other request's deployment id (#151). The writer stands in for the storage
@@ -570,6 +647,7 @@ int main() {
   no_split();
   deployment_split();
   phone_cell_rule();
+  phone_cell_age_rule();
   coherent_labels();
   std::puts("gnss host tests passed");
 }

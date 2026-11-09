@@ -9,6 +9,37 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## Phone cell age limit (fix-140b-phone-cell-age, issue #140)
+
+**Needs a matched reflash and an app change.** CoreS3 moves to
+`idf-cores3-parquet-v6.32` and Waveshare to `idf-waveshare-parquet-v2.25`.
+Columns, field ids, LIVE keys, decimals, the schema and dictionary strings,
+the GET_CONFIG page 1 keys and the `dict` and `desc` digests do not change.
+
+**What changed.**
+
+- The board drops `location.phone_cell` 300 seconds after the last accepted
+  `SET_CONFIG` that carried the key. It had no age bound before.
+- A new value and the same value again both restart the 300 s. A request
+  without the key does not, and a refused request changes nothing.
+- A BLE or LAN disconnect does not clear it. BLE and LAN behave the same.
+- On expiry the board clears the cell as an empty value would. Moving rows
+  fall back to a fresh GNSS fix (`location_source` 2) or nulls. Fixed rows
+  keep `location.cell` with `location_source` 1, as before. No file splits,
+  nothing is stored and no log line is written.
+- GET_CONFIG page 1 shows `location.phone_cell` as `""` once the cell has
+  expired. There is no new key for its age.
+
+**Why.** Owner decision 2026-11-09 on #140. A phone that walked away, lost
+its fix or crashed must not keep labelling a moving Thing with an old cell.
+
+**What the app must do.** While it is connected to a moving Thing, send
+`location.phone_cell` about once a minute, plus once on connect and whenever
+page 1 shows it empty, even when the cell has not changed
+(opensensor-space-mobile #264). Expect the board to clear the cell 300
+seconds after the last send. Expect moving rows written
+after an expiry to carry `location_source` 2 or nulls until the next send.
+
 ## CoreS3 on M5Unified and M5GFX 0.3.0 (#160)
 
 **Needs a matched CoreS3 reflash. The app needs no code change unless it pins

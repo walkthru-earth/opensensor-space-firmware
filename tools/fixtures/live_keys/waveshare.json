@@ -6,7 +6,7 @@
       "note": "Dictionary waveshare-sim7670g-telemetry-v8 (#28). Three MAX17048 validity tokens are renamed, battery_installed_vcell_read_ok, battery_installed_soc_read_ok_range_0_100 and battery_installed_soc_read_ok_uncapped. The LIVE keys and decimals are those of waveshare-sim7670g-telemetry-v7. Older digests are retired and no longer listed.",
       "builds": [
         {
-          "firmware": "idf-waveshare-parquet-v2.24",
+          "firmware": "idf-waveshare-parquet-v2.25",
           "emitter": "board field table through oslogger::format_live",
           "fields": {
             "seq": "sequence",

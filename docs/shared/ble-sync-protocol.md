@@ -145,7 +145,7 @@ Base UUID `255f595e-XXXX-47ed-8e0d-59994199b680`; the 16-bit field selects the a
 ### `info` (read)
 
 ```json
-{"proto":3,"fw":"idf-cores3-parquet-v6.31","schema":"cores3-telemetry-v6","cols":81,
+{"proto":3,"fw":"idf-cores3-parquet-v6.32","schema":"cores3-telemetry-v6","cols":81,
  "dict":"<64 hex, SHA-256 of telemetry_fields.inc>","desc":"<first 16 hex of desc>",
  "thing":"<uuid>","dev":"<12 hex device_id>","boot":"<32 hex boot id>","max_read":16384}
 ```
@@ -153,7 +153,7 @@ Base UUID `255f595e-XXXX-47ed-8e0d-59994199b680`; the 16-bit field selects the a
 `schema`, `cols`, `dict` and `fw` describe the consuming board image. The example
 is CoreS3, while Waveshare advertises its own 62-column schema
 `waveshare-sim7670g-telemetry-v6`, dictionary `waveshare-sim7670g-telemetry-v8`
-and firmware `idf-waveshare-parquet-v2.24`. Clients use that identity to interpret shortened LIVE keys. `thing`, `dev`
+and firmware `idf-waveshare-parquet-v2.25`. Clients use that identity to interpret shortened LIVE keys. `thing`, `dev`
 and `boot` match the archive identities. `max_read` is the largest `length` the
 device honours per `READ`. Firmware reports `proto=3` and older framing is incompatible.
 
@@ -345,7 +345,7 @@ Rules:
 | `location.resolution` | `8` only | next sample | fixed at 8, kept so a client may restate it. Any other value, such as 0, 7, 9 or 15, answers `ERROR` 12 with detail `location.resolution` (#139). A stored value from older firmware boots as 8 with one `CONFIG location.resolution=<old> reset to 8` line |
 | `location.country` | assigned uppercase ISO 3166-1 alpha-2; empty clears | next sample | optional owner-declared country, not inferred from the cell |
 | `thing.mobility` | `fixed` \| `moving`, default `fixed` | next sample | how the Thing moves, written to the footer `thing.mobility`. A change splits the file like a location change. `fixed` rows carry `location.cell` with `location_source` 1, whatever a phone cell or a receiver says. `moving` rows carry `location.phone_cell` with `location_source` 3 while it is set, otherwise a fresh GNSS cell (at most 15 s old) at resolution 8 with `location_source` 2, or four location nulls when the board has no GNSS hook or no fresh fix, never `location.cell`. A GNSS cell change does not split the file. See [moving Things](time-and-location.md#moving-things-and-gnss) |
-| `location.phone_cell` | canonical 15-digit H3 cell hex from the phone's own fix at resolution 8 or finer, or empty to clear | next sample | the board keeps the resolution 8 parent in RAM only (#140). A moving Thing writes it with `location_source` 3 while it is set, ahead of a fresh GNSS fix. A fixed Thing accepts and reports it but ignores it for rows, which keep `location.cell` with `location_source` 1. A cell coarser than 8, or a value that is not a valid cell, answers `ERROR` 12 with detail `location.phone_cell` and nothing changes. The phone cell is never stored, the `cfg` record has no field for it, and a reboot clears it. A request that holds only this key still rewrites a record an earlier failed save left unsure, without the phone cell. When it is cleared, moving rows fall back to GNSS (source 2) or nulls. A phone cell change never splits a file. There is no age bound, the phone clears or updates it |
+| `location.phone_cell` | canonical 15-digit H3 cell hex from the phone's own fix at resolution 8 or finer, or empty to clear | next sample | the board keeps the resolution 8 parent in RAM only (#140). A moving Thing writes it with `location_source` 3 while it is set, ahead of a fresh GNSS fix. A fixed Thing accepts and reports it but ignores it for rows, which keep `location.cell` with `location_source` 1. A cell coarser than 8, or a value that is not a valid cell, answers `ERROR` 12 with detail `location.phone_cell` and nothing changes. The phone cell is never stored, the `cfg` record has no field for it, and a reboot clears it. A request that holds only this key still rewrites a record an earlier failed save left unsure, without the phone cell. When it is cleared, moving rows fall back to GNSS (source 2) or nulls. A phone cell change never splits a file. The board drops it 300 s after the last accepted request that carried the key, a new value or the same one again, as if it were sent empty. A disconnect does not clear it. The app resends it about every 60 s while connected. See [phone cell](time-and-location.md#phone-cell-locationphone_cell) |
 | `owner.title` | UTF-8, ≤ 64 bytes; empty clears | immediately | owner site name, the Thing Collection title. Read back on page 5 |
 | `owner.description` | UTF-8, ≤ 160 bytes; empty clears | immediately | owner site description. Read back on page 6 |
 | `owner.provider` | UTF-8, ≤ 64 bytes; empty clears | immediately | the organisation that runs the Thing, the STAC producer and licensor provider. Read back on page 5 |
@@ -374,7 +374,7 @@ the requested object means unsupported, not an unset location.
 | Page | Response JSON |
 | --- | --- |
 | 0 or empty | Legacy `ble`, `wifi`, `lan`, `sensor` snapshot |
-| 1 | `{"location":{"cell":"","resolution":8,"cell_resolution":null,"lat":null,"lon":null,"country":"","phone_cell":"","gnss_cell":""},"thing":{"mobility":"fixed","setup":1}}`. Populated cells return their actual resolution and derived center in degrees. `thing.setup` is 1 while the advert `setup` bit is set, else 0. `location.gnss_cell` is present only on a board with a GNSS receiver (Waveshare V2, omitted on CoreS3). It holds the newest fix as a res 8 cell, or `""` without a fix from the last 15 s. It is never a coordinate and never stored. `location.phone_cell` is the res 8 phone cell held in RAM, or `""` when unset or after a reboot (#140). `resolution` is always 8 and `cell_resolution` is 8 or null. The worst case page is 227 bytes, checked by `pixi run config-test` |
+| 1 | `{"location":{"cell":"","resolution":8,"cell_resolution":null,"lat":null,"lon":null,"country":"","phone_cell":"","gnss_cell":""},"thing":{"mobility":"fixed","setup":1}}`. Populated cells return their actual resolution and derived center in degrees. `thing.setup` is 1 while the advert `setup` bit is set, else 0. `location.gnss_cell` is present only on a board with a GNSS receiver (Waveshare V2, omitted on CoreS3). It holds the newest fix as a res 8 cell, or `""` without a fix from the last 15 s. It is never a coordinate and never stored. `location.phone_cell` is the res 8 phone cell held in RAM, or `""` when unset, after a reboot or 300 s after the last request that sent it (#140). `resolution` is always 8 and `cell_resolution` is 8 or null. The worst case page is 227 bytes, checked by `pixi run config-test` |
 | 2 | `ntp` policy (`on`, `dhcp`, `public_fallback`, `interval_s`) plus `state`, `running`, `anchored`, `age_s` (null before sync), `stale`, `source`, `last_public`, `sync_count`, `error` |
 | 3 | `{"ntp":{"server1":""}}` |
 | 4 | `{"ntp":{"server2":""}}` |

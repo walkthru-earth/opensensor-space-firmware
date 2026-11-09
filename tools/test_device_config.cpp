@@ -3,12 +3,14 @@
 #include "../firmware/esp-idf-waveshare-sim7670g/logger/pms5003t_identity.h"
 #include <debug_log.h>
 #include <device_config.h>
+#include <esp_timer.h>
 #include <numeric_sample.h>
 #include <nvs.h>
 #include <os_gnss.h>
 #include <os_location.h>
 #include <os_logger_location.h>
 
+#include <array>
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -776,6 +778,171 @@ void phone_cell() {
   assert(fake_platform::nvs.writes == moving_writes);
 }
 
+// location.phone_cell age limit (#140, owner decision 2026-11-09). The board
+// drops the cell kPhoneCellMaxAgeUs after the last accepted SET_CONFIG that
+// carried the key, a new value or the same one again. Expiry is seen the same
+// way by rows, GET_CONFIG and the next SET_CONFIG. It writes no NVS, marks no
+// record for a write and logs nothing.
+void phone_cell_age() {
+  constexpr std::uint64_t kAt8 = 0x8828308281fffffULL;
+  constexpr std::uint64_t kOther = 0x88283082a3fffffULL;
+  constexpr std::int64_t kSecond = 1'000'000;
+  static_assert(config::kPhoneCellMaxAgeUs == 300 * kSecond);
+  // The rule itself. Kept below 300 s, dropped at 300 s, a negative age keeps
+  // it, and int64 microseconds stay exact a century into uptime.
+  constexpr std::int64_t kCentury = 100LL * 366 * 24 * 3600 * kSecond;
+  static_assert(!config::phone_cell_expired(0, 300 * kSecond - 1));
+  static_assert(config::phone_cell_expired(0, 300 * kSecond));
+  static_assert(
+      !config::phone_cell_expired(kCentury, kCentury + 299 * kSecond));
+  static_assert(config::phone_cell_expired(kCentury, kCentury + 300 * kSecond));
+  static_assert(!config::phone_cell_expired(kCentury, kCentury - kSecond));
+  fake_now_us = kSecond;
+  fake_platform::nvs = {};
+  assert(config::load(false));
+  accept("location.cell=8828308281fffff\nlocation.country=EG");
+  char json[480];
+  const auto page_has = [&json](const char *needle) {
+    assert(config::build_page(json, sizeof(json), 1));
+    return std::strstr(json, needle) != nullptr;
+  };
+  // Every reader agrees on one value.
+  const auto seen = [&](std::uint64_t cell) {
+    assert(config::location_settings().phone_cell == cell);
+    assert(config::sample_labels().location.phone_cell == cell);
+    assert(config::get().location.phone_cell == cell);
+    char text[opensensor::location::kCellTextBytes]{};
+    if (cell)
+      assert(opensensor::location::format_cell(cell, text, sizeof(text)));
+    const std::string needle = std::string("\"phone_cell\":\"") + text + "\"";
+    assert(page_has(needle.c_str()));
+  };
+  const auto at = [](std::int64_t start, std::int64_t offset) {
+    fake_now_us = start + offset;
+  };
+
+  // Kept at 299 s, dropped at 300 s, still dropped later.
+  std::int64_t start = fake_now_us;
+  accept("location.phone_cell=8828308281fffff");
+  const auto stored = cfg();
+  const auto writes = fake_platform::nvs.writes;
+  const auto commits = fake_platform::nvs.commits;
+  const auto mark = log_mark();
+  at(start, 299 * kSecond);
+  seen(kAt8);
+  at(start, 300 * kSecond - 1);
+  seen(kAt8);
+  at(start, 300 * kSecond);
+  seen(0);
+  at(start, 3600 * kSecond);
+  seen(0);
+  // Expiry wrote nothing to NVS and logged nothing.
+  assert(cfg() == stored && fake_platform::nvs.writes == writes &&
+         fake_platform::nvs.commits == commits);
+  assert(log_mark() == mark);
+  // It did not mark `cfg` for a write either. A phone cell only request after
+  // expiry still writes no record.
+  accept("location.phone_cell=88283082a3fffff");
+  assert(fake_platform::nvs.writes == writes &&
+         fake_platform::nvs.commits == commits);
+  seen(kOther);
+
+  // A new value restarts the age.
+  start = fake_now_us;
+  at(start, 200 * kSecond);
+  accept("location.phone_cell=8828308281fffff");
+  at(start, 499 * kSecond);
+  seen(kAt8);
+  at(start, 500 * kSecond);
+  seen(0);
+
+  // The same value again restarts the age too.
+  start = fake_now_us;
+  accept("location.phone_cell=8828308281fffff");
+  at(start, 250 * kSecond);
+  accept("location.phone_cell=8828308281fffff");
+  at(start, 300 * kSecond);
+  seen(kAt8);
+  at(start, 549 * kSecond);
+  seen(kAt8);
+  at(start, 550 * kSecond);
+  seen(0);
+
+  // The key inside a mixed request restarts it, a request without the key
+  // does not, and neither does a refused request that holds it.
+  start = fake_now_us;
+  accept("location.phone_cell=8828308281fffff");
+  at(start, 100 * kSecond);
+  accept("location.phone_cell=8828308281fffff\nlocation.country=US");
+  at(start, 399 * kSecond);
+  seen(kAt8);
+  start = fake_now_us;
+  accept("location.phone_cell=8828308281fffff");
+  at(start, 100 * kSecond);
+  accept("location.country=EG");
+  reject("location.phone_cell=8828308281fffff\nlocation.country=ZZ",
+         "location.country");
+  reject("location.phone_cell=85283473fffffff", "location.phone_cell");
+  at(start, 299 * kSecond);
+  seen(kAt8);
+  at(start, 300 * kSecond);
+  seen(0);
+
+  // Each reader checks the age itself. Only one reader runs after the
+  // deadline, so none passes because another dropped the cell first.
+  using Reader = std::uint64_t (*)();
+  constexpr std::array<Reader, 3> kReaders{
+      [] { return config::location_settings().phone_cell; },
+      [] { return config::sample_labels().location.phone_cell; },
+      [] { return config::get().location.phone_cell; },
+  };
+  for (const Reader read : kReaders) {
+    start = fake_now_us;
+    accept("location.phone_cell=8828308281fffff");
+    at(start, 300 * kSecond);
+    assert(read() == 0);
+  }
+  // GET_CONFIG page 1 on its own.
+  start = fake_now_us;
+  accept("location.phone_cell=8828308281fffff");
+  at(start, 300 * kSecond);
+  assert(page_has("\"phone_cell\":\"\""));
+
+  // An empty value still clears at once.
+  start = fake_now_us;
+  accept("location.phone_cell=8828308281fffff");
+  at(start, 10 * kSecond);
+  accept("location.phone_cell=");
+  seen(0);
+
+  // A request that read the cell before it expired and lands after keeps it
+  // expired. Readers drop it again, so it never comes back.
+  start = fake_now_us;
+  accept("location.phone_cell=8828308281fffff");
+  at(start, 300 * kSecond);
+  accept("location.country=US");
+  seen(0);
+
+  // On a moving Thing expiry reports no action, there is no request. Sending
+  // the cell again after expiry sets location_changed, as a first set does.
+  // Only these tests read the flag today. No other reader runs first, so
+  // SET_CONFIG checks the age itself.
+  config::Actions actions;
+  char bad_key[64];
+  accept("thing.mobility=moving\nlocation.phone_cell=8828308281fffff");
+  start = fake_now_us;
+  assert(apply("location.phone_cell=8828308281fffff", actions, bad_key));
+  assert(!actions.location_changed);
+  at(start, 300 * kSecond);
+  assert(apply("location.phone_cell=8828308281fffff", actions, bad_key));
+  assert(actions.location_changed);
+  seen(kAt8);
+  // A reboot still clears it, whatever its age.
+  assert(config::load(false));
+  seen(0);
+  fake_now_us = kSecond;
+}
+
 // #147. "Setup needed" is derived from the location settings, never stored.
 // Page 1 carries it as thing.setup and, on a board with a receiver, a fresh
 // res 8 GNSS cell as location.gnss_cell.
@@ -1413,6 +1580,8 @@ int main(int argc, char **argv) {
     setup_state();
   else if (test == "phone-cell")
     phone_cell();
+  else if (test == "phone-cell-age")
+    phone_cell_age();
   else if (test == "blob")
     blob_round_trip();
   else if (test == "old-keys")
