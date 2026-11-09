@@ -38,7 +38,7 @@ constexpr const char *kDictionaryVersion = "waveshare-sim7670g-telemetry-v8";
 constexpr const char *kFirmware = "idf-waveshare-parquet-v2.23";
 constexpr const char *kCreatedBy = "opensensor-space-firmware version 0.3";
 // Footer thing.board, the board slug of the template path. The free text name
-// is the template title (stac-opensensor 4408c4e).
+// is the template title (stac-opensensor 83787768).
 constexpr const char *kBoard = "waveshare-esp32-s3-sim7670g";
 // Raw telemetry_fields.inc at a pinned commit on main (#89), so the bytes at
 // the URI hash to kDictionarySha256. It is also the template describedby href.

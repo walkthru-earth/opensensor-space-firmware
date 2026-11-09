@@ -213,7 +213,7 @@ constexpr bool every_property_set(const Fields &fields) {
   return true;
 }
 
-// The one column with no UCUM code. stac-opensensor PROFILE (4408c4e) gives
+// The one column with no UCUM code. stac-opensensor PROFILE (83787768) gives
 // the native GEOMETRY column `geometry` role coordinate and no unit.
 constexpr bool unitless_geometry(const Column &row) {
   return row.name == "geometry" && row.role == Role::coordinate;

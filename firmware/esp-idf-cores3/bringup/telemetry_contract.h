@@ -59,7 +59,7 @@ constexpr const char *kConfiguration =
     "\"snapshot\":\"latest-available-not-average\"}";
 constexpr const char *kUnknown = "unknown";
 // Footer thing.board, the board slug of the template path. The free text name
-// is the template title (stac-opensensor 4408c4e).
+// is the template title (stac-opensensor 83787768).
 constexpr const char *kBoard = "m5stack-cores3";
 constexpr const char *kTimeSemantics =
     "event_time_utc_us estimates snapshot start; collection_completed_mono_us "

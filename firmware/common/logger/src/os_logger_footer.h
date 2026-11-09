@@ -17,10 +17,10 @@
 // The two Parquet key-value entries of every telemetry file.
 //
 // `opensensor` is compact UTF-8 JSON per stac-opensensor json-schema/
-// footer.json v0.1.0 at commit 4408c4e52366bb3d154d22bbfffc88ff09aed6f1,
+// footer.json v0.1.0 at commit 83787768cc8451109d48a03d4ef5493ffcd403dd,
 // pinned in tools/stac_opensensor/v0.1.0/footer.json. Members follow the
 // schema's property order, which matches its example
-// footers/cores3-telemetry-v5.json. It holds no location.
+// footers/m5stack-cores3.json. It holds no location.
 //
 // `geo` is GeoParquet 2.0.0 file metadata for the native GEOMETRY column
 // `geometry`, validated against the GeoParquet schema.json pinned in

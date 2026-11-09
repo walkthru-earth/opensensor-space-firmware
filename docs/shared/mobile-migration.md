@@ -9,6 +9,47 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## STAC File Item sidecar at finalize (fix/142-stac-file-item, issue #142)
+
+**Needs a matched reflash. No app change is required yet.** CoreS3 moves to
+`idf-cores3-parquet-v6.28` and Waveshare to `idf-waveshare-parquet-v2.22`.
+Columns, field ids, LIVE keys, decimals, Parquet bytes, both footer keys, the
+schema and dictionary strings and the `dict` and `desc` digests do not change.
+
+**What changed.**
+
+- Next to each finalized dated file the board writes its STAC File Item as
+  `<file>.json` in the same folder, for example
+  `thing=<uuid>/year=2026/month=11/day=09/data_1200_<boot>_<first>-<last>-<attempt>.json`.
+  It is the canonical File Item of stac-opensensor commit
+  `83787768cc8451109d48a03d4ef5493ffcd403dd`, with a relative data href
+  `./<file>.parquet`, `file:size`, a SHA-256 `file:checksum`, the H3 geometry
+  and the column statistics.
+- No sidecar is written for an `unsynced` file, a file with no located row, a
+  file with a row that has no UTC, a cell that is not resolution 8, a fixed
+  Thing file with more than one cell or a board with no Thing id. Each of
+  these prints one skipped line.
+- New serial lines.
+  `PARQUET STAC sidecar=true columns=<n> psram_bytes=<n>` at boot.
+  `PARQUET STAC result=written file=<path> bytes=<n> rows=<n> polygons=<n> write_us=<n>`
+  after each `PARQUET READY` of a dated file.
+  `PARQUET STAC result=skipped file=<path> reason=<r>` and
+  `PARQUET STAC result=failed file=<path> reason=<r> errno=<n>` otherwise.
+  `PARQUET ERROR operation=allocate mem=psram bytes=<n> purpose=stac-item sidecar=false`
+  and `PARQUET ERROR operation=stac-config reason=<r> sidecar=false` when the
+  sidecar cannot start. Logging goes on in every case.
+- `storage_errors` and STATUS `err` also count sidecar open, write, sync,
+  close, rename and unlink failures.
+- A reset during the sidecar write can leave `<file>.json.partial`. At boot it
+  goes to `quarantine/` like a Parquet partial, or stays in place as a
+  crosslink suspect when its `.json` exists.
+
+**What the app must do.** Nothing yet. LIST, LIST_SINCE and the archive
+transfer still list only `.parquet` files, so the phone does not see the
+sidecar. Listing and syncing it is #143. Expect the new log lines in
+captured serial logs and do not treat a `PARQUET STAC result=skipped` line as
+an error.
+
 ## Firmware dependency refresh (deps/firmware-latest)
 
 **Needs a matched reflash. The app needs no code change unless it pins

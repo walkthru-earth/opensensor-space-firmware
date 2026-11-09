@@ -48,6 +48,13 @@ initialization and each board's schema/provenance remain in its own trial.
   The bench only `parquet bench-stall` command stays inside
   `#if CONFIG_OS_LOGGER_BENCH_STALL` (default n), set only by
   `tools/idf-bench-stall-sdkconfig.defaults` through `OS_BENCH=stall`.
+- The STAC sidecar (#142) is opt in through `Config::stac_columns`. The worker
+  writes `<file>.json` only after the Parquet rename, through
+  `<file>.json.partial`, fsync and rename, and never replaces an existing one.
+  A sidecar failure logs one `PARQUET STAC result=failed` line, removes its own
+  partial and never touches, blocks or deletes the Parquet file. Its state and
+  the H3 tracing stay in PSRAM. The SHA-256 comes from the finalize CRC read,
+  never a second read. See the README section STAC File Item sidecar.
 - Battery power policy stays pure in `os_logger_power.h`,
   `os_logger_emergency_close.h` and `firmware/common/power`.
   `report_battery()` runs on the main loop and only logs, calls the optional
