@@ -543,6 +543,77 @@ void test_stall() {
   CHECK(
       transfer.handle(begin_request(4096, digest_a()), kOwner + 1).has_value());
 }
+// The drop_stale() and handle() glue in ota_lan.cpp, decided by stale_action()
+// and touch_seen().
+void test_stale_owner() {
+  constexpr std::uint8_t kPeer = 2;
+  constexpr std::uint32_t kGen = 9;
+  constexpr ota::Owner owner = ota::lan_owner(kPeer, kGen);
+  static_assert(owner == ((ota::Owner{kPeer} << 32) | kGen));
+  static_assert(ota::owner_peer(owner) == kPeer);
+  static_assert(ota::owner_peer(ota::lan_owner(255, 0xFFFFFFFF)) == 255);
+  constexpr ota::Progress receiving{.phase = ota::Phase::Receiving};
+  constexpr std::int64_t seen = 5'000'000;
+  constexpr std::int64_t stall_us = ota::kStallMs * 1000;
+
+  // Open session, recent request, keeps the upload.
+  CHECK(ota::stale_action(receiving, owner, kGen, seen, seen) ==
+        ota::Keep::Keep);
+  CHECK(ota::stale_action(receiving, owner, kGen, seen + stall_us - 1, seen) ==
+        ota::Keep::Keep);
+  // Idle time is now minus the owner's last request, not now alone.
+  CHECK(ota::stale_action(receiving, owner, kGen, seen + stall_us, seen) ==
+        ota::Keep::Stalled);
+  CHECK(ota::stale_action(receiving, owner, kGen, stall_us + 1, 0) ==
+        ota::Keep::Stalled);
+  // A new generation on the slot means the owner's session closed, even when
+  // the owner was seen a moment ago.
+  CHECK(ota::stale_action(receiving, owner, kGen + 1, seen, seen) ==
+        ota::Keep::SessionClosed);
+  CHECK(ota::stale_action(receiving, owner, kPeer, seen, seen) ==
+        ota::Keep::SessionClosed);
+  CHECK(ota::stale_action(receiving, owner, std::nullopt, seen, seen) ==
+        ota::Keep::SessionClosed);
+  // Idle and a staged image are never dropped as stale.
+  for (const auto phase : {ota::Phase::Idle, ota::Phase::Ready}) {
+    const ota::Progress still{.phase = phase};
+    CHECK(ota::stale_action(still, owner, std::nullopt, seen + stall_us, 0) ==
+          ota::Keep::Keep);
+  }
+
+  // Only the requester that owns a Receiving upload moves the seen time.
+  constexpr ota::Owner other = ota::lan_owner(kPeer + 1, kGen);
+  CHECK(ota::touch_seen(receiving, owner, owner, seen + 7, seen) == seen + 7);
+  CHECK(ota::touch_seen(receiving, owner, other, seen + 7, seen) == seen);
+  CHECK(ota::touch_seen({.phase = ota::Phase::Idle}, owner, owner, seen + 7,
+                        seen) == seen);
+  CHECK(ota::touch_seen({.phase = ota::Phase::Ready}, owner, owner, seen + 7,
+                        seen) == seen);
+
+  // Through a Transfer, as handle() runs it. BEGIN takes the upload and
+  // touches. A busy second session does not touch, so the owner still stalls
+  // on time. Each owner request pushes the stall out again.
+  FakeFlash flash;
+  ota::Transfer transfer(target(), sink_for(flash));
+  std::int64_t seen_us = 0;
+  std::int64_t now_us = 1'000'000;
+  CHECK(transfer.handle(begin_request(4096, digest_a()), owner).has_value());
+  seen_us = ota::touch_seen(transfer.progress(), transfer.owner(), owner,
+                            now_us, seen_us);
+  CHECK(seen_us == now_us);
+  now_us += stall_us - 1;
+  CHECK(!transfer.handle(begin_request(4096, digest_a()), other).has_value());
+  seen_us = ota::touch_seen(transfer.progress(), transfer.owner(), other,
+                            now_us, seen_us);
+  CHECK(seen_us == 1'000'000);
+  CHECK(ota::stale_action(transfer.progress(), transfer.owner(), kGen,
+                          now_us + 1, seen_us) == ota::Keep::Stalled);
+  CHECK(transfer.handle(begin_request(4096, digest_a()), owner).has_value());
+  seen_us = ota::touch_seen(transfer.progress(), transfer.owner(), owner,
+                            now_us, seen_us);
+  CHECK(ota::stale_action(transfer.progress(), transfer.owner(), kGen,
+                          now_us + 1, seen_us) == ota::Keep::Keep);
+}
 } // namespace
 
 int main() {
@@ -555,6 +626,7 @@ int main() {
   test_wire();
   test_routing();
   test_stall();
+  test_stale_owner();
   if (failures) {
     std::fprintf(stderr, "%d OTA transfer check(s) failed\n", failures);
     return EXIT_FAILURE;

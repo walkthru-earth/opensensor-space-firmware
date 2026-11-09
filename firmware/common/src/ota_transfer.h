@@ -30,6 +30,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <optional>
 #include <span>
 
 namespace opensensor::ota {
@@ -173,6 +174,43 @@ struct Sink {
 // The upload owner. Any value that changes when the LAN session changes, for
 // example the peer slot in the high bits and its connection generation below.
 using Owner = std::uint64_t;
+
+// The LAN owner layout ota_lan.cpp uses, peer slot in the high 32 bits and
+// the session's connection generation in the low 32.
+[[nodiscard]] constexpr Owner lan_owner(std::uint8_t peer,
+                                        std::uint32_t generation) {
+  return (Owner{peer} << 32) | generation;
+}
+[[nodiscard]] constexpr std::uint8_t owner_peer(Owner owner) {
+  return static_cast<std::uint8_t>(owner >> 32);
+}
+
+// Whether the Receiving upload of a lan_owner() keeps going, checked before
+// each OTA request. `generation` is the owner peer slot's connection
+// generation now, or nullopt when the slot is out of range. The session is
+// open only while it still equals the owner's. `seen_us` is the time of the
+// owner's last OTA request, from touch_seen(). Any other phase keeps.
+[[nodiscard]] constexpr Keep
+stale_action(const Progress &progress, Owner owner,
+             std::optional<std::uint32_t> generation, std::int64_t now_us,
+             std::int64_t seen_us) {
+  if (progress.phase != Phase::Receiving)
+    return Keep::Keep;
+  const bool open = generation.has_value() &&
+                    *generation == static_cast<std::uint32_t>(owner);
+  return keep_owner(open, (now_us - seen_us) / 1000);
+}
+
+// The owner's last seen time after `requester` sent an OTA request at
+// `now_us`. It moves only when the requester owns a Receiving upload after
+// the request, so a refused session never refreshes another owner's upload.
+[[nodiscard]] constexpr std::int64_t
+touch_seen(const Progress &after, Owner current_owner, Owner requester,
+           std::int64_t now_us, std::int64_t seen_us) {
+  return after.phase == Phase::Receiving && current_owner == requester
+             ? now_us
+             : seen_us;
+}
 
 class Transfer {
 public:

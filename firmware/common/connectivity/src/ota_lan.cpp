@@ -151,7 +151,7 @@ rules::Transfer &transfer() {
 }
 
 rules::Owner owner_of(const ble::ControlRequest &request) {
-  return (rules::Owner{request.peer} << 32) | request.link_generation;
+  return rules::lan_owner(request.peer, request.link_generation);
 }
 
 // esp_timer time of the Receiving owner's last OTA request.
@@ -160,14 +160,17 @@ std::int64_t owner_seen_us = 0;
 // A LAN session that went away or stalled mid upload frees the slot for the
 // next one.
 void drop_stale(rules::Transfer &upload, std::int64_t now_us) {
-  if (upload.progress().phase != rules::Phase::Receiving)
+  const auto progress = upload.progress();
+  if (progress.phase != rules::Phase::Receiving)
     return;
   const auto owner = upload.owner();
-  const auto peer = static_cast<std::uint8_t>(owner >> 32);
-  const bool open =
-      peer < ble::kMaxLanClients &&
-      lan::connection_generation(peer) == static_cast<std::uint32_t>(owner);
-  const auto keep = rules::keep_owner(open, (now_us - owner_seen_us) / 1000);
+  const auto peer = rules::owner_peer(owner);
+  const std::optional<std::uint32_t> generation =
+      peer < ble::kMaxLanClients
+          ? std::optional<std::uint32_t>(lan::connection_generation(peer))
+          : std::nullopt;
+  const auto keep =
+      rules::stale_action(progress, owner, generation, now_us, owner_seen_us);
   if (keep == rules::Keep::Keep || !upload.drop_owner(owner))
     return;
   oslog.printf("OTA ABORT reason=%s\n",
@@ -195,9 +198,8 @@ bool handle(const ble::ControlRequest &request, const ControlReplies &replies) {
   const auto before = upload.progress();
   const auto owner = owner_of(request);
   const auto result = upload.handle({request.bytes, request.length}, owner);
-  if (upload.progress().phase == rules::Phase::Receiving &&
-      upload.owner() == owner)
-    owner_seen_us = now_us;
+  owner_seen_us = rules::touch_seen(upload.progress(), upload.owner(), owner,
+                                    now_us, owner_seen_us);
   if (!result) {
     const auto wire = rules::wire_error(result.error());
     replies.error(replies.context, request.link, op,
