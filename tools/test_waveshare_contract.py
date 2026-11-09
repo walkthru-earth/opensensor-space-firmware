@@ -133,10 +133,11 @@ def check_file(path: Path, dictionary: dict, anchored: bool, compressed: bool, l
         require(row["event_time_utc_us"] ==
                 (1788890000000000 + (now - 15000000) if anchored else None), "UTC estimate")
     with duckdb.connect() as connection:
-        other = connection.execute(
+        other = connection.sql(
             "SELECT * REPLACE (epoch_us(event_time_utc_us) AS event_time_utc_us, "
             "epoch_us(clock_anchor_utc_us) AS clock_anchor_utc_us) "
-            "FROM read_parquet(?, hive_partitioning=false)", [str(path)]).to_arrow_table()
+            "FROM read_parquet(?, hive_partitioning=false)",
+            params=[str(path)]).to_arrow_table()
     # check_location compares geometry, which DuckDB presents as GEOMETRY.
     table = table.drop_columns([footer_contract.GEOMETRY])
     other = other.drop_columns([footer_contract.GEOMETRY])
