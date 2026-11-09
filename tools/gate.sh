@@ -82,6 +82,7 @@ tasks=(
   "network-time-test"
   "location-test"
   "h3-polygon-test"
+  "stac-item-test"
   "gnss-test"
   # Logger lifecycle, storage and persistence
   "debug-log-test"
