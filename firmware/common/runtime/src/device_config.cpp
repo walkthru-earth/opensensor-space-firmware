@@ -8,6 +8,7 @@
 #include <arpa/inet.h>
 #endif
 #include <esp_random.h>
+#include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
 #include <nvs.h>
 
@@ -25,6 +26,10 @@ constexpr std::uint32_t kPublishedResolution =
     opensensor::location::kPublishedResolution;
 portMUX_TYPE settings_mutex = portMUX_INITIALIZER_UNLOCKED;
 Settings current;
+// esp_timer_get_time() of the last accepted SET_CONFIG that carried
+// location.phone_cell (#140). Guarded by settings_mutex together with
+// `current`, never stored.
+std::int64_t phone_cell_set_us = 0;
 Settings booted; // pair/pin the running BLE stack was started with
 bool persistent = false;
 // A record whose save failed and whose write back of the previous value failed
@@ -513,6 +518,16 @@ void publish(const Settings &settings) {
   portEXIT_CRITICAL(&settings_mutex);
 }
 
+// Caller holds settings_mutex. Every reader of `current` calls it before it
+// copies, so rows, GET_CONFIG pages and the next SET_CONFIG see one answer.
+// Expiry clears the RAM value as an empty SET_CONFIG value would. It writes no
+// NVS, marks no record touched or unsure and logs nothing (#140).
+void expire_phone_cell_locked(std::int64_t now_us) {
+  if (current.location.phone_cell &&
+      phone_cell_expired(phone_cell_set_us, now_us))
+    current.location.phone_cell = 0;
+}
+
 bool parse_bool(const char *value, bool &out) {
   if (std::strcmp(value, "0") == 0 || std::strcmp(value, "false") == 0) {
     out = false;
@@ -808,11 +823,17 @@ void publish_owner(const OwnerSettings &owner) {
 }
 
 // Settings and owner change together, so a sample never sees one half of a
-// request.
-void publish_with_owner(const Settings &settings, const OwnerSettings &owner) {
+// request. A request that carried location.phone_cell restarts its age in the
+// same critical section (#140). One that did not may carry back a cell that
+// expired after the request read it, and the next reader drops it again.
+void publish_with_owner(const Settings &settings, const OwnerSettings &owner,
+                        bool phone_cell_sent) {
+  const std::int64_t now_us = esp_timer_get_time();
   portENTER_CRITICAL(&settings_mutex);
   current = settings;
   owner_current = owner;
+  if (phone_cell_sent)
+    phone_cell_set_us = now_us;
   portEXIT_CRITICAL(&settings_mutex);
 }
 
@@ -940,7 +961,9 @@ DeploymentId deployment_id() {
 
 SampleLabels sample_labels() {
   SampleLabels copy;
+  const std::int64_t now_us = esp_timer_get_time();
   portENTER_CRITICAL(&settings_mutex);
+  expire_phone_cell_locked(now_us);
   copy.location = current.location;
   copy.deployment = owner_current.deployment;
   portEXIT_CRITICAL(&settings_mutex);
@@ -1028,7 +1051,9 @@ bool load(bool display_detected) {
 
 Settings get() {
   Settings copy;
+  const std::int64_t now_us = esp_timer_get_time();
   portENTER_CRITICAL(&settings_mutex);
+  expire_phone_cell_locked(now_us);
   copy = current;
   portEXIT_CRITICAL(&settings_mutex);
   return copy;
@@ -1036,7 +1061,9 @@ Settings get() {
 
 LocationSettings location_settings() {
   LocationSettings copy;
+  const std::int64_t now_us = esp_timer_get_time();
   portENTER_CRITICAL(&settings_mutex);
+  expire_phone_cell_locked(now_us);
   copy = current.location;
   portEXIT_CRITICAL(&settings_mutex);
   return copy;
@@ -1054,6 +1081,9 @@ bool apply_lines(const char *text, std::size_t length, char *bad_key,
   const OwnerSettings previous_owner = owner_settings();
   OwnerSettings next_owner = previous_owner;
   bool settings_touched = false;
+  // The request carried location.phone_cell, so an accepted request restarts
+  // its age even when the value is unchanged (#140).
+  bool phone_cell_sent = false;
   Actions pending;
   bad_key[0] = '\0';
   std::size_t position = 0;
@@ -1108,8 +1138,10 @@ bool apply_lines(const char *text, std::size_t length, char *bad_key,
     // RAM only (#140). The `cfg` record has no field for it, so it is never
     // stored and a reboot clears it. It never marks `cfg` touched. A request
     // that holds only this key still rewrites a record an earlier failed save
-    // left unsure, without the phone cell.
+    // left unsure, without the phone cell. Each accepted request with the key
+    // restarts kPhoneCellMaxAgeUs.
     if (std::strcmp(key, "location.phone_cell") == 0) {
+      phone_cell_sent = true;
       next.location.phone_cell = 0;
       if (*value &&
           !opensensor::location::parse_cell(value, next.location.phone_cell))
@@ -1287,6 +1319,8 @@ bool apply_lines(const char *text, std::size_t length, char *bad_key,
   }
   pending.ntp_changed = !same_ntp(previous.ntp, next.ntp);
   // A phone cell change alters moving rows, though it never splits the file.
+  // `previous` came through get(), so a cell that reached its age limit reads
+  // as unset and sending it again counts as a change.
   pending.location_changed =
       !same_location(previous.location, next.location) ||
       (next.location.mobility == Mobility::Moving &&
@@ -1298,7 +1332,7 @@ bool apply_lines(const char *text, std::size_t length, char *bad_key,
     std::snprintf(bad_key, bad_key_size, "nvs");
     return false;
   }
-  publish_with_owner(next, next_owner);
+  publish_with_owner(next, next_owner, phone_cell_sent);
   actions = pending;
   oslog.printf(
       "CONFIG SET pair=%s pin_default=%s wifi_on=%s ssid_set=%s "
