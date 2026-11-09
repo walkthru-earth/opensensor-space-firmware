@@ -190,11 +190,12 @@ def read_kv(path: Path) -> dict[str, str]:
     return kv_dict([(entry[1].decode(), entry.get(2, b"").decode()) for entry in entries])
 
 
-# The configured cell the board contract fixtures write when located.
-FIXTURE_CELL = 0x85283473fffffff
-FIXTURE_RESOLUTION = 5
-FIXTURE_LON_E7 = -1219763760
-FIXTURE_LAT_E7 = 373457934
+# The configured cell the board contract fixtures write when located. Every
+# published cell is H3 res 8 (#139).
+FIXTURE_CELL = 0x8828308281fffff
+FIXTURE_RESOLUTION = 8
+FIXTURE_LON_E7 = -1224182710
+FIXTURE_LAT_E7 = 377735151
 CONFIGURED = 1  # telemetry::LocationSource::Configured
 
 

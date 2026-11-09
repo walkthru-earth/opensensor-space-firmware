@@ -54,7 +54,11 @@ def main() -> None:
         if args.sanitize:
             command += ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
         location = root / "firmware/common/location/src"
+        gnss = root / "firmware/common/gnss/src"
         command += ["-I", str(Path(directory) / "h3"), "-I", str(location), str(location / "os_location.cpp"),
+                    "-I", str(gnss), str(gnss / "os_gnss.cpp"),
+                    "-I", str(root / "firmware/common/logger/src"),
+                    "-I", str(root / "firmware/common/src"),
                     *compile_h3(root, Path(directory), args.sanitize)]
         subprocess.run(command, check=True)
         for scenario in ("headless", "screen", "migration", "validation",

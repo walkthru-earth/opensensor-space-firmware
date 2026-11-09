@@ -74,9 +74,10 @@ int main() {
   Cell fine = 0, coarse = 0, raised = 0, lower = 0;
   assert(from_degrees(37.775938728915946, -122.41795063018799, 9, fine));
   assert(fine == 0x8928308280fffffULL); // official quick-start SF fixture
-  // Res 8 by default (#83), about 0.74 km2 per cell.
-  static_assert(kDefaultResolution == 8);
-  assert(coarsen(fine, kDefaultResolution, coarse) && resolution(coarse) == 8);
+  // Res 8 is the only published resolution (#83, #139), about 0.74 km2.
+  static_assert(kPublishedResolution == 8);
+  assert(coarsen(fine, kPublishedResolution, coarse) &&
+         resolution(coarse) == 8);
   assert(coarsen(fine, 5, coarse));
   assert(coarse == 0x85283083fffffffULL);
   assert(coarsen(coarse, 15, raised) && raised == coarse);
@@ -106,6 +107,26 @@ int main() {
     assert(!from_degrees(0, invalid, 5, cell));
   assert(!from_degrees(0, 0, -1, cell));
   assert(!from_degrees(0, 0, 16, cell));
+  // published_cell() is the one gate to a published cell (#139). Finer cells
+  // become their res 8 parent, res 8 is kept, coarser and invalid are refused.
+  constexpr Cell kAt8 = 0x8828308281fffffULL;
+  Cell finest = 0;
+  assert(from_degrees(37.775938728915946, -122.41795063018799, 15, finest));
+  for (int finer = 8; finer <= 15; ++finer) {
+    Cell input = 0;
+    assert(coarsen(finest, finer, input) && resolution(input) == finer);
+    const auto published = published_cell(input);
+    assert(published && *published == kAt8 && resolution(*published) == 8);
+  }
+  for (int coarser = 0; coarser < 8; ++coarser) {
+    assert(coarsen(fine, coarser, parent));
+    const auto refused = published_cell(parent);
+    assert(!refused && refused.error() == PublishError::TooCoarse);
+  }
+  for (const Cell bad : {Cell{0}, Cell{1}, Cell{0xffffffffffffffffULL}}) {
+    const auto refused = published_cell(bad);
+    assert(!refused && refused.error() == PublishError::Invalid);
+  }
   for (const char *code : {"EG", "US", "TW", "BQ", "SS", "GB", "AQ"})
     assert(valid_country(code));
   for (const char *code : {"", "A", "ZZ", "AA", "XK", "UK", "QM", "us", "USA"})
@@ -113,26 +134,29 @@ int main() {
   assert(!valid_country(nullptr));
   // Exercise the exact production envelope and mapping helper. A queued
   // snapshot owns its settings; later owner changes cannot rewrite its values.
-  config::LocationSettings current{.cell = 0x85283473fffffffULL,
-                                   .resolution = 5,
+  config::LocationSettings current{.cell = kAt8,
+                                   .resolution = 8,
                                    .country = "US",
                                    .mobility = config::Mobility::Fixed};
   oslogger::LocationSample<opensensor::NumericSample<4>> captured{};
   captured.location = current;
   assert(oslogger::apply_location(captured, captured.location, {0, 1, 2, 3}));
   current.cell = 0;
-  current.resolution = 0;
   std::strcpy(current.country, "EG");
-  assert(captured.location.cell == 0x85283473fffffffULL);
-  assert(captured.data[0] == 0x85283473fffffffULL && captured.data[1] == 5);
+  assert(captured.location.cell == kAt8);
+  assert(captured.data[0] == static_cast<std::int64_t>(kAt8) &&
+         captured.data[1] == 8);
   // location_source 1, configured, and the cell centre as a packed point.
   assert(captured.data[2] == 1 && captured.valid[2] && captured.valid[3]);
-  assert(captured.data[3] == telemetry::pack_point_e7(-1219763760, 373457934));
-  // Reducing privacy precision must reject a non-coarsened fine snapshot.
-  captured.location.resolution = 4;
-  assert(!oslogger::apply_location(captured, captured.location, {0, 1, 2, 3}));
-  for (const auto present : captured.valid)
-    assert(!present);
+  assert(captured.data[3] == telemetry::pack_point_e7(-1224182710, 377735151));
+  // A snapshot cell that is not res 8 is never published, finer or coarser.
+  for (const Cell other : {fine, coarse}) {
+    captured.location.cell = other;
+    assert(
+        !oslogger::apply_location(captured, captured.location, {0, 1, 2, 3}));
+    for (const auto present : captured.valid)
+      assert(!present);
+  }
   captured.location = {};
   assert(!oslogger::apply_location(captured, captured.location, {0, 1, 2, 3}));
   for (const auto present : captured.valid)

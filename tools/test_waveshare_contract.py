@@ -210,7 +210,7 @@ def main() -> None:
         require(not names.intersection({"particles_gt50_per_01l", "particles_gt100_per_01l",
                                         "imu_temperature_c", "accel_x_g", "rtc_read_ok", "touch_points"}),
                 "no invented PMS5003T bins or CoreS3 peripherals")
-        require(dictionary["firmware"] == "idf-waveshare-parquet-v2.20", "firmware identity")
+        require(dictionary["firmware"] == "idf-waveshare-parquet-v2.21", "firmware identity")
         footer_contract.check_board(executable, firmware, dictionary, "waveshare-esp32-s3-sim7670g")
         live = subprocess.check_output([str(executable), "live"], text=True).strip()
         live_key_fixture.assert_rejects_drift("waveshare", dictionary["sha256"], dictionary["firmware"], live)

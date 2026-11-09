@@ -132,7 +132,7 @@ struct Hooks {
   // UART. Called on the main loop once per row, and on the storage worker for
   // GET_CONFIG page 1 location.gnss_cell (#147), so it must be safe from any
   // task, as opensensor::gnss::latest() is. A moving Thing uses a fix no older
-  // than opensensor::gnss::kFixMaxAgeUs, coarsened to the row's cap, as
+  // than opensensor::gnss::kFixMaxAgeUs, at H3 res 8 (#139), as
   // location_source 2, and writes location nulls otherwise. A fixed Thing
   // ignores it for rows. nullptr means the board has no receiver, and page 1
   // then omits location.gnss_cell.

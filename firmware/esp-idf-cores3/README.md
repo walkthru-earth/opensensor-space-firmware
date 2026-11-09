@@ -1,7 +1,7 @@
 # CoreS3 native ESP-IDF logger
 
 The current source is a pure **ESP-IDF 6.1** application, firmware identity
-**`idf-cores3-parquet-v6.26`**, with an **81-column** CoreS3 schema
+**`idf-cores3-parquet-v6.27`**, with an **81-column** CoreS3 schema
 `cores3-telemetry-v6` and dictionary `cores3-telemetry-v7`. The original 77
 columns retain their order and types. Four nullable location fields follow,
 `h3_cell_id`, `h3_resolution`, `location_source` and the WKB Point `geometry`.
@@ -104,11 +104,11 @@ largest-block and minimum-free values. These bounds follow the SDK's
 [PSRAM Wi-Fi guidance](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32s3/api-guides/wifi-driver/wifi-performance-and-power-save.html#using-psram);
 actual peak memory, radio coexistence and transfer rates require board evidence.
 
-Location starts unset. Owner provisioning supplies a cell, configurable maximum
-resolution (default **8**) and optional declared ISO country code. Only the
-coarsened cell is persisted. Its centre supplies the `geometry` WKB Point,
-alongside `h3_cell_id`, actual `h3_resolution` and `location_source`. Country
-and precision provenance are file metadata. Each queued sample owns its location
+Location starts unset. Owner provisioning supplies a cell and optional
+declared ISO country code. The resolution is fixed at **8** (#139), and only the
+resolution 8 parent of the cell is persisted. Its centre supplies the
+`geometry` WKB Point, alongside `h3_cell_id`, `h3_resolution` (always 8) and
+`location_source`. Each queued sample owns its location
 snapshot, and location/country changes finalize the old file before writing
 new-location rows. Existing files retain their original schema and metadata.
 See [time and location policy](../../docs/shared/time-and-location.md).

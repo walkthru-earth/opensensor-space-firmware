@@ -54,6 +54,17 @@ bool coarsen(Cell input, int maximum_resolution, Cell &published) {
   return true;
 }
 
+std::expected<Cell, PublishError> published_cell(Cell input) {
+  if (!valid_cell(input))
+    return std::unexpected(PublishError::Invalid);
+  if (getResolution(input) < kPublishedResolution)
+    return std::unexpected(PublishError::TooCoarse);
+  Cell parent = 0;
+  if (!coarsen(input, kPublishedResolution, parent))
+    return std::unexpected(PublishError::Invalid);
+  return parent;
+}
+
 bool center_degrees(Cell cell, double &latitude, double &longitude) {
   if (!valid_cell(cell))
     return false;

@@ -189,11 +189,11 @@ const Dialect &simcom_dialect() {
   return dialect;
 }
 
-std::expected<Fix, ParseError> to_fix(const Reading &reading, int resolution,
+std::expected<Fix, ParseError> to_fix(const Reading &reading,
                                       std::int64_t fix_mono_us) {
   location::Cell cell = 0;
-  if (!location::from_degrees(reading.latitude, reading.longitude, resolution,
-                              cell))
+  if (!location::from_degrees(reading.latitude, reading.longitude,
+                              location::kPublishedResolution, cell))
     return std::unexpected(ParseError::OutOfRange);
   return Fix{.cell = cell,
              .resolution =
@@ -211,34 +211,32 @@ bool fresh(const Fix &fix, std::int64_t now_us) {
 }
 
 std::expected<location::Cell, ReadbackError>
-readback_cell(const Fix &fix, std::int64_t now_us, int maximum_resolution) {
+readback_cell(const Fix &fix, std::int64_t now_us) {
   if (fix.cell == 0)
     return std::unexpected(ReadbackError::NoFix);
   if (!fresh(fix, now_us))
     return std::unexpected(ReadbackError::Stale);
-  if (maximum_resolution < kReadbackResolution)
-    return std::unexpected(ReadbackError::TooCoarse);
-  location::Cell cell = 0;
-  if (!location::coarsen(fix.cell, kReadbackResolution, cell))
-    return std::unexpected(ReadbackError::Invalid);
-  if (location::resolution(cell) != kReadbackResolution)
-    return std::unexpected(ReadbackError::TooCoarse);
-  return cell;
+  const auto cell = location::published_cell(fix.cell);
+  if (cell)
+    return *cell;
+  return std::unexpected(cell.error() == location::PublishError::TooCoarse
+                             ? ReadbackError::TooCoarse
+                             : ReadbackError::Invalid);
 }
 
 Selection select_location(const config::LocationSettings &row,
                           const std::optional<Fix> &fix, std::int64_t now_us) {
-  location::Cell published = 0;
   if (row.mobility == config::Mobility::Fixed) {
-    if (location::coarsen(row.cell, row.resolution, published) &&
-        published == row.cell)
-      return {.cell = published,
+    const auto published = location::published_cell(row.cell);
+    if (published && *published == row.cell)
+      return {.cell = *published,
               .source = telemetry::LocationSource::Configured};
     return {};
   }
-  if (fix && fresh(*fix, now_us) &&
-      location::coarsen(fix->cell, row.resolution, published))
-    return {.cell = published, .source = telemetry::LocationSource::Gnss};
+  if (!fix || !fresh(*fix, now_us))
+    return {};
+  if (const auto published = location::published_cell(fix->cell))
+    return {.cell = *published, .source = telemetry::LocationSource::Gnss};
   return {};
 }
 } // namespace opensensor::gnss

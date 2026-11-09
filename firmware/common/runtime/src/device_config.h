@@ -41,7 +41,7 @@ struct NtpSettings {
 enum class Mobility : std::uint8_t { Fixed = 0, Moving = 1 };
 struct LocationSettings {
   std::uint64_t cell = 0; // Only the published cell is retained, zero = unset.
-  std::uint8_t resolution = 8; // Maximum permitted precision, not an upsample.
+  std::uint8_t resolution = 8; // Always 8, the published H3 resolution (#139).
   char country[3]{};           // Optional owner-declared ISO 3166-1 alpha-2.
   Mobility mobility = Mobility::Fixed;
 };

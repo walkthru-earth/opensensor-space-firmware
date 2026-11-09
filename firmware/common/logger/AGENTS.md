@@ -88,8 +88,9 @@ initialization and each board's schema/provenance remain in its own trial.
   header. See `firmware/common/sensors/AGENTS.md`.
 - Board metadata must describe its hardware honestly. PMS5003T has four particle
   bins and ambient temperature/humidity; do not synthesize CoreS3-only bins.
-- Copy the coarsened location settings at acquisition into the queued sample.
-  Split batches/files when cell, maximum resolution or declared country changes.
+- Copy the location settings at acquisition into the queued sample. Every
+  published cell is H3 res 8 (#139), `published_cell()` decides it.
+  Split batches/files when cell or declared country changes.
   File metadata comes from the file's first sample, never current settings at
   finalization. Preserve nullable location fields before explicit provisioning;
   raw GPS and a discarded finer H3 cell must never enter storage or logs.

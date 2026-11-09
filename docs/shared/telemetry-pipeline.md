@@ -83,7 +83,7 @@ Thing release (#83, CoreS3 schema `cores3-telemetry-v6`, Waveshare schema
 | Field | Physical type | Meaning |
 | --- | --- | --- |
 | `h3_cell_id` | INT64 | Official H3 published cell ID, safely within signed range, hex in config |
-| `h3_resolution` | INT32 | Actual published cell resolution, potentially coarser than the configured maximum |
+| `h3_resolution` | INT32 | Resolution of the published cell, 8 in every located row (#139) |
 | `location_source` | INT32 with `INTEGER(8,false)` (UINT8) | Where the row location came from. 0 none, 1 configured, 2 gnss, 3 phone. Classes live in `telemetry_classes.inc` |
 | `geometry` | BYTE_ARRAY with the Parquet `GEOMETRY` logical type, no crs (OGC:CRS84) | 2D WKB Point, little endian, 21 bytes, at the H3 cell centre |
 

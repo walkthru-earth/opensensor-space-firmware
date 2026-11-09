@@ -1,7 +1,7 @@
 # Waveshare V2 native ESP-IDF / PMS5003T logger
 
 The current source is pure **ESP-IDF 6.1**, firmware identity
-**`idf-waveshare-parquet-v2.20`**, with **62-column** schema
+**`idf-waveshare-parquet-v2.21`**, with **62-column** schema
 `waveshare-sim7670g-telemetry-v6` and dictionary `waveshare-sim7670g-telemetry-v8`.
 The original 52 columns retain their order and types, with four nullable
 location fields (`h3_cell_id`, `h3_resolution`, `location_source` and the WKB
@@ -106,12 +106,12 @@ static RX and eight static TX DMA buffers**, **32 software RX buffers** and
 use the pinned SDK's [SD buffer API](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32s3/api-reference/storage/sdmmc.html#unaligned-buffer-performance);
 native Waveshare throughput/coexistence remains unqualified.
 
-Location starts unset. Owner provisioning supplies a cell, configurable maximum
-resolution (default **8**) and optional declared ISO country code. Only the
-coarsened cell is persisted. Its centre supplies the `geometry` WKB Point,
-alongside `h3_cell_id`, actual `h3_resolution` and `location_source`. Country
-and precision provenance are file metadata. Each queued sample owns its location
-snapshot; cell, maximum resolution and country changes split RAM batches and
+Location starts unset. Owner provisioning supplies a cell and optional
+declared ISO country code. The resolution is fixed at **8** (#139), and only the
+resolution 8 parent of the cell is persisted. Its centre supplies the
+`geometry` WKB Point, alongside `h3_cell_id`, `h3_resolution` (always 8) and
+`location_source`. Each queued sample owns its location
+snapshot, and cell or country changes split RAM batches and
 files, preserving older file metadata. See
 [time and location policy](../../docs/shared/time-and-location.md).
 

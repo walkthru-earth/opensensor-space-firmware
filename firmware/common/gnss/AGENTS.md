@@ -11,8 +11,7 @@ The logger depends on `gnss` only. A board that has a receiver adds
   checks this.
 - A raw latitude or longitude lives only on the stack between `parse_fix()`
   and `to_fix()`. Never log, persist, queue or send a `Reading`. Only the H3
-  cell at most at the owner resolution, its resolution and the fix monotonic
-  time leave this code.
+  res 8 cell, its resolution and the fix monotonic time leave this code (#139).
 - A fix labels a row only while `fresh()` holds (`kFixMaxAgeUs`, 15 s). A
   moving Thing without a fresh fix writes nulls. Never fall back to the
   configured cell, a phone cell or an older fix. A fixed Thing ignores GNSS.

@@ -9,6 +9,44 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## H3 resolution 8 only (fix-139-h3-res8, issue #139)
+
+**Needs a matched reflash and an app change.** CoreS3 moves to
+`idf-cores3-parquet-v6.27` and Waveshare to `idf-waveshare-parquet-v2.21`.
+Columns, field ids, LIVE keys, decimals, the schema and dictionary strings and
+the `dict` and `desc` digests do not change.
+
+**What changed.**
+
+- Every published cell is H3 resolution 8, for fixed and moving Things
+  (OD-2026-11-04-B). `h3_resolution` is 8 in every located row.
+- `SET_CONFIG location.resolution` accepts only `8`. Any other value, such as
+  `0`, `7`, `9`, `15` or `16`, answers `ERROR` 12 with detail
+  `location.resolution` and nothing changes. The key stays so a client may
+  restate 8.
+- `SET_CONFIG location.cell` with a cell coarser than resolution 8 answers
+  `ERROR` 12 with detail `location.cell`. A finer cell is stored as its
+  resolution 8 parent, as before.
+- GET_CONFIG page 1 always reports `"resolution":8`, and `cell_resolution` is
+  8 or null. `location.gnss_cell` is no longer `""` because of a low
+  resolution, only because no fix is fresh. The worst case page is 196 bytes.
+- A stored record from older firmware with another resolution keeps its bytes
+  in NVS. At boot it reads as 8 and the serial log prints one line, for example
+  `CONFIG location.resolution=7 reset to 8`. A stored cell coarser than 8 makes
+  the whole location record boot as unset with
+  `CONFIG LOCATION invalid-stored-profile=true`. The cell, the country and the
+  mobility all go back to their defaults (empty cell, empty country, fixed).
+- A moving Thing indexes the GNSS fix straight at resolution 8.
+
+**What the app must do.** Drop the resolution picker. Send cells at
+resolution 8, or finer if the app prefers, and never coarser. Do not send
+`location.resolution`, or send only `8`. Read page 1 back as before and
+expect `resolution` 8. Show the setup wizard again when page 1 reports
+`thing.setup` as 1. Do not key on an empty cell, because a moving Thing has
+an empty cell by design. A Thing whose old coarse cell was dropped lost its
+country and mobility too, so the wizard sends the cell, `location.country`
+and `thing.mobility` again.
+
 ## Config save recovery and no user info in owner.url (fix-151-coderabbit, PR #152)
 
 **Needs a matched reflash and a small app change.** Follows #148. CoreS3

@@ -1770,14 +1770,12 @@ ossync::ControlReplies control_replies{
 
 // GET_CONFIG page 1 location.gnss_cell, on the worker. begin() wires it only
 // when the board has a gnss_fix hook. The hook copies the reader's newest fix
-// without blocking, and only a fresh res 8 cell within the owner cap leaves.
+// without blocking, and only a fresh res 8 cell leaves.
 std::uint64_t gnss_readback(void *) {
   opensensor::gnss::Fix fix;
   if (!hooks.gnss_fix(fix, hooks.context))
     return 0;
-  const int cap = ::config::location_settings().resolution;
-  return opensensor::gnss::readback_cell(fix, esp_timer_get_time(), cap)
-      .value_or(0);
+  return opensensor::gnss::readback_cell(fix, esp_timer_get_time()).value_or(0);
 }
 
 std::int64_t uptime_seconds() { return esp_timer_get_time() / 1000000; }

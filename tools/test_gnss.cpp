@@ -157,21 +157,19 @@ void conversion() {
                               .longitude = -122.41795063018799,
                               .mode = 3,
                               .satellites = 9};
-  auto fix = gnss::to_fix(reading, 9, 1'000'000);
-  assert(fix && fix->cell == 0x8928308280fffffULL && fix->resolution == 9);
+  // Converted straight to res 8, never finer (#139).
+  const auto fix = gnss::to_fix(reading, 1'000'000);
+  assert(fix && fix->cell == 0x8828308281fffffULL && fix->resolution == 8);
   assert(fix->fix_mono_us == 1'000'000 && fix->mode == 3 &&
          fix->satellites == 9);
-  // Converted straight at the owner resolution, never finer.
-  fix = gnss::to_fix(reading, 5, 1);
-  assert(fix && fix->cell == 0x85283083fffffffULL && fix->resolution == 5);
-  for (int bad : {-1, 16})
-    assert(gnss::to_fix(reading, bad, 1).error() == ParseError::OutOfRange);
-  assert(!gnss::to_fix({.latitude = 91}, 5, 1));
+  assert(gnss::to_fix({.latitude = 91}, 1).error() == ParseError::OutOfRange);
+  assert(gnss::to_fix({.longitude = -181}, 1).error() ==
+         ParseError::OutOfRange);
 }
 
 void freshness() {
-  const gnss::Fix fix{.cell = 0x85283083fffffffULL,
-                      .resolution = 5,
+  const gnss::Fix fix{.cell = 0x8828308281fffffULL,
+                      .resolution = 8,
                       .fix_mono_us = 100'000'000};
   assert(gnss::fresh(fix, 100'000'000));
   assert(gnss::fresh(fix, 100'000'000 + gnss::kFixMaxAgeUs));
@@ -186,8 +184,8 @@ void freshness() {
   assert(!gnss::fresh(unset, 1));
 }
 
-// GET_CONFIG page 1 location.gnss_cell (#147). Always res 8, empty without a
-// fresh fix, and never finer than the owner cap the reader converted at.
+// GET_CONFIG page 1 location.gnss_cell (#147). Always res 8 and empty
+// without a fresh fix.
 void readback() {
   using gnss::ReadbackError;
   static_assert(gnss::kReadbackResolution == 8);
@@ -195,45 +193,52 @@ void readback() {
   constexpr location::Cell kAt8 = 0x8828308281fffffULL;
   const gnss::Fix fine{
       .cell = 0x8928308280fffffULL, .resolution = 9, .fix_mono_us = now};
-  auto cell = gnss::readback_cell(fine, now, 8);
+  auto cell = gnss::readback_cell(fine, now);
   assert(cell && *cell == kAt8 && location::resolution(*cell) == 8);
   const gnss::Fix at8{.cell = kAt8, .resolution = 8, .fix_mono_us = now};
-  cell = gnss::readback_cell(at8, now + gnss::kFixMaxAgeUs, 15);
+  cell = gnss::readback_cell(at8, now + gnss::kFixMaxAgeUs);
   assert(cell && *cell == kAt8);
-  assert(gnss::readback_cell(at8, now + gnss::kFixMaxAgeUs + 1, 8).error() ==
+  assert(gnss::readback_cell(at8, now + gnss::kFixMaxAgeUs + 1).error() ==
          ReadbackError::Stale);
   auto unset = at8;
   unset.fix_mono_us = 0;
-  assert(gnss::readback_cell(unset, now, 8).error() == ReadbackError::Stale);
-  assert(gnss::readback_cell({}, now, 8).error() == ReadbackError::NoFix);
-  // A cap below 8 keeps the reader cell coarse, and it cannot be upsampled.
+  assert(gnss::readback_cell(unset, now).error() == ReadbackError::Stale);
+  assert(gnss::readback_cell({}, now).error() == ReadbackError::NoFix);
+  // A fix coarser than res 8 cannot be upsampled, so the readback is empty.
   const gnss::Fix coarse{
       .cell = 0x85283083fffffffULL, .resolution = 5, .fix_mono_us = now};
-  assert(gnss::readback_cell(coarse, now, 8).error() ==
-         ReadbackError::TooCoarse);
-  // The owner lowered the cap below 8 after a fine fix. The reader still holds
-  // the old cell until its next poll, and the readback prints "" anyway.
-  for (const int cap : {0, 5, 7})
-    assert(gnss::readback_cell(fine, now, cap).error() ==
-           ReadbackError::TooCoarse);
-  assert(gnss::readback_cell(fine, now, 15).value_or(0) == kAt8);
+  assert(gnss::readback_cell(coarse, now).error() == ReadbackError::TooCoarse);
   const gnss::Fix broken{.cell = 1, .resolution = 8, .fix_mono_us = now};
-  assert(gnss::readback_cell(broken, now, 8).error() == ReadbackError::Invalid);
+  assert(gnss::readback_cell(broken, now).error() == ReadbackError::Invalid);
 }
 
-constexpr location::Cell kConfigured = 0x85283473fffffffULL; // res 5
-constexpr location::Cell kFineFix = 0x8928308280fffffULL;    // res 9
-constexpr location::Cell kFixAt5 = 0x85283083fffffffULL;
+constexpr location::Cell kConfigured = 0x8828308281fffffULL; // res 8
+constexpr location::Cell kCoarse = 0x85283083fffffffULL;     // res 5
+
+// A res 15 cell in Cairo, far from the configured cell, with its res 9 and
+// res 8 ancestors.
+struct CairoCells {
+  location::Cell at15 = 0, at9 = 0, at8 = 0;
+};
+CairoCells cairo() {
+  CairoCells cells;
+  assert(location::from_degrees(30.0444, 31.2357, 15, cells.at15));
+  assert(location::coarsen(cells.at15, 9, cells.at9));
+  assert(location::coarsen(cells.at15, 8, cells.at8));
+  assert(location::resolution(cells.at8) == 8 && cells.at8 != kConfigured);
+  return cells;
+}
 
 void source_rule() {
   const std::int64_t now = 50'000'000;
+  const auto cells = cairo();
   const gnss::Fix fresh_fix{
-      .cell = kFineFix, .resolution = 9, .fix_mono_us = now - 1'000'000};
-  const gnss::Fix stale_fix{.cell = kFineFix,
+      .cell = cells.at9, .resolution = 9, .fix_mono_us = now - 1'000'000};
+  const gnss::Fix stale_fix{.cell = cells.at9,
                             .resolution = 9,
                             .fix_mono_us = now - gnss::kFixMaxAgeUs - 1};
   config::LocationSettings fixed{.cell = kConfigured,
-                                 .resolution = 5,
+                                 .resolution = 8,
                                  .country = "US",
                                  .mobility = config::Mobility::Fixed};
   // Fixed keeps the configured cell, with or without a fix.
@@ -243,24 +248,31 @@ void source_rule() {
     assert(chosen.cell == kConfigured);
     assert(chosen.source == LocationSource::Configured);
   }
-  // A fixed snapshot finer than its cap, or unset, gives nulls.
-  auto fine = fixed;
-  fine.resolution = 4;
-  assert(gnss::select_location(fine, fresh_fix, now).source ==
-         LocationSource::None);
+  // A fixed snapshot that is not res 8, finer or coarser, or unset, gives
+  // nulls (#139).
+  for (const location::Cell other : {cells.at9, kCoarse}) {
+    auto off = fixed;
+    off.cell = other;
+    assert(gnss::select_location(off, fresh_fix, now).source ==
+           LocationSource::None);
+  }
   assert(gnss::select_location({}, fresh_fix, now).source ==
          LocationSource::None);
 
   auto moving = fixed;
   moving.mobility = config::Mobility::Moving;
-  // Moving with a fresh fix, coarsened to the row cap, source 2.
+  // Moving with a fresh fix publishes its res 8 parent, source 2.
   auto chosen = gnss::select_location(moving, fresh_fix, now);
-  assert(chosen.cell == kFixAt5 && chosen.source == LocationSource::Gnss);
-  // A fix already coarser than the cap is kept as it is, never upsampled.
-  moving.resolution = 12;
-  chosen = gnss::select_location(moving, fresh_fix, now);
-  assert(chosen.cell == kFineFix && chosen.source == LocationSource::Gnss);
-  moving.resolution = 5;
+  assert(chosen.cell == cells.at8 && chosen.source == LocationSource::Gnss);
+  auto finest = fresh_fix;
+  finest.cell = cells.at15;
+  chosen = gnss::select_location(moving, finest, now);
+  assert(chosen.cell == cells.at8 && chosen.source == LocationSource::Gnss);
+  // A fix coarser than res 8 is never upsampled and gives nulls.
+  auto coarse_fix = fresh_fix;
+  coarse_fix.cell = kCoarse;
+  chosen = gnss::select_location(moving, coarse_fix, now);
+  assert(chosen.cell == 0 && chosen.source == LocationSource::None);
   // Moving with a stale fix or none writes nulls, never the configured cell.
   for (const auto &fix :
        {std::optional<gnss::Fix>{}, std::optional{stale_fix}}) {
@@ -271,25 +283,26 @@ void source_rule() {
   auto unconfigured = moving;
   unconfigured.cell = 0;
   chosen = gnss::select_location(unconfigured, fresh_fix, now);
-  assert(chosen.cell == kFixAt5 && chosen.source == LocationSource::Gnss);
+  assert(chosen.cell == cells.at8 && chosen.source == LocationSource::Gnss);
 }
 
 void row_mapping() {
   oslogger::LocationSample<NumericSample<4>> row{};
   // Source 2 lands in location_source with the cell centre as the point.
+  const auto fix_at8 = cairo().at8;
   assert(
-      oslogger::apply_cell(row, kFixAt5, LocationSource::Gnss, {0, 1, 2, 3}));
-  assert(row.data[0] == static_cast<std::int64_t>(kFixAt5) && row.data[1] == 5);
+      oslogger::apply_cell(row, fix_at8, LocationSource::Gnss, {0, 1, 2, 3}));
+  assert(row.data[0] == static_cast<std::int64_t>(fix_at8) && row.data[1] == 8);
   assert(row.data[2] == 2 && row.valid[0] && row.valid[1] && row.valid[2] &&
          row.valid[3]);
   std::int64_t lat = 0, lon = 0;
-  assert(location::center_e7(kFixAt5, lat, lon));
+  assert(location::center_e7(fix_at8, lat, lon));
   assert(row.data[3] ==
          telemetry::pack_point_e7(static_cast<std::int32_t>(lon),
                                   static_cast<std::int32_t>(lat)));
   // None clears every location field.
   assert(
-      !oslogger::apply_cell(row, kFixAt5, LocationSource::None, {0, 1, 2, 3}));
+      !oslogger::apply_cell(row, fix_at8, LocationSource::None, {0, 1, 2, 3}));
   for (const auto present : row.valid)
     assert(!present);
   assert(!oslogger::apply_cell(row, 0, LocationSource::Gnss, {0, 1, 2, 3}));
@@ -304,15 +317,15 @@ void row_mapping() {
 void no_split() {
   const std::int64_t now = 50'000'000;
   config::LocationSettings moving{.cell = kConfigured,
-                                  .resolution = 5,
+                                  .resolution = 8,
                                   .country = "EG",
                                   .mobility = config::Mobility::Moving};
   oslogger::LocationSample<NumericSample<4>> first{}, second{};
   first.location = second.location = moving;
-  const gnss::Fix here{.cell = kFineFix, .resolution = 9, .fix_mono_us = now};
-  location::Cell elsewhere = 0;
-  assert(location::from_degrees(30.0444, 31.2357, 9, elsewhere));
-  const gnss::Fix there{.cell = elsewhere, .resolution = 9, .fix_mono_us = now};
+  const gnss::Fix here{
+      .cell = 0x8928308280fffffULL, .resolution = 9, .fix_mono_us = now};
+  const gnss::Fix there{
+      .cell = cairo().at9, .resolution = 9, .fix_mono_us = now};
   const auto a = gnss::select_location(first.location, here, now);
   const auto b = gnss::select_location(second.location, there, now);
   assert(oslogger::apply_cell(first, a.cell, a.source, {0, 1, 2, 3}));

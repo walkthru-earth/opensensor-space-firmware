@@ -20,6 +20,9 @@
 namespace config {
 namespace {
 constexpr const char *kNamespace = "oscfg";
+// The only accepted location.resolution (#139).
+constexpr std::uint32_t kPublishedResolution =
+    opensensor::location::kPublishedResolution;
 portMUX_TYPE settings_mutex = portMUX_INITIALIZER_UNLOCKED;
 Settings current;
 Settings booted; // pair/pin the running BLE stack was started with
@@ -193,6 +196,10 @@ bool parse_mobility(const char *value, Mobility &mobility) {
 
 // `cell|resolution|country|mobility`. A record written before #83 has no
 // mobility field and reads as a fixed Thing, so a reflash keeps the location.
+// The resolution is fixed at 8 (#139). An older record that holds another
+// value is read as 8 with one serial line, and the stored text stays until the
+// next `cfg` save writes 8. A stored cell finer than res 8 is published as its
+// res 8 parent. A coarser one cannot be restored, so the record is invalid.
 bool decode_location(char *record, LocationSettings &location) {
   char *fields[4];
   std::uint32_t resolution;
@@ -206,10 +213,17 @@ bool decode_location(char *record, LocationSettings &location) {
        !opensensor::location::parse_cell(fields[0], decoded.cell)) ||
       (*fields[2] && !opensensor::location::valid_country(fields[2])))
     return false;
-  decoded.resolution = static_cast<std::uint8_t>(resolution);
-  if (decoded.cell &&
-      !opensensor::location::coarsen(decoded.cell, resolution, decoded.cell))
-    return false;
+  if (decoded.cell) {
+    const auto published = opensensor::location::published_cell(decoded.cell);
+    if (!published)
+      return false;
+    decoded.cell = *published;
+  }
+  // Logged only for a record that is kept. A refused record already gets the
+  // invalid stored profile line from the caller.
+  if (resolution != kPublishedResolution)
+    oslog.printf("CONFIG location.resolution=%u reset to %u\n",
+                 unsigned(resolution), unsigned(kPublishedResolution));
   std::snprintf(decoded.country, sizeof(decoded.country), "%s", fields[2]);
   location = decoded;
   return true;
@@ -309,9 +323,8 @@ static_assert(opensensor::location::kCellTextBytes + 2 + 2 + 6 + 3 <=
 static_assert(kNtpServerCount * (kNtpServerMax + 1) + 16 <= kNtpRecordBytes,
               "NTP record fits its field");
 
-static_assert(LocationSettings{}.resolution ==
-                  opensensor::location::kDefaultResolution,
-              "oscfg defaults to the shared H3 resolution");
+static_assert(LocationSettings{}.resolution == kPublishedResolution,
+              "oscfg holds the shared published H3 resolution");
 
 // Byte arrays only, like Blob, so the layout has no padding.
 struct OwnerPayload {
@@ -387,7 +400,7 @@ void encode_blob(Blob &blob, const Settings &settings) {
   std::memcpy(payload.psk, settings.psk, sizeof(payload.psk));
   std::memcpy(payload.token, settings.token, sizeof(payload.token));
   encode_sensor(payload.sensor, sizeof(payload.sensor), settings);
-  // Each policy stays one coherent record, including the privacy cap.
+  // Each policy stays one coherent record, including the fixed resolution.
   encode_location(payload.location, sizeof(payload.location),
                   settings.location);
   encode_ntp(payload.ntp, sizeof(payload.ntp), settings.ntp);
@@ -1172,10 +1185,11 @@ bool apply_lines(const char *text, std::size_t length, char *bad_key,
           !opensensor::location::parse_cell(value, next.location.cell))
         return reject();
     } else if (std::strcmp(key, "location.resolution") == 0) {
+      // Fixed at res 8 (#139). The key stays so a client may restate it.
       std::uint32_t resolution;
-      if (!parse_uint(value, 0, 15, resolution))
+      if (!parse_uint(value, kPublishedResolution, kPublishedResolution,
+                      resolution))
         return reject();
-      next.location.resolution = static_cast<std::uint8_t>(resolution);
     } else if (std::strcmp(key, "location.country") == 0) {
       if (*value && !opensensor::location::valid_country(value))
         return reject();
@@ -1239,11 +1253,16 @@ bool apply_lines(const char *text, std::size_t length, char *bad_key,
     std::snprintf(bad_key, bad_key_size, "sensor.batch_candidate");
     return false;
   }
-  if (next.location.cell &&
-      !opensensor::location::coarsen(
-          next.location.cell, next.location.resolution, next.location.cell)) {
-    std::snprintf(bad_key, bad_key_size, "location.cell");
-    return false;
+  // A finer cell is published as its res 8 parent. A coarser cell is refused,
+  // because res 8 cannot be restored from it.
+  if (next.location.cell) {
+    const auto published =
+        opensensor::location::published_cell(next.location.cell);
+    if (!published) {
+      std::snprintf(bad_key, bad_key_size, "location.cell");
+      return false;
+    }
+    next.location.cell = *published;
   }
   pending.ntp_changed = !same_ntp(previous.ntp, next.ntp);
   pending.location_changed = !same_location(previous.location, next.location);
