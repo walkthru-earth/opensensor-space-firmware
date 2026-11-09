@@ -2,7 +2,9 @@
 
 These files feed `pixi run stac-item-test` (#142). The test proves the board
 STAC File Item builder in `firmware/common/stac` equal to the stac-opensensor
-reference script, under that script's own `differences` rules.
+reference script, under that script's own `differences` rules. It also
+validates every Item the board builds against the pinned `profile.json` and
+extension `schema.json` in `tools/stac_opensensor/v0.1.0`.
 
 ## Source
 

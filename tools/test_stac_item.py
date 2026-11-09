@@ -12,6 +12,11 @@ semantics tables, and proves four things.
 4. The Item for each fixture file equals the example under the canonical.mjs
    `differences` rules, with the same key order, and each case in cases.json
    gives the Item or the no Item reason canonical.mjs gave.
+5. Every Item the board builds validates against the pinned profile.json and
+   OpenSensor extension schema.json (tools/stac_opensensor/v0.1.0). The core
+   STAC and the table, file, grid and anonymized-location schemas are remote
+   and not vendored. stac-opensensor CI validates the two examples against
+   them, and point 4 proves the board Items equal those examples.
 
 Then it applies known bugs to copies of the sources and requires the gate to
 catch each one. Host builds prove no SD, power cut or board behavior.
@@ -29,11 +34,15 @@ import shutil
 import subprocess
 import tempfile
 
+from jsonschema import Draft7Validator, FormatChecker
+from referencing import Registry, Resource
+
 from host_cxx import CXX_STD
 from test_location import compile_h3
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / "tools/fixtures/stac"
+SCHEMAS = ROOT / "tools/stac_opensensor/v0.1.0"
 COMMON = ROOT / "firmware/common"
 BOARDS = {
     "cores3": {
@@ -145,6 +154,37 @@ def comparator_proofs(example: dict) -> None:
     shuffled = dict(reversed(list(example.items())))
     require(differences(shuffled, example) == [] and key_order(shuffled, example),
             "key order is free to differences and checked by key_order")
+
+
+# ---- profile and extension schemas ----
+
+def schema_validators() -> dict[str, Draft7Validator]:
+    """Validators for the pinned profile.json and extension schema.json."""
+    require("uri" in FormatChecker().checkers, "format uri is enforced (rfc3986-validator)")
+    loaded = {name: json.loads((SCHEMAS / name).read_text()) for name in ("profile.json", "schema.json")}
+    registry = Registry().with_resources(
+        [(contents["$id"].rstrip("#"), Resource.from_contents(contents)) for contents in loaded.values()])
+    return {name: Draft7Validator(contents, registry=registry, format_checker=FormatChecker())
+            for name, contents in loaded.items()}
+
+
+def schema_problems(validators: dict[str, Draft7Validator], item: dict, label: str) -> list[str]:
+    return [f"{label} {name} {error.json_path} {error.message[:120]}"
+            for name, validator in validators.items() for error in validator.iter_errors(item)]
+
+
+def schema_proofs(validators: dict[str, Draft7Validator], example: dict) -> None:
+    """The schemas pass the example and reject what each one must."""
+    require(not schema_problems(validators, example, "example"), "the example fails its schemas")
+    absolute = json.loads(json.dumps(example))
+    absolute["assets"]["data"]["href"] = "https://example.com/data.parquet"
+    require(list(validators["profile.json"].iter_errors(absolute)), "profile.json misses an absolute href")
+    checksum = json.loads(json.dumps(example))
+    checksum["assets"]["data"]["file:checksum"] = "00"
+    require(list(validators["profile.json"].iter_errors(checksum)), "profile.json misses a bad checksum")
+    mobility = json.loads(json.dumps(example))
+    mobility["properties"]["opensensor:mobility"] = "parked"
+    require(list(validators["schema.json"].iter_errors(mobility)), "schema.json misses a bad mobility")
 
 
 # ---- fixtures ----
@@ -261,9 +301,12 @@ def template_table(board: str) -> list[str]:
     return out
 
 
-def board_checks(board: str, executable: Path, directory: Path, cases: dict) -> list[str]:
-    """Every equality check of one board. Returns the problems found."""
+def board_checks(board: str, executable: Path, directory: Path, cases: dict,
+                 validators: dict[str, Draft7Validator]) -> tuple[list[str], int]:
+    """Every equality and schema check of one board. Returns the problems
+    found and the number of Items validated against the schemas."""
     problems: list[str] = []
+    validated = 0
     example = json.loads((FIXTURES / BOARDS[board]["example"]).read_text())
     output = run_item(executable, directory, load_base(board))
     if not output.startswith("{"):
@@ -272,6 +315,8 @@ def board_checks(board: str, executable: Path, directory: Path, cases: dict) -> 
         item = json.loads(output)
         problems += [f"{board} fixture {d}" for d in differences(item, example)]
         problems += [f"{board} fixture {d}" for d in key_order(item, example)]
+        problems += schema_problems(validators, item, f"{board} fixture")
+        validated += 1
     for case in cases["cases"]:
         if case["base"] != board:
             continue
@@ -287,7 +332,9 @@ def board_checks(board: str, executable: Path, directory: Path, cases: dict) -> 
             item = json.loads(output)
             problems += [f"{case['name']} {d}" for d in differences(item, expect["item"])]
             problems += [f"{case['name']} {d}" for d in key_order(item, expect["item"])]
-    return problems
+            problems += schema_problems(validators, item, case["name"])
+            validated += 1
+    return problems, validated
 
 
 def build(board: str, directory: Path, h3_objects: list[str], sanitize: bool,
@@ -335,7 +382,8 @@ MUTATIONS = [
 ]
 
 
-def mutation_proofs(directory: Path, h3_objects: list[str], cases: dict, numbers: Path) -> None:
+def mutation_proofs(directory: Path, h3_objects: list[str], cases: dict, numbers: Path,
+                    validators: dict[str, Draft7Validator]) -> None:
     for index, (name, relative, old, new, board) in enumerate(MUTATIONS):
         sources = directory / f"mutant-{index}"
         for part in ("location/src", "stac/src"):
@@ -349,7 +397,7 @@ def mutation_proofs(directory: Path, h3_objects: list[str], cases: dict, numbers
         require(text.count(old) == 1, f"mutation '{name}' text is not in {relative} once")
         target.write_text(text.replace(old, new))
         executable = build(board, directory, h3_objects, False, sources, f"mutant-{index}")
-        problems = board_checks(board, executable, directory, cases)
+        problems, _ = board_checks(board, executable, directory, cases, validators)
         unit = subprocess.run([str(executable), "unit", str(numbers)], capture_output=True, text=True)
         if unit.returncode != 0:
             problems.append("unit checks failed")
@@ -368,6 +416,9 @@ def main() -> None:
             "cases.json is not from canonical.mjs at 83787768")
     require(cases["h3_js"] == "4.5.0", "cases.json is not from h3-js 4.5.0")
     comparator_proofs(json.loads((FIXTURES / BOARDS["cores3"]["example"]).read_text()))
+    validators = schema_validators()
+    for board in BOARDS:
+        schema_proofs(validators, json.loads((FIXTURES / BOARDS[board]["example"]).read_text()))
     with tempfile.TemporaryDirectory(prefix="os-stac-item-test-") as temporary:
         directory = Path(temporary)
         h3_objects = compile_h3(ROOT, directory, args.sanitize)
@@ -383,18 +434,20 @@ def main() -> None:
             require(all(line.split()[0] in fixture_columns for line in table),
                     f"{board} fixture rows lack a statistics column, the example would differ")
             subprocess.run([str(executable), "unit", str(numbers)], check=True)
-            problems = board_checks(board, executable, directory, cases)
-            require(not problems, f"{board} differs from canonical.mjs\n" + "\n".join(problems[:20]))
+            problems, validated = board_checks(board, executable, directory, cases, validators)
+            require(not problems, f"{board} differs from canonical.mjs or its schemas\n"
+                    + "\n".join(problems[:20]))
             count = 1 + sum(case["base"] == board for case in cases["cases"])
             print(f"stac {board}: {len(table)} statistics columns match the template, "
-                  f"{count} Items and reasons equal canonical.mjs")
+                  f"{count} Items and reasons equal canonical.mjs, "
+                  f"{validated} Items valid against profile.json and schema.json")
         if not args.skip_mutations:
             if args.sanitize:
                 # Mutants build without sanitizers, so the H3 objects must too.
                 # The generated h3api.h is the same in both folders.
                 (directory / "plain").mkdir()
                 h3_objects = compile_h3(ROOT, directory / "plain", False)
-            mutation_proofs(directory, h3_objects, cases, numbers)
+            mutation_proofs(directory, h3_objects, cases, numbers, validators)
     print("stac-item-test: passed")
 
 

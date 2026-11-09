@@ -22,5 +22,6 @@ of stac-opensensor commit `83787768cc8451109d48a03d4ef5493ffcd403dd`
   sums must round each step as JavaScript does, so CMake builds this component
   with `-ffp-contract=off`.
 - `pixi run stac-item-test` proves the output equal to the pinned script on the
-  copied fixtures in `tools/fixtures/stac/`. A new profile commit means copying
+  copied fixtures in `tools/fixtures/stac/`, and valid against the pinned
+  `profile.json` and extension `schema.json`. A new profile commit means copying
   the fixtures again and regenerating `cases.json`, never editing them here.
