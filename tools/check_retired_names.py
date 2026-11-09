@@ -43,6 +43,8 @@ import re
 import subprocess
 import sys
 
+import boards
+
 ROOT = Path(__file__).resolve().parents[1]
 # Each old name is split so this file does not match its own patterns.
 OLD = "A" + "Q"
@@ -126,12 +128,15 @@ BUILD_KINDS = frozenset(
 # History that names the old forms on purpose.
 EXEMPT = {
     "docs/shared/mobile-migration.md",
-    "docs/boards/m5stack-cores3/bench-verified.md",
-    "docs/boards/waveshare-esp32-s3-sim7670g/bench-verified.md",
     "docs/shared/stac-contract/firmware-audit.md",
     "docs/shared/stac-contract/firmware-audit-review.md",
 }
 SKIP_SUFFIXES = {".lock", ".png", ".jpg", ".jpeg", ".gif", ".bin", ".elf", ".parquet", ".pdf", ".zip"}
+
+
+def exempt() -> set[str]:
+    """EXEMPT plus the dated bench record docs/boards/<slug>/bench-verified.md of each board.json board (#141)."""
+    return EXEMPT | {f"docs/boards/{board.slug}/bench-verified.md" for board in boards.boards(ROOT)}
 
 
 def tracked(root: Path) -> list[str] | None:
@@ -155,8 +160,9 @@ def scan_text(text: str) -> list[tuple[int, str]]:
 
 def findings(root: Path, names: list[str]) -> list[str]:
     out = []
+    skip = exempt()
     for name in sorted(names):
-        if name in EXEMPT or Path(name).suffix in SKIP_SUFFIXES:
+        if name in skip or Path(name).suffix in SKIP_SUFFIXES:
             continue
         path = root / name
         if not path.is_file():
@@ -177,7 +183,11 @@ def main(argv: list[str]) -> int:
     if names is None:
         print("!!! retired name check cannot list tracked files", file=sys.stderr)
         return 2
-    found = findings(ROOT, names)
+    try:
+        found = findings(ROOT, names)
+    except boards.BoardError as error:
+        print(f"!!! retired name check cannot read the board registry, {error}", file=sys.stderr)
+        return 2
     for finding in found:
         print(f"!!! {finding}, use the OpenSensor name ({doc_for(finding)})")
     return 1 if found else 0

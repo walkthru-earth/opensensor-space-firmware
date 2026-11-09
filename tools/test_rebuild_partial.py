@@ -347,6 +347,22 @@ def check_cli(inc: Path, work: Path) -> None:
             code = rp.main(["--fields", str(inc), "--out", str(out), str(cut_source)])
         require(code == expected, f"cli attempt {attempt} exit {code}: {stdout.getvalue()}")
     require(pq.read_metadata(out / "y-1.rebuilt.parquet").num_row_groups == GROUPS, "cli output kept")
+    # --board takes any board.json name (#141), the footer slug too, and an
+    # unknown name stops with a usage error before any file is written.
+    out = work / "out" / "cli-slug"
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        code = rp.main(["--board", "waveshare-esp32-s3-sim7670g", "--out", str(out), str(cut_source)])
+    require(code == 0 and (out / "y-1.rebuilt.parquet").is_file(), f"cli --board slug: {stdout.getvalue()}")
+    stderr = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(stderr):
+            rp.main(["--board", "waveshare-v3", "--out", str(work / "out" / "cli-unknown"), str(cut_source)])
+    except SystemExit as error:
+        require(error.code == 2 and "unknown board 'waveshare-v3'" in stderr.getvalue(), "cli unknown board")
+    else:
+        raise AssertionError("cli accepted an unknown --board")
+    require(not (work / "out" / "cli-unknown").exists(), "cli unknown board wrote nothing")
 
 
 def main() -> None:
@@ -356,9 +372,9 @@ def main() -> None:
     checked = 0
     with tempfile.TemporaryDirectory(prefix="aq-rebuild-") as temporary:
         work = Path(temporary)
-        for name, inc in rp.BOARD_FIELDS.items():
+        for name, inc in rp.board_fields().items():
             checked += check_board(name, inc, work / f"fixture-{name}", work, args.sanitize)
-        waveshare = rp.BOARD_FIELDS["waveshare"]
+        waveshare = rp.board_fields()["waveshare"]
         check_older_prefix(waveshare, work / "fixture-older", work, args.sanitize)
         check_cli(waveshare, work)
         check_levels()

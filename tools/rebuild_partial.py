@@ -42,13 +42,10 @@ import sys
 
 import pyarrow as pa
 
+import boards
 from parquet_footer import Reader
 
 ROOT = Path(__file__).resolve().parent.parent
-BOARD_FIELDS = {
-    "waveshare": ROOT / "firmware/esp-idf-waveshare-sim7670g/logger/telemetry_fields.inc",
-    "cores3": ROOT / "firmware/esp-idf-cores3/bringup/telemetry_fields.inc",
-}
 TOOL_ID = "opensensor-space-firmware rebuild_partial version 1"
 MAX_ROW_GROUPS = 8  # telemetry::kMaxRowGroups
 MAX_ROWS = 65536  # telemetry::kMaxRows
@@ -693,10 +690,15 @@ def parse_kv(text: str) -> tuple[str, str]:
     return key, value
 
 
+def board_fields() -> dict[str, Path]:
+    """The field table of every board.json board (#141), by alias."""
+    return {board.alias: ROOT / board.app / "telemetry_fields.inc" for board in boards.boards()}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     schema = parser.add_mutually_exclusive_group(required=True)
-    schema.add_argument("--board", choices=sorted(BOARD_FIELDS))
+    schema.add_argument("--board", help="any board name in a board.json, such as waveshare or m5stack-cores3")
     schema.add_argument("--fields", type=Path, help="a board telemetry_fields.inc")
     parser.add_argument("--columns", type=int, help="first N fields, from the PARQUET BEGIN columns= value")
     parser.add_argument("--codec", choices=["auto", "none", "lz4"], default="auto")
@@ -704,7 +706,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, required=True, help="output directory, never the source directory")
     parser.add_argument("files", type=Path, nargs="+")
     args = parser.parse_args(argv)
-    fields_path = args.fields or BOARD_FIELDS[args.board]
+    if args.fields is not None:
+        fields_path = args.fields
+    else:
+        try:
+            fields_path = ROOT / boards.find(args.board).app / "telemetry_fields.inc"
+        except boards.BoardError as error:
+            parser.error(str(error))
     fields = load_fields(fields_path)
     if args.columns is not None:
         if not 0 < args.columns <= len(fields):
