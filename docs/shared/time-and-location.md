@@ -161,14 +161,13 @@ next to each other:
 | --- | --- | --- |
 | `h3_cell_id` | INT64 | Valid retained H3 cell, stored as a numeric index |
 | `h3_resolution` | INT32 | Resolution of the row's cell, 8 in every located row (#139) |
-| `location_source` | UINT8 | 0 none, 1 configured, 2 gnss, 3 phone. A fixed Thing writes 1, a moving Thing with a GNSS hook writes 2, and either writes 3 while `location.phone_cell` is set (#140) |
+| `location_source` | UINT8 | 0 none, 1 configured, 2 gnss, 3 phone. A fixed Thing writes 1. A moving Thing writes 3 while `location.phone_cell` is set (#140), else 2 with a GNSS hook and a fresh fix |
 | `geometry` | GEOMETRY | 2D WKB Point at the cell centre, no crs (OGC:CRS84), with GeoParquet 2.0 `geo` footer metadata |
 
 Unset or invalid location produces four nulls, and `geometry` is null exactly
 when `h3_cell_id` is null. Each sample captures its
 location settings before entering the worker queue. A cell or
-country change splits the batch/open file, and so does a phone cell change on
-a fixed Thing, so a later setting never relabels
+country change splits the batch/open file, so a later setting never relabels
 buffered readings. The footer carries no location since #88. The rows hold
 the cell, resolution, source and centre point, and the country is not written to the file.
 The owner also sets `thing.mobility` (`fixed` by default, or `moving`), which
@@ -178,12 +177,12 @@ Existing archives are immutable.
 ## Moving Things and GNSS
 
 `thing.mobility` picks the source of each row, one row at a time. A phone
-cell, while it is set, wins on both kinds (see the next section).
+cell labels moving rows only (see the next section).
 
 | Mobility | Phone cell | Fresh GNSS fix | Row location |
 | --- | --- | --- | --- |
-| any | set | any | The phone cell at resolution 8, source 3 |
-| `fixed` | unset | any | The configured cell, source 1. A receiver never changes it |
+| `fixed` | any | any | The configured cell, source 1. Neither a phone cell nor a receiver changes it |
+| `moving` | set | any | The phone cell at resolution 8, source 3 |
 | `moving` | unset | yes | The GNSS cell at resolution 8, source 2 |
 | `moving` | unset | no | Four nulls, `location_source` null too. Never the configured cell and never an older fix |
 
@@ -223,20 +222,23 @@ sends coordinates. The board keeps the resolution 8 parent through the same
 not a valid cell answers `ERROR` 12 with detail `location.phone_cell`, and
 nothing changes. An empty value clears it.
 
-The cell lives in RAM only. The `oscfg/cfg` record never holds it, a request
-that carries only this key writes no NVS, and a reboot clears it. There is no
-age bound. The phone updates or clears it. GET_CONFIG page 1 reports it as
-`location.phone_cell`, so the app can tell when a reboot cleared it.
+The cell lives in RAM only. The phone cell is never stored, the `oscfg/cfg`
+record has no field for it, and a reboot clears it. A request that holds only
+this key still rewrites a record an earlier failed save left unsure, without
+the phone cell. There is no age bound. The phone updates or clears it.
+GET_CONFIG page 1 reports it as `location.phone_cell`, so the app can tell
+when a reboot cleared it.
 
-While it is set every row carries it with `location_source` 3, on a fixed and
-on a moving Thing. It wins over the configured cell and over a fresh GNSS fix.
-When it is cleared, rows fall back to the table above. A fixed Thing splits
-its file when the cell its rows carry changes, so setting, updating or
-clearing a phone cell that differs from the configured cell starts a new file.
-A phone cell equal to the configured cell does not split. A moving Thing never
-splits on a phone cell change, since one moving file holds many cells. A
-switch from source 1 to source 3 with the same cell keeps the file, which
-narrows the bridge note that any source switch splits.
+A moving Thing writes it in every row with `location_source` 3 while it is
+set, ahead of a fresh GNSS fix. When it is cleared, rows fall back to the
+table above. A fixed Thing accepts and reports it but ignores it for rows, as
+it ignores a receiver. Its rows keep the configured cell with
+`location_source` 1, as the stac-opensensor profile requires, and the owner
+sets that cell with the map picker. A fixed Thing with only a phone cell and
+no `location.cell` writes nulls and keeps `setup` 1.
+
+A phone cell never splits a file. A fixed Thing never uses it, and one moving
+file holds many cells.
 
 The board holds and reports only the res 8 cell. The phone fix itself never
 reaches the board.

@@ -23,24 +23,30 @@ the `dict` and `desc` digests do not change.
   finer, or empty to clear. A finer cell is kept as its resolution 8 parent.
   A coarser cell or a value that is not a valid cell answers `ERROR` 12 with
   detail `location.phone_cell` and nothing changes.
-- The board keeps the cell in RAM only. A request that carries only this key
-  writes no NVS. A reboot clears it. There is no age bound.
-- While it is set, every row carries it with `location_source` 3, on fixed and
-  on moving Things. It wins over `location.cell` and over a fresh GNSS fix.
-  When it is cleared, rows go back to source 1 on a fixed Thing, and to source
-  2 or nulls on a moving Thing.
-- A fixed Thing starts a new file when the cell its rows carry changes. A phone
-  cell equal to `location.cell` keeps the file. A moving Thing never splits on
-  a phone cell change.
+- The board keeps the cell in RAM only. The phone cell is never stored and a
+  reboot clears it. A request that holds only this key still rewrites a record
+  an earlier failed save left unsure, without the phone cell. There is no age
+  bound.
+- On a moving Thing every row carries it with `location_source` 3 while it is
+  set, ahead of a fresh GNSS fix. When it is cleared, rows go back to source 2
+  or nulls.
+- A fixed Thing accepts and reports it but ignores it for rows. They keep
+  `location.cell` with `location_source` 1, as the stac-opensensor profile
+  requires. A fixed Thing with no `location.cell` writes nulls and keeps
+  `setup` 1.
+- A phone cell change never splits a file.
 - GET_CONFIG page 1 adds `location.phone_cell` after `country`. It holds the
   res 8 cell, or `""` when unset or after a reboot. The worst case page is now
   227 bytes.
 
-**What the app must do.** Send `location.phone_cell` with the res 8 cell of
-the phone's own fix, never coordinates. Send it empty to clear it. Read page 1
-and send the cell again when `location.phone_cell` is `""` after a reconnect,
-because a reboot cleared it. Expect `location_source` 3 in rows written while
-the phone cell was set. Do not copy the phone cell into `location.cell`.
+**What the app must do.** For a moving Thing, send `location.phone_cell` with
+the res 8 cell of the phone's own fix, never coordinates. Send it empty to
+clear it. Read page 1 and send the cell again when `location.phone_cell` is
+`""` after a reconnect, because a reboot cleared it. Expect `location_source`
+3 in moving rows written while the phone cell was set. For a fixed Thing, set
+`location.cell` with the map picker. A phone cell sent to a fixed Thing is
+accepted but never reaches its rows. Do not copy the phone cell into
+`location.cell`.
 
 ## H3 resolution 8 only (fix-139-h3-res8, issue #139)
 

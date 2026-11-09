@@ -12,11 +12,12 @@ The logger depends on `gnss` only. A board that has a receiver adds
 - A raw latitude or longitude lives only on the stack between `parse_fix()`
   and `to_fix()`. Never log, persist, queue or send a `Reading`. Only the H3
   res 8 cell, its resolution and the fix monotonic time leave this code (#139).
-- A phone cell (`location.phone_cell`, source 3) wins on every row while it
-  is set, for fixed and moving Things (#140). Without it, a fix labels a row
-  only while `fresh()` holds (`kFixMaxAgeUs`, 15 s), and a moving Thing
-  without a fresh fix writes nulls. Never fall back to the configured cell or
-  an older fix. A fixed Thing ignores GNSS.
+- On a moving Thing a phone cell (`location.phone_cell`, source 3) wins on
+  every row while it is set (#140). Without it, a fix labels a row only while
+  `fresh()` holds (`kFixMaxAgeUs`, 15 s), and a moving Thing without a fresh
+  fix writes nulls. Never fall back to the configured cell or an older fix. A
+  fixed Thing ignores GNSS and the phone cell and writes its configured cell
+  with source 1.
 - GNSS cells never enter `LocationSample.location`, so they never split a file.
 - A new receiver family is a new `Dialect`, for example NMEA for u-blox. An AT
   dialect returns its commands, a streaming dialect returns empty commands.

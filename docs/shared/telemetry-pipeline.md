@@ -107,7 +107,7 @@ open file the same way a location change does, so every row of a file shares
 one deployment id and a finalized file is never relabelled. The owner title,
 description, provider and url stay on the board for STAC and never split a
 file.
-Either kind writes 3 while the RAM only `location.phone_cell` is set
+A moving Thing writes 3 while the RAM only `location.phone_cell` is set
 ([phone cell](time-and-location.md#phone-cell-locationphone_cell), #140).
 
 Acquisition snapshots cell, maximum precision and country into each queued row.
