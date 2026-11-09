@@ -250,6 +250,10 @@ in the Waveshare app with per column procedures.
 
 ### Writing a new board, once
 
+Write the `board.json` with its `tooling` object first, as in the
+[weather example](#9-worked-example-a-weather-board). The board registry
+refuses a board app without one, and the other boards' aliases, slugs and
+backup prefixes must stay distinct.
 `pixi run plugin-new-board firmware/esp-idf-<board>/<variant>/board.json`
 writes `telemetry_fields.inc`, `telemetry_semantics.inc`,
 `telemetry_classes.inc` and a first `shipped.lock` beside that `board.json`.
@@ -404,6 +408,9 @@ that it stays here.
 
 A hypothetical ESP32-S3 weather Thing with a BME280, a cup anemometer with a
 wind vane and a tipping bucket rain gauge, plus the existing MAX17048 module.
+It lives at `firmware/esp-idf-example-weather-s3/app/board.json`. The
+`tooling` object is what `tools/boards.py` reads, so the board resolves as
+`weather` and its backups are named `example-weather-s3-flash-*.bin`.
 
 ```json
 {
@@ -424,7 +431,17 @@ wind vane and a tipping bucket rain gauge, plus the existing MAX17048 module.
     {"module": "system", "segment": "clock_close"},
     {"module": "system", "segment": "clock_anchor"},
     {"module": "system", "segment": "location"}
-  ]
+  ],
+  "tooling": {
+    "alias": "weather",
+    "variants": ["app"],
+    "backup_prefixes": ["example-weather-s3"],
+    "flash_bytes": 16777216,
+    "psram_mode": "QUAD",
+    "sdkconfig": ["CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y"],
+    "components_required": [],
+    "components_forbidden": ["m5"]
+  }
 }
 ```
 

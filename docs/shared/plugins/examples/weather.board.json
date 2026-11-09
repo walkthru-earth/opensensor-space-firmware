@@ -14,5 +14,15 @@
     {"module": "system", "segment": "clock_close"},
     {"module": "system", "segment": "clock_anchor"},
     {"module": "system", "segment": "location"}
-  ]
+  ],
+  "tooling": {
+    "alias": "weather",
+    "variants": ["app"],
+    "backup_prefixes": ["example-weather-s3"],
+    "flash_bytes": 16777216,
+    "psram_mode": "QUAD",
+    "sdkconfig": ["CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y"],
+    "components_required": [],
+    "components_forbidden": ["m5"]
+  }
 }

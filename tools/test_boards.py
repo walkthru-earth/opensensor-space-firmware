@@ -262,6 +262,24 @@ def check_schema() -> None:
     print("PASS the plugin board schema and boards.py agree on tooling", flush=True)
 
 
+def check_example(directory: Path) -> None:
+    """The plugin README weather example joins the registry as a third board, and the README shows the same tooling."""
+    example = ROOT / "docs/shared/plugins/examples/weather.board.json"
+    manifest = json.loads(example.read_text())
+    readme = (ROOT / "docs/shared/plugins/README.md").read_text()
+    section = readme.split("## 9. Worked example, a weather board", 1)[1].split("```json\n", 1)[1].split("\n```", 1)[0]
+    require(json.loads(section)["tooling"] == manifest["tooling"], "README section 9 and the example share tooling")
+    root = scratch(directory)
+    path = Path("firmware/esp-idf-example-weather-s3/app/board.json")
+    (root / path.parent).mkdir(parents=True)
+    shutil.copy2(example, root / path)
+    weather = boards.find("weather", root)
+    require(weather.slug == manifest["board"] and weather.manifest == path.as_posix() and
+            weather.backup_prefix == "example-weather-s3" and len(boards.boards(root)) == len(boards.boards()) + 1,
+            f"the weather example resolves beside the shipped boards, {weather}")
+    print("PASS the plugin README weather example joins the registry beside the shipped boards", flush=True)
+
+
 def partition_table() -> bytes:
     """The owner data partition table check_idf_target expects, then the end marker."""
     table = b"".join(struct.pack("<HBBII16sI", 0x50AA, kind, subtype, start, size, label.encode(), flags)
@@ -597,6 +615,7 @@ def main() -> None:
         check_resolution()
         check_schema()
         check_target_rules(directory)
+        check_example(directory)
         check_drift()
         check_shell(directory)
     print("PASS board registry", flush=True)
