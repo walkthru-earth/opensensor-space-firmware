@@ -41,6 +41,7 @@ import tempfile
 from jsonschema import Draft7Validator, FormatChecker
 from referencing import Registry, Resource
 
+import boards as registry
 from host_cxx import CXX_STD
 from test_location import compile_h3
 
@@ -48,24 +49,44 @@ ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / "tools/fixtures/stac"
 SCHEMAS = ROOT / "tools/stac_opensensor/v0.1.0"
 COMMON = ROOT / "firmware/common"
+# The stac-opensensor fixture file of each board, keyed by its board.json alias
+# (#141). The app directory and the template slug come from the registry.
 BOARDS = {
     "cores3": {
-        "dir": ROOT / "firmware/esp-idf-cores3/bringup",
-        "template_dir": "m5stack-cores3",
         "rows": "fixtures/thing=3f2b9c1e-6a7d-4e58-9b1c-2d4f6a8e0c13/"
                 "data_1300_0f3a9c2e5b7d41e8a6c3f0b2d9e4a713_2881-2970-0.rows.json",
         "example": "examples/thing=3f2b9c1e-6a7d-4e58-9b1c-2d4f6a8e0c13/year=2026/month=10/day=24/"
                    "data_1300_0f3a9c2e5b7d41e8a6c3f0b2d9e4a713_2881-2970-0.json",
     },
     "waveshare": {
-        "dir": ROOT / "firmware/esp-idf-waveshare-sim7670g/logger",
-        "template_dir": "waveshare-esp32-s3-sim7670g",
         "rows": "fixtures/thing=7c1e4b9a-3d52-4f86-a0b7-e9d2c5f81a46/"
                 "data_0815_5e9d0c7b31a84f62b8d47a10c3e6f295_412-487-0.rows.json",
         "example": "examples/thing=7c1e4b9a-3d52-4f86-a0b7-e9d2c5f81a46/year=2026/month=10/day=24/"
                    "data_0815_5e9d0c7b31a84f62b8d47a10c3e6f295_412-487-0.json",
     },
 }
+
+
+def board_dir(board: str) -> Path:
+    """The telemetry app of a board.json alias, which holds its generated headers."""
+    return ROOT / registry.find(board).app
+
+
+def registry_proofs() -> None:
+    """Every registry board that writes the sidecar has fixtures here, and every
+    fixture names a registry board."""
+    every = registry.boards()
+    aliases = {board.alias for board in every}
+    require(set(BOARDS) <= aliases, f"fixtures name boards outside board.json {sorted(set(BOARDS) - aliases)}")
+    for board in every:
+        writes = any(".stac_columns =" in source.read_text()
+                     for source in (ROOT / board.app).glob("*.cpp"))
+        require(not writes or board.alias in BOARDS,
+                f"{board.alias} sets Config::stac_columns but has no STAC fixture in tools/test_stac_item.py")
+        require(board.alias not in BOARDS or writes,
+                f"{board.alias} has a STAC fixture but its app never sets Config::stac_columns")
+
+
 # canonical.mjs buildItem reasons and the board's ItemError names.
 REASONS = {
     "not a dated data_HHMM_ file": "not-dated",
@@ -286,9 +307,9 @@ def numbers_text(cases: dict) -> str:
 def template_table(board: str) -> list[str]:
     """The statistics columns canonical.mjs columnStatistics reads."""
     digest = re.search(r'"([0-9a-f]{64})"',
-                       (BOARDS[board]["dir"] / "telemetry_dictionary_digest.h").read_text())
+                       (board_dir(board) / "telemetry_dictionary_digest.h").read_text())
     require(digest is not None, f"{board} dictionary digest")
-    path = ROOT / "docs/shared/templates" / BOARDS[board]["template_dir"] / f"{digest.group(1)}.json"
+    path = ROOT / "docs/shared/templates" / registry.find(board).slug / f"{digest.group(1)}.json"
     require(path.exists(), f"{board} has no published template {path.name}")
     template = json.loads(path.read_text())
     out = []
@@ -347,7 +368,7 @@ def build(board: str, directory: Path, h3_objects: list[str], sanitize: bool,
     include = ["src", "sensors/src", "sensors/modules", "logger/src", "connectivity/src",
                "runtime/src", "location/src", "power/src", "stac/src"]
     command = ["clang++", CXX_STD, "-Wall", "-Wextra", "-Werror", "-ffp-contract=off",
-               "-I", str(BOARDS[board]["dir"]), "-I", str(directory / "h3"),
+               "-I", str(board_dir(board)), "-I", str(directory / "h3"),
                "-I", str(COMMON / "location/vendor/h3/h3lib/include")]
     for path in include:
         command += ["-I", str(sources / path)]
@@ -534,6 +555,7 @@ def main() -> None:
     parser.add_argument("--skip-mutations", action="store_true")
     args = parser.parse_args()
     manifest()
+    registry_proofs()
     logger_sidecar_proofs()
     cases = json.loads((FIXTURES / "cases.json").read_text())
     require(cases["canonical_sha256"] == "98583cdb3c5b625f0d998e4650ee3a303c2ab4addd53f9486820c641182b9090",
