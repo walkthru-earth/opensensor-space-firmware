@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import shutil
 import struct
 import subprocess
 import tempfile
@@ -180,13 +181,21 @@ def check_streams(plain: Path, delta: Path, scratch: Path) -> tuple[int, int]:
     return single, arrow_matched
 
 
+def first_block_widths(stream: bytes) -> list[int]:
+    """The 4 miniblock widths of the first block, after 4 header varints and the min delta."""
+    reader = footer.Reader(stream)
+    for _ in range(5):
+        reader.varint()
+    return list(stream[reader.pos:reader.pos + MINIBLOCKS])
+
+
 def delta_bound(values: int, value_bytes: int) -> int:
     """delta_binary_packed_bound() in firmware/common/src/parquet_writer.h."""
     blocks = (max(values - 1, 0) + BLOCK - 1) // BLOCK
     return 2 + 1 + len(uleb128(values)) + 10 + blocks * (10 + 4 + MINIBLOCKS * MINIBLOCK * value_bytes)
 
 
-def run(root: Path, directory: Path, compile_flags: list[str]) -> list[dict]:
+def run(root: Path, directory: Path, compile_flags: list[str], keep: Path | None = None) -> list[dict]:
     executable = directory / "delta_fixture"
     command = ["clang++", *compile_flags, "-I", str(root / "firmware/common/vendor/lz4"),
                str(root / "tools/delta_fixture.cpp"),
@@ -215,9 +224,22 @@ def run(root: Path, directory: Path, compile_flags: list[str]) -> list[dict]:
     worst = [page for page in pages(output / "edge-129-delta-none.parquet") if page[1] == "i64_full"]
     require(len(worst) == 1 and worst[0][3][PAGE_UNCOMPRESSED] == delta_bound(129, 8),
             "worst case INT64 page equals delta_binary_packed_bound(129, 8)")
+    # A zero width miniblock before or between wide ones must be written as
+    # no bytes. These columns put the block minimum in that miniblock.
+    edge = {page[1]: page[4] for page in pages(output / "edge-129-delta-none.parquet")}
+    for kind in ("i32", "i64"):
+        first = first_block_widths(edge[f"{kind}_zero_then_wide"])
+        middle = first_block_widths(edge[f"{kind}_wide_zero_wide"])
+        require(first[0] == 0 and all(first[1:]), f"{kind}_zero_then_wide widths {first}")
+        require(middle[1] == 0 and middle[0] and all(middle[2:]), f"{kind}_wide_zero_wide widths {middle}")
     print(f"PASS DELTA_BINARY_PACKED: {len(plains)} PLAIN and DELTA pairs equal in PyArrow and DuckDB, "
           f"integer streams equal the Encodings.md reference, {arrow_matched} INT32 streams equal PyArrow, "
           "worst case page equals the bound", flush=True)
+    if keep is not None:
+        # Fixtures for readers outside this repo, such as the mobile
+        # EncodingFixtureTest. The directory must not exist yet.
+        shutil.copytree(output, keep)
+        print(f"KEPT {len(list(keep.glob('*.parquet')))} DELTA fixture files in {keep}", flush=True)
     for size in sizes:
         print(f"SIZE real shape {size['groups']} x 90 rows {size['encoding']} {size['codec']}: "
               f"{size['bytes']} bytes", flush=True)

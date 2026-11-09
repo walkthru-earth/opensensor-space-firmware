@@ -40,8 +40,8 @@ enum class Kind : uint8_t {
   Wrap,         // type min on even rows, type max on odd rows
   Full,         // deltas alternate type min and type max, from type min
   Random,       // every bit random
-  ZeroThenWide, // 33 rows of step 1, then random 16 bit noise
-  WideZeroWide, // random, then rows 33 to 65 step 1, then random again
+  ZeroThenWide, // rows 0 to 32 fall by kFall, then random 16 bit noise
+  WideZeroWide, // noise, then rows 32 to 64 fall by kFall, then noise again
   Clock,        // hhmmss of base seconds + 10 * row
   Float,        // base + noise / 100 as float
   Point,        // pack_point_e7 near Cairo
@@ -95,6 +95,8 @@ bool is_present(Nulls nulls, size_t row) {
   return true;
 }
 
+constexpr int64_t kFall = 1000000;
+
 // The value of one row as an unsigned bit pattern of the column width.
 uint64_t value(const Spec &spec, size_t column, size_t row) {
   const bool wide = spec.type != PhysicalType::Int32;
@@ -125,11 +127,15 @@ uint64_t value(const Spec &spec, size_t column, size_t row) {
   }
   case Kind::Random:
     return random_bits(column, row) & mask;
+  // The falling run gives deltas of exactly -kFall, below every other delta
+  // of the block, so its miniblock is the block minimum and has width 0
+  // while its neighbours are wide. That proves a zero width miniblock
+  // before or between wide ones is written as no bytes.
   case Kind::ZeroThenWide:
-    return row < 33 ? as_bits(r) : random_bits(column, row) & 0xffffU;
+    return row <= 32 ? as_bits(-kFall * r) : random_bits(column, row) & 0xffffU;
   case Kind::WideZeroWide:
-    return row >= 33 && row < 66 ? as_bits(r)
-                                 : random_bits(column, row) & 0xffffffU;
+    return row >= 32 && row <= 64 ? as_bits(-kFall * (r - 32))
+                                  : random_bits(column, row) & 0xffffU;
   case Kind::Clock: {
     const int64_t seconds = (spec.base + 10 * r) % 86400;
     return as_bits(seconds / 3600 * 10000 + seconds / 60 % 60 * 100 +

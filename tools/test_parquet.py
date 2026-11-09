@@ -272,6 +272,8 @@ def check_file(path: Path, rows: int, columns: int, groups: int = 1, codec: str 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sanitize", action="store_true", help="enable AddressSanitizer and UBSan")
+    parser.add_argument("--keep-delta", type=Path, metavar="DIR",
+                        help="copy the PLAIN and DELTA twins from tools/delta_fixture.cpp to DIR, which must not exist")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     with tempfile.TemporaryDirectory(prefix="m5-parquet-test-") as temporary:
@@ -306,7 +308,7 @@ def main() -> None:
                     check_file(path, rows, columns, groups, codec, encoding == "delta")
                     print(f"PASS {label} {codec} {encoding}: {groups} x {rows} rows x {columns} columns; "
                           "PyArrow + DuckDB exact readback, footer statistics", flush=True)
-        parquet_delta.run(root, directory, flags)
+        parquet_delta.run(root, directory, flags, args.keep_delta.resolve() if args.keep_delta else None)
     print("PASS firmware Parquet writer conformance" + (" (ASan + UBSan)" if args.sanitize else ""))
 
 
