@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <expected>
 
-// Stateless H3 helpers. Persist only the result of published_cell(); derive
+// Stateless H3 helpers. Persist only the result of published_cell(), and derive
 // public coordinates from that cell. A cell center is not the original GPS
 // position or an administrative country lookup.
 namespace opensensor::location {

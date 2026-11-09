@@ -22,7 +22,7 @@ own peripheral initialization and consume only the required components.
 | `connectivity/src/ble_sync.*` | Secure GATT pairing, advertising, framing and notifications | Stable identity, nonblocking request-queue handler, status/live snapshots |
 | `connectivity/src/wifi_link.*` | Wi-Fi station/provisioning, scans, mDNS, token-authenticated TCP | Stable identity, same request handler and configuration |
 | `connectivity/src/network_time.*` | Router DHCP42, configured local NTP, permitted public fallback, age/provenance and bounded anchor handoff | One network owner drives lease/reconnect/poll; deployment-approved policy |
-| `location/src/os_location.*` | Official H3 validation, parent coarsening, grid centers and assigned country-code validation | Explicit owner-provisioned cell published at res 8 only; no retained GPS or inferred country |
+| `location/src/os_location.*` | Official H3 validation, parent coarsening, grid centers and assigned country-code validation | Explicit owner-provisioned cell published at res 8 only, no retained GPS or inferred country |
 | `connectivity/src/control_sync.*` | Configuration, BLE-only token and bounded log-tail commands | Worker-side response adapters |
 | `connectivity/src/sync_service.*` | Configuration and transport startup | Storage queue ready, identity and display capability |
 | `connectivity/src/archive_sync.*` | Immutable file LIST/OPEN/READ/CLOSE sessions, offsets and link generations | Archive enumeration/path/finalization callbacks, worker bus lock and response adapters |

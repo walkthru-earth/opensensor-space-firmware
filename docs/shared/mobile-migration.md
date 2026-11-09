@@ -32,15 +32,20 @@ the `dict` and `desc` digests do not change.
   resolution, only because no fix is fresh. The worst case page is 196 bytes.
 - A stored record from older firmware with another resolution keeps its bytes
   in NVS. At boot it reads as 8 and the serial log prints one line, for example
-  `CONFIG location.resolution=7 reset to 8`. A stored cell coarser than 8 boots
-  as unset with `CONFIG LOCATION invalid-stored-profile=true`.
+  `CONFIG location.resolution=7 reset to 8`. A stored cell coarser than 8 makes
+  the whole location record boot as unset with
+  `CONFIG LOCATION invalid-stored-profile=true`. The cell, the country and the
+  mobility all go back to their defaults (empty cell, empty country, fixed).
 - A moving Thing indexes the GNSS fix straight at resolution 8.
 
 **What the app must do.** Drop the resolution picker. Send cells at
 resolution 8, or finer if the app prefers, and never coarser. Do not send
 `location.resolution`, or send only `8`. Read page 1 back as before and
-expect `resolution` 8. Show the setup wizard again for a Thing whose page 1
-cell is empty after the reflash, because its old coarse cell was dropped.
+expect `resolution` 8. Show the setup wizard again when page 1 reports
+`thing.setup` as 1. Do not key on an empty cell, because a moving Thing has
+an empty cell by design. A Thing whose old coarse cell was dropped lost its
+country and mobility too, so the wizard sends the cell, `location.country`
+and `thing.mobility` again.
 
 ## Config save recovery and no user info in owner.url (fix-151-coderabbit, PR #152)
 
