@@ -1,6 +1,7 @@
 // Build through pixi; uses exactly the firmware writer on the host.
 // Usage: parquet_fixture output.parquet [rows=90] [columns=8] [none|lz4]
-//        [row_groups=1]
+//        [row_groups=1] [plain|delta]
+// delta writes INT32 and INT64 columns as DELTA_BINARY_PACKED (#135).
 // rows is per row group; row group g holds global rows g*rows .. g*rows+rows-1
 // and the row buffer is refilled between groups, as the logger does.
 #include "../firmware/common/src/lz4_codec.h"
@@ -64,12 +65,15 @@ void fill(std::vector<Row> &rows, size_t count, size_t first_index) {
 } // namespace
 
 int main(int argc, char **argv) {
-  if (argc < 2 || argc > 6)
+  if (argc < 2 || argc > 7)
     return 2;
   const size_t count = argc > 2 ? strtoul(argv[2], nullptr, 10) : 90;
   const size_t column_count = argc > 3 ? strtoul(argv[3], nullptr, 10) : 8;
   const bool compressed = argc > 4 && strcmp(argv[4], "lz4") == 0;
   const size_t groups = argc > 5 ? strtoul(argv[5], nullptr, 10) : 1;
+  const auto integers = argc > 6 && strcmp(argv[6], "delta") == 0
+                            ? telemetry::IntegerEncoding::DeltaBinaryPacked
+                            : telemetry::IntegerEncoding::Plain;
   if (count > telemetry::kMaxRows || column_count < 8 ||
       column_count > telemetry::kMaxColumns || !groups ||
       groups > telemetry::kMaxRowGroups)
@@ -154,8 +158,9 @@ int main(int argc, char **argv) {
     // opens the file; row groups are written minutes later. The writer must
     // therefore copy it: clobber the caller's copy right after begin().
     telemetry::Compression temporary = compression;
-    result = writer.begin(file_sink, file, workspace, columns.data(),
-                          column_count, compressed ? &temporary : nullptr);
+    result =
+        writer.begin(file_sink, file, workspace, columns.data(), column_count,
+                     compressed ? &temporary : nullptr, integers);
     memset(&temporary, 0xA5, sizeof(temporary));
   }
   for (size_t g = 0; g < groups && result.ok && count; ++g) {

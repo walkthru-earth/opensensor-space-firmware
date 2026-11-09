@@ -9,6 +9,7 @@ Raw results sit next to this page in [`parquet-small-files/`](parquet-small-file
 ## What the writer emits today
 
 - [`parquet_writer.cpp`](../../firmware/common/src/parquet_writer.cpp) writes one PLAIN DataPageV1 per column chunk, RLE definition levels, UNCOMPRESSED or LZ4_RAW, and per chunk statistics with exact min and max. It writes no dictionary, no column index, no offset index and no bloom filter.
+- Since [#135](https://github.com/walkthru-earth/opensensor-space-firmware/issues/135) step 1 the writer can also write INT32 and INT64 columns as DELTA_BINARY_PACKED when the caller passes `IntegerEncoding::DeltaBinaryPacked`. The default is PLAIN, no board passes it and there is no NVS key or Kconfig for it, so every board file is byte for byte as before.
 - The footer carries `field_id`, `TIMESTAMP(MICROS, UTC)`, `sorting_columns` on the sequence column, `TYPE_ORDER` column orders and the key value metadata.
 - [`os_logger.cpp`](../../firmware/common/logger/src/os_logger.cpp) caps a row group at `kMaxRows = 90`. When this survey ran it booted with `Codec::Uncompressed` and `parquet codec lz4` was lost on reboot. Since #25 the choice is saved in NVS and LZ4_RAW is the default when nothing is saved.
 - Rotation is 600, 900, 1800 or 3600 s with a 10 s sample. Row groups are 60x1, 90x1, 90x2 and 90x4 rows.
@@ -55,12 +56,28 @@ Updated 2026-11-04. The last column now shows the current phone reader. In Octob
 - BYTE_STREAM_SPLIT alone gains nothing without a codec.
 - A page index with one page per chunk adds 1.6 to 1.7 KB per file and tells the reader nothing the row group statistics do not.
 
+### Firmware DELTA encoder on the host
+
+Added 2026-11-09 for [#135](https://github.com/walkthru-earth/opensensor-space-firmware/issues/135) step 1. These numbers come from the firmware writer itself, built on the host by `pixi run parquet-test`. The fixture is [`tools/delta_fixture.cpp`](../../tools/delta_fixture.cpp). It has the 81 columns of the CoreS3 dictionary in order, 43 INT32, 28 INT64, 9 FLOAT and the geometry, with synthetic values that move the way a bench window does. It is not a captured file, so treat the numbers as direction, not as a device figure. Bytes are whole files with the footer.
+
+| Variant | 1 x 90 rows | Change | 4 x 90 rows | Change |
+|---|---|---|---|---|
+| PLAIN, UNCOMPRESSED | 48,469 | baseline | 187,045 | baseline |
+| PLAIN, LZ4_RAW (board default) | 23,818 | −51 % | 88,543 | −53 % |
+| DELTA ints, UNCOMPRESSED | 17,702 | −63 % | 64,188 | −66 % |
+| DELTA ints, LZ4_RAW | 15,425 | −68 % | 55,233 | −70 % |
+
+- Against the board default PLAIN LZ4_RAW, DELTA plus LZ4_RAW is 35 % smaller for one row group and 38 % smaller for four. The PyArrow rewrite of the real v6.11 file above gave 36 %.
+- Only INT32 and INT64 change. FLOAT and the GEOMETRY BYTE_ARRAY stay PLAIN and the definition levels stay RLE.
+- Blocks hold 128 values in 4 miniblocks of 32. PyArrow 25 uses the same block for INT32 and 256 values for INT64, so the INT32 streams are byte equal to the ones PyArrow writes and the INT64 streams are checked against a Python encoder written from Encodings.md.
+- `pixi run parquet-test --keep-delta DIR` copies the 52 PLAIN and DELTA twins to a new directory, for example `firmware/esp-idf-cores3/artifacts/parquet-delta/`, which git ignores. Names are `edge-<rows>-<plain|delta>-<none|lz4>.parquet` and `real-<groups>-<plain|delta>-<none|lz4>.parquet`. A reader outside this repo, such as the phone `EncodingFixtureTest`, can read each DELTA file and compare it with its PLAIN twin.
+
 ## On device cost evidence
 
 - The [CoreS3 compression benchmark](../boards/m5stack-cores3/compression-benchmark.md) (Arduino era, 73 columns, 60 rows, paired writes) measured LZ4_RAW at 28,537 to 14,080 B (−50.7 %), median finalization 118 to 93 ms, 3.3 to 3.7 ms of LZ4 per group and 6,208 B of codec workspace.
 - Arduino v6.1 logs show a 90 row LZ4 group of 12,769 B with 5.5 ms of codec time, against 36,989 B for the same group uncompressed.
 - The IDF CoreS3 soak log shows a 90 row, 81 column uncompressed group at 40,269 B with 118 ms of writer time, and the finished file at 49,839 B with 45 ms of sync time.
-- There are no on device numbers yet for dictionary, DELTA, BYTE_STREAM_SPLIT or a page index, and no energy numbers for any codec.
+- There are no on device numbers yet for dictionary, DELTA, BYTE_STREAM_SPLIT or a page index, and no energy numbers for any codec. The DELTA encoder exists since #135 step 1 but no board turns it on yet.
 
 ## Compaction simulation
 
@@ -91,7 +108,7 @@ Issue #25 tracks each one as a task. Item 2 is done, the others are not decided.
 2. Make LZ4_RAW the persisted default. Done in #25 on the strength of the Arduino bench, the host survey and the phone reader. A paired `codec-test` bench on the current IDF builds is still owed to confirm the size and timing on device.
 3. Move long static key value entries behind a short versioned URI and hash. This is a wire contract change and needs its own decision.
 4. Prefer fewer row groups per file, since each one costs about 4.4 KB of footer.
-5. Treat DELTA_BINARY_PACKED for integers as the largest future win. The phone reader supports it since 2026-10-18, so the next step is the on device measurement in [#135](https://github.com/walkthru-earth/opensensor-space-firmware/issues/135). Measure dictionary RAM on device before using it.
+5. Treat DELTA_BINARY_PACKED for integers as the largest future win. The phone reader supports it since 2026-10-18 and the firmware encoder landed off by default in #135 step 1, so the next step is the on device measurement in [#135](https://github.com/walkthru-earth/opensensor-space-firmware/issues/135). Measure dictionary RAM on device before using it.
 6. Register v6.12 and v2.6 files with iceberg-go `AddFiles` as a raw tier, then rewrite them on the host into Iceberg v3 data files of about 256 MB, sorted by Thing, H3 cell and event time, with dictionary plus LZ4_RAW or SNAPPY, the page index on and bloom filters on `h3_cell_id`, `device_id` and a new `thing_id` column. The October 2026 survey called it `station_id`. #108 renamed it and changed nothing else.
 7. Partition by month while the fleet is small, then move to day with partition evolution.
 8. Keep anything the phone may read in LZ4_RAW or SNAPPY until iOS reads ZSTD. Keep device originals as an immutable archive.

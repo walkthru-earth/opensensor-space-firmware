@@ -13,6 +13,13 @@ inline constexpr size_t kLz4PageRows = 90;
 inline constexpr size_t kLz4WidestValueBytes = 4 + 21;
 inline constexpr size_t kLz4RawBytes =
     4 + kLz4PageRows * (2 + 1 + kLz4WidestValueBytes);
+// A DELTA_BINARY_PACKED INT64 page (#135) at its worst case, with the same
+// definition levels, must fit the same scratch, so the codec never needs a
+// second buffer size.
+static_assert(4 + kLz4PageRows * (2 + 1) +
+                      delta_binary_packed_bound(kLz4PageRows, 8) <=
+                  kLz4RawBytes,
+              "DELTA worst case must fit the LZ4 page scratch");
 struct Lz4Workspace {
   LZ4_stream_t state{};
   uint8_t raw[kLz4RawBytes]{};
