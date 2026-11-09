@@ -59,6 +59,8 @@ class BoardError(ValueError):
 
 @dataclass(frozen=True)
 class Board:
+    """One board.json, its footer slug plus the tooling object the host scripts read."""
+
     slug: str  # footer thing.board, docs/boards/<slug>, docs/shared/templates/<slug>
     alias: str  # pixi tasks, build/<variant> targets, CI legs, stack budget images, LIVE fixture
     project: str  # ESP-IDF project, relative posix path such as firmware/esp-idf-cores3
@@ -198,16 +200,20 @@ def boards(root: Path = ROOT) -> tuple[Board, ...]:
                 raise BoardError(f"{board.manifest}: name {name!r} is already used by {other.manifest}")
             owner[name] = board
     # Restore and check_idf_target match <prefix>-flash-*.bin, and the * can
-    # hold a dash. One name matches two prefixes exactly when one prefix
-    # starts with the other plus -flash-, such as cores3 and cores3-flash-old,
-    # so that is refused and every backup name has one owner. Prefixes such as
-    # acme-s3 and acme-s3-mini never share a name and stay allowed.
+    # hold any text. Two such globs share a name exactly when one literal
+    # <prefix>-flash- starts with the other, because the * after the shorter
+    # one can then spell the rest of the longer one. That covers cores3 with
+    # cores3-flash-old and also cores3 with cores3-flash, whose
+    # cores3-flash-flash-x.bin fits both. Every pair like that is refused, so
+    # each backup name has one owner. Prefixes such as acme-s3 and
+    # acme-s3-mini never share a name and stay allowed. The owner check above
+    # already refused equal prefixes, so a prefix only meets itself here.
     prefixes = [(prefix, board) for board in found for prefix in board.backup_prefixes]
     for prefix, board in prefixes:
         for longer, other in prefixes:
-            if longer.startswith(f"{prefix}-flash-"):
-                raise BoardError(f"{other.manifest}: backup prefix {longer!r} starts with {prefix}-flash- of "
-                                 f"{board.manifest}, one backup name could match both")
+            if longer != prefix and f"{longer}-flash-".startswith(f"{prefix}-flash-"):
+                raise BoardError(f"{other.manifest}: backup prefix {longer!r} overlaps {prefix!r} of "
+                                 f"{board.manifest}, {longer}-flash-<stamp>.bin would match both")
     return tuple(sorted(found, key=lambda b: b.slug))
 
 

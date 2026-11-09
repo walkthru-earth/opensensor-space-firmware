@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import posixpath
 import shutil
 import struct
 import subprocess
@@ -182,19 +183,22 @@ def check_failure_modes(directory: Path) -> None:
     rejects(directory, "a restore only prefix two boards share",
             shared("backup_prefixes", [second.backup_prefix, first.backup_prefixes[-1]]),
             [f"name {first.backup_prefixes[-1]!r} is already used by"])
-    # One backup name matches two <prefix>-flash-*.bin globs only when one
-    # prefix starts with the other plus -flash-.
-    rejects(directory, "a backup prefix that starts with another board's prefix and -flash-",
-            shared("backup_prefixes", [second.backup_prefix, f"{first.backup_prefix}-flash-old"]),
-            [f"backup prefix '{first.backup_prefix}-flash-old' starts with {first.backup_prefix}-flash-",
-             first.manifest, second.manifest])
-    rejects(directory, "two backup prefixes of one board where one starts with the other and -flash-",
-            on_first(tooling("backup_prefixes", [first.backup_prefix, f"{first.backup_prefix}-flash-v2"])),
-            [f"{manifest}: backup prefix '{first.backup_prefix}-flash-v2' starts with {first.backup_prefix}-flash-"])
+    # One backup name matches two <prefix>-flash-*.bin globs exactly when one
+    # literal <prefix>-flash- starts with the other.
+    for tail in ("-flash-old", "-flash"):
+        rejects(directory, f"a backup prefix that is another board's prefix plus {tail}",
+                shared("backup_prefixes", [second.backup_prefix, f"{first.backup_prefix}{tail}"]),
+                [f"{second.manifest}: backup prefix '{first.backup_prefix}{tail}' overlaps '{first.backup_prefix}' of "
+                 f"{first.manifest}, {first.backup_prefix}{tail}-flash-<stamp>.bin would match both"])
+        rejects(directory, f"two backup prefixes of one board where one is the other plus {tail}",
+                on_first(tooling("backup_prefixes", [first.backup_prefix, f"{first.backup_prefix}{tail}"])),
+                [f"{manifest}: backup prefix '{first.backup_prefix}{tail}' overlaps '{first.backup_prefix}' of {manifest}"])
     accepts(directory, "a backup prefix that starts with another board's prefix and a dash only",
             shared("backup_prefixes", [second.backup_prefix, f"{first.backup_prefix}-mini"]))
     accepts(directory, "two backup prefixes of one board where one starts with the other and a dash only",
             on_first(tooling("backup_prefixes", [first.backup_prefix, f"{first.backup_prefix}-v2"])))
+    accepts(directory, "a backup prefix that is another board's prefix plus -fl, a part of -flash- that cannot overlap",
+            shared("backup_prefixes", [second.backup_prefix, f"{first.backup_prefix}-fl"]))
     rejects(directory, "a slug two boards share",
             lambda root, every: edit_json(root / second.manifest, lambda m: m.update(board=first.slug)),
             [f"name {first.slug!r} is already used by"])
@@ -430,6 +434,9 @@ def clangd_findings(text: str, every: tuple[boards.Board, ...]) -> list[str]:
     used: set[str] = set()
     for fragment in yaml.safe_load_all(text):
         database = ((fragment or {}).get("CompileFlags") or {}).get("CompilationDatabase")
+        if isinstance(database, str):
+            # clangd resolves the path against the .clangd folder, so ./firmware/x and firmware/x/ are the same build.
+            database = posixpath.normpath(database)
         if isinstance(database, str) and database.startswith("firmware/"):
             used.add(database)
             if database not in expected:
@@ -454,6 +461,8 @@ def check_clangd() -> None:
     require(text.count(f"CompilationDatabase: {path}\n") == 1, f".clangd names {path} once")
     missing = clangd_findings(text.replace(f"CompilationDatabase: {path}\n", "CompilationDatabase: None\n"), every)
     require(missing == [f".clangd routes no source to {path}, add a fragment for it"], f"missing build, {missing}")
+    dotted = text.replace(f"CompilationDatabase: {path}\n", f"CompilationDatabase: ./{path}/\n")
+    require(clangd_findings(dotted, every) == [], f".clangd may spell {path} as ./{path}/, {clangd_findings(dotted, every)}")
     stranger = text + "\n---\nIf:\n  PathMatch: firmware/esp-idf-other/.*\nCompileFlags:\n" \
         "  CompilationDatabase: firmware/esp-idf-other/build/app\n"
     found = clangd_findings(stranger, every)
@@ -604,11 +613,13 @@ def shell_tree(directory: Path) -> tuple[Path, dict[str, str]]:
 
 
 def run(root: Path, env: dict[str, str], script: str, *arguments: str) -> subprocess.CompletedProcess[str]:
+    """Run one board script from the scratch tree with the fake tools first on PATH."""
     return subprocess.run(["bash", str(root / "tools" / script), *arguments], env=env, capture_output=True,
                           text=True, check=False)
 
 
 def expect(result: subprocess.CompletedProcess[str], code: int, text: str, what: str) -> None:
+    """Require the exit code and text, and that no python command ran unless code 97 says it did."""
     require(result.returncode == code and text in result.stdout + result.stderr,
             f"{what}, expected exit {code} with {text!r}, got {result.returncode}\n{result.stdout}{result.stderr}")
     require("BLOCKED python" not in result.stderr or code == 97, f"{what} reached a python command, {result.stderr}")

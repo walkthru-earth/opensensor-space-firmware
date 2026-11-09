@@ -16,6 +16,7 @@ with the same accepted and rejected URLs.
 from __future__ import annotations
 
 from pathlib import Path
+import json
 import shutil
 import subprocess
 import tempfile
@@ -193,9 +194,18 @@ def main() -> None:
         manifest.unlink()
         rejects(lambda: gate.write(repo), "needs every board.json committed", "pin-uris with a removed board.json")
         manifest.write_bytes(original)
+        # A user config that hides untracked files must not hide a new board,
+        # so pin-uris asks for --untracked-files=all itself.
+        subprocess.run(["git", "-C", str(repo), "config", "status.showUntrackedFiles", "no"], check=True)
+        # The added board is valid on its own, so only the committed check
+        # stands between it and the pins.
+        fresh = json.loads(original)
+        fresh["board"] = "new-board"
+        fresh["tooling"].update(alias="newboard", variants=["app"], backup_prefixes=["new-board"])
         added = repo / "firmware/esp-idf-new-board/app/board.json"
         added.parent.mkdir(parents=True)
-        added.write_bytes(original)
+        added.write_text(json.dumps(fresh))
+        gate.require(len(boards.boards(repo)) == len(boards.boards()) + 1, "the added board.json is a valid board")
         rejects(lambda: gate.write(repo), "needs every board.json committed", "pin-uris with an added board.json")
         shutil.rmtree(repo / "firmware/esp-idf-new-board")
         gate.require(gate.write(repo) == [], "pin-uris runs once the headers are clean again")
