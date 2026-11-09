@@ -35,7 +35,7 @@ namespace contract {
 constexpr std::int32_t kSchemaVersion = 6;
 constexpr const char *kSchemaName = "cores3-telemetry-v6";
 constexpr const char *kDictionaryVersion = "cores3-telemetry-v7";
-constexpr const char *kFirmware = "idf-cores3-parquet-v6.31";
+constexpr const char *kFirmware = "idf-cores3-parquet-v6.32";
 constexpr const char *kCreatedBy = "opensensor-space-firmware version 0.3";
 // Raw telemetry_fields.inc at a pinned commit on main (#89), so the bytes at
 // the URI hash to kDictionarySha256. It is also the template describedby href.
