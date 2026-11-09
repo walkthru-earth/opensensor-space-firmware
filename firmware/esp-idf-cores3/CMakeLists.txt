@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 set(IDF_TARGET esp32s3)
-set(EXTRA_COMPONENT_DIRS "../common" "../common/runtime" "../common/connectivity" "../common/logger" "../common/location" "../common/gnss" "../common/sensors" "../common/power" "../common/upload")
+set(EXTRA_COMPONENT_DIRS "../common" "../common/runtime" "../common/connectivity" "../common/logger" "../common/location" "../common/stac" "../common/gnss" "../common/sensors" "../common/power" "../common/upload")
 set(OS_VARIANT bringup)
 set(COMPONENTS os_cores3)
 list(APPEND EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/components/os_cores3")

@@ -12,6 +12,9 @@
 namespace opensensor::gnss {
 struct Fix;
 } // namespace opensensor::gnss
+namespace opensensor::stac {
+struct StatColumn;
+} // namespace opensensor::stac
 
 namespace oslogger {
 using Row = opensensor::NumericSample<telemetry::kMaxColumns>;
@@ -89,6 +92,13 @@ struct Config {
   // logger prints one SELFTEST line and marks the running app valid.
   const char *self_test_field = nullptr;
   std::uint32_t self_test_deadline_ms = 180000;
+  // Optional STAC File Item sidecar (#142). The board statistics table from
+  // opensensor::stac::stat_columns(), checked with stat_columns_valid(). When
+  // set, the worker writes `<file>.json` next to each finalized dated file.
+  // nullptr or 0 writes no sidecar. A pointer and a count, so this header
+  // needs no STAC or H3 include.
+  const opensensor::stac::StatColumn *stac_columns = nullptr;
+  std::size_t stac_column_count = 0;
 };
 // Shared default for each board's sampling and UI task: above the idle
 // housekeeping, below the storage worker (3), the LAN task (4) and the BLE

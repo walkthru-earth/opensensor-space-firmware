@@ -18,6 +18,7 @@
 #include <os_gnss_reader.h>
 #include <os_logger.h>
 #include <os_max17048.h>
+#include <os_stac_item.h>
 #include <pms_frame.h>
 #include <power.h>
 #include <utility>
@@ -122,6 +123,15 @@ void collect(oslogger::Row &row, std::int64_t now, std::int64_t, void *) {
   board_modules::collect(kModules, row, now);
 }
 
+// The STAC File Item statistics columns (#142), the numeric measurement
+// columns of the board template in template order.
+constexpr auto kStatColumns = opensensor::stac::stat_columns<
+    opensensor::stac::stat_count(kFields, std::span(kSemantics))>(
+    kFields, std::span(kSemantics));
+static_assert(opensensor::stac::stat_columns_valid(kStatColumns, kFields,
+                                                   std::span(kSemantics)),
+              "every STAC statistics column must have a gate the Item reads");
+
 // OpenSensor BLE name prefix, so the board advertises OS-xxxx.
 constexpr char kBleNamePrefix[] = "OS-";
 const oslogger::Config kLoggerConfig{
@@ -145,6 +155,8 @@ const oslogger::Config kLoggerConfig{
     .descriptor_sha256 = kDescriptorSha256,
     .template_href = kTemplateHref,
     .self_test_field = "pm25_atmospheric_ug_m3",
+    .stac_columns = kStatColumns.data(),
+    .stac_column_count = kStatColumns.size(),
 };
 bool modem_power_on(void *) {
   // Latch the output high before the pin becomes an output, so it never
