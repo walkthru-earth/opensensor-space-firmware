@@ -37,6 +37,49 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
+def m5_pin_errors(env: str, manifest: str, contract: str) -> list[str]:
+    """Compare the M5 versions in dependencies.env, the os_cores3 manifest and kConfiguration."""
+    def one(pattern: str, text: str) -> str | None:
+        found = re.findall(pattern, text, re.M)
+        return found[0] if len(found) == 1 else None
+    pins = {
+        "env m5unified": one(r"^M5UNIFIED_VERSION=(\S+)$", env),
+        "env m5gfx": one(r"^M5GFX_VERSION=(\S+)$", env),
+        "manifest m5unified": one(r'^\s*m5stack/m5unified:\s*"==([^"]+)"\s*$', manifest),
+        "manifest m5gfx": one(r'^\s*m5stack/m5gfx:\s*"==([^"]+)"\s*$', manifest),
+        "kConfiguration m5unified": one(r'\\"m5unified\\":\\"([^\\"]+)\\"', contract),
+    }
+    errors = [f"{name} missing or repeated" for name, value in pins.items() if value is None]
+    if not errors:
+        if len({pins["env m5unified"], pins["manifest m5unified"], pins["kConfiguration m5unified"]}) != 1:
+            errors.append("m5unified differs across dependencies.env, idf_component.yml and kConfiguration")
+        if pins["env m5gfx"] != pins["manifest m5gfx"]:
+            errors.append("m5gfx differs between dependencies.env and idf_component.yml")
+    return errors
+
+
+def check_m5_pins(root: Path) -> None:
+    project = root / "firmware/esp-idf-cores3"
+    texts = ((project / "dependencies.env").read_text(),
+             (project / "components/os_cores3/idf_component.yml").read_text(),
+             (project / "bringup/telemetry_contract.h").read_text())
+    errors = m5_pin_errors(*texts)
+    require(not errors, "; ".join(errors))
+    env, manifest, contract = texts
+    mutations = (
+        (env.replace("M5UNIFIED_VERSION=", "M5UNIFIED_VERSION=9", 1), manifest, contract),
+        (env.replace("M5GFX_VERSION=", "M5GFX_VERSION=9", 1), manifest, contract),
+        (env, manifest.replace('m5unified: "==', 'm5unified: "==9', 1), contract),
+        (env, manifest.replace('m5gfx: "==', 'm5gfx: "==9', 1), contract),
+        (env, manifest, contract.replace('\\"m5unified\\":\\"', '\\"m5unified\\":\\"9', 1)),
+        (env, manifest, contract.replace('\\"m5unified\\"', '\\"m5unifed\\"', 1)),
+    )
+    for mutated in mutations:
+        require(mutated != texts and m5_pin_errors(*mutated), "M5 pin check misses a mutation")
+    print("PASS M5Unified and M5GFX pins agree in dependencies.env, the os_cores3 manifest and kConfiguration, "
+          f"{len(mutations)} mutations fail", flush=True)
+
+
 def check_file(path: Path, dictionary: dict, anchored: bool, compressed: bool, located: bool) -> None:
     parquet = pq.ParquetFile(path)
     table = parquet.read()
@@ -132,6 +175,7 @@ def main() -> None:
         send.assert_called_once_with(None, "parquet schema")
         require(next(response) == "AFTER", "schema command consumes through END only")
     root = Path(__file__).resolve().parents[1]
+    check_m5_pins(root)
     firmware = root / "firmware/esp-idf-cores3/bringup"
     common = root / "firmware/common/src"
     with tempfile.TemporaryDirectory(prefix="m5-contract-") as temporary:
