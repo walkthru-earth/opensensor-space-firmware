@@ -7,12 +7,16 @@ license and NOTICE are unmodified and checked by SHA-256 in both builds and
 host tests. The public header is generated from the upstream template with
 version 4.5.0; unused H3 functions are removed by linker section collection.
 
-`opensensor::location::coarsen` limits a valid supplied cell to a maximum resolution
-0–15 (default 5). A coarser input stays coarser. Persist only its output and
+Every published cell is H3 resolution 8, `kPublishedResolution` (#139).
+`opensensor::location::published_cell` returns the resolution 8 parent of a
+valid cell at resolution 8 or finer. It returns `PublishError::TooCoarse` for a
+cell coarser than 8, which cannot be restored, and `PublishError::Invalid` for
+anything that is not a valid cell. Persist and publish only its output, and
 calculate the published center using `center_degrees` or `center_e7`, which
-rounds to 10⁻⁷ degrees. Neither coordinates nor the original finer cell are
-retained by these stateless helpers. Precision reduction removes information;
-increasing the setting needs a newly supplied cell to disclose finer detail.
+rounds to 10⁻⁷ degrees. `coarsen` is the general helper underneath, it takes
+any target resolution 0 to 15 and leaves a coarser input unchanged. Neither
+coordinates nor the original finer cell are retained by these stateless
+helpers.
 
 Cell text is 15 hex digits, emitted lowercase; no numeric prefixes or trailing
 content are accepted. `from_degrees` accepts finite latitude ±90° and longitude
