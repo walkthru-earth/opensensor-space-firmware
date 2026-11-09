@@ -23,6 +23,7 @@ from pathlib import Path
 import re
 
 import board_template
+import boards
 import check_board_template
 import live_key_fixture
 
@@ -32,22 +33,10 @@ INDEX = "index.json"
 README = "README.md"
 
 
-@dataclass(frozen=True)
-class Board:
-    name: str  # directory under docs/shared/templates, same as docs/boards
-    firmware: str  # board directory with the generated headers
-    fixture: str  # tools/fixtures/live_keys/<fixture>.json
-
-
-BOARDS = (
-    Board("m5stack-cores3", "firmware/esp-idf-cores3/bringup", "cores3"),
-    Board("waveshare-esp32-s3-sim7670g", "firmware/esp-idf-waveshare-sim7670g/logger", "waveshare"),
-)
-
 
 @dataclass(frozen=True)
 class Source:
-    board: Board
+    board: boards.Board
     raw: bytes  # kTemplateJson without its NUL
     desc: str
     dict: str
@@ -55,17 +44,17 @@ class Source:
 
     @property
     def href(self) -> str:
-        return f"{self.board.name}/{self.dict}.json"
+        return f"{self.board.slug}/{self.dict}.json"
 
 
-def board_for(firmware: Path) -> Board:
-    matches = [board for board in BOARDS if (ROOT / board.firmware).resolve() == firmware.resolve()]
+def board_for(firmware: Path, root: Path = ROOT) -> boards.Board:
+    matches = [board for board in boards.boards(root) if (root / board.app).resolve() == firmware.resolve()]
     require(len(matches) == 1, f"{firmware} is not a published board")
     return matches[0]
 
 
-def published_path(firmware: Path, dictionary_sha256: str) -> Path:
-    return ROOT / TEMPLATES / board_for(firmware).name / f"{dictionary_sha256}.json"
+def published_path(firmware: Path, dictionary_sha256: str, root: Path = ROOT) -> Path:
+    return root / TEMPLATES / board_for(firmware, root).slug / f"{dictionary_sha256}.json"
 
 
 def require(condition: bool, message: str) -> None:
@@ -79,25 +68,25 @@ def _one_digest(path: Path) -> str:
     return found[0]
 
 
-def source(root: Path, board: Board) -> Source:
+def source(root: Path, board: boards.Board) -> Source:
     """The board template bytes and digests from the checked-in headers."""
-    firmware = root / board.firmware
+    firmware = root / board.app
     schema = re.search(r'constexpr const char \*kSchemaName = "([^"]+)";', (firmware / "telemetry_contract.h").read_text())
-    require(schema is not None, f"{board.name} kSchemaName not found")
+    require(schema is not None, f"{board.slug} kSchemaName not found")
     return Source(board, check_board_template.template_bytes(firmware),
                   _one_digest(firmware / "telemetry_descriptor_digest.h"),
                   _one_digest(firmware / "telemetry_dictionary_digest.h"), schema[1])
 
 
 def sources(root: Path) -> list[Source]:
-    return [source(root, board) for board in BOARDS]
+    return [source(root, board) for board in boards.boards(root)]
 
 
 def index_entries(found: list[Source]) -> dict:
     """templates keyed by dict, and by_desc keyed by desc for the app, which resolves by desc first."""
-    return {"templates": {s.dict: {"board": s.board.name, "schema": s.schema, "href": s.href, "desc": s.desc}
+    return {"templates": {s.dict: {"board": s.board.slug, "schema": s.schema, "href": s.href, "desc": s.desc}
                           for s in found},
-            "by_desc": {s.desc: {"board": s.board.name, "dict": s.dict, "href": s.href} for s in found}}
+            "by_desc": {s.desc: {"board": s.board.slug, "dict": s.dict, "href": s.href} for s in found}}
 
 
 def index_bytes(found: list[Source]) -> bytes:
@@ -150,7 +139,7 @@ def check_no_newline(published: bytes, s: Source) -> None:
 
 def check_present(directory: Path, s: Source) -> bytes:
     path = directory / s.href
-    require(path.is_file(), f"no published template for the current {s.board.name} dict {s.dict}")
+    require(path.is_file(), f"no published template for the current {s.board.slug} dict {s.dict}")
     return path.read_bytes()
 
 
@@ -175,17 +164,17 @@ def check_schema(published: bytes, s: Source) -> None:
 
 def live_key_order(root: Path, s: Source) -> list[tuple[str, str]]:
     """(field, LIVE key) pairs in field order from the board field table."""
-    inc = (root / s.board.firmware / "telemetry_fields.inc").read_text()
+    inc = (root / s.board.app / "telemetry_fields.inc").read_text()
     rows = re.findall(r'^FIELD\((\w+), .*, "([a-z0-9_]*)", [0-9]\)$', inc, re.M)
-    require(rows, f"{s.board.name} field table has no FIELD rows")
+    require(rows, f"{s.board.slug} field table has no FIELD rows")
     return [(name, key) for name, key in rows if key]
 
 
 def check_live_keys(published: bytes, s: Source, table: list[tuple[str, str]], fixture: dict) -> None:
     keys = list(json.loads(published)["firmware"]["live_keys"].items())
-    require(keys == table, f"{s.href} live_keys differ from the {s.board.name} field table order")
+    require(keys == table, f"{s.href} live_keys differ from the {s.board.slug} field table order")
     digest = fixture["digests"].get(s.dict)
-    require(digest is not None, f"no frozen LIVE fixture for the current {s.board.name} dict {s.dict}")
+    require(digest is not None, f"no frozen LIVE fixture for the current {s.board.slug} dict {s.dict}")
     for build in digest["builds"]:
         require(keys == [(field, key) for key, field in build["fields"].items()],
                 f"{s.href} live_keys differ from the frozen LIVE fixture of {build['firmware']}")
@@ -201,16 +190,16 @@ def check_index(directory: Path, found: list[Source]) -> None:
     require(sorted(entries) == sorted(s.dict for s in found), f"{INDEX} lists exactly the current dict of each board")
     for s in found:
         entry = entries[s.dict]
-        require(entry == {"board": s.board.name, "schema": s.schema, "href": s.href, "desc": s.desc},
-                f"{INDEX} entry for {s.dict} differs from the {s.board.name} headers")
+        require(entry == {"board": s.board.slug, "schema": s.schema, "href": s.href, "desc": s.desc},
+                f"{INDEX} entry for {s.dict} differs from the {s.board.slug} headers")
         target = directory / entry["href"]
         require(target.is_file() and hashlib.sha256(target.read_bytes()).hexdigest() == entry["desc"],
                 f"{INDEX} desc for {s.dict} is not the SHA-256 of its href")
     by_desc = index["by_desc"]
     require(sorted(by_desc) == sorted(s.desc for s in found), f"{INDEX} by_desc lists exactly the current desc of each board")
     for s in found:
-        require(by_desc[s.desc] == {"board": s.board.name, "dict": s.dict, "href": s.href},
-                f"{INDEX} by_desc entry for {s.desc} differs from the {s.board.name} headers")
+        require(by_desc[s.desc] == {"board": s.board.slug, "dict": s.dict, "href": s.href},
+                f"{INDEX} by_desc entry for {s.desc} differs from the {s.board.slug} headers")
     require(raw == index_bytes(found), f"{INDEX} is not the deterministic output, run --write-template")
 
 
@@ -225,7 +214,8 @@ def check(root: Path = ROOT) -> list[Source]:
         check_no_newline(published, s)
         check_identity(published, s)
         check_schema(published, s)
-        check_live_keys(published, s, live_key_order(root, s), live_key_fixture.load(s.board.fixture))
+        check_live_keys(published, s, live_key_order(root, s),
+                        live_key_fixture.load(s.board.fixture, root / live_key_fixture.FIXTURE_DIR))
     check_no_stale(directory, found)
     check_index(directory, found)
     return found

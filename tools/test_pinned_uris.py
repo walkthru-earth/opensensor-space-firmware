@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import tempfile
 
+import boards
 from host_cxx import CXX_STD
 import pinned_uris as gate
 import published_templates
@@ -53,12 +54,12 @@ def scratch_repo(scratch: Path) -> Path:
     """A git repository with the board files the gate reads, at the current bytes."""
     repo = scratch / "repo"
     shutil.copytree(ROOT / published_templates.TEMPLATES, repo / published_templates.TEMPLATES)
-    for board in published_templates.BOARDS:
-        for name in ("telemetry_template.h", "telemetry_descriptor_digest.h", "telemetry_dictionary_digest.h",
-                     "telemetry_contract.h", "telemetry_fields.inc"):
-            target = repo / board.firmware / name
+    for board in boards.boards(ROOT):
+        for name in ("board.json", "telemetry_template.h", "telemetry_descriptor_digest.h",
+                     "telemetry_dictionary_digest.h", "telemetry_contract.h", "telemetry_fields.inc"):
+            target = repo / board.app / name
             target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy(ROOT / board.firmware / name, target)
+            shutil.copy(ROOT / board.app / name, target)
     run(repo, "init", "-q", "-b", "main")
     run(repo, "config", "user.email", "gate@example.invalid")
     run(repo, "config", "user.name", "gate")
@@ -165,8 +166,8 @@ def main() -> None:
             except AssertionError as error:
                 gate.require(gate.RULE in str(error), "the gate failure states the merge commit rule")
 
-        source = published_templates.source(repo, published_templates.BOARDS[0])
-        rejects(lambda: gate.check_describedby(source.raw, source.board.name, f"{gate.RAW}{content}/x"),
+        source = published_templates.source(repo, boards.boards(repo)[0])
+        rejects(lambda: gate.check_describedby(source.raw, source.board.slug, f"{gate.RAW}{content}/x"),
                 "describedby href is not kDictionaryUri", "describedby link that is not kDictionaryUri")
 
         # A template changed on disk but not committed cannot be pinned.
@@ -174,14 +175,14 @@ def main() -> None:
         rejects(lambda: gate.write(repo), "needs the pinned files committed", "pin-uris with uncommitted content")
         run(repo, "checkout", "-q", "--", template.path)
         # Nor with any other file pin-uris reads or writes left uncommitted.
-        for board in published_templates.BOARDS:
+        for board in boards.boards(ROOT):
             for name in ("telemetry_contract.h", "telemetry_template.h", "telemetry_dictionary_digest.h",
                          "telemetry_descriptor_digest.h"):
-                header = repo / board.firmware / name
+                header = repo / board.app / name
                 original = header.read_bytes()
                 header.write_bytes(original + b"\n")
                 rejects(lambda: gate.write(repo), "needs the pinned files committed",
-                        f"pin-uris with uncommitted {board.name} {name}")
+                        f"pin-uris with uncommitted {board.slug} {name}")
                 header.write_bytes(original)
         gate.require(gate.write(repo) == [], "pin-uris runs once the headers are clean again")
         (repo / template.path).write_bytes((repo / template.path).read_bytes() + b" ")
