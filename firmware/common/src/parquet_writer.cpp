@@ -11,10 +11,12 @@
 // https://parquet.apache.org/docs/file-format/data-pages/encodings/
 // https://github.com/apache/thrift/blob/master/doc/specs/thrift-compact-protocol.md
 // Statistics follow the TYPE_ORDER writer rules introduced in 2.13 (nan_count,
-// NaN exclusion, signed zero normalization) because PyArrow 25 and DuckDB 1.5
-// ignore statistics under IEEE_754_TOTAL_ORDER. The deprecated min/max fields
-// are omitted on purpose: every targeted reader uses min_value/max_value, and
-// duplicating them would grow the footer by two values per column chunk.
+// NaN exclusion, signed zero normalization). Checked 2026-11-09 against the
+// sources. PyArrow 26.0.1 drops min/max under any order other than TYPE_ORDER,
+// and DuckDB 2.0.0 knows only TYPE_ORDER and reads the bounds that way. The
+// deprecated min/max fields are omitted on purpose: every targeted reader uses
+// min_value/max_value, and duplicating them would grow the footer by two values
+// per column chunk.
 // This is a deliberately small format subset, not a general Parquet library.
 namespace telemetry {
 namespace {

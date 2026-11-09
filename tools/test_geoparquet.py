@@ -14,9 +14,9 @@ proves for all three
   longitude and latitude, null exactly where the row has no location,
 - each chunk holds GeospatialStatistics (bbox and type 1) and no min/max,
   and a chunk with no point holds none,
-- PyArrow 25 reports the GEOMETRY logical type and GeoStatistics, and with
+- PyArrow 26 reports the GEOMETRY logical type and GeoStatistics, and with
   arrow_extensions_enabled reads the column as geoarrow.wkb in OGC:CRS84,
-- DuckDB 1.5 reads `geometry` as its core GEOMETRY type and the points as
+- DuckDB 2.0 reads `geometry` as its core GEOMETRY type and the points as
   WKT without the spatial extension,
 - the `geo` value validates against the GeoParquet 2.0.0 schema.json pinned in
   tools/geoparquet/v2.0.0 (opengeospatial/geoparquet 1edd56f, blob 99b8312),

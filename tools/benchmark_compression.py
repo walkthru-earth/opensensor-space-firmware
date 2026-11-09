@@ -43,9 +43,9 @@ def main():
             if not reader.read().equals(table):
                 raise ValueError(f"PyArrow mismatch: {codec}")
             with duckdb.connect() as connection:
-                decoded = connection.execute(
+                decoded = connection.sql(
                     "SELECT * FROM read_parquet(?, hive_partitioning=false)",
-                    [str(path)]).to_arrow_table()
+                    params=[str(path)]).to_arrow_table()
             if not decoded.equals(table, check_metadata=False):
                 raise ValueError(f"DuckDB mismatch: {codec}")
             results.append({"codec": "LZ4_RAW" if codec == "lz4" else codec,

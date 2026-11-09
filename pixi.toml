@@ -185,10 +185,11 @@ cmake = ">=4.4.5,<5"
 ninja = ">=1.13.2,<2"
 ccache = ">=4.14.3,<5"
 # Python 3.15.0 was released on 2026-10-09. On 2026-11-09 conda-forge has
-# cp315 builds of every compiled dependency for both platforms (pyarrow,
-# python-duckdb, numpy, pyyaml, rpds-py), and PyPI has cp315 wheels of the
-# bleak backends (dbus-fast, pyobjc). DuckDB 2.0 rejects free-threaded
-# CPython, and the conda-forge build is the default GIL one.
+# cp315 builds for both platforms of every package in pixi.lock that is built
+# per Python version (pyarrow, python-duckdb, numpy, pyyaml, rpds-py, cffi,
+# websockets, ukkonen, reedsolo, esptool and cppcheck). PyPI has cp315 wheels
+# of the bleak backends (dbus-fast, pyobjc). DuckDB 2.0 does not support
+# free-threaded CPython, and the conda-forge build is the default GIL one.
 python = ">=3.15.2,<3.16"
 git = ">=2.56.0,<3"
 esptool = "==5.6.0"

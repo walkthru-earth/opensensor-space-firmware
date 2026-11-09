@@ -118,8 +118,9 @@ and are not part of any firmware image. Their dependencies, such as Python,
 pyarrow, DuckDB, bleak, pyserial, esptool, CMake, Ninja, clang-tools and
 cppcheck, are installed by [Pixi](pixi.toml) from conda-forge and PyPI under
 their own licenses and are not redistributed by this repository.
-`pixi.toml` and `pixi.lock` pin the exact versions. As of 2026-11-09 they are
-Pixi 0.84.1, Python 3.15.2, pyarrow 26.0.1, DuckDB 2.0.0, bleak 3.1.0,
+`pixi.toml` holds the allowed version ranges and `pixi.lock` holds the exact
+resolved versions. As of 2026-11-09 the workspace requires Pixi 0.84.1 and the
+lock resolves Python 3.15.2, pyarrow 26.0.1, DuckDB 2.0.0, bleak 3.1.0,
 pyserial 3.5, esptool 5.6.0, CMake 4.4.5, Ninja 1.13.2, ccache 4.14.3,
 clang-tools, clangxx and compiler-rt 23.1.4, cppcheck 2.22.0, jsonschema
 4.26.0, rfc3986-validator 0.1.1, PyYAML 6.0.3, pre-commit 4.7.0, ripgrep
