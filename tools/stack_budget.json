@@ -313,8 +313,8 @@
       "tasks": {
         "parquet-sd": {
           "stack_bytes": 24576,
-          "measured": 11216,
-          "budget": 12352
+          "measured": 11232,
+          "budget": 12416
         },
         "nimble_host": {
           "measured": 5840,
@@ -333,7 +333,7 @@
         "board": {
           "task_name": "cores3-board",
           "stack_bytes": 16384,
-          "measured": 4736,
+          "measured": 4752,
           "budget": 5248
         },
         "esp_timer": {
@@ -349,16 +349,16 @@
         ".iram0.text": 129792,
         ".dram0.data": 37120,
         ".dram0.bss": 60928,
-        ".flash.text": 1280256,
+        ".flash.text": 1280768,
         ".flash.rodata": 435712,
         ".noinit": 256
       },
       "sections_measured": {
         ".iram0.text": 127031,
-        ".dram0.data": 36293,
+        ".dram0.data": 36325,
         ".dram0.bss": 59656,
-        ".flash.text": 1255106,
-        ".flash.rodata": 427064,
+        ".flash.text": 1255462,
+        ".flash.rodata": 427112,
         ".noinit": 3
       }
     },
@@ -367,7 +367,7 @@
       "tasks": {
         "parquet-sd": {
           "stack_bytes": 24576,
-          "measured": 11056,
+          "measured": 11104,
           "budget": 12224
         },
         "nimble_host": {
@@ -392,7 +392,7 @@
         "board": {
           "task_name": "os-board",
           "stack_bytes": 12288,
-          "measured": 4784,
+          "measured": 4800,
           "budget": 5312
         },
         "esp_timer": {
@@ -406,18 +406,18 @@
       },
       "sections": {
         ".iram0.text": 122624,
-        ".dram0.data": 34816,
+        ".dram0.data": 35072,
         ".dram0.bss": 58112,
-        ".flash.text": 1170688,
+        ".flash.text": 1171200,
         ".flash.rodata": 399360,
         ".noinit": 0
       },
       "sections_measured": {
         ".iram0.text": 120035,
-        ".dram0.data": 34132,
+        ".dram0.data": 34164,
         ".dram0.bss": 56904,
-        ".flash.text": 1147686,
-        ".flash.rodata": 391332,
+        ".flash.text": 1148054,
+        ".flash.rodata": 391380,
         ".noinit": 0
       }
     },
