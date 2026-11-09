@@ -14,10 +14,11 @@ declares is an error too. There is no default board.
 
 Shell scripts resolve a board name and an optional variant with
 
-    eval "$(python tools/boards.py resolve <name> [variant])"
+    eval "$(python tools/boards.py resolve -- <name> [variant])"
 
 which sets alias, slug, project, app, variant, telemetry, backup_prefix and
-backup_prefixes, or prints the reason and exits 2. A name is the short alias
+backup_prefixes, or prints the reason and exits 2. The `--` keeps a name such
+as -h a board name, so argparse never prints help into the eval. A name is the short alias
 (cores3), the footer slug (m5stack-cores3) or the first backup prefix
 (waveshare-sim7670g-v2).
 """
@@ -178,6 +179,15 @@ def boards(root: Path = ROOT) -> tuple[Board, ...]:
             if other is not None:
                 raise BoardError(f"{board.manifest}: name {name!r} is already used by {other.manifest}")
             owner[name] = board
+    # Restore and check_idf_target match <prefix>-flash-*.bin. Two backup
+    # names could match two prefixes only when one prefix starts with the
+    # other plus a dash, so that is refused and every name has one owner.
+    prefixes = [(prefix, board) for board in found for prefix in board.backup_prefixes]
+    for prefix, board in prefixes:
+        for longer, other in prefixes:
+            if longer.startswith(f"{prefix}-"):
+                raise BoardError(f"{other.manifest}: backup prefix {longer!r} starts with {prefix}- of "
+                                 f"{board.manifest}, one backup name could match both")
     return tuple(sorted(found, key=lambda b: b.slug))
 
 

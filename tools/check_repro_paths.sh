@@ -24,7 +24,7 @@ if [[ $# -lt 1 || $# -gt 2 ]]; then
   python "${repo_root}/tools/boards.py" list >&2 || true
   exit 2
 fi
-assignments="$(python "${repo_root}/tools/boards.py" resolve "$1" "${2:-}")"
+assignments="$(python "${repo_root}/tools/boards.py" resolve -- "$1" "${2:-}")"
 eval "${assignments}"
 board="${alias}"
 

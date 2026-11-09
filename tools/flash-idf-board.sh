@@ -9,7 +9,7 @@ fi
 port="$2"
 backup="$3"
 # Board names and variants come from board.json (#141), see build-idf-board.sh.
-assignments="$(python "${repo_root}/tools/boards.py" resolve "$1" "${4:-}")"
+assignments="$(python "${repo_root}/tools/boards.py" resolve -- "$1" "${4:-}")"
 eval "${assignments}"
 trial_dir="${repo_root}/${project}"
 board="${alias}"

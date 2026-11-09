@@ -25,7 +25,7 @@ if [[ -z "${board}" || -z "${port}" || -z "${image}" ]]; then
 fi
 # Any name of a board.json board (#141). The image name starts with one of
 # the board's backup prefixes, cores3-flash-*.bin included for CoreS3.
-assignments="$(python "${repo_root}/tools/boards.py" resolve "${board}")"
+assignments="$(python "${repo_root}/tools/boards.py" resolve -- "${board}")"
 eval "${assignments}"
 matched=0
 for prefix in ${backup_prefixes}; do
