@@ -29,6 +29,7 @@ tasks=(
   # Writer, reader, schema and dictionary contracts
   "common-test"
   "json-test"
+  "sha256-test"
   "parquet-test --sanitize"
   "geoparquet-test --sanitize"
   "reader-test"

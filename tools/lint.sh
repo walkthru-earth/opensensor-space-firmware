@@ -80,6 +80,7 @@ cppcheck "${options[@]}" \
   firmware/common/src/parquet_writer.cpp \
   firmware/common/src/parquet_reader.cpp \
   firmware/common/src/lz4_codec.cpp \
+  firmware/common/src/sha256_stream.cpp \
   firmware/common/sensors/src/pms_frame.cpp \
   firmware/common/power/src/os_battery_health.cpp \
   firmware/common/upload/src/os_upload_sigv4.cpp \

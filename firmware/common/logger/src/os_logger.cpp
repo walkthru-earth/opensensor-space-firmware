@@ -22,6 +22,7 @@
 #include "os_logger_work_queue.h"
 #include "ota_lan.h"
 #include "parquet_writer.h"
+#include "sha256_stream.h"
 #include "storage_governor.h"
 #include "telemetry_logical.h"
 #include "wifi_link.h"
@@ -298,9 +299,11 @@ bool crc_key(const char *path, opensensor::storage::CrcKey &key) {
 // Structural completion check and CRC-32 of `file`, an open stream. PyArrow +
 // DuckDB perform conformance. With use_cache, an entry matching path, size
 // and mtime replaces the full read, and a computed CRC is remembered. A
-// failed seek or a short read sets check.io_error.
+// failed seek or a short read sets check.io_error. A started `sha` gets the
+// same bytes as the CRC from the same reads, and the caller finishes it. A
+// cache hit skips the read, so a caller that hashes passes use_cache false.
 bool check_file(const char *path, FILE *file, ossync::FileCheck &check,
-                bool use_cache) {
+                bool use_cache, opensensor::hash::Sha256Stream *sha = nullptr) {
   std::uint8_t magic[4]{}, tail[8]{};
   bool ok = false;
   {
@@ -342,6 +345,8 @@ bool check_file(const char *path, FILE *file, ossync::FileCheck &check,
       return false;
     }
     crc = crc32_update(crc, writer_state->crc_scratch, count);
+    if (sha)
+      sha->update({writer_state->crc_scratch, count});
     read_bytes += count;
     stamp_heartbeat(); // a 1 MiB CRC pass is progress, not a stall
   }
@@ -353,7 +358,10 @@ bool check_file(const char *path, FILE *file, ossync::FileCheck &check,
   return true;
 }
 
-bool finalized_file(const char *path, std::uint32_t &size, std::uint32_t &crc) {
+// Size and CRC-32 of a closed file, read once. A started `sha` gets the same
+// bytes, see check_file.
+bool finalized_file(const char *path, std::uint32_t &size, std::uint32_t &crc,
+                    opensensor::hash::Sha256Stream *sha = nullptr) {
   FILE *file = nullptr;
   {
     BusLock lock;
@@ -362,7 +370,7 @@ bool finalized_file(const char *path, std::uint32_t &size, std::uint32_t &crc) {
   if (!file)
     return false;
   ossync::FileCheck check;
-  bool ok = check_file(path, file, check, false);
+  bool ok = check_file(path, file, check, false, sha);
   {
     BusLock lock;
     ok = std::fclose(file) == 0 && ok;
