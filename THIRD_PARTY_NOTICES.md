@@ -98,8 +98,8 @@ components, which carry the same licenses and copyright notices.
 | :--- | :--- | :--- | :--- | :--- |
 | `espressif/mdns` | 1.15.1 | CoreS3, Waveshare SIM7670G | Apache-2.0 | Copyright Espressif Systems (Shanghai) CO LTD |
 | `espressif/led_strip` | 3.1.1 | Waveshare SIM7670G | Apache-2.0 | Copyright Espressif Systems (Shanghai) CO LTD |
-| `m5stack/m5unified` | 0.2.29 | CoreS3 | MIT | Copyright (c) 2021 M5Stack |
-| `m5stack/m5gfx` | 0.2.36 | CoreS3 | MIT, with bundled third-party parts listed below | Copyright (c) 2021 M5Stack |
+| `m5stack/m5unified` | 0.3.0 | CoreS3 | MIT | Copyright (c) 2021 M5Stack |
+| `m5stack/m5gfx` | 0.3.0 | CoreS3 | MIT, with bundled third-party parts listed below | Copyright (c) 2021 M5Stack |
 
 M5GFX bundles code and fonts under their own licenses, as listed in its README.
 LovyanGFX (BSD-2-Clause FreeBSD, lovyan03), TJpgDec (ChaN), Pngle (MIT,

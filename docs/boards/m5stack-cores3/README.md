@@ -1,7 +1,7 @@
 # M5Stack CoreS3 board references
 
 The current [CoreS3 application](../../../firmware/esp-idf-cores3/README.md)
-uses native **ESP-IDF 6.1** with M5Unified **0.2.29** and M5GFX **0.2.36**
+uses native **ESP-IDF 6.1** with M5Unified **0.3.0** and M5GFX **0.3.0**
 components. A [short native run](bench-verified.md#board-1-first-native-esp-idf-flash-and-readback)
 verified 20 MHz SD logging/readback, sensors, RTC/network time and retained
 settings/bonds. The newest dated record is the
