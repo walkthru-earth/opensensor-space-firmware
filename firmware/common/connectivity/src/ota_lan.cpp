@@ -164,11 +164,8 @@ void drop_stale(rules::Transfer &upload, std::int64_t now_us) {
   if (progress.phase != rules::Phase::Receiving)
     return;
   const auto owner = upload.owner();
-  const auto peer = rules::owner_peer(owner);
-  const std::optional<std::uint32_t> generation =
-      peer < ble::kMaxLanClients
-          ? std::optional<std::uint32_t>(lan::connection_generation(peer))
-          : std::nullopt;
+  const auto generation = rules::owner_generation(owner, ble::kMaxLanClients,
+                                                  lan::connection_generation);
   const auto keep =
       rules::stale_action(progress, owner, generation, now_us, owner_seen_us);
   if (keep == rules::Keep::Keep || !upload.drop_owner(owner))

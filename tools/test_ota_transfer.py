@@ -12,7 +12,7 @@ from host_cxx import CXX_STD
 # The device glue must route its stale owner decisions through the pure
 # helpers the C++ test covers, so dropping a call cannot pass unseen.
 GLUE_CALLS = (
-    re.compile(r"rules::owner_peer\(owner\)"),
+    re.compile(r"const auto generation = rules::owner_generation\(owner, ble::kMaxLanClients,\s*lan::connection_generation\);"),
     re.compile(r"const auto keep =\s*rules::stale_action\(progress, owner, generation, now_us,\s*owner_seen_us\);"),
     re.compile(r"owner_seen_us = rules::touch_seen\(upload\.progress\(\), upload\.owner\(\), owner,\s*now_us, owner_seen_us\);"),
     re.compile(r"return rules::lan_owner\(request\.peer, request\.link_generation\);"),

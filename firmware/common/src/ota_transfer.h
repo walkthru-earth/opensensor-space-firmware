@@ -27,6 +27,7 @@
 //     request.
 
 #include <array>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -183,6 +184,19 @@ using Owner = std::uint64_t;
 }
 [[nodiscard]] constexpr std::uint8_t owner_peer(Owner owner) {
   return static_cast<std::uint8_t>(owner >> 32);
+}
+
+// The owner peer slot's connection generation now, as stale_action() takes
+// it. `generation_of` is the slot lookup, lan::connection_generation on the
+// device. nullopt when the slot is at or past `slots`, and the lookup is never
+// called for such a slot.
+template <std::invocable<std::uint8_t> Lookup>
+[[nodiscard]] constexpr std::optional<std::uint32_t>
+owner_generation(Owner owner, std::uint8_t slots, Lookup &&generation_of) {
+  const std::uint8_t peer = owner_peer(owner);
+  if (peer >= slots)
+    return std::nullopt;
+  return static_cast<std::uint32_t>(generation_of(peer));
 }
 
 // Whether the Receiving upload of a lan_owner() keeps going, checked before

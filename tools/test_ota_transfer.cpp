@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <optional>
 #include <string_view>
 #include <vector>
 
@@ -223,7 +224,7 @@ void test_begin_rules() {
   // The slot size itself is allowed.
   CHECK(transfer.handle(begin_request(kSlot, digest_a()), kOwner).has_value());
   CHECK(flash.begins == 1);
-  static_cast<void>(transfer.handle(kCancel, kOwner));
+  CHECK(transfer.handle(kCancel, kOwner).has_value());
   CHECK(!transfer.active() && flash.aborts == 1);
   // Missing digest bytes.
   auto short_begin = begin_request(1000, digest_a());
@@ -580,6 +581,45 @@ void test_stale_owner() {
     CHECK(ota::stale_action(still, owner, std::nullopt, seen + stall_us, 0) ==
           ota::Keep::Keep);
   }
+
+  // owner_generation() is the slot lookup drop_stale() runs. It asks for the
+  // owner's own slot and returns what the slot holds now, so a reconnect on
+  // that slot closes the owner's session. A slot past the table is never
+  // looked up.
+  constexpr std::uint8_t kSlots = 3;
+  int lookups = 0;
+  std::uint8_t asked = 0xFF;
+  const auto slot_now = [&](std::uint32_t now_gen) {
+    return [&lookups, &asked, now_gen](std::uint8_t peer) {
+      ++lookups;
+      asked = peer;
+      return now_gen;
+    };
+  };
+  CHECK(ota::owner_generation(owner, kSlots, slot_now(kGen)) ==
+        std::optional<std::uint32_t>(kGen));
+  CHECK(lookups == 1 && asked == kPeer);
+  CHECK(ota::owner_generation(owner, kSlots, slot_now(kGen + 1)) ==
+        std::optional<std::uint32_t>(kGen + 1));
+  CHECK(ota::stale_action(receiving, owner,
+                          ota::owner_generation(owner, kSlots, slot_now(kGen)),
+                          seen, seen) == ota::Keep::Keep);
+  CHECK(ota::stale_action(
+            receiving, owner,
+            ota::owner_generation(owner, kSlots, slot_now(kGen + 1)), seen,
+            seen) == ota::Keep::SessionClosed);
+  lookups = 0;
+  CHECK(!ota::owner_generation(ota::lan_owner(kSlots, kGen), kSlots,
+                               slot_now(kGen))
+             .has_value());
+  CHECK(
+      !ota::owner_generation(ota::lan_owner(255, kGen), kSlots, slot_now(kGen))
+           .has_value());
+  CHECK(lookups == 0);
+  CHECK(ota::owner_generation(ota::lan_owner(kSlots - 1, kGen), kSlots,
+                              slot_now(kGen + 2)) ==
+        std::optional<std::uint32_t>(kGen + 2));
+  CHECK(lookups == 1 && asked == kSlots - 1);
 
   // Only the requester that owns a Receiving upload moves the seen time.
   constexpr ota::Owner other = ota::lan_owner(kPeer + 1, kGen);
