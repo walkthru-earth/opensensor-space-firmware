@@ -14,7 +14,7 @@ import re
 import subprocess
 import tempfile
 
-from test_location import compile_h3
+from h3_library import library_flags
 
 import duckdb
 import board_template
@@ -159,13 +159,12 @@ def main() -> None:
         executable = directory / "fixture"
         command = ["clang++", CXX_STD, "-Wall", "-Wextra", "-Werror"]
         for include in ("src", "sensors/src", "sensors/modules", "logger/src", "connectivity/src", "runtime/src",
-                        "location/src", "power/src"):
+                        "power/src"):
             command += ["-I", str(common / include)]
         if args.sanitize:
             command += ["-fsanitize=address,undefined", "-fno-sanitize-recover=all"]
-        command += ["-I", str(common / "power/src"), "-I", str(directory / "h3"),
-                    *compile_h3(root, directory, args.sanitize),
-                    str(common / "location/src/os_location.cpp"),
+        command += ["-I", str(common / "power/src"),
+                    *library_flags(root, directory, args.sanitize),
                     str(root / "tools/test_waveshare_contract.cpp"),
                     str(common / "logger/src/os_logger_live.cpp"),
                     str(common / "power/src/os_battery_health.cpp"),
@@ -211,7 +210,7 @@ def main() -> None:
         require(not names.intersection({"particles_gt50_per_01l", "particles_gt100_per_01l",
                                         "imu_temperature_c", "accel_x_g", "rtc_read_ok", "touch_points"}),
                 "no invented PMS5003T bins or CoreS3 peripherals")
-        require(dictionary["firmware"] == "idf-waveshare-parquet-v2.25", "firmware identity")
+        require(dictionary["firmware"] == "idf-waveshare-parquet-v2.26", "firmware identity")
         footer_contract.check_board(executable, firmware, dictionary, "waveshare-esp32-s3-sim7670g")
         live = subprocess.check_output([str(executable), "live"], text=True).strip()
         live_key_fixture.assert_rejects_drift("waveshare", dictionary["sha256"], dictionary["firmware"], live)

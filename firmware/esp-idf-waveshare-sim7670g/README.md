@@ -1,7 +1,7 @@
 # Waveshare V2 native ESP-IDF / PMS5003T logger
 
 The current source is pure **ESP-IDF 6.1**, firmware identity
-**`idf-waveshare-parquet-v2.25`**, with **62-column** schema
+**`idf-waveshare-parquet-v2.26`**, with **62-column** schema
 `waveshare-sim7670g-telemetry-v6` and dictionary `waveshare-sim7670g-telemetry-v8`.
 The original 52 columns retain their order and types, with four nullable
 location fields (`h3_cell_id`, `h3_resolution`, `location_source` and the WKB
@@ -22,7 +22,7 @@ Shared radio code uses native NimBLE/Wi-Fi/netif/SNTP and managed mDNS
 **1.15.1**. The RGB adapter uses led_strip **3.1.1**. These stable versions
 were checked on **2026-11-09**. LZ4 is vendored **1.11.0**, and this board
 has no M5Unified/M5GFX dependency. The optional shared location component uses
-official H3 **4.5.0**.
+embedded-h3-location **v2.0.0** with official H3 **4.5.0**.
 
 **Native hardware qualification is pending.** Arduino-era SD, sensor, battery
 and pairing observations below stay tied to their recorded images. Host tests

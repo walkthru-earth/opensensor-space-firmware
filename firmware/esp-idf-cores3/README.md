@@ -1,7 +1,7 @@
 # CoreS3 native ESP-IDF logger
 
 The current source is a pure **ESP-IDF 6.1** application, firmware identity
-**`idf-cores3-parquet-v6.32`**, with an **81-column** CoreS3 schema
+**`idf-cores3-parquet-v6.33`**, with an **81-column** CoreS3 schema
 `cores3-telemetry-v6` and dictionary `cores3-telemetry-v7`. The original 77
 columns retain their order and types. Four nullable location fields follow,
 `h3_cell_id`, `h3_resolution`, `location_source` and the WKB Point `geometry`.
@@ -14,7 +14,8 @@ SHA-256 `3b4d8500…` covers the LIVE key map and precision. `bringup/main.cpp` 
 UART; `bringup/telemetry_logger.cpp` supplies the OSLogger adapter. M5Unified
 **0.3.0** and M5GFX **0.3.0** are native IDF components; there are no Arduino
 APIs or Arduino component in the application. Location uses the optional shared
-component with official H3 **4.5.0**. Shared connectivity uses native
+component over embedded-h3-location **v2.0.0** with official H3 **4.5.0**.
+Shared connectivity uses native
 NimBLE/Wi-Fi/netif/SNTP and managed mDNS **1.15.1**. These stable release pins
 were checked on **2026-11-09**. M5 0.3.0 renumbers display rotation, so the
 screen now uses rotation 0, and `charging_status` maps the new charge state API
