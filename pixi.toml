@@ -24,6 +24,8 @@ efuse = "tools/espefuse-summary.sh"
 # partway with "Serial data stream stopped, possible serial noise or corruption".
 backup = "tools/backup-flash.sh"
 backup-test = "python tools/test_backup_flash.py"
+# Board registry, every board is one board.json (#141). Fails on board list drift.
+boards-test = "python tools/test_boards.py"
 # Restore a backup taken above. Destructive, pass the file explicitly.
 restore = "tools/restore-flash.sh"
 # Show the partition table of a saved backup image. Read-only, pass the file.
