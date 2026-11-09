@@ -6,7 +6,9 @@
 #include <cmath>
 #include <limits>
 #include <numeric>
+#include <optional>
 #include <string.h>
+#include <utility>
 
 // Wire format references (checked 2026-09-17 against parquet-format 2.14.0):
 // https://github.com/apache/parquet-format/blob/apache-parquet-format-2.14.0/src/main/thrift/parquet.thrift
@@ -267,15 +269,14 @@ class PresentValues {
 public:
   PresentValues(const Column &column, size_t rows)
       : column_(&column), rows_(rows) {}
-  bool next(uint64_t &value) {
+  // The next present value, or nothing once the rows run out.
+  std::optional<uint64_t> next() {
     while (row_ < rows_) {
       const size_t row = row_++;
-      if (present(*column_, row)) {
-        value = value_bits(*column_, row);
-        return true;
-      }
+      if (present(*column_, row))
+        return value_bits(*column_, row);
     }
-    return false;
+    return std::nullopt;
   }
 
 private:
@@ -324,21 +325,26 @@ DeltaBlock delta_block(const PresentValues &values, uint64_t previous,
   DeltaBlock block;
   PresentValues walk = values;
   uint64_t last = previous;
-  uint64_t value = 0;
-  for (size_t i = 0; i < count && walk.next(value); ++i) {
-    const uint64_t delta = wrapped_delta(value, last, mask);
+  for (size_t i = 0; i < count; ++i) {
+    const std::optional<uint64_t> value = walk.next();
+    if (!value)
+      break;
+    const uint64_t delta = wrapped_delta(*value, last, mask);
     if (i == 0 || signed_less(delta, block.min_delta))
       block.min_delta = delta;
-    last = value;
+    last = *value;
   }
   walk = values;
   last = previous;
-  for (size_t i = 0; i < count && walk.next(value); ++i) {
-    const uint64_t relative =
-        relative_delta(wrapped_delta(value, last, mask), block.min_delta, mask);
+  for (size_t i = 0; i < count; ++i) {
+    const std::optional<uint64_t> value = walk.next();
+    if (!value)
+      break;
+    const uint64_t relative = relative_delta(wrapped_delta(*value, last, mask),
+                                             block.min_delta, mask);
     uint8_t &bits = block.widths[i / kDeltaMiniblockValues];
     bits = std::max(bits, static_cast<uint8_t>(std::bit_width(relative)));
-    last = value;
+    last = *value;
   }
   return block;
 }
@@ -377,10 +383,8 @@ size_t delta_values(const Column &column, size_t rows,
   const uint64_t mask = delta_mask(column.type);
   const size_t count = present_count(column, rows);
   PresentValues values(column, rows);
-  uint64_t first = 0;
   // An all null page has no first value. Its header says count 0 and value 0.
-  if (!values.next(first))
-    first = 0;
+  const uint64_t first = values.next().value_or(0);
   const uint64_t first_zigzag = zigzag(sign_extend(first, mask));
   size_t length = varint_size(kDeltaBlockValues) +
                   varint_size(kDeltaMiniblocks) + varint_size(count) +
@@ -414,18 +418,22 @@ size_t delta_values(const Column &column, size_t rows,
                            kDeltaMiniblockValues * kDeltaMiniblockValues;
       for (size_t slot = 0; slot < slots; ++slot) {
         uint64_t relative = 0; // padding past the last value is zero
-        uint64_t value = 0;
-        if (slot < take && walk.next(value)) {
-          relative = relative_delta(wrapped_delta(value, last, mask),
-                                    block.min_delta, mask);
-          last = value;
+        if (slot < take) {
+          if (const std::optional<uint64_t> value = walk.next()) {
+            relative = relative_delta(wrapped_delta(*value, last, mask),
+                                      block.min_delta, mask);
+            last = *value;
+          }
         }
         packer.put(relative, block.widths[slot / kDeltaMiniblockValues]);
       }
     }
-    for (size_t i = 0; i < take; ++i)
-      if (!values.next(previous))
+    for (size_t i = 0; i < take; ++i) {
+      const std::optional<uint64_t> value = values.next();
+      if (!value)
         break;
+      previous = *value;
+    }
     remaining -= take;
   }
   return length;
@@ -625,8 +633,8 @@ bool page(Output &out, const Column &column, size_t rows, Workspace &workspace,
   header.field(5, kStruct);
   Struct data(out);
   data.number(1, kI32, rows);
-  data.number(2, kI32, static_cast<uint8_t>(encoding)); // values
-  data.number(3, kI32, 3);                              // RLE definition levels
+  data.number(2, kI32, std::to_underlying(encoding)); // values
+  data.number(3, kI32, 3);                            // RLE definition levels
   data.number(4, kI32, 3); // RLE repetition levels (no bytes: max level 0)
   data.end();
   header.end();
@@ -693,8 +701,8 @@ void column_chunk(Output &out, const Column &column, const ChunkRecord &record,
   Struct meta(out);
   meta.number(1, kI32, static_cast<uint8_t>(column.type));
   meta.list(2, kI32, 2);
-  out.integer(static_cast<uint8_t>(value_encoding(column, integers))); // values
-  out.integer(3);                                                      // RLE
+  out.integer(std::to_underlying(value_encoding(column, integers))); // values
+  out.integer(3);                                                    // RLE
   meta.list(3, kBinary, 1);
   out.string(column.name);
   meta.number(4, kI32, static_cast<uint8_t>(codec));
