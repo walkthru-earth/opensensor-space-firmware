@@ -133,9 +133,10 @@ struct Hooks {
   // GET_CONFIG page 1 location.gnss_cell (#147), so it must be safe from any
   // task, as opensensor::gnss::latest() is. A moving Thing uses a fix no older
   // than opensensor::gnss::kFixMaxAgeUs, at H3 res 8 (#139), as
-  // location_source 2, and writes location nulls otherwise. A fixed Thing
-  // ignores it for rows. nullptr means the board has no receiver, and page 1
-  // then omits location.gnss_cell.
+  // location_source 2, and writes location nulls otherwise. A set
+  // location.phone_cell wins over the fix, as location_source 3 (#140). A
+  // fixed Thing ignores both for rows. nullptr means the board has no receiver,
+  // and page 1 then omits location.gnss_cell.
   bool (*gnss_fix)(opensensor::gnss::Fix &fix, void *) = nullptr;
 };
 // One singleton per firmware image; call once after hardware/storage setup.

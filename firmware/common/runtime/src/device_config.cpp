@@ -1105,6 +1105,17 @@ bool apply_lines(const char *text, std::size_t length, char *bad_key,
       store_text(owner_field(next_owner, *owner), value);
       continue;
     }
+    // RAM only (#140). The `cfg` record has no field for it, so it is never
+    // stored and a reboot clears it. It never marks `cfg` touched. A request
+    // that holds only this key still rewrites a record an earlier failed save
+    // left unsure, without the phone cell.
+    if (std::strcmp(key, "location.phone_cell") == 0) {
+      next.location.phone_cell = 0;
+      if (*value &&
+          !opensensor::location::parse_cell(value, next.location.phone_cell))
+        return reject();
+      continue;
+    }
     settings_touched = true;
     if (std::strcmp(key, "ble.pair") == 0) {
       PairMode mode;
@@ -1264,8 +1275,22 @@ bool apply_lines(const char *text, std::size_t length, char *bad_key,
     }
     next.location.cell = *published;
   }
+  // The phone cell follows the same rule (#140).
+  if (next.location.phone_cell) {
+    const auto published =
+        opensensor::location::published_cell(next.location.phone_cell);
+    if (!published) {
+      std::snprintf(bad_key, bad_key_size, "location.phone_cell");
+      return false;
+    }
+    next.location.phone_cell = *published;
+  }
   pending.ntp_changed = !same_ntp(previous.ntp, next.ntp);
-  pending.location_changed = !same_location(previous.location, next.location);
+  // A phone cell change alters moving rows, though it never splits the file.
+  pending.location_changed =
+      !same_location(previous.location, next.location) ||
+      (next.location.mobility == Mobility::Moving &&
+       previous.location.phone_cell != next.location.phone_cell);
   if (pending.rotate_token)
     esp_fill_random(next.token, kTokenBytes);
   if (!save_request(!same_owner(previous_owner, next_owner), previous_owner,
@@ -1334,6 +1359,12 @@ std::size_t build_page(char *out, std::size_t size, std::uint8_t page,
                     "\"cell_resolution\":%d,\"lat\":%.7f,\"lon\":%.7f",
                     opensensor::location::resolution(settings.location.cell),
                     latitude, longitude);
+    // The RAM only phone cell (#140), "" while unset and after a reboot.
+    char phone[opensensor::location::kCellTextBytes]{};
+    if (settings.location.phone_cell &&
+        !opensensor::location::format_cell(settings.location.phone_cell, phone,
+                                           sizeof(phone)))
+      phone[0] = '\0';
     // Present only on a board with a receiver, "" without a fresh cell.
     char gnss[sizeof(",\"gnss_cell\":\"\"") +
               opensensor::location::kCellTextBytes]{};
@@ -1347,9 +1378,10 @@ std::size_t build_page(char *out, std::size_t size, std::uint8_t page,
     written = std::snprintf(
         out, size,
         "{\"location\":{\"cell\":\"%s\",\"resolution\":%u,%s,\"country\":"
-        "\"%s\"%s},\"thing\":{\"mobility\":\"%s\",\"setup\":%u}}",
+        "\"%s\",\"phone_cell\":\"%s\"%s},\"thing\":{\"mobility\":\"%s\","
+        "\"setup\":%u}}",
         cell, unsigned(settings.location.resolution), center,
-        settings.location.country, gnss,
+        settings.location.country, phone, gnss,
         mobility_name(settings.location.mobility),
         setup_needed(settings.location) ? 1U : 0U);
   } else if (page == 2) {

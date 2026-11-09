@@ -226,12 +226,20 @@ readback_cell(const Fix &fix, std::int64_t now_us) {
 
 Selection select_location(const config::LocationSettings &row,
                           const std::optional<Fix> &fix, std::int64_t now_us) {
+  // A fixed Thing ignores the phone cell and GNSS, as the profile requires.
   if (row.mobility == config::Mobility::Fixed) {
     const auto published = location::published_cell(row.cell);
     if (published && *published == row.cell)
       return {.cell = *published,
               .source = telemetry::LocationSource::Configured};
     return {};
+  }
+  // A phone cell wins on a moving Thing while it is set (#140). apply_lines
+  // stores it at res 8, anything else is treated as unset.
+  if (row.phone_cell) {
+    const auto published = location::published_cell(row.phone_cell);
+    if (published && *published == row.phone_cell)
+      return {.cell = *published, .source = telemetry::LocationSource::Phone};
   }
   if (!fix || !fresh(*fix, now_us))
     return {};

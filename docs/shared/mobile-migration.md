@@ -9,6 +9,45 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## Phone cell accepted in RAM (fix-140-phone-cell, issue #140)
+
+**Needs a matched reflash and an app change.** CoreS3 moves to
+`idf-cores3-parquet-v6.28` and Waveshare to `idf-waveshare-parquet-v2.22`.
+Columns, field ids, LIVE keys, decimals, the schema and dictionary strings and
+the `dict` and `desc` digests do not change.
+
+**What changed.**
+
+- `SET_CONFIG location.phone_cell` is accepted. It was reserved and answered
+  `ERROR` 12 before. The value is a 15 digit H3 cell hex at resolution 8 or
+  finer, or empty to clear. A finer cell is kept as its resolution 8 parent.
+  A coarser cell or a value that is not a valid cell answers `ERROR` 12 with
+  detail `location.phone_cell` and nothing changes.
+- The board keeps the cell in RAM only. The phone cell is never stored and a
+  reboot clears it. A request that holds only this key still rewrites a record
+  an earlier failed save left unsure, without the phone cell. There is no age
+  bound.
+- On a moving Thing every row carries it with `location_source` 3 while it is
+  set, ahead of a fresh GNSS fix. When it is cleared, rows go back to source 2
+  or nulls.
+- A fixed Thing accepts and reports it but ignores it for rows. They keep
+  `location.cell` with `location_source` 1, as the stac-opensensor profile
+  requires. A fixed Thing with no `location.cell` writes nulls and keeps
+  `setup` 1.
+- A phone cell change never splits a file.
+- GET_CONFIG page 1 adds `location.phone_cell` after `country`. It holds the
+  res 8 cell, or `""` when unset or after a reboot. The worst case page is now
+  227 bytes.
+
+**What the app must do.** For a moving Thing, send `location.phone_cell` with
+the res 8 cell of the phone's own fix, never coordinates. Send it empty to
+clear it. Read page 1 and send the cell again when `location.phone_cell` is
+`""` after a reconnect, because a reboot cleared it. Expect `location_source`
+3 in moving rows written while the phone cell was set. For a fixed Thing, set
+`location.cell` with the map picker. A phone cell sent to a fixed Thing is
+accepted but never reaches its rows. Do not copy the phone cell into
+`location.cell`.
+
 ## H3 resolution 8 only (fix-139-h3-res8, issue #139)
 
 **Needs a matched reflash and an app change.** CoreS3 moves to

@@ -44,6 +44,11 @@ struct LocationSettings {
   std::uint8_t resolution = 8; // Always 8, the published H3 resolution (#139).
   char country[3]{};           // Optional owner-declared ISO 3166-1 alpha-2.
   Mobility mobility = Mobility::Fixed;
+  // location.phone_cell (#140), the res 8 cell of the phone's own fix, zero
+  // when unset. RAM only. The `cfg` record has no field for it, so it is never
+  // stored and a reboot clears it. While it is set a moving Thing writes it
+  // with location_source 3. A fixed Thing ignores it for rows.
+  std::uint64_t phone_cell = 0;
 };
 
 // The Thing needs setup (#147). A fixed Thing without a cell needs one, a
@@ -138,6 +143,9 @@ struct PageInputs {
 // title, provider, url and thing.deployment_id; 6 = owner description.
 std::size_t build_page(char *out, std::size_t size, std::uint8_t page,
                        const PageInputs &inputs = {});
+// True when two samples may share a file. Cell, resolution, country and
+// mobility must match. The phone cell never splits a file (#140). A fixed
+// Thing ignores it and one moving file holds many cells.
 bool same_location(const LocationSettings &, const LocationSettings &);
 
 // Owner site configuration (#148). Free text the owner sets over SET_CONFIG for

@@ -2666,7 +2666,8 @@ void collect(std::int64_t now, std::int64_t scheduled) {
   if (std::all_of(location_fields.begin(), location_fields.end(),
                   [](std::size_t index) { return index < field_count; })) {
     // The GNSS cell labels this row only. It never enters row.location, so a
-    // moving Thing does not split files when its cell changes.
+    // moving Thing does not split files when its cell changes. The phone cell
+    // (#140) is in row.location, labels moving rows only and never splits.
     std::optional<opensensor::gnss::Fix> fix;
     if (opensensor::gnss::Fix latest{};
         hooks.gnss_fix && hooks.gnss_fix(latest, hooks.context))

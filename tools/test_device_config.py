@@ -64,7 +64,7 @@ def main() -> None:
         for scenario in ("headless", "screen", "migration", "validation",
                          "credentials", "sensor", "nvs", "unavailable", "time-location",
                          "setup", "blob", "old-keys", "torn", "owner",
-                         "owner-unavailable"):
+                         "owner-unavailable", "phone-cell"):
             result = subprocess.run([str(executable), scenario],
                                     capture_output=True, text=True)
             if result.returncode:
@@ -84,7 +84,8 @@ def main() -> None:
             if scenario == "owner":
                 check_owner_pages(result.stdout)
     print("Shared configuration: defaults, PIN rotation, validation, secrecy, "
-          "blob, ignored old keys, owner keys and NVS failures passed")
+          "blob, ignored old keys, owner keys, RAM only phone cell and NVS "
+          "failures passed")
 
 
 if __name__ == "__main__":
