@@ -12,7 +12,7 @@ owner wipes them and starts again.
 ## STAC File Item sidecar at finalize (fix/142-stac-file-item, issue #142)
 
 **Needs a matched reflash. No app change is required yet.** CoreS3 moves to
-`idf-cores3-parquet-v6.28` and Waveshare to `idf-waveshare-parquet-v2.22`.
+`idf-cores3-parquet-v6.30` and Waveshare to `idf-waveshare-parquet-v2.24`.
 Columns, field ids, LIVE keys, decimals, Parquet bytes, both footer keys, the
 schema and dictionary strings and the `dict` and `desc` digests do not change.
 

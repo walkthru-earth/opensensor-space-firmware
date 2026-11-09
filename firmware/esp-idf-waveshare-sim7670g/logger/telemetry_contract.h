@@ -35,7 +35,7 @@ namespace contract {
 constexpr std::int32_t kSchemaVersion = 6;
 constexpr const char *kSchemaName = "waveshare-sim7670g-telemetry-v6";
 constexpr const char *kDictionaryVersion = "waveshare-sim7670g-telemetry-v8";
-constexpr const char *kFirmware = "idf-waveshare-parquet-v2.23";
+constexpr const char *kFirmware = "idf-waveshare-parquet-v2.24";
 constexpr const char *kCreatedBy = "opensensor-space-firmware version 0.3";
 // Footer thing.board, the board slug of the template path. The free text name
 // is the template title (stac-opensensor 83787768).
