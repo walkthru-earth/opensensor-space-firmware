@@ -3259,9 +3259,10 @@ void begin_stac() {
                  unsigned(sizeof(StacState)));
     return;
   }
-  auto *state = new (memory) StacState{};
-  if (const auto configured = state->accumulator.configure(layout);
-      !configured) {
+  auto *state = static_cast<StacState *>(memory);
+  new (state) StacState{};
+  const auto configured = state->accumulator.configure(layout);
+  if (!configured) {
     oslog.printf("PARQUET ERROR operation=stac-config reason=%s "
                  "sidecar=false\n",
                  stac::item_error_name(configured.error()));
