@@ -349,16 +349,16 @@
         ".iram0.text": 129792,
         ".dram0.data": 37120,
         ".dram0.bss": 60928,
-        ".flash.text": 1280768,
-        ".flash.rodata": 435712,
+        ".flash.text": 1287168,
+        ".flash.rodata": 436224,
         ".noinit": 256
       },
       "sections_measured": {
         ".iram0.text": 127031,
         ".dram0.data": 36325,
         ".dram0.bss": 59656,
-        ".flash.text": 1255462,
-        ".flash.rodata": 427112,
+        ".flash.text": 1261710,
+        ".flash.rodata": 427528,
         ".noinit": 3
       }
     },
@@ -408,16 +408,16 @@
         ".iram0.text": 122624,
         ".dram0.data": 35072,
         ".dram0.bss": 58112,
-        ".flash.text": 1171200,
-        ".flash.rodata": 399360,
+        ".flash.text": 1175808,
+        ".flash.rodata": 399616,
         ".noinit": 0
       },
       "sections_measured": {
         ".iram0.text": 120035,
         ".dram0.data": 34164,
         ".dram0.bss": 56904,
-        ".flash.text": 1148054,
-        ".flash.rodata": 391380,
+        ".flash.text": 1152566,
+        ".flash.rodata": 391604,
         ".noinit": 0
       }
     },
