@@ -5,6 +5,10 @@ Each fixture is read by PyArrow and DuckDB (exact values and nulls), and its
 footer is decoded field by field to check statistics, column orders, row-group
 metadata and the TIMESTAMP annotation. The fixture binary also checks writer
 capacity rejection, abort-on-sink-failure and row-group limits.
+
+Every case runs twice, once with the default PLAIN encoding and once with
+DELTA_BINARY_PACKED integer columns (#135). tools/parquet_delta.py then checks
+the DELTA encoder against PLAIN twins, an Encodings.md reference and PyArrow.
 """
 
 from __future__ import annotations
@@ -22,6 +26,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import parquet_delta  # noqa: E402
 import parquet_footer as footer  # noqa: E402
 from host_cxx import CXX_STD
 
@@ -124,7 +129,7 @@ def expected_statistics(values: list, kind: pa.DataType) -> dict:
     return result
 
 
-def check_footer(path: Path, rows: int, columns: int, groups: int, codec: int) -> None:
+def check_footer(path: Path, rows: int, columns: int, groups: int, codec: int, delta: bool) -> None:
     names = column_names(columns)
     meta = footer.read_footer(path)
     require(meta[footer.FILE_VERSION] == 1, "footer: format version")
@@ -160,6 +165,9 @@ def check_footer(path: Path, rows: int, columns: int, groups: int, codec: int) -
         for index, chunk in enumerate(chunks):
             column = chunk[footer.CHUNK_META]
             require(chunk[footer.CHUNK_FILE_OFFSET] == 0, "footer: deprecated ColumnChunk.file_offset is 0")
+            integer = types[index] in (pa.int32(), pa.int64())
+            require(column[footer.META_ENCODINGS] == [5 if delta and integer else 0, 3],
+                    f"footer: value encoding then RLE for {names[index]}")
             require(column[footer.META_CODEC] == codec and column[footer.META_VALUES] == rows, "footer: chunk codec/values")
             values = [expected_values(g * rows + r, rows, columns)[index] for r in range(rows)]
             expected = expected_statistics(values, types[index])
@@ -185,7 +193,14 @@ def column_types(columns: int) -> list[pa.DataType]:
             pa.int64(), pa.int64(), pa.float32()] + [pa.float32()] * (columns - 8)
 
 
-def check_file(path: Path, rows: int, columns: int, groups: int = 1, codec: str = "UNCOMPRESSED") -> None:
+def integer_encoding(data_type: pa.DataType, delta: bool) -> str:
+    """The encoding PyArrow must report for a column's values."""
+    integer = pa.types.is_integer(data_type) or pa.types.is_timestamp(data_type)
+    return "DELTA_BINARY_PACKED" if delta and integer else "PLAIN"
+
+
+def check_file(path: Path, rows: int, columns: int, groups: int = 1, codec: str = "UNCOMPRESSED",
+               delta: bool = False) -> None:
     names = column_names(columns)
     types = column_types(columns)
     parquet = pq.ParquetFile(path)
@@ -217,7 +232,8 @@ def check_file(path: Path, rows: int, columns: int, groups: int = 1, codec: str 
             column = group.column(index)
             require(column.path_in_schema == name, "column metadata order")
             require(column.compression == codec, f"codec: {name}")
-            require(set(column.encodings) == {"PLAIN", "RLE"}, f"encodings: {name}")
+            # The default writes PLAIN everywhere, byte for byte as before #135.
+            require(set(column.encodings) == {integer_encoding(types[index], delta), "RLE"}, f"encodings: {name}")
             require(column.num_values == rows, f"value count: {name}")
             values = [expected_values(g * rows + r, rows, columns)[index] for r in range(rows)]
             expected = expected_statistics(values, types[index])
@@ -228,7 +244,7 @@ def check_file(path: Path, rows: int, columns: int, groups: int = 1, codec: str 
                 low, high = expected["bounds"]
                 require(plain(statistics.min, types[index]) == low and plain(statistics.max, types[index]) == high,
                         f"PyArrow min/max: {name} in group {g}")
-    check_footer(path, rows, columns, groups if rows else 0, 7 if codec == "LZ4" else 0)
+    check_footer(path, rows, columns, groups if rows else 0, 7 if codec == "LZ4" else 0, delta)
     arrays = [table.column(0).cast(pa.int64()).to_pylist()] + [c.to_pylist() for c in table.columns[1:]]
     for index, row in enumerate(zip(*arrays, strict=True)):
         check_row(row, index, rows, columns, "PyArrow")
@@ -261,10 +277,10 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="m5-parquet-test-") as temporary:
         directory = Path(temporary)
         executable = directory / "parquet_fixture"
-        command = ["clang++", CXX_STD, "-Wall", "-Wextra", "-Werror"]
-        command += ["-I", str(root / "firmware/common/vendor/lz4")]
+        flags = [CXX_STD, "-Wall", "-Wextra", "-Werror"]
         if args.sanitize:
-            command += ["-fsanitize=address,undefined", "-fno-sanitize-recover=all"]
+            flags += ["-fsanitize=address,undefined", "-fno-sanitize-recover=all"]
+        command = ["clang++", *flags, "-I", str(root / "firmware/common/vendor/lz4")]
         command += [
             str(root / "tools/parquet_fixture.cpp"),
             str(root / "firmware/common/src/parquet_writer.cpp"),
@@ -281,14 +297,16 @@ def main() -> None:
             ("max-groups", 3, 9, 8),
         ):
             for codec in ("UNCOMPRESSED", "LZ4"):
-                path = directory / f"{label}-{codec}.parquet"
-                command = [str(executable), str(path), str(rows), str(columns),
-                           "lz4" if codec == "LZ4" else "none", str(groups)]
-                subprocess.run(command, check=True, stdout=subprocess.DEVNULL)
-                # PyArrow names codec enum 7 (LZ4_RAW) "LZ4" in its Python API.
-                check_file(path, rows, columns, groups, codec)
-                print(f"PASS {label} {codec}: {groups} x {rows} rows x {columns} columns; "
-                      "PyArrow + DuckDB exact readback, footer statistics", flush=True)
+                for encoding in ("plain", "delta"):
+                    path = directory / f"{label}-{codec}-{encoding}.parquet"
+                    command = [str(executable), str(path), str(rows), str(columns),
+                               "lz4" if codec == "LZ4" else "none", str(groups), encoding]
+                    subprocess.run(command, check=True, stdout=subprocess.DEVNULL)
+                    # PyArrow names codec enum 7 (LZ4_RAW) "LZ4" in its Python API.
+                    check_file(path, rows, columns, groups, codec, encoding == "delta")
+                    print(f"PASS {label} {codec} {encoding}: {groups} x {rows} rows x {columns} columns; "
+                          "PyArrow + DuckDB exact readback, footer statistics", flush=True)
+        parquet_delta.run(root, directory, flags)
     print("PASS firmware Parquet writer conformance" + (" (ASan + UBSan)" if args.sanitize else ""))
 
 
