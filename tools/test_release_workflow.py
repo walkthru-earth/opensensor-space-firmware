@@ -217,13 +217,16 @@ MUTATIONS = [
 ]
 
 
-# A fake gh that fails `run list` FAKE_FAILS times, then prints FAKE_ID, and
-# passes `run watch`. Each call appends one line to FAKE_LOG.
+# A fake gh that fails `run list` FAKE_FAILS times, then succeeds with empty
+# output FAKE_EMPTY times, as `--jq '.[0].databaseId // empty'` does before the
+# run shows up, then prints FAKE_ID. It passes `run watch`. Each call appends
+# one line to FAKE_LOG.
 FAKE_GH = """#!/usr/bin/env bash
 echo "$*" >> "${FAKE_LOG}"
 if [[ "$1 $2" == "run watch" ]]; then exit 0; fi
 calls="$(grep -c '^run list' "${FAKE_LOG}")"
 if (( calls <= FAKE_FAILS )); then exit 1; fi
+if (( calls <= FAKE_FAILS + FAKE_EMPTY )); then exit 0; fi
 echo "${FAKE_ID}"
 """
 
@@ -246,24 +249,28 @@ def check_wait_loop() -> None:
         for name, body in (("gh", FAKE_GH), ("sleep", fake_sleep)):
             (bin_dir / name).write_text(body)
             (bin_dir / name).chmod(0o755 | stat.S_IXUSR)
-        for fails, want_rc in ((1000, 1), (3, 0)):
-            log = bin_dir / f"log-{fails}"
+        # (gh failures, empty successes, polls, exit code). Both failure
+        # modes give up after 30 polls, and a hit after either one is watched.
+        cases = ((1000, 0, 30, 1), (0, 1000, 30, 1), (3, 0, 4, 0), (0, 3, 4, 0), (2, 2, 5, 0))
+        for fails, empty, polls, want_rc in cases:
+            log = bin_dir / f"log-{fails}-{empty}"
             env = dict(os.environ, PATH=f"{bin_dir}{os.pathsep}{os.environ['PATH']}", FAKE_LOG=str(log),
-                       FAKE_FAILS=str(fails), FAKE_ID="4242")
+                       FAKE_FAILS=str(fails), FAKE_EMPTY=str(empty), FAKE_ID="4242")
             result = subprocess.run(["bash", "-c", snippet], env=env, capture_output=True, text=True,
                                     timeout=30, check=False)
-            assert result.returncode == want_rc, (fails, result.returncode, result.stderr)
-            calls = log.read_text().splitlines()
-            lists = [call for call in calls if call.startswith("run list")]
-            sleeps = [call for call in calls if call.startswith("sleep")]
-            # One sleep between tries, none after the last or after a hit.
-            assert sleeps == ["sleep 10"] * (len(lists) - 1), (len(lists), sleeps)
-            if want_rc:
-                assert len(lists) == 30 and "after 5 minutes" in result.stderr, (len(lists), result.stderr)
-                assert not any(call.startswith("run watch") for call in calls), calls
-            else:
-                assert len(lists) == 4 and calls[-1] == "run watch 4242 --exit-status", calls
-
+            assert result.returncode == want_rc, (fails, empty, result.returncode, result.stderr)
+            calls = ["run list" if call.startswith("run list ") else call for call in log.read_text().splitlines()]
+            # Each poll but the last is followed by one sleep. A hit is watched
+            # once, and a miss is reported and never watched.
+            want = []
+            for poll in range(polls):
+                want.append("run list")
+                if poll < polls - 1:
+                    want.append("sleep 10")
+            if not want_rc:
+                want.append("run watch 4242 --exit-status")
+            assert calls == want, (fails, empty, calls)
+            assert ("after 5 minutes" in result.stderr) == bool(want_rc), result.stderr
 
 def main() -> int:
     text = WORKFLOW.read_text(encoding="utf-8")

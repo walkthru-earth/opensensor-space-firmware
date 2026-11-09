@@ -19,11 +19,27 @@ GLUE_CALLS = (
 )
 
 
+# Block and line comments, so a call that is commented out does not count.
+COMMENTS = re.compile(r"/\*.*?\*/|//[^\n]*", re.DOTALL)
+
+
+def missing_calls(source: str) -> list[str]:
+    code = COMMENTS.sub("", source)
+    return [call.pattern for call in GLUE_CALLS if not call.search(code)]
+
+
 def check_glue(root: Path) -> None:
     text = (root / "firmware/common/connectivity/src/ota_lan.cpp").read_text(encoding="utf-8")
-    missing = [call.pattern for call in GLUE_CALLS if not call.search(text)]
+    missing = missing_calls(text)
     if missing:
         raise SystemExit(f"ota_lan.cpp no longer calls the tested OTA helpers, {missing}")
+    # Each call commented out, or deleted, must be reported.
+    for call in GLUE_CALLS:
+        found = call.search(text)
+        assert found, call.pattern
+        start, end = found.span()
+        for replacement in (f"/* {found.group(0)} */", "// " + found.group(0).replace("\n", "\n// "), ""):
+            assert call.pattern in missing_calls(text[:start] + replacement + text[end:]), call.pattern
 
 
 def main() -> None:
