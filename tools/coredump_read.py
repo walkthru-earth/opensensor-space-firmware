@@ -17,8 +17,8 @@ Run it through the pixi task, which loads the pinned ESP-IDF Python and GDB
 
     pixi run coredump-read <board> <checked-port> [variant]
 
-The board is any name in a board.json (#141), such as cores3 or
-m5stack-cores3. No variant means the board's telemetry app.
+The board is the alias, footer slug or backup prefix of a board.json
+(#141). No variant means the board's telemetry app.
 
 Build the same image first (`pixi run cores3-build` or `pixi run
 waveshare-build <variant>`), since the dump is decoded with that ELF.
@@ -149,7 +149,7 @@ def run_private(steps: list[list[str]], runner: EnvRunner,
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("board", help="any board name in a board.json, such as cores3 or m5stack-cores3")
+    parser.add_argument("board", help="the alias, footer slug or backup prefix of a board.json")
     parser.add_argument("port")
     parser.add_argument("variant", nargs="?")
     parser.add_argument("--dry-run", action="store_true")

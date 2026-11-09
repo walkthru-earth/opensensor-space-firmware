@@ -203,6 +203,7 @@ The excerpt leaves out `id`, `buses`, `requires`, `status` and the
 | local_modules | \[path] | Manifests that live in the board app, such as the CoreS3 M5 IMU, AXP2101, BM8563 and FT6336 and the Waveshare `pms_identity` segment |
 | segments | \[\{module, segment\}] | **REQUIRED**. Ordered segment list. `module` is a module id or `system`. Each segment appears at most once |
 | class_subsets | Map\<string, \[string]> | Class names a board ships for a column, in the module's value order. Absent means all |
+| tooling | object | Host tool facts read by `tools/boards.py` (#141). `alias`, `variants` with the `board.json` folder first, `backup_prefixes`, `flash_bytes`, `psram_mode`, `sdkconfig`, `components_required` and `components_forbidden`. Optional in the schema, required by the registry on every board app. Not hashed into `dict`, `desc` or `shipped.lock` |
 
 Segments, not one block per module, because field ids are append only. A
 module that grows later adds a new segment at the end. Both boards already

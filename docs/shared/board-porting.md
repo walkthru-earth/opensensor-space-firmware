@@ -85,18 +85,27 @@ example.
    `REQUIRES common runtime connectivity logger location`. A board with a
    Plantower PMS module selects the model explicitly. Preserve each board's
    schema and provenance.
-3. Add Pixi tasks, target checks and board contract fixtures. Build both existing
-   boards plus the new target using the [development gates](development.md#verification).
-   A generic compile fixture never gets flashed. Write the board's
-   `board.json` against the [plugin contract](plugins/README.md#writing-a-new-board-once),
-   then run `pixi run plugin-new-board <path to board.json>` once. It writes
-   the three `telemetry_*.inc` files and a first `shipped.lock`, and they are
-   frozen from then on. Then follow [Contract and publish](#contract-and-publish).
+3. Add the board to the board registry, Pixi tasks and board contract
+   fixtures. Build both existing boards plus the new target using the
+   [development gates](development.md#verification). A generic compile fixture
+   never gets flashed. Write the board's `board.json` against the
+   [plugin contract](plugins/README.md#writing-a-new-board-once), including its
+   `tooling` object (#141). `tools/boards.py` reads every
+   `firmware/esp-idf-*/*/board.json`, so the build, flash, backup, restore,
+   target check, lint, core dump, partial rebuild and template tools pick the
+   board up with no code edit. Then add the `<alias>-setup`, `<alias>-build`
+   and `<alias>-flash` Pixi tasks, the CI and release legs and the
+   `tools/stack_budget.json` images. `pixi run boards-test` fails until each of
+   them lists exactly the registry boards. Run
+   `pixi run plugin-new-board <path to board.json>` once. It writes the three
+   `telemetry_*.inc` files and a first `shipped.lock`, and they are frozen from
+   then on. Then follow [Contract and publish](#contract-and-publish).
 4. Audit strapping pins, peripheral ownership, flash capacity, PSRAM, console
    and recovery. Before any physical write follow the full checked-port
    [identification and backup sequence](../../AGENTS.md#before-any-physical-flash-write).
-   Current backup/flash helpers accept only the two existing 16 MiB targets.
-   Extend them deliberately for a different capacity. Preserve NVS identity,
+   The backup, restore and flash helpers support only 16 MiB flash, the one
+   value `tooling.flash_bytes` accepts. Extend the schema enum, `tools/boards.py`
+   and the helpers deliberately for a different capacity. Preserve NVS identity,
    credentials, keys, types and partition offsets.
 5. Qualify a small diagnostic, sensor byte contract, card logging and immutable
    readback on the exact board. Keep captures and image hashes in ignored trial
@@ -125,12 +134,13 @@ Use the Waveshare V2 files as the example.
    the slug, and set `kSchemaName`, `kDictionaryVersion`, `kFirmware` and
    `kCreatedBy`. Set `kDictionarySha256` in `telemetry_dictionary_digest.h` to
    `shasum -a 256 telemetry_fields.inc`.
-3. Host tooling. Add the board to `BOARDS` in `tools/published_templates.py`.
-   Write a board contract test like `tools/test_waveshare_contract.py`, add its
-   `*-test` task to `pixi.toml` and list it in `tools/gate.sh`. The gate refuses
-   a test task it does not list. Add the LIVE fixture
-   `tools/fixtures/live_keys/<fixture>.json` and name it in the `fixture` field
-   of the new `BOARDS` entry.
+3. Host tooling. The `tooling` object of `board.json` is the whole host side
+   registration, `tools/published_templates.py` and `tools/pinned_uris.py`
+   read the board from it. Write a board contract test like
+   `tools/test_waveshare_contract.py`, add its `*-test` task to `pixi.toml` and
+   list it in `tools/gate.sh`. The gate refuses a test task it does not list.
+   Add the LIVE fixture `tools/fixtures/live_keys/<alias>.json`, named by
+   `tooling.alias`.
 4. Template. The contract test with `--write-template` builds the template
    through `tools/board_template.py`. It writes `telemetry_template.h` and
    `telemetry_descriptor_digest.h`, publishes

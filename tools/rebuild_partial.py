@@ -698,7 +698,7 @@ def board_fields() -> dict[str, Path]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     schema = parser.add_mutually_exclusive_group(required=True)
-    schema.add_argument("--board", help="any board name in a board.json, such as waveshare or m5stack-cores3")
+    schema.add_argument("--board", help="the alias, footer slug or backup prefix of a board.json")
     schema.add_argument("--fields", type=Path, help="a board telemetry_fields.inc")
     parser.add_argument("--columns", type=int, help="first N fields, from the PARQUET BEGIN columns= value")
     parser.add_argument("--codec", choices=["auto", "none", "lz4"], default="auto")

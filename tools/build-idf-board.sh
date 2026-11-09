@@ -6,8 +6,8 @@ if [[ $# -lt 1 || $# -gt 2 ]]; then
   python "${repo_root}/tools/boards.py" list >&2 || true
   exit 2
 fi
-# The board list is every board.json (#141). A board is its alias (cores3),
-# its footer slug (m5stack-cores3) or its backup prefix. No variant means the
+# The board list is every board.json (#141). A board is its alias, its
+# footer slug or its backup prefix. No variant means the
 # telemetry app, which holds board.json. Unknown names fail, never default.
 assignments="$(python "${repo_root}/tools/boards.py" resolve "$1" "${2:-}")"
 eval "${assignments}"

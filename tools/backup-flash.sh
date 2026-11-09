@@ -17,7 +17,7 @@ if [[ -z "${board}" ]]; then
   exit 2
 fi
 # Any name of a board.json board (#141). The image is named by the board's
-# first backup prefix, such as m5stack-cores3 or waveshare-sim7670g-v2.
+# first backup prefix, tooling.backup_prefixes[0].
 assignments="$(python "${repo_root}/tools/boards.py" resolve "${board}")"
 eval "${assignments}"
 board="${backup_prefix}"
