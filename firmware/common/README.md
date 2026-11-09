@@ -22,7 +22,7 @@ own peripheral initialization and consume only the required components.
 | `connectivity/src/ble_sync.*` | Secure GATT pairing, advertising, framing and notifications | Stable identity, nonblocking request-queue handler, status/live snapshots |
 | `connectivity/src/wifi_link.*` | Wi-Fi station/provisioning, scans, mDNS, token-authenticated TCP | Stable identity, same request handler and configuration |
 | `connectivity/src/network_time.*` | Router DHCP42, configured local NTP, permitted public fallback, age/provenance and bounded anchor handoff | One network owner drives lease/reconnect/poll; deployment-approved policy |
-| `location/src/os_location.*` | Official H3 validation, parent coarsening, grid centers and assigned country-code validation | Explicit owner-provisioned cell/privacy cap; no retained GPS or inferred country |
+| `location/src/os_location.*` | Official H3 validation, parent coarsening, grid centers and assigned country-code validation | Explicit owner-provisioned cell published at res 8 only; no retained GPS or inferred country |
 | `connectivity/src/control_sync.*` | Configuration, BLE-only token and bounded log-tail commands | Worker-side response adapters |
 | `connectivity/src/sync_service.*` | Configuration and transport startup | Storage queue ready, identity and display capability |
 | `connectivity/src/archive_sync.*` | Immutable file LIST/OPEN/READ/CLOSE sessions, offsets and link generations | Archive enumeration/path/finalization callbacks, worker bus lock and response adapters |
@@ -138,8 +138,8 @@ Floats print with the decimals each board sets per field. Without an RTC,
 `rtc=2`, `clk=0` and UTC stays null until host SET_TIME or a successful network response, including after reboot.
 
 OSLocation vendors unmodified official H3 4.5.0 with verified hashes. OSRuntime
-stores one coherent location record containing only the coarsened cell, cap and
-optional owner-declared ISO country. OSLogger captures it at acquisition and
+stores one coherent location record containing only the resolution 8 cell, the
+fixed resolution 8 and optional owner-declared ISO country. OSLogger captures it at acquisition and
 splits batches/files when it changes. Four nullable fields carry the cell,
 actual resolution, location source and the cell centre as a WKB Point. Since #88
 the `opensensor` footer key carries no location or country. The [time/location contract](../../docs/shared/time-and-location.md)

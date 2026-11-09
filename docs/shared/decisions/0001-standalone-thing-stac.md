@@ -67,13 +67,14 @@ These come from the analysis below and from the code, and they still hold.
   `.parquet`) accept only Parquet today. Carrying the sidecar needs an uploader
   change and a wire contract change that mobile agrees to. The uploader change
   is [#144](https://github.com/walkthru-earth/opensensor-space-firmware/issues/144) and the BLE and LAN change is [#143](https://github.com/walkthru-earth/opensensor-space-firmware/issues/143).
-- `location.resolution` in config still accepts 0 to 15, with 8 as the default
+- When this record was written `location.resolution` in config accepted 0 to
+  15, with 8 as the default. Under OD-2026-11-04-B published files and Items
+  carry resolution 8. The PROFILE gives a file no Item when a cell is not
+  resolution 8 ([#142](https://github.com/walkthru-earth/opensensor-space-firmware/issues/142)). The uploader has no such
+  check, so it would still send that Parquet. Since [#139](https://github.com/walkthru-earth/opensensor-space-firmware/issues/139) config accepts
+  only 8 and every row the board writes is resolution 8
   ([`ble-sync-protocol.md`](../ble-sync-protocol.md),
-  [`time-and-location.md`](../time-and-location.md)). Under OD-2026-11-04-B
-  published files and Items carry resolution 8. The PROFILE gives a file no
-  Item when a cell is not resolution 8 ([#142](https://github.com/walkthru-earth/opensensor-space-firmware/issues/142)). The uploader has no such
-  check, so it would still send that Parquet. Narrowing the configurable range
-  to resolution 8 is [#139](https://github.com/walkthru-earth/opensensor-space-firmware/issues/139).
+  [`time-and-location.md`](../time-and-location.md)).
 - Field boards upload to a private intake product, and a publish Action copies
   each file to the public product (#81 stage 4). The Action must copy the board's
   Item and Collection unchanged. Relative hrefs keep them valid after the copy.

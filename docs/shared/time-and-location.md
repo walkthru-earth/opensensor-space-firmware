@@ -79,25 +79,34 @@ require an appliance's own vendor zone.
 
 Location means the monitoring device or Thing's location. It starts unset.
 In the Android/iOS mobile app's Device settings, the owner stands beside the
-sensor, chooses a resolution and taps **Use phone location**. Permission and a
+sensor and taps **Use phone location**. Permission and a
 foreground one-shot fix are requested only from this tap. The phone converts
 the fix to H3 before it enters UI state or the device command. Exact phone
 coordinates are never persisted, logged or sent to firmware. **Save on device**
-sends only a cell, maximum resolution and optional declared country; the app
+sends only a cell and optional declared country, and the app
 reads page 1 back before reporting confirmation. This does not enable uploads.
 Older firmware without that page shows setup as unsupported.
 
-The default maximum H3 resolution is 8 (#83), configurable from 0 through 15.
-Lower resolutions disclose larger areas. Resolution 8 averages about 0.74 km²;
-actual area varies, and an approximate phone fix does not become accurate by
-choosing a finer cell. The official [H3 resolution table](https://h3geo.org/docs/core-library/restable/)
-describes these averages. Fine cells can identify a specific place. Public
-sharing requires its own disclosure policy.
+Every published cell is H3 resolution 8, for fixed and moving Things alike
+(OD-2026-11-04-B, #139). Resolution 8 averages about 0.74 km², actual area
+varies, and an approximate phone fix does not become accurate by choosing a
+finer cell. The official [H3 resolution table](https://h3geo.org/docs/core-library/restable/)
+describes these averages. The STAC profile gives a file no Item when a cell is
+not resolution 8, so the board never writes another resolution.
 
-Firmware validates the cell using pinned official H3 v4.5.0 and coarsens it to
-the configured maximum before persistence. A supplied coarser cell stays
-coarser. Changing the maximum to a finer value cannot recover discarded
-location; the phone requires a new fix to create a finer candidate. The
+`location.resolution` is fixed at 8 and kept so a client may restate it.
+`SET_CONFIG` refuses any other value, such as 0, 7, 9 or 15, with `ERROR` 12
+and detail `location.resolution`, and nothing changes. A stored record from
+older firmware with another value keeps its bytes in NVS. At boot the board
+reads it as 8 and prints one serial line, for example
+`CONFIG location.resolution=7 reset to 8`. The record is rewritten with 8 only
+by the next save that writes it.
+
+Firmware validates the cell using pinned official H3 v4.5.0 and coarsens a
+finer cell to its resolution 8 parent before persistence. A cell coarser than
+resolution 8 cannot become one, so `SET_CONFIG` refuses it with detail
+`location.cell`. A stored cell coarser than resolution 8 boots as unset and
+logs the invalid stored profile line. The
 public latitude/longitude are always the [H3 grid center](https://h3geo.org/docs/api/indexing/),
 derived from the retained cell, not the original fix or a claimed device point.
 
@@ -131,11 +140,9 @@ On a board with a receiver, GET_CONFIG page 1 also carries
 `location.gnss_cell`. It lets the setup phone show the cell the board's own
 receiver sees next to the map picker. The value is:
 
-- Always an H3 resolution 8 cell, whatever `location.resolution` is.
+- Always an H3 resolution 8 cell.
 - `""` without a fix from the last 15 seconds, the same freshness rule as
   moving rows.
-- `""` when `location.resolution` is below 8, because the reader never keeps
-  a cell finer than the owner cap and a cell cannot be upsampled.
 - Never a coordinate, never logged and never stored. It is read through the
   same board-neutral `oslogger::Hooks::gnss_fix` hook that moving rows use.
 
@@ -151,13 +158,13 @@ next to each other:
 | Column | Physical type | Meaning |
 | --- | --- | --- |
 | `h3_cell_id` | INT64 | Valid retained H3 cell, stored as a numeric index |
-| `h3_resolution` | INT32 | Actual cell resolution, which may be coarser than the maximum |
+| `h3_resolution` | INT32 | Resolution of the row's cell, 8 in every located row (#139) |
 | `location_source` | UINT8 | 0 none, 1 configured, 2 gnss, 3 phone. A fixed Thing writes 1, a moving Thing with a GNSS hook writes 2. Nothing writes 3 yet |
 | `geometry` | GEOMETRY | 2D WKB Point at the cell centre, no crs (OGC:CRS84), with GeoParquet 2.0 `geo` footer metadata |
 
 Unset or invalid location produces four nulls, and `geometry` is null exactly
 when `h3_cell_id` is null. Each sample captures its
-location settings before entering the worker queue. A cell, precision cap or
+location settings before entering the worker queue. A cell or
 country change splits the batch/open file, so a later setting never relabels
 buffered readings. The footer carries no location since #88. The rows hold
 the cell, resolution, source and centre point, and the country is not written to the file.
@@ -172,7 +179,7 @@ Existing archives are immutable.
 | Mobility | Fresh GNSS fix | Row location |
 | --- | --- | --- |
 | `fixed` | any | The configured cell, source 1. A receiver never changes it |
-| `moving` | yes | The GNSS cell coarsened to the row's `location.resolution`, source 2 |
+| `moving` | yes | The GNSS cell at resolution 8, source 2 |
 | `moving` | no | Four nulls, `location_source` null too. Never the configured cell and never an older fix |
 
 A fix is fresh for 15 seconds after the reply was read. Polls are about 12
@@ -184,15 +191,16 @@ writes nulls on every row.
 Boards that carry a receiver opt in through `oslogger::Hooks::gnss_fix` and
 the board-neutral `firmware/common/gnss` and `firmware/common/gnss_reader`
 components (see [board porting](board-porting.md)). The receiver position
-becomes an H3 cell at the owner resolution the moment it is parsed. The raw
+becomes an H3 resolution 8 cell the moment it is parsed. The raw
 latitude and longitude never reach a log, the card, BLE, LAN or the LIVE view,
 and the firmware keeps only the cell, its resolution and the fix monotonic
-time. Waveshare V2 is the first board with the hook, from firmware v2.17.
+time. No finer cell is ever computed, so finer GNSS detail stays in the RAM
+of the reply parser only. Waveshare V2 is the first board with the hook, from firmware v2.17.
 
 A GNSS cell change never splits a batch or file, because the cell is not part
 of the location snapshot that `fits_batch` compares. A file from a moving
 Thing holds many cells, each row with its own. A change of
-`thing.mobility`, the configured cell, the resolution cap or the country still
+`thing.mobility`, the configured cell or the country still
 splits as before.
 
 GNSS UTC is not a clock anchor. A fix does not set UTC, so rows keep null UTC
