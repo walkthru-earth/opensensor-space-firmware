@@ -1,6 +1,6 @@
 """Build the pinned embedded-h3-location library and check the firmware
-location policy over it, res 8 publishing, the official H3 fixtures and the
-logger mapping."""
+location policy over it, res 8 publishing, the official H3 fixtures, the
+logger mapping and the exact ISO country set in tools/fixtures/location."""
 
 from __future__ import annotations
 
@@ -31,8 +31,9 @@ def main() -> None:
         if args.sanitize:
             command += ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
         subprocess.run(command, check=True)
-        subprocess.run([str(executable)], check=True)
-    print("Location: pinned library, H3 fixtures, invalid indexes, res 8 policy, centers and countries passed")
+        fixture = root / "tools/fixtures/location/iso_alpha2.txt"
+        subprocess.run([str(executable), str(fixture)], check=True)
+    print("Location: pinned library, H3 fixtures, invalid indexes, res 8 policy, centers and the 676 country pairs against the ISO fixture passed")
 
 
 if __name__ == "__main__":

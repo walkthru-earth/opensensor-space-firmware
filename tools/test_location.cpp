@@ -1,8 +1,8 @@
 // Host checks for the firmware location policy (firmware/common/location)
 // over the pinned embedded-h3-location library. The library proves its own
 // API in its tests. These keep the official H3 fixtures the firmware relies
-// on, the res 8 publish rule and the logger mapping, so a library bump that
-// changes any of them fails here.
+// on, the res 8 publish rule, the logger mapping and the exact ISO country
+// set, so a library bump that changes any of them fails here.
 #include "os_location.h"
 #include <numeric_sample.h>
 #include <os_logger_location.h>
@@ -10,6 +10,7 @@
 #include <array>
 #include <cassert>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <initializer_list>
 #include <limits>
@@ -23,9 +24,53 @@ Cell coarsened(Cell cell, int maximum) {
   return coarsen(cell, maximum).value_or(0);
 }
 int resolution_of(Cell cell) { return resolution(cell).value_or(-1); }
+
+// The accepted country set must be exactly the ISO list in
+// tools/fixtures/location/iso_alpha2.txt, copied from the firmware table the
+// library replaced. Every one of the 676 uppercase pairs is checked, so a
+// library bump that adds, drops or renames a code fails here.
+void countries_match_fixture(const char *path) {
+  std::FILE *file = std::fopen(path, "r");
+  assert(file);
+  std::array<bool, 26 * 26> listed{};
+  int count = 0;
+  std::array<char, 256> line{};
+  while (std::fgets(line.data(), static_cast<int>(line.size()), file)) {
+    if (line[0] == '#')
+      continue;
+    for (const char *at = line.data(); *at;) {
+      if (*at == ' ' || *at == '\n') {
+        ++at;
+        continue;
+      }
+      assert(at[0] >= 'A' && at[0] <= 'Z' && at[1] >= 'A' && at[1] <= 'Z');
+      assert(at[2] == ' ' || at[2] == '\n' || at[2] == '\0');
+      bool &seen = listed[(at[0] - 'A') * 26 + (at[1] - 'A')];
+      assert(!seen);
+      seen = true;
+      ++count;
+      at += 2;
+    }
+  }
+  std::fclose(file);
+  assert(count == 249);
+  int accepted = 0;
+  int rejected = 0;
+  for (char first = 'A'; first <= 'Z'; ++first) {
+    for (char second = 'A'; second <= 'Z'; ++second) {
+      const std::array<char, 3> code{first, second, '\0'};
+      const bool valid = valid_country(code.data());
+      assert(valid == listed[(first - 'A') * 26 + (second - 'A')]);
+      ++(valid ? accepted : rejected);
+    }
+  }
+  assert(accepted == 249 && rejected == 427);
+}
 } // namespace
 
-int main() {
+int main(int argc, char **argv) {
+  assert(argc == 2);
+  countries_match_fixture(argv[1]);
   // Published official indexing API example, not a wrapper-generated vector.
   const auto indexed = from_degrees(45, 40, 2);
   assert(indexed && *indexed == 0x822d57fffffffffULL);

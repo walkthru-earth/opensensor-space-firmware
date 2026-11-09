@@ -990,18 +990,24 @@ void setup_state() {
   // resolution (#139), an 11 and a 12 character centre, a country, "moving",
   // a phone cell (#140) and a GNSS cell. The frame header takes 2 of the 482
   // byte budget.
-  const opensensor::location::Cell finest =
-      opensensor::location::from_degrees(-45.1234567, -170.1234567, 15)
-          .value_or(0);
-  const opensensor::location::Cell gnss =
-      opensensor::location::from_degrees(-45.1234567, -170.1234567, 8)
-          .value_or(0);
+  // A failed lookup must fail here, not turn into cell 0 and shrink the page.
+  const auto finest =
+      opensensor::location::from_degrees(-45.1234567, -170.1234567, 15);
+  const auto gnss =
+      opensensor::location::from_degrees(-45.1234567, -170.1234567, 8);
+  assert(finest && gnss);
   std::array<char, opensensor::location::kCellTextBytes> text{};
-  assert(opensensor::location::format_cell(finest, text));
+  assert(opensensor::location::format_cell(*finest, text));
+  std::array<char, opensensor::location::kCellTextBytes> gnss_text{};
+  assert(opensensor::location::format_cell(*gnss, gnss_text) &&
+         std::strlen(gnss_text.data()) == 15);
   accept(std::string("location.resolution=8\nlocation.country=EG\n"
                      "location.cell=") +
          text.data() + "\nlocation.phone_cell=" + text.data());
-  const auto worst = page({.gnss = true, .gnss_cell = gnss});
+  const auto worst = page({.gnss = true, .gnss_cell = *gnss});
+  const std::string gnss_key =
+      std::string("\"gnss_cell\":\"") + gnss_text.data() + "\"";
+  assert(std::strstr(json, gnss_key.c_str()));
   assert(std::strstr(json, "\"resolution\":8,\"cell_resolution\":8,"
                            "\"lat\":-45.") &&
          std::strstr(json, ",\"lon\":-170."));

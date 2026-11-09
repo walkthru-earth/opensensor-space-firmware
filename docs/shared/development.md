@@ -38,9 +38,10 @@ component pins [embedded-h3-location](https://github.com/walkthru-earth/embedded
 **v2.0.0** as a git dependency, and each board `dependencies.lock` records its
 commit. The library vendors official H3 **4.5.0** with exact source and license
 hashes in its own `vendor/h3/manifest.json`. Host tests build the same commit
-through `tools/h3_library.py`, which clones it once into
-`~/.cache/opensensor-space-firmware/embedded-h3-location/` and fails when the
-board locks disagree.
+through `tools/h3_library.py`, which clones it once per locked commit into
+`${XDG_CACHE_HOME:-~/.cache}/opensensor-space-firmware/embedded-h3-location/<commit>/`
+and fails when the board locks disagree. It reads the locks of every app in
+the board registry.
 Policy is to pin the latest stable release of every dependency. Rechecking on
 **2026-11-09** confirmed mDNS **1.15.1**, led_strip **3.1.1**, ESP-IDF **6.1**
 and H3 **4.5.0** as latest, and M5Unified and M5GFX **0.3.0** as their latest

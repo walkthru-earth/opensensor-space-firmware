@@ -25,9 +25,15 @@ change.
   that lived in `firmware/common/location` is gone.
 - Cell text, the res 8 rule, the accepted country codes, the cell centre in
   the `geometry` column and in GET_CONFIG page 1, and the STAC outline
-  coordinates are computed the same way as before. No log line changes.
+  coordinates are computed the same way as before. `location-test` checks
+  the accepted country set against the 249 codes of the removed firmware
+  table, kept in `tools/fixtures/location/iso_alpha2.txt`.
 - Only the firmware strings move, because both images now build from a
-  different dependency, as the #157 refresh did.
+  different dependency, as the #157 refresh did. The one log line that
+  carries one is the Waveshare boot line `OS BOARD waveshare-sim7670g-v2
+  firmware=idf-waveshare-parquet-v2.26 ...`, which shows the new string and
+  is otherwise unchanged. CoreS3 prints its firmware string in no log line.
+  No other log line changes.
 
 **Why.** One maintained H3 library for the firmware and other projects,
 instead of a hand copy in each repository.

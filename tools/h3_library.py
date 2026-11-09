@@ -12,29 +12,29 @@ library than the boards link.
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 
+import boards
 from host_cxx import CXX_STD
 
 URL = "https://github.com/walkthru-earth/embedded-h3-location.git"
 NAME = "walkthru-earth/embedded-h3-location"
-# Every board app that links firmware/common/location. Their locks must agree.
-LOCKS = (
-    "firmware/esp-idf-cores3/dependencies.lock",
-    "firmware/esp-idf-waveshare-sim7670g/dependencies.lock",
-    "firmware/esp-idf-waveshare-sim7670g/diagnostic/dependencies.lock",
-)
 MANIFEST = "firmware/common/location/idf_component.yml"
 # H3 warnings the library's own host build does not raise on. The C sources
 # are upstream bytes and are never edited.
 H3_FLAGS = ("-std=c99", "-O1", "-Wall", "-Wextra", "-Werror",
             "-Wno-sign-compare", "-Wno-deprecated-declarations")
-SANITIZE = ("-fsanitize=address,undefined", "-fno-omit-frame-pointer")
+# Recovery is a compile time choice, so the library objects make every UBSan
+# report fatal themselves, whatever the test that links them passes.
+SANITIZE = ("-fsanitize=address,undefined", "-fno-omit-frame-pointer",
+            "-fno-sanitize-recover=all")
 
 
 def pinned_tag(root: Path) -> str:
@@ -46,10 +46,29 @@ def pinned_tag(root: Path) -> str:
     return match.group(1)
 
 
+def lock_files(root: Path) -> list[str]:
+    """Every dependencies.lock of every app in the board registry (#141).
+
+    A telemetry app uses its project's dependencies.lock. Another variant uses
+    <project>/<variant>/dependencies.lock when the project keeps one for it,
+    as the Waveshare diagnostic does, and shares the project lock otherwise.
+    Every app links firmware/common/location, so every lock must name the
+    library.
+    """
+    locks = []
+    for board in boards.boards(root):
+        locks.append(f"{board.project}/dependencies.lock")
+        for variant in board.variants[1:]:
+            own = f"{board.project}/{variant}/dependencies.lock"
+            if (root / own).is_file():
+                locks.append(own)
+    return locks
+
+
 def locked_commit(root: Path) -> str:
     """The one commit every board lock resolved the library to."""
     commits = set()
-    for relative in LOCKS:
+    for relative in lock_files(root):
         text = (root / relative).read_text()
         block = re.search(rf"^  {re.escape(NAME)}:\n((?:    .*\n)+)", text,
                           re.MULTILINE)
@@ -73,13 +92,18 @@ def checkout(root: Path) -> Path:
     commit = locked_commit(root)
     cache = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
     target = cache / "opensensor-space-firmware/embedded-h3-location" / commit
-    if not (target / ".git").is_dir():
-        target.parent.mkdir(parents=True, exist_ok=True)
-        partial = target.with_name(f"{commit}.partial")
-        subprocess.run(["rm", "-rf", str(partial)], check=True)
-        subprocess.run(["git", "-c", "advice.detachedHead=false", "clone", "--quiet", "--depth", "1", "--branch",
-                        tag, URL, str(partial)], check=True)
-        partial.rename(target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    # Two host tests started together on an empty cache would otherwise both
+    # clone into the same partial folder. The lock is held from the check to
+    # the rename, and the second caller then finds the finished clone.
+    with (target.parent / f"{commit}.lock").open("w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if not (target / ".git").is_dir():
+            partial = target.with_name(f"{commit}.partial")
+            shutil.rmtree(partial, ignore_errors=True)
+            subprocess.run(["git", "-c", "advice.detachedHead=false", "clone", "--quiet", "--depth", "1",
+                            "--branch", tag, URL, str(partial)], check=True)
+            partial.rename(target)
     head = subprocess.run(["git", "-C", str(target), "rev-parse", "HEAD"],
                           check=True, capture_output=True, text=True).stdout.strip()
     if head != commit:
