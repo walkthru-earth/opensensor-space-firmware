@@ -225,14 +225,33 @@ nothing changes. An empty value clears it.
 The cell lives in RAM only. The phone cell is never stored, the `oscfg/cfg`
 record has no field for it, and a reboot clears it. A request that holds only
 this key still rewrites a record an earlier failed save left unsure, without
-the phone cell. There is no age bound. The phone updates or clears it.
-GET_CONFIG page 1 reports it as `location.phone_cell`, so the app can tell
-when a reboot cleared it.
+the phone cell. GET_CONFIG page 1 reports it as `location.phone_cell`, so the
+app can tell when a reboot or the age limit cleared it.
+
+From CoreS3 v6.32 and Waveshare V2 v2.25 the cell has an age limit (owner
+decision 2026-11-09). The board drops it 300 seconds
+(`config::kPhoneCellMaxAgeUs`) after the last accepted `SET_CONFIG` that
+carried the key. A new value and the same value again both restart the age, a
+request without the key does not, and a refused request changes nothing. A BLE
+or LAN disconnect does not clear it, so both links behave the same. The age
+runs on the monotonic `esp_timer_get_time()` clock, never UTC, so a missing or
+changed clock anchor does not move it. A cell is kept for ages below 300 s
+and dropped at 300 s exactly. Rows come every 10 s, so the last phone row is
+sampled before the 300 s mark and the next one falls back.
+
+Expiry clears the RAM value as an empty value would. Every reader of the
+settings checks the age under the settings lock before it copies them, so the
+row snapshot, GET_CONFIG and the next `SET_CONFIG` all see the same cell.
+Expiry writes no NVS, marks no record for a write, logs no line and never
+splits a file. It is not a request, so it produces no `SET_CONFIG` reply or
+action. A later request that sends the cell again counts as a location change
+on a moving Thing, the same as a first set. The app refreshes the cell about
+every 60 s while it is connected (opensensor-space-mobile #264).
 
 A moving Thing writes it in every row with `location_source` 3 while it is
-set, ahead of a fresh GNSS fix. When it is cleared, rows fall back to the
-table above. A fixed Thing accepts and reports it but ignores it for rows, as
-it ignores a receiver. Its rows keep the configured cell with
+set, ahead of a fresh GNSS fix. When it is cleared or reaches its age
+limit, rows fall back to the table above. A fixed Thing accepts and reports
+it but ignores it for rows, as it ignores a receiver. Its rows keep the configured cell with
 `location_source` 1, as the stac-opensensor profile requires, and the owner
 sets that cell with the map picker. A fixed Thing with only a phone cell and
 no `location.cell` writes nulls and keeps `setup` 1.
