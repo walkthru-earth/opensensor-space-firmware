@@ -147,6 +147,7 @@ bool same(const config::Settings &a, const config::Settings &b) {
          std::strcmp(a.sensor_serial, b.sensor_serial) == 0 &&
          a.sensor_batch_candidate == b.sensor_batch_candidate &&
          config::same_location(a.location, b.location) &&
+         a.location.phone_cell == b.location.phone_cell &&
          a.ntp.enabled == b.ntp.enabled && a.ntp.dhcp == b.ntp.dhcp &&
          a.ntp.public_fallback == b.ntp.public_fallback &&
          a.ntp.interval_s == b.ntp.interval_s &&
@@ -672,6 +673,97 @@ void time_and_location() {
   assert(config::get().location.cell == 0);
 }
 
+// location.phone_cell (#140) is RAM only. A request that holds only it writes
+// no NVS record, a mixed request stores the other keys without it, and a
+// reboot clears it. Coarse and invalid cells answer ERROR 12 with the key.
+void phone_cell() {
+  constexpr std::uint64_t kAt8 = 0x8828308281fffffULL;
+  constexpr std::uint64_t kOther = 0x88283082a3fffffULL;
+  static_assert(config::effective_cell({.cell = kAt8}) == kAt8);
+  static_assert(config::effective_cell({.cell = kAt8, .phone_cell = kOther}) ==
+                kOther);
+  static_assert(config::effective_cell({.phone_cell = kOther}) == kOther);
+  fake_platform::nvs = {};
+  assert(config::load(false));
+  accept("location.cell=8828308281fffff\nlocation.country=EG");
+  const auto stored = cfg();
+  const std::string stored_location = field(kLocationAt);
+  const auto writes = fake_platform::nvs.writes;
+  const auto commits = fake_platform::nvs.commits;
+  const auto unchanged_flash = [&] {
+    assert(cfg() == stored && fake_platform::nvs.writes == writes &&
+           fake_platform::nvs.commits == commits);
+  };
+  char json[480];
+  const auto page_has = [&json](const char *needle) {
+    assert(config::build_page(json, sizeof(json), 1));
+    return std::strstr(json, needle) != nullptr;
+  };
+  assert(page_has("\"country\":\"EG\",\"phone_cell\":\"\"},"));
+  // Set. A res 9 cell is kept as its res 8 parent and written nowhere.
+  config::Actions actions;
+  char bad_key[64];
+  assert(apply("location.phone_cell=8928308280fffff", actions, bad_key));
+  assert(bad_key[0] == '\0' && actions.location_changed);
+  assert(config::location_settings().phone_cell == kAt8);
+  assert(config::get().location.cell == kAt8);
+  unchanged_flash();
+  assert(page_has("\"phone_cell\":\"8828308281fffff\""));
+  // Update, uppercase hex too, as location.cell takes.
+  accept("location.phone_cell=88283082A3FFFFF");
+  assert(config::location_settings().phone_cell == kOther);
+  unchanged_flash();
+  assert(page_has("\"phone_cell\":\"88283082a3fffff\""));
+  // Coarser than res 8, not a cell, or malformed. Nothing changes.
+  for (const char *value :
+       {"85283473fffffff", "fffffffffffffff", "8828308281ffff",
+        "8828308281fffffa", "8828308281fffg f", " 8828308281fffff", "0", "1"})
+    reject(std::string("location.phone_cell=") + value, "location.phone_cell");
+  assert(config::location_settings().phone_cell == kOther);
+  // A refused key elsewhere in the request keeps the old phone cell.
+  reject("location.phone_cell=8828308281fffff\nlocation.country=ZZ",
+         "location.country");
+  assert(config::location_settings().phone_cell == kOther);
+  unchanged_flash();
+  // A mixed request stores the other keys and never the phone cell.
+  accept("location.phone_cell=8828308281fffff\nlocation.country=US");
+  assert(config::location_settings().phone_cell == kAt8);
+  assert(fake_platform::nvs.writes == writes + 1);
+  assert(std::string(field(kLocationAt)) == "8828308281fffff|8|US|fixed");
+  // A failed save refuses the whole request, phone cell included.
+  fake_platform::nvs.fail_write_key = "cfg";
+  assert(!apply("location.phone_cell=88283082a3fffff\nlocation.country=EG",
+                actions, bad_key));
+  fake_platform::nvs.fail_write_key.clear();
+  assert(std::strcmp(bad_key, "nvs") == 0);
+  assert(config::location_settings().phone_cell == kAt8);
+  // A phone cell only request still writes the record a failed write back
+  // left unsure (#151), and that record never holds the phone cell.
+  fake_platform::nvs.corrupt_read_key = "cfg";
+  assert(!apply("location.country=EG", actions, bad_key));
+  fake_platform::nvs.corrupt_read_key.clear();
+  assert(std::strcmp(bad_key, "nvs") == 0);
+  const auto unsure_writes = fake_platform::nvs.writes;
+  accept("location.phone_cell=88283082a3fffff");
+  assert(fake_platform::nvs.writes == unsure_writes + 1);
+  assert(std::string(field(kLocationAt)) == "8828308281fffff|8|US|fixed");
+  // Clear.
+  const auto clear_writes = fake_platform::nvs.writes;
+  accept("location.phone_cell=");
+  assert(config::location_settings().phone_cell == 0);
+  assert(fake_platform::nvs.writes == clear_writes);
+  assert(page_has("\"phone_cell\":\"\""));
+  // A reboot clears it. Nothing in flash brings it back.
+  accept("location.phone_cell=88283082a3fffff");
+  assert(config::load(false));
+  assert(config::location_settings().phone_cell == 0);
+  assert(config::location_settings().cell == kAt8);
+  assert(page_has("\"phone_cell\":\"\""));
+  // The location record has no room for it and holds four fields only.
+  assert(std::string(field(kLocationAt)).find("88283082a3fffff") ==
+         std::string::npos);
+}
+
 // #147. "Setup needed" is derived from the location settings, never stored.
 // Page 1 carries it as thing.setup and, on a board with a receiver, a fresh
 // res 8 GNSS cell as location.gnss_cell.
@@ -715,8 +807,9 @@ void setup_state() {
   page();
   assert(std::strstr(json, "\"thing\":{\"mobility\":\"moving\",\"setup\":0}}"));
   // Worst case. Every field at its widest, the fixed res 8 cap and cell
-  // resolution (#139), an 11 and a 12 character centre, a country, "moving"
-  // and a GNSS cell. The frame header takes 2 of the 482 byte budget.
+  // resolution (#139), an 11 and a 12 character centre, a country, "moving",
+  // a phone cell (#140) and a GNSS cell. The frame header takes 2 of the 482
+  // byte budget.
   opensensor::location::Cell finest = 0, gnss = 0;
   assert(opensensor::location::from_degrees(-45.1234567, -170.1234567, 15,
                                             finest));
@@ -726,11 +819,13 @@ void setup_state() {
   assert(opensensor::location::format_cell(finest, text, sizeof(text)));
   accept(std::string("location.resolution=8\nlocation.country=EG\n"
                      "location.cell=") +
-         text);
+         text + "\nlocation.phone_cell=" + text);
   const auto worst = page({.gnss = true, .gnss_cell = gnss});
   assert(std::strstr(json, "\"resolution\":8,\"cell_resolution\":8,"
                            "\"lat\":-45.") &&
          std::strstr(json, ",\"lon\":-170."));
+  assert(std::strstr(json, "\"phone_cell\":\"") &&
+         !std::strstr(json, "\"phone_cell\":\"\""));
   assert(std::strlen(text) == 15 && worst < 480);
   std::printf("%zu\n", worst);
 }
@@ -1304,6 +1399,8 @@ int main(int argc, char **argv) {
     time_and_location();
   else if (test == "setup")
     setup_state();
+  else if (test == "phone-cell")
+    phone_cell();
   else if (test == "blob")
     blob_round_trip();
   else if (test == "old-keys")

@@ -226,6 +226,13 @@ readback_cell(const Fix &fix, std::int64_t now_us) {
 
 Selection select_location(const config::LocationSettings &row,
                           const std::optional<Fix> &fix, std::int64_t now_us) {
+  // A phone cell wins for fixed and moving Things while it is set (#140).
+  // apply_lines stores it at res 8, anything else is treated as unset.
+  if (row.phone_cell) {
+    const auto published = location::published_cell(row.phone_cell);
+    if (published && *published == row.phone_cell)
+      return {.cell = *published, .source = telemetry::LocationSource::Phone};
+  }
   if (row.mobility == config::Mobility::Fixed) {
     const auto published = location::published_cell(row.cell);
     if (published && *published == row.cell)

@@ -33,6 +33,7 @@ void safe_error(ProvisionResult &result, const char *key) {
                                   "location.cell",
                                   "location.resolution",
                                   "location.country",
+                                  "location.phone_cell",
                                   "thing.mobility",
                                   "sensor.vendor",
                                   "sensor.model",
