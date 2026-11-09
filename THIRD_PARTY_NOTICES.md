@@ -25,7 +25,6 @@ manifests in that source tree. Only ESP32-S3 is hardware verified.
 | Component | Path | Version | License | Copyright |
 | :--- | :--- | :--- | :--- | :--- |
 | LZ4 library | [`firmware/common/vendor/lz4`](firmware/common/vendor/lz4) | 1.11.0 | BSD-2-Clause, see [`LICENSE`](firmware/common/vendor/lz4/LICENSE) | Copyright (c) Yann Collet (source headers), Copyright (c) 2011-2020, Yann Collet (`LICENSE`) |
-| Uber H3 | [`firmware/common/location/vendor/h3`](firmware/common/location/vendor/h3) | 4.5.0 | Apache-2.0, see [`LICENSE`](firmware/common/location/vendor/h3/LICENSE) and [`NOTICE`](firmware/common/location/vendor/h3/NOTICE) | Copyright 2017-2021 Uber Technologies, Inc. |
 | esp-nimble host patch | [`firmware/common/vendor/esp-nimble`](firmware/common/vendor/esp-nimble) | backport of esp-nimble `d7061976e9` and `79316193f9` onto `139cada` | Apache-2.0, see [`LICENSE`](firmware/common/vendor/esp-nimble/LICENSE) and [`NOTICE`](firmware/common/vendor/esp-nimble/NOTICE) | Copyright 2015-2022 The Apache Software Foundation, modifications Copyright 2017-2022 Espressif Systems (Shanghai) CO., LTD. |
 
 Notes
@@ -35,9 +34,6 @@ Notes
   command-line programs, use different licenses and are not included here. See
   [`firmware/common/vendor/lz4/README.md`](firmware/common/vendor/lz4/README.md)
   for the pinned source and hashes.
-- The H3 sources are unmodified upstream files verified against
-  [`manifest.json`](firmware/common/location/vendor/h3/manifest.json). The
-  Apache-2.0 `NOTICE` file must accompany any binary that contains H3 code.
 - The esp-nimble patch changes one NimBLE host file, `ble_hs_hci.c`, at
   build time. The build compiles a patched copy in place of the SDK file, and
   the patched code stays Apache-2.0. See
@@ -87,7 +83,7 @@ toolchain. Their license texts ship with the toolchain under
 The GCC Runtime Library Exception allows these libraries to be linked into
 firmware under any license.
 
-## 5. Managed components from the ESP Component Registry
+## 5. Managed components from the ESP Component Registry and GitHub
 
 Versions are pinned in each board's `dependencies.lock` and component
 `idf_component.yml` and track the latest stable releases. They describe builds
@@ -100,6 +96,19 @@ components, which carry the same licenses and copyright notices.
 | `espressif/led_strip` | 3.1.1 | Waveshare SIM7670G | Apache-2.0 | Copyright Espressif Systems (Shanghai) CO LTD |
 | `m5stack/m5unified` | 0.3.0 | CoreS3 | MIT | Copyright (c) 2021 M5Stack |
 | `m5stack/m5gfx` | 0.3.0 | CoreS3 | MIT, with bundled third-party parts listed below | Copyright (c) 2021 M5Stack |
+| `walkthru-earth/embedded-h3-location` (git, tag `v2.0.0`, commit `49753cb9a8795ff1ae6bc6eed461fee0fc30cdc7`) | 2.0.0 | CoreS3, Waveshare SIM7670G | CC-BY-4.0 AND Apache-2.0, see its `LICENSE` and `NOTICE` | Copyright (c) 2025-2026 Walkthru.Earth |
+| Uber H3, vendored unmodified inside `embedded-h3-location` under `vendor/h3` (tag `v4.5.0`, commit `1b536c34225191ba24a75a840f634d4a48c3b206`) | 4.5.0 | CoreS3, Waveshare SIM7670G | Apache-2.0, see `vendor/h3/LICENSE` and `vendor/h3/NOTICE` in that library | Copyright 2017-2021 Uber Technologies, Inc. |
+
+`embedded-h3-location` is fetched from GitHub by the component manager, not
+the ESP Component Registry. `firmware/common/location/idf_component.yml` pins
+the tag and each board `dependencies.lock` records the commit. The library's
+own code is Walkthru.Earth CC-BY-4.0 and its vendored H3 stays Apache-2.0. The
+library checks every H3 file against the SHA-256 list in
+`vendor/h3/manifest.json` at configure time. The CoreS3 and Waveshare logger
+linker maps keep H3 objects (`h3Index`, `faceijk`, `algos`, `linkedGeo`,
+`latLng`, `cellsToMultiPoly` and others) and the library's `location.cpp` and
+`multipolygon.cpp`. The Waveshare diagnostic image links none of it. The
+Apache-2.0 H3 `NOTICE` must accompany any binary that contains H3 code.
 
 M5GFX bundles code and fonts under their own licenses, as listed in its README.
 LovyanGFX (BSD-2-Clause FreeBSD, lovyan03), TJpgDec (ChaN), Pngle (MIT,

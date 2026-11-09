@@ -137,7 +137,10 @@ LIVE keys come from the `live_key` each board sets in its field table. `t` and
 Floats print with the decimals each board sets per field. Without an RTC,
 `rtc=2`, `clk=0` and UTC stays null until host SET_TIME or a successful network response, including after reboot.
 
-OSLocation vendors unmodified official H3 4.5.0 with verified hashes. OSRuntime
+OSLocation holds the res 8 policy and PSRAM allocator hooks over the pinned
+[embedded-h3-location](https://github.com/walkthru-earth/embedded-h3-location)
+v2.0.0 library, which vendors unmodified official H3 4.5.0 with verified
+hashes. OSRuntime
 stores one coherent location record containing only the resolution 8 cell, the
 fixed resolution 8 and optional owner-declared ISO country. OSLogger captures it at acquisition and
 splits batches/files when it changes. Four nullable fields carry the cell,

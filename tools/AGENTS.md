@@ -14,6 +14,7 @@ C++ contract tests and cannot prove behavior on a physical board.
 | BLE/LAN archive and framing | `archive-sync-test`, `test_ble_sync.py` |
 | Protocol 3 wire codec through the shipped Python client, advert bytes, BYE, DIAG and ABORTED golden frames, the LAN `FrameRing`, BLE notify credits and link auth gates | `ble-sync-test`, `ble-advert-test`, `disconnect-test`, `frame-ring-test`, `ble-policy-test` |
 | Router/local/public NTP order and H3 privacy geometry | `network-time-test`, `location-test`, `config-test`, `control-sync-test` |
+| The pinned embedded-h3-location library for host tests. `tools/h3_library.py` clones the tag in `firmware/common/location/idf_component.yml` once into the user cache, checks that every board `dependencies.lock` names the same commit and that its vendored H3 matches `manifest.json`, and compiles it. `location-test` covers the res 8 policy, `h3-polygon-test` the `os_h3_` hooks, cleanup and the whole globe | `location-test`, `h3-polygon-test`, `python tools/h3_library.py` |
 | GNSS SIMCom `CGNSSINFO` dialect, fix to H3 cell, freshness, the per row location source rule and no file split on a GNSS cell (no receiver or UART proof) | `gnss-test` |
 | Shared numeric rows, UTC helpers and archive wire primitives | `common-test` |
 | Checked serial readback, fetch and bounded capture, send a command on cue over the one port open | `parquet_device.py`, `capture_serial.py --send-on`, `capture-serial-test` |

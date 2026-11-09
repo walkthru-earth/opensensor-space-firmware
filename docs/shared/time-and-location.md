@@ -104,7 +104,8 @@ by the next save that writes it. The one older exception is a boot that
 migrates a legacy factory PIN, which already saves the whole config during
 boot and so writes 8 at that point.
 
-Firmware validates the cell using pinned official H3 v4.5.0 and coarsens a
+Firmware validates the cell using official H3 v4.5.0 through the pinned
+embedded-h3-location v2.0.0 library and coarsens a
 finer cell to its resolution 8 parent before persistence. A cell coarser than
 resolution 8 cannot become one, so `SET_CONFIG` refuses it with detail
 `location.cell`. A stored cell coarser than resolution 8 boots as unset and

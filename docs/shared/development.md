@@ -33,9 +33,14 @@ pixi run waveshare-build diagnostic
 Component manifests pin M5Unified **0.3.0**, M5GFX **0.3.0**, mDNS **1.15.1**
 and Waveshare led_strip **3.1.1**. `pixi run telemetry-contract-test` fails
 when the CoreS3 M5 versions in `dependencies.env`, the `os_cores3` manifest,
-the footer `kConfiguration` and `dependencies.lock` disagree. Official H3
-**4.5.0** is vendored with exact
-source/license hashes in `firmware/common/location/vendor/h3/manifest.json`.
+the footer `kConfiguration` and `dependencies.lock` disagree. The location
+component pins [embedded-h3-location](https://github.com/walkthru-earth/embedded-h3-location)
+**v2.0.0** as a git dependency, and each board `dependencies.lock` records its
+commit. The library vendors official H3 **4.5.0** with exact source and license
+hashes in its own `vendor/h3/manifest.json`. Host tests build the same commit
+through `tools/h3_library.py`, which clones it once into
+`~/.cache/opensensor-space-firmware/embedded-h3-location/` and fails when the
+board locks disagree.
 Policy is to pin the latest stable release of every dependency. Rechecking on
 **2026-11-09** confirmed mDNS **1.15.1**, led_strip **3.1.1**, ESP-IDF **6.1**
 and H3 **4.5.0** as latest, and M5Unified and M5GFX **0.3.0** as their latest
@@ -458,7 +463,8 @@ configured local and permitted public NTP order, offline RTC/host anchoring and
 explicit mobile H3 provisioning. Use `pixi run network-time-test`, `location-test`,
 `config-test` and `control-sync-test` for these changes, plus both schema reader
 gates and affected board builds for logger location changes. These sanitizer
-fixtures compile the official H3 core and real service/settings code. Existing
+fixtures compile the pinned embedded-h3-location library, its official H3
+core and real service/settings code. Existing
 generated sdkconfig values override defaults: regenerate or explicitly update
 `CONFIG_LWIP_SNTP_MAX_SERVERS=3` and
 `CONFIG_LWIP_DHCP_GET_NTP_SRV=y` in disposable build configurations when moving
