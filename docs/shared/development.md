@@ -30,15 +30,18 @@ pixi run waveshare-build diagnostic
 | [Waveshare V2](../../firmware/esp-idf-waveshare-sim7670g/README.md) | `logger/main.cpp` or `diagnostic/main.cpp`, board IO adapter | 16 MB flash, OPI PSRAM for logger, no PSRAM for diagnostic, UART0 console and one-bit SDMMC | Native qualification pending; historical Arduino images in the board bench record |
 
 `tools/idf-dependencies.lock` pins ESP-IDF 6.1 and its exact source commit.
-Component manifests pin M5Unified **0.2.26**, M5GFX **0.2.33**, mDNS **1.14.0**
-and Waveshare led_strip **3.1.0~1**; official H3 **4.5.0** is vendored with exact
+Component manifests pin M5Unified **0.2.29**, M5GFX **0.2.36**, mDNS **1.15.1**
+and Waveshare led_strip **3.1.1**. Official H3 **4.5.0** is vendored with exact
 source/license hashes in `firmware/common/location/vendor/h3/manifest.json`.
 Policy is to pin the latest stable release of every dependency. Rechecking on
-**2026-10-16** confirmed M5Unified **0.2.26**, M5GFX **0.2.33**, mDNS **1.14.0**,
-led_strip **3.1.0~1**, ESP-IDF **6.1** and H3 **4.5.0** as latest. Dated device
-evidence records which component versions each qualified image used. LZ4 remains vendored **1.10.0** with checked hashes; the
-[official latest release](https://github.com/lz4/lz4/releases/tag/v1.10.0) was
-still 1.10.0 when checked on 2026-10-09.
+**2026-11-09** confirmed mDNS **1.15.1**, led_strip **3.1.1**, ESP-IDF **6.1**
+and H3 **4.5.0** as latest. M5Unified and M5GFX **0.3.0** are the latest
+releases. They move in a separate change because they renumber display rotation
+and change the charging API, so the 0.2 line stays pinned at its last releases
+until then. Dated device evidence records which component versions each
+qualified image used. LZ4 is vendored **1.11.0** with checked hashes, the
+[official latest release](https://github.com/lz4/lz4/releases/tag/v1.11.0)
+when checked on 2026-11-09.
 Commit each board’s generated `dependencies.lock` to pin transitive component
 resolution. The Waveshare diagnostic variant keeps its own in
 `diagnostic/dependencies.lock`, so building it leaves the logger lock alone. Downloaded

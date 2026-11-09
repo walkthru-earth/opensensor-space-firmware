@@ -94,7 +94,7 @@ pixi run waveshare-build diagnostic
 OSRuntime replaces Preferences with native NVS while preserving namespaces,
 keys and value types, including Thing identity. DebugLog uses `LogOutput`
 and the native physical console. OSConnectivity uses native NimBLE GATT/GAP,
-Wi-Fi events and `esp_netif_sntp`, plus managed mDNS 1.14.0. Driver credential
+Wi-Fi events and `esp_netif_sntp`, plus managed mDNS 1.15.1. Driver credential
 storage is RAM only; `oscfg` remains the sole persistent settings owner. The
 logger keeps only its `thing` and `codec` keys in the `parquet` namespace.
 Existing Arduino-era BLE bonds need hardware qualification and may require

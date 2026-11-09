@@ -2,7 +2,8 @@
 
 These opt-in native ESP-IDF components implement the shared BLE/LAN transport
 contract. ESP-IDF 6.1 supplies NimBLE, Wi-Fi, events, netif and SNTP; managed
-`espressif/mdns` is pinned to 1.14.0. No Arduino APIs or NimBLE-Arduino wrapper.
+`espressif/mdns` is pinned to 1.15.1. Its console CLI is off
+(`CONFIG_MDNS_ENABLE_CONSOLE_CLI=n` in `tools/idf-sdkconfig.defaults`). No Arduino APIs or NimBLE-Arduino wrapper.
 Wire behavior belongs to `docs/shared/ble-sync-protocol.md`; hardware evidence
 remains tied to each board image and is historical until native readback.
 

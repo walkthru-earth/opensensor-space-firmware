@@ -24,7 +24,7 @@ manifests in that source tree. Only ESP32-S3 is hardware verified.
 
 | Component | Path | Version | License | Copyright |
 | :--- | :--- | :--- | :--- | :--- |
-| LZ4 library | [`firmware/common/vendor/lz4`](firmware/common/vendor/lz4) | 1.10.0 | BSD-2-Clause, see [`LICENSE`](firmware/common/vendor/lz4/LICENSE) | Copyright (c) 2011-2023 Yann Collet |
+| LZ4 library | [`firmware/common/vendor/lz4`](firmware/common/vendor/lz4) | 1.11.0 | BSD-2-Clause, see [`LICENSE`](firmware/common/vendor/lz4/LICENSE) | Copyright (c) Yann Collet (source headers), Copyright (c) 2011-2020, Yann Collet (`LICENSE`) |
 | Uber H3 | [`firmware/common/location/vendor/h3`](firmware/common/location/vendor/h3) | 4.5.0 | Apache-2.0, see [`LICENSE`](firmware/common/location/vendor/h3/LICENSE) and [`NOTICE`](firmware/common/location/vendor/h3/NOTICE) | Copyright 2017-2021 Uber Technologies, Inc. |
 | esp-nimble host patch | [`firmware/common/vendor/esp-nimble`](firmware/common/vendor/esp-nimble) | backport of esp-nimble `d7061976e9` and `79316193f9` onto `139cada` | Apache-2.0, see [`LICENSE`](firmware/common/vendor/esp-nimble/LICENSE) and [`NOTICE`](firmware/common/vendor/esp-nimble/NOTICE) | Copyright 2015-2022 The Apache Software Foundation, modifications Copyright 2017-2022 Espressif Systems (Shanghai) CO., LTD. |
 
@@ -96,10 +96,10 @@ components, which carry the same licenses and copyright notices.
 
 | Component | Version | Used by | License | Copyright |
 | :--- | :--- | :--- | :--- | :--- |
-| `espressif/mdns` | 1.14.0 | CoreS3, Waveshare SIM7670G | Apache-2.0 | Copyright Espressif Systems (Shanghai) CO LTD |
-| `espressif/led_strip` | 3.1.0~1 | Waveshare SIM7670G | Apache-2.0 | Copyright Espressif Systems (Shanghai) CO LTD |
-| `m5stack/m5unified` | 0.2.26 | CoreS3 | MIT | Copyright (c) 2021 M5Stack |
-| `m5stack/m5gfx` | 0.2.33 | CoreS3 | MIT, with bundled third-party parts listed below | Copyright (c) 2021 M5Stack |
+| `espressif/mdns` | 1.15.1 | CoreS3, Waveshare SIM7670G | Apache-2.0 | Copyright Espressif Systems (Shanghai) CO LTD |
+| `espressif/led_strip` | 3.1.1 | Waveshare SIM7670G | Apache-2.0 | Copyright Espressif Systems (Shanghai) CO LTD |
+| `m5stack/m5unified` | 0.2.29 | CoreS3 | MIT | Copyright (c) 2021 M5Stack |
+| `m5stack/m5gfx` | 0.2.36 | CoreS3 | MIT, with bundled third-party parts listed below | Copyright (c) 2021 M5Stack |
 
 M5GFX bundles code and fonts under their own licenses, as listed in its README.
 LovyanGFX (BSD-2-Clause FreeBSD, lovyan03), TJpgDec (ChaN), Pngle (MIT,

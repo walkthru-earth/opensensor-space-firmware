@@ -1,7 +1,7 @@
 # Waveshare ESP32-S3-SIM7670G-4G V2 hardware
 
 The current board adapter uses native ESP-IDF 6.1 UART, I²C and SDMMC drivers,
-with led_strip 3.1.0~1 for GPIO38. Native builds pass; physical native behavior
+with led_strip 3.1.1 for GPIO38. Native builds pass; physical native behavior
 is unqualified. The source checks and measured runs below retain their dated
 historical Arduino-image scope. [Current firmware](../../../firmware/esp-idf-waveshare-sim7670g/README.md).
 
