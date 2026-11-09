@@ -54,6 +54,9 @@ stands alone with a full footer (bridge decision 16).
   What is left is the on device measurement in
   [#135](https://github.com/walkthru-earth/opensensor-space-firmware/issues/135).
   Updated 2026-11-04. In October this line said the phone reader refused both.
+  Updated 2026-11-09. The writer has a DELTA_BINARY_PACKED integer encoder
+  since #135 step 1. It is off by default and no board turns it on, so this
+  line still holds for every file a board writes.
 - No ZSTD in any file the phone may read. The phone reads ZSTD on Android only.
 - No dictionary encoding until there are on device RAM numbers for it next to the
   TLS and BLE buffers.
