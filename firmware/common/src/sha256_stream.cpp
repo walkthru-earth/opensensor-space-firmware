@@ -4,6 +4,7 @@
 #include <psa/crypto.h>
 
 #include <new>
+#include <span>
 #endif
 
 namespace opensensor::hash {

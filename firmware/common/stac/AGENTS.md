@@ -25,3 +25,8 @@ of stac-opensensor commit `83787768cc8451109d48a03d4ef5493ffcd403dd`
   copied fixtures in `tools/fixtures/stac/`, and valid against the pinned
   `profile.json` and extension `schema.json`. A new profile commit means copying
   the fixtures again and regenerating `cases.json`, never editing them here.
+- The same gate pins the device only sidecar lines of `os_logger.cpp` with
+  source checks and listed mutants. These are the SHA-256 feed from the CRC
+  read, the digest finish after the Parquet rename, the `O_EXCL` partial and
+  the check that never replaces a `.json`. Editing those lines means editing
+  the patterns in `tools/test_stac_item.py` in the same change.

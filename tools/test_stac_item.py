@@ -1,7 +1,7 @@
 """Host gate for the STAC File Item builder in firmware/common/stac (#142).
 
 Builds tools/test_stac_item.cpp once per board, with that board's field and
-semantics tables, and proves four things.
+semantics tables, and proves six things.
 
 1. The vendored stac-opensensor fixtures are the bytes of commit 83787768
    (tools/fixtures/stac/SHA256SUMS).
@@ -17,6 +17,10 @@ semantics tables, and proves four things.
    STAC and the table, file, grid and anonymized-location schemas are remote
    and not vendored. stac-opensensor CI validates the two examples against
    them, and point 4 proves the board Items equal those examples.
+6. Source checks pin the device only sidecar lines of os_logger.cpp. The
+   SHA-256 gets the same bytes as the CRC-32 from one full read, the digest
+   finishes only after the Parquet rename, the partial opens with O_EXCL and
+   an existing .json is never replaced. Each listed mutant must fail.
 
 Then it applies known bugs to copies of the sources and requires the gate to
 catch each one. Host builds prove no SD, power cut or board behavior.
@@ -405,12 +409,132 @@ def mutation_proofs(directory: Path, h3_objects: list[str], cases: dict, numbers
         print(f"stac mutation caught: {name} ({problems[0][:90]})")
 
 
+
+# Device only integrity lines of the sidecar in os_logger.cpp. The host build
+# never runs them, so source checks pin them, as tools/test_logger_footer.py
+# does for the footer gate. Each listed mutant must fail its check.
+LOGGER = COMMON / "logger/src/os_logger.cpp"
+# check_file() hands the SHA-256 the same bytes as the CRC-32, from one read.
+SHA_FEED = re.compile(
+    r"crc = crc32_update\(crc, writer_state->crc_scratch, count\);\s*"
+    r"if \(sha\)\s*sha->update\(\{writer_state->crc_scratch, count\}\);\s*"
+    r"read_bytes \+= count;")
+# finalized_file() reads the whole file, never a CRC cache hit, when it hashes.
+SHA_READ = re.compile(r"bool ok = check_file\(path, file, check, false, sha\);")
+# write_sidecar() creates its partial and never truncates one already there.
+SIDECAR_OPEN = re.compile(
+    r"out\.fd = ::open\(partial, O_WRONLY \| O_CREAT \| O_EXCL, 0600\);")
+# The final .json is checked right before the rename and never replaced.
+SIDECAR_NO_REPLACE = re.compile(
+    r"if \(::access\(path, F_OK\) == 0\) \{\s*"
+    r"reason = \"exists\";\s*error = EEXIST;\s*"
+    r"\} else if \(::rename\(partial, path\) != 0\) \{")
+# path is <ready without .parquet>.json and partial is path plus .partial.
+SIDECAR_NAMES = re.compile(
+    r"path_length = std::snprintf\(\s*path, sizeof\(path\), \"%\.\*s\.json\",\s*"
+    r"static_cast<int>\(ready_path\.size\(\) - kParquet\.size\(\)\), ready\);\s*"
+    r"partial_length =\s*std::snprintf\(partial, sizeof\(partial\), \"%s\.partial\", path\);")
+# finalize_file() order. The digest begins before the one read, an error path
+# aborts it, and it finishes only after the Parquet rename.
+FINALIZE_ORDER = (
+    "if (const auto begun = stac_state->sha.begin(); begun)",
+    "ok = finalized_file(target.partial, size, crc, sha) &&",
+    "ok = ::access(ready, F_OK) != 0 && ::rename(target.partial, ready) == 0;",
+    "if (sha)\n      sha->abort();\n    close_failed(target, \"finalize\"",
+    "PARQUET READY name=",
+    "if (sha) {\n      if (const auto finished = sha->finish(); finished)",
+    "write_sidecar(target, ready, size, digest ? &*digest : nullptr, sha_error);",
+)
+
+
+def logger_body(source: str, signature: str) -> str:
+    start = source.find(signature)
+    require(start >= 0, f"{signature} not found in os_logger.cpp")
+    end = source.find("\n}\n", start)
+    require(end > start, f"end of {signature} not found")
+    return source[start:end]
+
+
+def check_logger_sidecar(source: str) -> None:
+    check = logger_body(source, "\nbool check_file(const char *path")
+    require(len(SHA_FEED.findall(check)) == 1,
+            "check_file() must feed sha->update({crc_scratch, count}) right after the CRC")
+    require(check.count("sha->") == 1, "check_file() touches the SHA-256 only in that update")
+    finalized = logger_body(source, "\nbool finalized_file(const char *path")
+    require(len(SHA_READ.findall(finalized)) == 1,
+            "finalized_file() must hash through check_file(path, file, check, false, sha)")
+    sidecar = logger_body(source, "\nvoid write_sidecar(const OutputFile &target")
+    require(len(SIDECAR_NAMES.findall(sidecar)) == 1,
+            "write_sidecar() must name <file>.json and <file>.json.partial from the ready name")
+    require(len(SIDECAR_OPEN.findall(sidecar)) == 1 and sidecar.count("::open(") == 1,
+            "write_sidecar() must open only its partial with O_CREAT | O_EXCL")
+    require(len(SIDECAR_NO_REPLACE.findall(sidecar)) == 1 and sidecar.count("::rename(") == 1,
+            "write_sidecar() must refuse an existing .json right before its one rename")
+    finalize = logger_body(source, "\nbool finalize_file(OutputFile &target)")
+    at = 0
+    for step in FINALIZE_ORDER:
+        found = finalize.find(step, at)
+        require(found >= 0, f"finalize_file() lacks, or reorders, {step.splitlines()[0]}")
+        at = found + len(step)
+    require(finalize.count("sha->finish()") == 1 and finalize.count("sha.begin()") == 1,
+            "finalize_file() begins and finishes the digest once")
+
+
+LOGGER_MUTANTS = [
+    ("sha fed count - 1 bytes", "sha->update({writer_state->crc_scratch, count});",
+     "sha->update({writer_state->crc_scratch, count - 1});"),
+    ("sha fed the whole scratch buffer", "sha->update({writer_state->crc_scratch, count});",
+     "sha->update({writer_state->crc_scratch, kCrcScratchBytes});"),
+    ("sha update removed", "if (sha)\n      sha->update({writer_state->crc_scratch, count});\n", ""),
+    ("hash after a CRC cache hit", "bool ok = check_file(path, file, check, false, sha);",
+     "bool ok = check_file(path, file, check, true, sha);"),
+    ("partial truncated", "out.fd = ::open(partial, O_WRONLY | O_CREAT | O_EXCL, 0600);",
+     "out.fd = ::open(partial, O_WRONLY | O_CREAT | O_TRUNC, 0600);"),
+    ("final name opened", "out.fd = ::open(partial, O_WRONLY | O_CREAT | O_EXCL, 0600);",
+     "out.fd = ::open(path, O_WRONLY | O_CREAT | O_EXCL, 0600);"),
+    ("existing check on the partial", "if (::access(path, F_OK) == 0) {",
+     "if (::access(partial, F_OK) != 0) {"),
+    ("existing check inverted", "if (::access(path, F_OK) == 0) {",
+     "if (::access(path, F_OK) != 0) {"),
+    ("existing check removed", "if (::access(path, F_OK) == 0) {", "if (false) {"),
+    ("sidecar named .parquet.json", "\"%.*s.json\",\n        static_cast<int>(ready_path.size() - kParquet.size()), ready);",
+     "\"%.*s.json\",\n        static_cast<int>(ready_path.size()), ready);"),
+    ("digest skips the read", "ok = finalized_file(target.partial, size, crc, sha) &&",
+     "ok = finalized_file(target.partial, size, crc, nullptr) &&"),
+    ("abort removed", "if (sha)\n      sha->abort();\n    close_failed(target, \"finalize\"",
+     "close_failed(target, \"finalize\""),
+]
+
+
+def logger_sidecar_proofs() -> None:
+    source = LOGGER.read_text()
+    check_logger_sidecar(source)
+    finalize = logger_body(source, "\nbool finalize_file(OutputFile &target)")
+    finish = "    if (sha) {\n      if (const auto finished = sha->finish(); finished)"
+    require(finalize.count(finish) == 1, "finalize_file() digest finish block not found")
+    moved = source.replace(finish, "    if (false) {\n      if (const auto finished = sha->finish(); finished)")
+    early = source.replace(
+        "  if (ok)\n    ok = finalized_file(target.partial, size, crc, sha) &&",
+        "  if (sha)\n    (void)sha->finish();\n  if (ok)\n    ok = finalized_file(target.partial, size, crc, sha) &&")
+    mutants = [(name, source.replace(old, new)) for name, old, new in LOGGER_MUTANTS]
+    mutants += [("finish never reached", moved), ("finish before the read", early)]
+    for name, mutant in mutants:
+        require(mutant != source, f"logger mutant '{name}' text not found")
+        try:
+            check_logger_sidecar(mutant)
+        except SystemExit:
+            print(f"logger sidecar mutant caught: {name}")
+            continue
+        require(False, f"logger sidecar check missed the mutant: {name}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sanitize", action="store_true")
     parser.add_argument("--skip-mutations", action="store_true")
     args = parser.parse_args()
     manifest()
+    logger_sidecar_proofs()
     cases = json.loads((FIXTURES / "cases.json").read_text())
     require(cases["canonical_sha256"] == "98583cdb3c5b625f0d998e4650ee3a303c2ab4addd53f9486820c641182b9090",
             "cases.json is not from canonical.mjs at 83787768")

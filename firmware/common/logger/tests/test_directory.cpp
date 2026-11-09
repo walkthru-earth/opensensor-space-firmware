@@ -476,6 +476,10 @@ void check_find_partials() {
   touch(root / "quarantine/thing=a/day/old-0.partial");
   touch(root / "thing=a/year=2026/month=10/day=11/data-1.partial");
   touch(root / "thing=a/year=2026/month=10/day=11/data-1-2-3.parquet");
+  // A sidecar torn by a reset is found like a Parquet partial (#142). A
+  // finished sidecar is not.
+  touch(root / "thing=a/year=2026/month=10/day=11/data-1-2-3.json");
+  touch(root / "thing=a/year=2026/month=10/day=11/data-4-5-6.json.partial");
   // The deepest directory the walk opens sits at kMaxDepth, so a partial
   // there is found and one more level is reported.
   fs::path deep = root;
@@ -498,14 +502,17 @@ void check_find_partials() {
   auto unreadable = [](const char *, int) { assert(false); };
   assert(find_partials(io, root.c_str(), move, too_deep, unreadable));
   std::sort(moved.begin(), moved.end());
-  assert(moved.size() == 3);
+  assert(moved.size() == 4);
   assert(moved[0] == "l1/l2/l3/l4/l5/l6/at-cap.partial");
   assert(moved[1] == "thing=a/year=2026/month=10/day=11/data-1.partial");
-  assert(moved[2] == "top-0.partial");
+  assert(moved[2] ==
+         "thing=a/year=2026/month=10/day=11/data-4-5-6.json.partial");
+  assert(moved[3] == "top-0.partial");
   assert(reported.size() == 1 && reported[0] == "l1/l2/l3/l4/l5/l6/past");
   assert(fs::exists(deep / "past/below-cap.partial"));
   assert(fs::exists(root / "quarantine/thing=a/day/old-0.partial"));
   assert(fs::exists(root / "kept.parquet"));
+  assert(fs::exists(root / "thing=a/year=2026/month=10/day=11/data-1-2-3.json"));
   // A second walk finds only what was left behind on purpose.
   moved.clear();
   reported.clear();

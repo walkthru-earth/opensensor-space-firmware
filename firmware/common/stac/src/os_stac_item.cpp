@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <span>
 
 // Built with -ffp-contract=off (CMakeLists.txt and the host test), so
 // round2() and the sums round each operation as JavaScript does and the

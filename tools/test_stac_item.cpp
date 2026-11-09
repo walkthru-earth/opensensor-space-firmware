@@ -22,6 +22,7 @@
 #include <limits>
 #include <map>
 #include <numbers>
+#include <span>
 #include <sstream>
 #include <string>
 #include <string_view>

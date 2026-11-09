@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <limits>
+#include <span>
 #include <sstream>
 #include <string>
 #include <string_view>
