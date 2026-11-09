@@ -113,12 +113,11 @@ struct Selection {
   telemetry::LocationSource source = telemetry::LocationSource::None;
 };
 
-// A res 8 phone cell comes first, source 3, for fixed and moving Things alike
-// (#140). Without one, fixed keeps the configured cell, source 1, whatever the
-// receiver says, when that cell is res 8. Moving takes a fresh fix as a res 8
-// cell, source 2. Moving without a phone cell or a fresh fix gets nulls, never
-// the configured cell or a stale fix. A cell coarser than res 8 is never
-// published (#139).
+// Fixed keeps the configured cell, source 1, whatever the receiver or the phone
+// says, when that cell is res 8. Moving takes a res 8 phone cell first, source
+// 3 (#140), then a fresh fix as a res 8 cell, source 2. Moving without a phone
+// cell or a fresh fix gets nulls, never the configured cell or a stale fix. A
+// cell coarser than res 8 is never published (#139).
 [[nodiscard]] Selection select_location(const config::LocationSettings &row,
                                         const std::optional<Fix> &fix,
                                         std::int64_t now_us);

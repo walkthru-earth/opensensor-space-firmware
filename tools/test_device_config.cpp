@@ -673,16 +673,13 @@ void time_and_location() {
   assert(config::get().location.cell == 0);
 }
 
-// location.phone_cell (#140) is RAM only. A request that holds only it writes
-// no NVS record, a mixed request stores the other keys without it, and a
-// reboot clears it. Coarse and invalid cells answer ERROR 12 with the key.
+// location.phone_cell (#140) is RAM only and never stored. A request that
+// holds only it writes no NVS record unless an earlier failed save left one
+// unsure, a mixed request stores the other keys without it, and a reboot
+// clears it. Coarse and invalid cells answer ERROR 12 with the key.
 void phone_cell() {
   constexpr std::uint64_t kAt8 = 0x8828308281fffffULL;
   constexpr std::uint64_t kOther = 0x88283082a3fffffULL;
-  static_assert(config::effective_cell({.cell = kAt8}) == kAt8);
-  static_assert(config::effective_cell({.cell = kAt8, .phone_cell = kOther}) ==
-                kOther);
-  static_assert(config::effective_cell({.phone_cell = kOther}) == kOther);
   fake_platform::nvs = {};
   assert(config::load(false));
   accept("location.cell=8828308281fffff\nlocation.country=EG");
@@ -700,11 +697,12 @@ void phone_cell() {
     return std::strstr(json, needle) != nullptr;
   };
   assert(page_has("\"country\":\"EG\",\"phone_cell\":\"\"},"));
-  // Set. A res 9 cell is kept as its res 8 parent and written nowhere.
+  // Set. A res 9 cell is kept as its res 8 parent and written nowhere. A
+  // fixed Thing ignores it for rows, so no location change is reported.
   config::Actions actions;
   char bad_key[64];
   assert(apply("location.phone_cell=8928308280fffff", actions, bad_key));
-  assert(bad_key[0] == '\0' && actions.location_changed);
+  assert(bad_key[0] == '\0' && !actions.location_changed);
   assert(config::location_settings().phone_cell == kAt8);
   assert(config::get().location.cell == kAt8);
   unchanged_flash();
@@ -762,6 +760,20 @@ void phone_cell() {
   // The location record has no room for it and holds four fields only.
   assert(std::string(field(kLocationAt)).find("88283082a3fffff") ==
          std::string::npos);
+  // A fixed Thing without a cell still needs setup with a phone cell set,
+  // because its rows ignore the phone cell and stay null (#147).
+  accept("location.cell=\nlocation.phone_cell=88283082a3fffff");
+  assert(config::setup_needed(config::location_settings()));
+  assert(page_has("\"setup\":1}"));
+  // On a moving Thing a phone cell change is a location change, still with
+  // no NVS write.
+  accept("thing.mobility=moving\nlocation.phone_cell=");
+  const auto moving_writes = fake_platform::nvs.writes;
+  assert(apply("location.phone_cell=88283082a3fffff", actions, bad_key));
+  assert(actions.location_changed);
+  assert(apply("location.phone_cell=88283082a3fffff", actions, bad_key));
+  assert(!actions.location_changed);
+  assert(fake_platform::nvs.writes == moving_writes);
 }
 
 // #147. "Setup needed" is derived from the location settings, never stored.

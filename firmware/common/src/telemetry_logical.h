@@ -19,7 +19,8 @@ inline constexpr std::string_view kWkbPointUnit = "wkb_point_crs84";
 
 // `location_source` codes (#83), the stac-opensensor profile list. Each board
 // names them in telemetry_classes.inc. opensensor::gnss::select_location
-// picks one per row. Phone comes from the RAM only location.phone_cell (#140).
+// picks one per row. Phone comes from the RAM only location.phone_cell, on
+// moving Things only (#140).
 enum class LocationSource : std::int32_t {
   None = 0,
   Configured = 1,

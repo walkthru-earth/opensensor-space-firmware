@@ -1105,8 +1105,10 @@ bool apply_lines(const char *text, std::size_t length, char *bad_key,
       store_text(owner_field(next_owner, *owner), value);
       continue;
     }
-    // RAM only (#140). It never marks `cfg` touched, so a request that holds
-    // only this key writes no NVS record, and a reboot clears it.
+    // RAM only (#140). The `cfg` record has no field for it, so it is never
+    // stored and a reboot clears it. It never marks `cfg` touched. A request
+    // that holds only this key still rewrites a record an earlier failed save
+    // left unsure, without the phone cell.
     if (std::strcmp(key, "location.phone_cell") == 0) {
       next.location.phone_cell = 0;
       if (*value &&
@@ -1284,10 +1286,11 @@ bool apply_lines(const char *text, std::size_t length, char *bad_key,
     next.location.phone_cell = *published;
   }
   pending.ntp_changed = !same_ntp(previous.ntp, next.ntp);
-  // A phone cell change alters the rows even when the file need not split.
+  // A phone cell change alters moving rows, though it never splits the file.
   pending.location_changed =
       !same_location(previous.location, next.location) ||
-      previous.location.phone_cell != next.location.phone_cell;
+      (next.location.mobility == Mobility::Moving &&
+       previous.location.phone_cell != next.location.phone_cell);
   if (pending.rotate_token)
     esp_fill_random(next.token, kTokenBytes);
   if (!save_request(!same_owner(previous_owner, next_owner), previous_owner,
@@ -1332,9 +1335,7 @@ std::size_t build_json(char *out, std::size_t size, const WifiView &wifi) {
 }
 bool same_location(const LocationSettings &a, const LocationSettings &b) {
   return a.cell == b.cell && a.resolution == b.resolution &&
-         std::strcmp(a.country, b.country) == 0 && a.mobility == b.mobility &&
-         (a.mobility == Mobility::Moving ||
-          effective_cell(a) == effective_cell(b));
+         std::strcmp(a.country, b.country) == 0 && a.mobility == b.mobility;
 }
 
 const char *mobility_name(Mobility mobility) {

@@ -45,18 +45,11 @@ struct LocationSettings {
   char country[3]{};           // Optional owner-declared ISO 3166-1 alpha-2.
   Mobility mobility = Mobility::Fixed;
   // location.phone_cell (#140), the res 8 cell of the phone's own fix, zero
-  // when unset. RAM only. The `cfg` record never holds it, so a reboot clears
-  // it. While it is set every row carries it with location_source 3.
+  // when unset. RAM only. The `cfg` record has no field for it, so it is never
+  // stored and a reboot clears it. While it is set a moving Thing writes it
+  // with location_source 3. A fixed Thing ignores it for rows.
   std::uint64_t phone_cell = 0;
 };
-
-// The cell a row carries when GNSS does not decide it. The phone cell while it
-// is set, else the configured cell. A fixed Thing splits its file when this
-// changes. A moving Thing never splits on it (#140).
-[[nodiscard]] constexpr std::uint64_t
-effective_cell(const LocationSettings &location) {
-  return location.phone_cell ? location.phone_cell : location.cell;
-}
 
 // The Thing needs setup (#147). A fixed Thing without a cell needs one, a
 // moving Thing never does. Derived on every read, never stored. Drives the
@@ -151,9 +144,8 @@ struct PageInputs {
 std::size_t build_page(char *out, std::size_t size, std::uint8_t page,
                        const PageInputs &inputs = {});
 // True when two samples may share a file. Cell, resolution, country and
-// mobility must match. A fixed Thing also needs the same effective_cell(), so a
-// phone cell change splits it. A moving Thing ignores the phone cell, since
-// one moving file holds many cells (#140).
+// mobility must match. The phone cell never splits a file (#140). A fixed
+// Thing ignores it and one moving file holds many cells.
 bool same_location(const LocationSettings &, const LocationSettings &);
 
 // Owner site configuration (#148). Free text the owner sets over SET_CONFIG for

@@ -380,10 +380,11 @@ void deployment_split() {
   assert(!oslogger::same_file_labels(moved, first));
 }
 
-// location.phone_cell (#140). While set it labels every row with source 3,
-// fixed or moving, ahead of the configured cell and a fresh GNSS fix. A fixed
-// Thing splits its file when the effective cell changes. A moving Thing never
-// splits on a phone cell change. Clearing it or a reboot falls back.
+// location.phone_cell (#140). A fixed Thing ignores it, as it ignores GNSS,
+// and keeps its configured cell with source 1 in every row (stac-opensensor
+// PROFILE.md, Location). On a moving Thing it labels every row with source 3,
+// ahead of a fresh GNSS fix. It never splits a file. Clearing it or a reboot
+// falls back.
 void phone_cell_rule() {
   using Sample = oslogger::LocationSample<NumericSample<4>>;
   const std::int64_t now = 50'000'000;
@@ -423,50 +424,48 @@ void phone_cell_rule() {
     return std::string("location.phone_cell=") + text;
   };
 
-  // Fixed Thing with a configured cell, source 1 before the phone cell.
+  // Fixed Thing with a configured cell, source 1.
   set("location.cell=8828308281fffff");
   const auto configured = snapshot();
   auto pick = chosen(configured);
   assert(pick.cell == kConfigured && pick.source == LocationSource::Configured);
-  // A finer phone cell is kept as its res 8 parent and wins, source 3.
+  // A finer phone cell is kept as its res 8 parent, and a fixed Thing ignores
+  // it. Rows keep the configured cell with source 1.
   set(phone_line(fine_text));
   const auto at_phone = snapshot();
   assert(at_phone.location.phone_cell == cells.at8);
-  assert(at_phone.location.cell == kConfigured);
+  assert(at_phone.location.cell == kConfigured && cells.at8 != kConfigured);
   pick = chosen(at_phone);
-  assert(pick.cell == cells.at8 && pick.source == LocationSource::Phone);
+  assert(pick.cell == kConfigured && pick.source == LocationSource::Configured);
   Sample row = at_phone;
   assert(oslogger::apply_cell(row, pick.cell, pick.source, {0, 1, 2, 3}));
-  assert(row.data[0] == static_cast<std::int64_t>(cells.at8) &&
-         row.data[1] == 8 && row.data[2] == 3);
-  // The effective cell moved, so a fixed Thing closes the file.
-  assert(!oslogger::same_file_labels(at_phone, configured));
-  assert(!oslogger::same_file_labels(configured, at_phone));
-  // The same phone cell again keeps the file.
-  set(phone_line(phone_text));
-  assert(oslogger::same_file_labels(snapshot(), at_phone));
-  // An update to another cell splits a fixed Thing again.
+  assert(row.data[0] == static_cast<std::int64_t>(kConfigured) &&
+         row.data[1] == 8 && row.data[2] == 1);
+  // Setting, updating and clearing it never splits a fixed Thing.
+  assert(oslogger::same_file_labels(at_phone, configured));
+  assert(oslogger::same_file_labels(configured, at_phone));
   set(phone_line(neighbour_text));
   const auto updated = snapshot();
-  assert(chosen(updated).cell == neighbour);
-  assert(!oslogger::same_file_labels(updated, at_phone));
-  // A phone cell equal to the configured cell keeps the effective cell.
-  set("location.phone_cell=8828308281fffff");
-  const auto same_cell = snapshot();
-  assert(chosen(same_cell).source == LocationSource::Phone);
-  assert(oslogger::same_file_labels(same_cell, configured));
-  // Clearing falls back to the configured cell, source 1, and splits back.
+  assert(chosen(updated).cell == kConfigured);
+  assert(chosen(updated).source == LocationSource::Configured);
+  assert(oslogger::same_file_labels(updated, at_phone));
   set("location.phone_cell=");
   const auto cleared = snapshot();
   assert(cleared.location.phone_cell == 0);
   pick = chosen(cleared);
   assert(pick.cell == kConfigured && pick.source == LocationSource::Configured);
-  assert(!oslogger::same_file_labels(cleared, updated));
-  assert(oslogger::same_file_labels(cleared, configured));
-  // A fixed Thing with no configured cell still takes the phone cell.
+  assert(oslogger::same_file_labels(cleared, updated));
+  // A location.cell change still splits a fixed Thing, phone cell or not.
+  set("location.cell=" + std::string(neighbour_text) + "\n" +
+      phone_line(phone_text));
+  const auto moved = snapshot();
+  assert(chosen(moved).cell == neighbour);
+  assert(chosen(moved).source == LocationSource::Configured);
+  assert(!oslogger::same_file_labels(moved, updated));
+  // A fixed Thing with no configured cell writes nulls, never the phone cell.
   set("location.cell=\n" + phone_line(phone_text));
   pick = chosen(snapshot());
-  assert(pick.cell == cells.at8 && pick.source == LocationSource::Phone);
+  assert(pick.cell == 0 && pick.source == LocationSource::None);
 
   // Moving Thing. The phone cell beats a fresh fix, and a change never splits.
   set("thing.mobility=moving\n" + phone_line(phone_text));
