@@ -9,11 +9,11 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
-## CoreS3 on M5Unified and M5GFX 0.3.0 (deps/firmware-m5-0.3)
+## CoreS3 on M5Unified and M5GFX 0.3.0 (#160)
 
 **Needs a matched CoreS3 reflash. The app needs no code change unless it pins
 `configuration_id` or reads meaning into `charging_status` beyond its legend.**
-Stacked on the dependency refresh below. CoreS3 moves to
+Follows the dependency refresh (#157). CoreS3 moves to
 `idf-cores3-parquet-v6.31`. Waveshare is unchanged at
 `idf-waveshare-parquet-v2.24`. Columns, field ids, LIVE keys, decimals, the
 `charging_status` legend `0=discharging,1=charging,2=unknown`, the schema and
