@@ -111,8 +111,7 @@ void collect(oslogger::Row &row, std::int64_t now, std::int64_t, void *) {
   const int battery = M5.Power.getBatteryLevel();
   if (battery >= 0 && battery <= 100)
     row.integer(battery_percent, battery);
-  row.integer(charging_status,
-              charging_status_of(M5.Power.getChargeState()));
+  row.integer(charging_status, charging_status_of(M5.Power.getChargeState()));
   // CoreS3 getBatteryCurrent() is an unsupported constant zero. Leave null.
   row.integer(external_5v_enabled, M5.Power.getExtOutput());
   row.integer(usb_output_enabled, M5.Power.getUsbOutput());
