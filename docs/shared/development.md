@@ -225,13 +225,22 @@ each board once to create them. Run `pixi run cores3-build` and
 too before you edit the Waveshare diagnostic image, which has its own
 database. Shared code under `firmware/common` borrows the CoreS3 database,
 except `firmware/common/gnss_reader`, which only the Waveshare logger builds.
-Host tests under `tools/` need no build, `.clangd` gives
-them `-std=c++23` and the include paths `tools/host_cxx.py` uses. Never commit
-`compile_commands.json` or anything under `build/`.
+Never commit `compile_commands.json` or anything under `build/`.
 
-Use the clangd that pixi pins (clang-tools **23.1.3**) and let it ask the
-xtensa compiler for its headers. In VS Code with the clangd extension put this
-in your own `.vscode/settings.json`, which git ignores.
+Host tests under `tools/` need no build. Each `tools/test_*.py` passes its own
+`-I` list to the host `clang++`, and `tools/host_cxx.py` holds only the
+dialect flag. `.clangd` adds `-std=c++23` and the shared include folders most
+tests use. The tests with a fakes folder of their own (`wifi_host_fakes`,
+`sd_memory_host_fakes`, `logger_work_host_fakes`) get the exact list their
+script passes. `partial_rebuild_fixture.cpp` reads the Waveshare field table
+and `footer_fixture.h` reads the CoreS3 contract first, as the comments in
+`.clangd` say. On 2026-11-09 every `.cpp` and `.h` directly in `tools/`
+checked with 0 errors. A new test that adds an include folder or a fakes
+folder needs the same line in `.clangd`.
+
+Use the clangd that pixi pins (the `clang-tools` entry in `pixi.toml`) and let
+it ask the xtensa compiler for its headers. In VS Code with the clangd
+extension put this in your own `.vscode/settings.json`, which git ignores.
 
 ```json
 {
