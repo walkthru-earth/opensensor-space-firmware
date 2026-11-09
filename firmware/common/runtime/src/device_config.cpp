@@ -512,6 +512,8 @@ void load_blob(BlobPayload &payload, Settings &settings) {
   apply_ntp(true, payload.ntp, settings);
 }
 
+// Boot only. Leaves phone_cell_set_us alone, so never publish a non-zero
+// phone cell here, it would carry a stale stamp. Use publish_with_owner.
 void publish(const Settings &settings) {
   portENTER_CRITICAL(&settings_mutex);
   current = settings;
@@ -1320,7 +1322,8 @@ bool apply_lines(const char *text, std::size_t length, char *bad_key,
   pending.ntp_changed = !same_ntp(previous.ntp, next.ntp);
   // A phone cell change alters moving rows, though it never splits the file.
   // `previous` came through get(), so a cell that reached its age limit reads
-  // as unset and sending it again counts as a change.
+  // as unset and sending it again sets the flag. Only host tests read
+  // location_changed today, nothing on the device acts on it.
   pending.location_changed =
       !same_location(previous.location, next.location) ||
       (next.location.mobility == Mobility::Moving &&

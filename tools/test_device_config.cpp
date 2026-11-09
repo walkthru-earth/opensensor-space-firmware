@@ -924,8 +924,9 @@ void phone_cell_age() {
   seen(0);
 
   // On a moving Thing expiry reports no action, there is no request. Sending
-  // the cell again after expiry is a location change, as a first set is. No
-  // other reader runs first, so SET_CONFIG checks the age itself.
+  // the cell again after expiry sets location_changed, as a first set does.
+  // Only these tests read the flag today. No other reader runs first, so
+  // SET_CONFIG checks the age itself.
   config::Actions actions;
   char bad_key[64];
   accept("thing.mobility=moving\nlocation.phone_cell=8828308281fffff");

@@ -34,10 +34,10 @@ the GET_CONFIG page 1 keys and the `dict` and `desc` digests do not change.
 its fix or crashed must not keep labelling a moving Thing with an old cell.
 
 **What the app must do.** While it is connected to a moving Thing, send
-`location.phone_cell` about every 60 seconds and at most that often, even
-when the cell has not changed (opensensor-space-mobile #264). Expect the board
-to clear the cell 300 seconds after the last send. When page 1 shows
-`location.phone_cell` as `""`, send the cell again. Expect moving rows written
+`location.phone_cell` about once a minute, plus once on connect and whenever
+page 1 shows it empty, even when the cell has not changed
+(opensensor-space-mobile #264). Expect the board to clear the cell 300
+seconds after the last send. Expect moving rows written
 after an expiry to carry `location_source` 2 or nulls until the next send.
 
 ## CoreS3 on M5Unified and M5GFX 0.3.0 (#160)
@@ -142,7 +142,6 @@ separate change.
 **What the app must do.** Accept the new firmware strings. If the app pins
 `configuration_id`, accept `cores3-acquisition-v4`. Reflash both boards with
 the matched build.
-
 
 ## Phone cell accepted in RAM (fix-140-phone-cell, issue #140)
 

@@ -244,9 +244,11 @@ settings checks the age under the settings lock before it copies them, so the
 row snapshot, GET_CONFIG and the next `SET_CONFIG` all see the same cell.
 Expiry writes no NVS, marks no record for a write, logs no line and never
 splits a file. It is not a request, so it produces no `SET_CONFIG` reply or
-action. A later request that sends the cell again counts as a location change
-on a moving Thing, the same as a first set. The app refreshes the cell about
-every 60 s while it is connected (opensensor-space-mobile #264).
+action. On a moving Thing a later request that sends the cell again sets
+`Actions::location_changed`, the same as a first set. No firmware reads that
+flag today, only the host tests do, so it changes nothing on the device. The
+app refreshes the cell about once a minute while it is connected, plus once on
+connect and whenever page 1 shows it empty (opensensor-space-mobile #264).
 
 A moving Thing writes it in every row with `location_source` 3 while it is
 set, ahead of a fresh GNSS fix. When it is cleared or reaches its age
