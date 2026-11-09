@@ -37,8 +37,8 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
-def m5_pin_errors(env: str, manifest: str, contract: str) -> list[str]:
-    """Compare the M5 versions in dependencies.env, the os_cores3 manifest and kConfiguration."""
+def m5_pin_errors(env: str, manifest: str, contract: str, lock: str) -> list[str]:
+    """Compare the M5 versions in dependencies.env, the manifest, kConfiguration and dependencies.lock."""
     def one(pattern: str, text: str) -> str | None:
         found = re.findall(pattern, text, re.M)
         return found[0] if len(found) == 1 else None
@@ -48,13 +48,17 @@ def m5_pin_errors(env: str, manifest: str, contract: str) -> list[str]:
         "manifest m5unified": one(r'^\s*m5stack/m5unified:\s*"==([^"]+)"\s*$', manifest),
         "manifest m5gfx": one(r'^\s*m5stack/m5gfx:\s*"==([^"]+)"\s*$', manifest),
         "kConfiguration m5unified": one(r'\\"m5unified\\":\\"([^\\"]+)\\"', contract),
+        "lock m5unified": one(r"^  m5stack/m5unified:\n(?:    .*\n)*?    version: (\S+)$", lock),
+        "lock m5gfx": one(r"^  m5stack/m5gfx:\n(?:    .*\n)*?    version: (\S+)$", lock),
     }
     errors = [f"{name} missing or repeated" for name, value in pins.items() if value is None]
     if not errors:
-        if len({pins["env m5unified"], pins["manifest m5unified"], pins["kConfiguration m5unified"]}) != 1:
-            errors.append("m5unified differs across dependencies.env, idf_component.yml and kConfiguration")
-        if pins["env m5gfx"] != pins["manifest m5gfx"]:
-            errors.append("m5gfx differs between dependencies.env and idf_component.yml")
+        if len({pins["env m5unified"], pins["manifest m5unified"], pins["kConfiguration m5unified"],
+                pins["lock m5unified"]}) != 1:
+            errors.append("m5unified differs across dependencies.env, idf_component.yml, kConfiguration "
+                          "and dependencies.lock")
+        if len({pins["env m5gfx"], pins["manifest m5gfx"], pins["lock m5gfx"]}) != 1:
+            errors.append("m5gfx differs across dependencies.env, idf_component.yml and dependencies.lock")
     return errors
 
 
@@ -62,21 +66,32 @@ def check_m5_pins(root: Path) -> None:
     project = root / "firmware/esp-idf-cores3"
     texts = ((project / "dependencies.env").read_text(),
              (project / "components/os_cores3/idf_component.yml").read_text(),
-             (project / "bringup/telemetry_contract.h").read_text())
+             (project / "bringup/telemetry_contract.h").read_text(),
+             (project / "dependencies.lock").read_text())
     errors = m5_pin_errors(*texts)
     require(not errors, "; ".join(errors))
-    env, manifest, contract = texts
+    env, manifest, contract, lock = texts
+
+    def lock_version(name: str) -> str:
+        """Prefix 9 to the version line of one dependencies.lock entry."""
+        start = lock.index(f"\n  m5stack/{name}:\n")
+        at = lock.index("\n    version: ", start) + len("\n    version: ")
+        return lock[:at] + "9" + lock[at:]
     mutations = (
-        (env.replace("M5UNIFIED_VERSION=", "M5UNIFIED_VERSION=9", 1), manifest, contract),
-        (env.replace("M5GFX_VERSION=", "M5GFX_VERSION=9", 1), manifest, contract),
-        (env, manifest.replace('m5unified: "==', 'm5unified: "==9', 1), contract),
-        (env, manifest.replace('m5gfx: "==', 'm5gfx: "==9', 1), contract),
-        (env, manifest, contract.replace('\\"m5unified\\":\\"', '\\"m5unified\\":\\"9', 1)),
-        (env, manifest, contract.replace('\\"m5unified\\"', '\\"m5unifed\\"', 1)),
+        (env.replace("M5UNIFIED_VERSION=", "M5UNIFIED_VERSION=9", 1), manifest, contract, lock),
+        (env.replace("M5GFX_VERSION=", "M5GFX_VERSION=9", 1), manifest, contract, lock),
+        (env, manifest.replace('m5unified: "==', 'm5unified: "==9', 1), contract, lock),
+        (env, manifest.replace('m5gfx: "==', 'm5gfx: "==9', 1), contract, lock),
+        (env, manifest, contract.replace('\\"m5unified\\":\\"', '\\"m5unified\\":\\"9', 1), lock),
+        (env, manifest, contract.replace('\\"m5unified\\"', '\\"m5unifed\\"', 1), lock),
+        (env, manifest, contract, lock_version("m5unified")),
+        (env, manifest, contract, lock_version("m5gfx")),
+        (env, manifest, contract, lock.replace("\n  m5stack/m5gfx:\n", "\n  m5stack/m5gfz:\n", 1)),
     )
     for mutated in mutations:
         require(mutated != texts and m5_pin_errors(*mutated), "M5 pin check misses a mutation")
-    print("PASS M5Unified and M5GFX pins agree in dependencies.env, the os_cores3 manifest and kConfiguration, "
+    print("PASS M5Unified and M5GFX pins agree in dependencies.env, the os_cores3 manifest, kConfiguration "
+          "and dependencies.lock, "
           f"{len(mutations)} mutations fail", flush=True)
 
 

@@ -32,8 +32,9 @@ pixi run waveshare-build diagnostic
 `tools/idf-dependencies.lock` pins ESP-IDF 6.1 and its exact source commit.
 Component manifests pin M5Unified **0.3.0**, M5GFX **0.3.0**, mDNS **1.15.1**
 and Waveshare led_strip **3.1.1**. `pixi run telemetry-contract-test` fails
-when the CoreS3 M5 versions in `dependencies.env`, the `os_cores3` manifest
-and the footer `kConfiguration` disagree. Official H3 **4.5.0** is vendored with exact
+when the CoreS3 M5 versions in `dependencies.env`, the `os_cores3` manifest,
+the footer `kConfiguration` and `dependencies.lock` disagree. Official H3
+**4.5.0** is vendored with exact
 source/license hashes in `firmware/common/location/vendor/h3/manifest.json`.
 Policy is to pin the latest stable release of every dependency. Rechecking on
 **2026-11-09** confirmed mDNS **1.15.1**, led_strip **3.1.1**, ESP-IDF **6.1**
