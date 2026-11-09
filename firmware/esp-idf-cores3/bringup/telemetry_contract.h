@@ -206,8 +206,10 @@ enum ProximityStatus : std::int32_t {
   kProximityValid = 3,
   kProximityIoError = 4,
 };
-// M5Unified Power_Class::is_charging_t. This header stays free of M5Unified
-// for the host fixture, so telemetry_logger.cpp ties the two by static_assert.
+// Mapped from M5Unified charge_state_t. 0 covers every not charging state
+// (not charging, full, disabled, discharging, idle) and 2 every state that was
+// not read. This header stays free of M5Unified for the host fixture, so
+// telemetry_logger.cpp holds the mapping and its static_assert.
 enum ChargingStatus : std::int32_t {
   kChargingDischarging = 0,
   kChargingCharging = 1,

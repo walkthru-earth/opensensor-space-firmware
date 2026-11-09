@@ -16,17 +16,34 @@ using namespace contract;
 Ltr553 light_sensor;
 PmsSnapshot latest;
 std::array<oslogger::Field, field_count> fields;
-// charging_status writes M5Unified is_charging_t, which telemetry_classes.inc
-// names through ChargingStatus.
-constexpr bool same_code(ChargingStatus code,
-                         m5::Power_Class::is_charging_t m5_code) {
-  return std::int32_t(code) == std::int32_t(m5_code);
+// charging_status maps M5Unified charge_state_t through the library's own
+// state sets, so a model that learns a finer state keeps its code. States that
+// were not read (not initialized, I2C error, undetermined, unsupported) are
+// unknown. telemetry_classes.inc names the codes through ChargingStatus.
+constexpr ChargingStatus charging_status_of(m5::charge_state_t state) {
+  if (m5::charge_states_any_charging.contains(state))
+    return kChargingCharging;
+  if (m5::charge_states_any_not_charging.contains(state))
+    return kChargingDischarging;
+  return kChargingUnknown;
 }
-static_assert(same_code(kChargingDischarging,
-                        m5::Power_Class::is_discharging) &&
-                  same_code(kChargingCharging, m5::Power_Class::is_charging) &&
-                  same_code(kChargingUnknown, m5::Power_Class::charge_unknown),
-              "ChargingStatus must match M5Unified is_charging_t");
+static_assert(
+    charging_status_of(m5::charge_state_t::charging) == kChargingCharging &&
+        charging_status_of(m5::charge_state_t::not_charging) ==
+            kChargingDischarging &&
+        charging_status_of(m5::charge_state_t::full) == kChargingDischarging &&
+        charging_status_of(m5::charge_state_t::disabled) ==
+            kChargingDischarging &&
+        charging_status_of(m5::charge_state_t::discharging) ==
+            kChargingDischarging &&
+        charging_status_of(m5::charge_state_t::idle) == kChargingDischarging &&
+        charging_status_of(m5::charge_state_t::not_initialized) ==
+            kChargingUnknown &&
+        charging_status_of(m5::charge_state_t::io_error) == kChargingUnknown &&
+        charging_status_of(m5::charge_state_t::undetermined) ==
+            kChargingUnknown &&
+        charging_status_of(m5::charge_state_t::unsupported) == kChargingUnknown,
+    "charging_status must follow the M5Unified charge state sets");
 
 void collect(oslogger::Row &row, std::int64_t now, std::int64_t, void *) {
   const auto &pms = latest;
@@ -94,7 +111,8 @@ void collect(oslogger::Row &row, std::int64_t now, std::int64_t, void *) {
   const int battery = M5.Power.getBatteryLevel();
   if (battery >= 0 && battery <= 100)
     row.integer(battery_percent, battery);
-  row.integer(charging_status, M5.Power.isCharging());
+  row.integer(charging_status,
+              charging_status_of(M5.Power.getChargeState()));
   // CoreS3 getBatteryCurrent() is an unsupported constant zero. Leave null.
   row.integer(external_5v_enabled, M5.Power.getExtOutput());
   row.integer(usb_output_enabled, M5.Power.getUsbOutput());
@@ -146,7 +164,8 @@ bool rtc_write(std::int64_t seconds, void *) {
   std::tm utc{};
   if (!::gmtime_r(&value, &utc))
     return false;
-  M5.Rtc.setDateTime(m5::rtc_datetime_t(utc));
+  if (!M5.Rtc.setDateTime(m5::rtc_datetime_t(utc)))
+    return false;
   std::int64_t readback = 0;
   return rtc_read(readback, nullptr) && readback >= seconds &&
          readback - seconds <= 1;

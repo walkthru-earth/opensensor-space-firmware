@@ -146,16 +146,14 @@ const char *reset_reason_name(esp_reset_reason_t reason) {
   }
 }
 
-const char *charging_name(m5::Power_Class::is_charging_t charging) {
-  switch (charging) {
-  case m5::Power_Class::is_charging:
+// Same rule as the charging_status column, so DIAG and the screen keep the
+// charging, discharging and unknown names.
+const char *charging_name(m5::charge_state_t state) {
+  if (m5::charge_states_any_charging.contains(state))
     return "charging";
-  case m5::Power_Class::is_discharging:
+  if (m5::charge_states_any_not_charging.contains(state))
     return "discharging";
-  case m5::Power_Class::charge_unknown:
-  default:
-    return "unknown";
-  }
+  return "unknown";
 }
 
 const char *i2c_device_name(std::uint8_t address) {
@@ -267,7 +265,7 @@ void report_i2c() {
 }
 
 void report_power() {
-  const auto charging = M5.Power.isCharging();
+  const auto charging = M5.Power.getChargeState();
   oslog.printf(
       "DIAG power pmic_type=%d external_5v=%s usb_output=%s vbus_mv=%d "
       "battery_mv=%d battery_percent=%ld charging=%s battery_current_ma=%ld\n",
@@ -663,7 +661,7 @@ void draw_device_page() {
   M5.Display.setCursor(8, 75);
   M5.Display.printf("Battery: %ld%%  %s",
                     static_cast<long>(M5.Power.getBatteryLevel()),
-                    charging_name(M5.Power.isCharging()));
+                    charging_name(M5.Power.getChargeState()));
 
   M5.Display.setCursor(8, 103);
   M5.Display.printf(
@@ -785,7 +783,8 @@ void draw_pairing_overlay(const ble::PairingState &pairing) {
 
 void show_pms_screen() {
   telemetry::lock_display();
-  M5.Display.setRotation(1);
+  // M5GFX 0.3.0 renumbered rotation so 0 is the upright landscape panel.
+  M5.Display.setRotation(0);
   const auto pairing = ble::pairing();
   if (ble_started && pairing.active) {
     draw_pairing_overlay(pairing);
