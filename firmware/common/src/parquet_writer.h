@@ -18,6 +18,27 @@ enum class PhysicalType : uint8_t {
   ByteArray = 6
 };
 enum class Codec : uint8_t { Uncompressed = 0, Lz4Raw = 7 };
+// Value encoding of INT32 and INT64 columns. FLOAT columns and the GEOMETRY
+// column stay PLAIN whatever this says. The numbers are the parquet.thrift
+// Encoding codes. Plain is the default and what every board writes today.
+// DeltaBinaryPacked is the DELTA_BINARY_PACKED layout of parquet-format
+// 2.14.0 Encodings.md with blocks of 128 values in 4 miniblocks of 32, for
+// the on device measurement in #135.
+enum class IntegerEncoding : uint8_t { Plain = 0, DeltaBinaryPacked = 5 };
+
+// Most bytes a DELTA_BINARY_PACKED stream of `values` integers of
+// `value_bytes` (4 or 8) bytes can take. The header holds 128, 4, the count
+// and the first value. Each block of up to 128 deltas holds a min delta of at
+// most 10 bytes, 4 width bytes and at most 4 miniblocks of 32 slots at the
+// full value width, since the spec forbids wider packing than PLAIN.
+constexpr size_t delta_binary_packed_bound(size_t values, size_t value_bytes) {
+  size_t count_bytes = 1;
+  for (size_t rest = values >> 7; rest; rest >>= 7)
+    ++count_bytes;
+  const size_t deltas = values ? values - 1 : 0;
+  const size_t blocks = (deltas + 127) / 128;
+  return 2 + 1 + count_bytes + 10 + blocks * (10 + 4 + 4 * 32 * value_bytes);
+}
 // Parquet LogicalType annotation on the schema leaf.
 //
 // TimestampMicrosUtc is TIMESTAMP(MICROS, isAdjustedToUTC=true), only valid
@@ -150,7 +171,7 @@ struct Result {
 };
 
 // Flat numeric schema plus 2D WKB Point geometry, PLAIN DataPageV1 (one page
-// per column chunk),
+// per column chunk, DELTA_BINARY_PACKED integers when asked),
 // UNCOMPRESSED or caller-supplied LZ4_RAW, RLE definition levels, Thrift
 // Compact footer with per-chunk statistics (null_count, min_value/max_value,
 // exact flags, nan_count for FLOAT) and TYPE_ORDER column orders. A file holds
@@ -174,9 +195,11 @@ struct Result {
 // without pruning anything at this size. Host compaction adds both.
 class Writer {
 public:
+  // integers picks the INT32 and INT64 value encoding for the whole file.
   Result begin(Sink sink, void *context, Workspace &workspace,
                const Column *columns, size_t column_count,
-               const Compression *compression = nullptr);
+               const Compression *compression = nullptr,
+               IntegerEncoding integers = IntegerEncoding::Plain);
   Result row_group(size_t row_count, int sorted_by = -1);
   // build is appended to created_by as "(build <build>)" when given. Omitting
   // created_by writes "opensensor-space-firmware version 0.3", the name both
@@ -201,6 +224,7 @@ private:
   size_t column_count_ = 0;
   bool compressed_ = false;
   Compression compression_{}; // copy: the caller's struct may be a temporary
+  IntegerEncoding integers_ = IntegerEncoding::Plain;
   size_t groups_ = 0;
   size_t used_ = 0; // bytes staged in workspace_->buffer
   uint64_t rows_ = 0;
@@ -215,6 +239,7 @@ Result write_parquet(Sink sink, void *context, const Column *columns,
                      size_t metadata_count = 0,
                      const Compression *compression = nullptr,
                      int sorted_by = -1, const char *build = nullptr,
-                     const char *created_by = nullptr);
+                     const char *created_by = nullptr,
+                     IntegerEncoding integers = IntegerEncoding::Plain);
 
 } // namespace telemetry
