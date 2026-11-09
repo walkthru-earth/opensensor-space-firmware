@@ -33,9 +33,15 @@ pixi run waveshare-build diagnostic
 Component manifests pin M5Unified **0.3.0**, M5GFX **0.3.0**, mDNS **1.15.1**
 and Waveshare led_strip **3.1.1**. `pixi run telemetry-contract-test` fails
 when the CoreS3 M5 versions in `dependencies.env`, the `os_cores3` manifest,
-the footer `kConfiguration` and `dependencies.lock` disagree. Official H3
-**4.5.0** is vendored with exact
-source/license hashes in `firmware/common/location/vendor/h3/manifest.json`.
+the footer `kConfiguration` and `dependencies.lock` disagree. The location
+component pins [embedded-h3-location](https://github.com/walkthru-earth/embedded-h3-location)
+**v2.0.0** as a git dependency, and each board `dependencies.lock` records its
+commit. The library vendors official H3 **4.5.0** with exact source and license
+hashes in its own `vendor/h3/manifest.json`. Host tests build the same commit
+through `tools/h3_library.py`, which clones it once per locked commit into
+`${XDG_CACHE_HOME:-~/.cache}/opensensor-space-firmware/embedded-h3-location/<commit>/`
+and fails when the board locks disagree. It reads the locks of every app in
+the board registry.
 Policy is to pin the latest stable release of every dependency. Rechecking on
 **2026-11-09** confirmed mDNS **1.15.1**, led_strip **3.1.1**, ESP-IDF **6.1**
 and H3 **4.5.0** as latest, and M5Unified and M5GFX **0.3.0** as their latest
@@ -230,17 +236,27 @@ too before you edit the Waveshare diagnostic image, which has its own
 database. Shared code under `firmware/common` borrows the CoreS3 database,
 except `firmware/common/gnss_reader`, which only the Waveshare logger builds.
 Never commit `compile_commands.json` or anything under `build/`.
+A database describes the branch it was built on. After you switch branches,
+or when a PR adds a component or a managed dependency, run
+`pixi run cores3-build` or `pixi run waveshare-build logger` again for the
+board you edit, then restart clangd so it reads the new database.
 
-Host tests under `tools/` need no build. Each `tools/test_*.py` passes its own
-`-I` list to the host `clang++`, and `tools/host_cxx.py` holds only the
-dialect flag. `.clangd` adds `-std=c++23` and the shared include folders most
-tests use. The tests with a fakes folder of their own (`wifi_host_fakes`,
-`sd_memory_host_fakes`, `logger_work_host_fakes`) get the exact list their
-script passes. `partial_rebuild_fixture.cpp` reads the Waveshare field table
-and `footer_fixture.h` reads the CoreS3 contract first, as the comments in
-`.clangd` say. On 2026-11-09 every `.cpp` and `.h` directly in `tools/`
-checked with 0 errors. A new test that adds an include folder or a fakes
-folder needs the same line in `.clangd`.
+Host tests under `tools/` run without a board build. Each `tools/test_*.py`
+passes its own `-I` list to the host `clang++`, and `tools/host_cxx.py` holds
+only the dialect flag. `.clangd` adds `-std=c++23` and the shared include
+folders most tests use. The tests with a fakes folder of their own
+(`wifi_host_fakes`, `sd_memory_host_fakes`, `logger_work_host_fakes`) get the
+exact list their script passes, and `test_h3_polygon.cpp` adds
+`host_fakes/h3_alloc`. `test_stac_item.cpp` reads the CoreS3 contract,
+`partial_rebuild_fixture.cpp` reads the Waveshare field table and
+`footer_fixture.h` reads the CoreS3 contract first, as the comments in
+`.clangd` say. The editor needs one CoreS3 build for the tests that include a
+location header. The host scripts build embedded-h3-location from a cache
+clone whose path `.clangd` cannot name, so the editor reads the same commit
+from `firmware/esp-idf-cores3/managed_components` and the `h3api.h` that the
+build generates. On 2026-11-09, after `pixi run cores3-build`, every `.cpp`
+and `.h` directly in `tools/` checked with 0 errors. A new test that adds an
+include folder or a fakes folder needs the same line in `.clangd`.
 
 Use the clangd that pixi pins (the `clang-tools` entry in `pixi.toml`) and let
 it ask the xtensa compiler for its headers. In VS Code with the clangd
@@ -458,7 +474,8 @@ configured local and permitted public NTP order, offline RTC/host anchoring and
 explicit mobile H3 provisioning. Use `pixi run network-time-test`, `location-test`,
 `config-test` and `control-sync-test` for these changes, plus both schema reader
 gates and affected board builds for logger location changes. These sanitizer
-fixtures compile the official H3 core and real service/settings code. Existing
+fixtures compile the pinned embedded-h3-location library, its official H3
+core and real service/settings code. Existing
 generated sdkconfig values override defaults: regenerate or explicitly update
 `CONFIG_LWIP_SNTP_MAX_SERVERS=3` and
 `CONFIG_LWIP_DHCP_GET_NTP_SRV=y` in disposable build configurations when moving

@@ -191,13 +191,15 @@ const Dialect &simcom_dialect() {
 
 std::expected<Fix, ParseError> to_fix(const Reading &reading,
                                       std::int64_t fix_mono_us) {
-  location::Cell cell = 0;
-  if (!location::from_degrees(reading.latitude, reading.longitude,
-                              location::kPublishedResolution, cell))
+  const auto cell = location::from_degrees(reading.latitude, reading.longitude,
+                                           location::kPublishedResolution);
+  if (!cell)
     return std::unexpected(ParseError::OutOfRange);
-  return Fix{.cell = cell,
-             .resolution =
-                 static_cast<std::uint8_t>(location::resolution(cell)),
+  const auto resolution = location::resolution(*cell);
+  if (!resolution)
+    return std::unexpected(ParseError::OutOfRange);
+  return Fix{.cell = *cell,
+             .resolution = static_cast<std::uint8_t>(*resolution),
              .fix_mono_us = fix_mono_us,
              .mode = reading.mode,
              .satellites = reading.satellites};
@@ -219,7 +221,7 @@ readback_cell(const Fix &fix, std::int64_t now_us) {
   const auto cell = location::published_cell(fix.cell);
   if (cell)
     return *cell;
-  return std::unexpected(cell.error() == location::PublishError::TooCoarse
+  return std::unexpected(cell.error() == location::Error::TooCoarse
                              ? ReadbackError::TooCoarse
                              : ReadbackError::Invalid);
 }

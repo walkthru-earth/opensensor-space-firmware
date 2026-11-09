@@ -505,7 +505,8 @@ Writer/codec/measurement changes still require their sanitizer and contract gate
 and board readback evidence remains in that board's bench record.
 
 `pixi run location-test`, `telemetry-contract-test --sanitize` and
-`waveshare-contract-test --sanitize` compile the pinned official H3 sources and
+`waveshare-contract-test --sanitize` compile the pinned embedded-h3-location
+library with its official H3 sources and
 exercise published vectors, privacy coarsening, captured settings, invalid/null
 mapping and file metadata. PyArrow and DuckDB agree on located/unset, anchored/
 unanchored and uncompressed/LZ4 fixtures for both current board schemas. These

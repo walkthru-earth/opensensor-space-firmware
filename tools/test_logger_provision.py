@@ -6,7 +6,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 
-from test_location import compile_h3
+from h3_library import library_flags
 from host_cxx import CXX_STD
 
 
@@ -32,9 +32,7 @@ def main() -> None:
                     "-o", str(executable)]
         if args.sanitize:
             command += ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
-        location = root / "firmware/common/location/src"
-        command += ["-I", str(Path(directory) / "h3"), "-I", str(location), str(location / "os_location.cpp"),
-                    *compile_h3(root, Path(directory), args.sanitize)]
+        command += library_flags(root, Path(directory), args.sanitize)
         subprocess.run(command, check=True)
         subprocess.run([str(executable)], check=True)
     print("UART provisioning: UTF-8 hex round-trip, secrecy, validators, actions and bounds passed")

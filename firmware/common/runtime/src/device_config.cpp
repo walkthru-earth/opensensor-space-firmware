@@ -13,9 +13,11 @@
 #include <nvs.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <cstring>
 #include <span>
+#include <tuple>
 #include <type_traits>
 
 namespace config {
@@ -182,11 +184,13 @@ bool split_record(char *value, char **fields, std::size_t count) {
 
 void encode_location(char *out, std::size_t size,
                      const LocationSettings &location) {
-  char cell[opensensor::location::kCellTextBytes]{};
+  std::array<char, opensensor::location::kCellTextBytes> cell{};
+  // An invalid cell leaves the text empty.
   if (location.cell)
-    opensensor::location::format_cell(location.cell, cell, sizeof(cell));
-  std::snprintf(out, size, "%s|%u|%s|%s", cell, unsigned(location.resolution),
-                location.country, mobility_name(location.mobility));
+    std::ignore = opensensor::location::format_cell(location.cell, cell);
+  std::snprintf(out, size, "%s|%u|%s|%s", cell.data(),
+                unsigned(location.resolution), location.country,
+                mobility_name(location.mobility));
 }
 
 bool parse_mobility(const char *value, Mobility &mobility) {
@@ -214,10 +218,14 @@ bool decode_location(char *record, LocationSettings &location) {
   if (!split_record(record, fields, legacy ? 3 : 4) ||
       (!legacy && !parse_mobility(fields[3], decoded.mobility)) ||
       !parse_uint(fields[1], 0, 15, resolution) ||
-      (*fields[0] &&
-       !opensensor::location::parse_cell(fields[0], decoded.cell)) ||
       (*fields[2] && !opensensor::location::valid_country(fields[2])))
     return false;
+  if (*fields[0]) {
+    const auto parsed = opensensor::location::parse_cell(fields[0]);
+    if (!parsed)
+      return false;
+    decoded.cell = *parsed;
+  }
   if (decoded.cell) {
     const auto published = opensensor::location::published_cell(decoded.cell);
     if (!published)
@@ -1145,9 +1153,12 @@ bool apply_lines(const char *text, std::size_t length, char *bad_key,
     if (std::strcmp(key, "location.phone_cell") == 0) {
       phone_cell_sent = true;
       next.location.phone_cell = 0;
-      if (*value &&
-          !opensensor::location::parse_cell(value, next.location.phone_cell))
-        return reject();
+      if (*value) {
+        const auto parsed = opensensor::location::parse_cell(value);
+        if (!parsed)
+          return reject();
+        next.location.phone_cell = *parsed;
+      }
       continue;
     }
     settings_touched = true;
@@ -1226,9 +1237,12 @@ bool apply_lines(const char *text, std::size_t length, char *bad_key,
                     "%s", value);
     } else if (std::strcmp(key, "location.cell") == 0) {
       next.location.cell = 0;
-      if (*value &&
-          !opensensor::location::parse_cell(value, next.location.cell))
-        return reject();
+      if (*value) {
+        const auto parsed = opensensor::location::parse_cell(value);
+        if (!parsed)
+          return reject();
+        next.location.cell = *parsed;
+      }
     } else if (std::strcmp(key, "location.resolution") == 0) {
       // Fixed at res 8 (#139). The key stays so a client may restate it.
       std::uint32_t resolution;
@@ -1384,41 +1398,41 @@ std::size_t build_page(char *out, std::size_t size, std::uint8_t page,
   const Settings settings = get();
   int written = -1;
   if (page == 1) {
-    char cell[opensensor::location::kCellTextBytes]{};
+    // Each cell text stays empty when its cell is unset or invalid.
+    std::array<char, opensensor::location::kCellTextBytes> cell{};
     char center[128] = "\"cell_resolution\":null,\"lat\":null,\"lon\":null";
-    double latitude, longitude;
     if (settings.location.cell &&
-        opensensor::location::format_cell(settings.location.cell, cell,
-                                          sizeof(cell)) &&
-        opensensor::location::center_degrees(settings.location.cell, latitude,
-                                             longitude))
-      std::snprintf(center, sizeof(center),
-                    "\"cell_resolution\":%d,\"lat\":%.7f,\"lon\":%.7f",
-                    opensensor::location::resolution(settings.location.cell),
-                    latitude, longitude);
+        opensensor::location::format_cell(settings.location.cell, cell)) {
+      const auto degrees =
+          opensensor::location::center_degrees(settings.location.cell);
+      const auto resolution =
+          opensensor::location::resolution(settings.location.cell);
+      if (degrees && resolution)
+        std::snprintf(center, sizeof(center),
+                      "\"cell_resolution\":%d,\"lat\":%.7f,\"lon\":%.7f",
+                      *resolution, degrees->latitude, degrees->longitude);
+    }
     // The RAM only phone cell (#140), "" while unset and after a reboot.
-    char phone[opensensor::location::kCellTextBytes]{};
-    if (settings.location.phone_cell &&
-        !opensensor::location::format_cell(settings.location.phone_cell, phone,
-                                           sizeof(phone)))
-      phone[0] = '\0';
+    std::array<char, opensensor::location::kCellTextBytes> phone{};
+    if (settings.location.phone_cell)
+      std::ignore = opensensor::location::format_cell(
+          settings.location.phone_cell, phone);
     // Present only on a board with a receiver, "" without a fresh cell.
     char gnss[sizeof(",\"gnss_cell\":\"\"") +
               opensensor::location::kCellTextBytes]{};
     if (inputs.gnss) {
-      char text[opensensor::location::kCellTextBytes]{};
-      if (inputs.gnss_cell && !opensensor::location::format_cell(
-                                  inputs.gnss_cell, text, sizeof(text)))
-        text[0] = '\0';
-      std::snprintf(gnss, sizeof(gnss), ",\"gnss_cell\":\"%s\"", text);
+      std::array<char, opensensor::location::kCellTextBytes> text{};
+      if (inputs.gnss_cell)
+        std::ignore = opensensor::location::format_cell(inputs.gnss_cell, text);
+      std::snprintf(gnss, sizeof(gnss), ",\"gnss_cell\":\"%s\"", text.data());
     }
     written = std::snprintf(
         out, size,
         "{\"location\":{\"cell\":\"%s\",\"resolution\":%u,%s,\"country\":"
         "\"%s\",\"phone_cell\":\"%s\"%s},\"thing\":{\"mobility\":\"%s\","
         "\"setup\":%u}}",
-        cell, unsigned(settings.location.resolution), center,
-        settings.location.country, phone, gnss,
+        cell.data(), unsigned(settings.location.resolution), center,
+        settings.location.country, phone.data(), gnss,
         mobility_name(settings.location.mobility),
         setup_needed(settings.location) ? 1U : 0U);
   } else if (page == 2) {

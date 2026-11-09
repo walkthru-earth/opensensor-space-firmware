@@ -73,6 +73,14 @@ CompileFlags:
     - -I../firmware/common/logger/src
     - -I../firmware/common/connectivity/src
     - -I../firmware/common/location/src
+    # embedded_h3/location.h and the h3api.h the library CMake generates. The
+    # host tests build the library from a cache clone (tools/h3_library.py),
+    # whose path .clangd cannot name. The editor reads the same commit from
+    # the copy `pixi run cores3-build` leaves in managed_components and the
+    # header that build generates, so build CoreS3 once on the branch.
+    - -I../firmware/esp-idf-cores3/managed_components/walkthru-earth__embedded-h3-location/include
+    - -I../firmware/esp-idf-cores3/build/bringup/esp-idf/walkthru-earth__embedded-h3-location/include
+    - -I../firmware/common/stac/src
     - -I../firmware/common/gnss/src
     - -I../firmware/common/power/src
     - -I../firmware/common/sensors/src
@@ -126,6 +134,24 @@ CompileFlags:
     - -std=c++23
     - -I../tools/logger_work_host_fakes
     - -I../firmware/common/logger/src
+
+---
+# tools/test_h3_polygon.py adds the ESP-IDF heap and sdkconfig fakes the real
+# os_h3_alloc.cpp hooks compile against. The shared folders above still apply.
+If:
+  PathMatch: tools/test_h3_polygon\.cpp
+CompileFlags:
+  Add:
+    - -I../tools/host_fakes/h3_alloc
+
+---
+# tools/test_stac_item.py builds once per board with that board's
+# telemetry_contract.h. The editor reads the CoreS3 one.
+If:
+  PathMatch: tools/test_stac_item\.cpp
+CompileFlags:
+  Add:
+    - -I../firmware/esp-idf-cores3/bringup
 
 ---
 # tools/test_rebuild_partial.py defines OS_FIELDS_INC per board. The editor

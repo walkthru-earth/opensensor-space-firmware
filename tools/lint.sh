@@ -67,7 +67,6 @@ cppcheck "${options[@]}" \
   firmware/common/connectivity/src/ble_policy.cpp \
   firmware/common/connectivity/src/wifi_link.cpp \
   firmware/common/connectivity/src/network_time.cpp \
-  firmware/common/location/src/os_location.cpp \
   firmware/common/stac/src/os_stac_item.cpp \
   firmware/common/gnss/src/os_gnss.cpp \
   firmware/common/gnss_reader/src/os_gnss_reader.cpp \

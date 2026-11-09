@@ -13,3 +13,6 @@ CONFIG_LWIP_DHCP_GET_NTP_SRV=y
 CONFIG_PM_ENABLE=y
 CONFIG_OS_PM_DFS_MIN_MHZ=80
 CONFIG_OS_PM_DFS_MAX_MHZ=240
+# H3 allocates through the os_h3_ PSRAM hooks in firmware/common/location
+# (src/os_h3_alloc.cpp), which fail the build if this differs.
+CONFIG_EMBEDDED_H3_LOCATION_ALLOC_PREFIX="os_h3_"

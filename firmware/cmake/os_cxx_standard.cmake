@@ -7,7 +7,7 @@
 # after idf_component_register(). Third-party components keep the SDK default.
 #
 # The generator expression limits the flag to C++ sources, so components that
-# also compile C (the vendored H3 library in location) keep the C dialect.
+# also compile C keep the C dialect.
 #
 # The dialect is also named in tools/host_cxx.py, the pms-frame-test task in
 # pixi.toml and tools/lint.sh. tools/check_idf_target.py fails when they

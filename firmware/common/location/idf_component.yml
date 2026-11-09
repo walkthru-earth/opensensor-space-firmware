@@ -1,0 +1,8 @@
+## H3 location library. The git ref is the release tag, and the board
+## dependencies.lock files record the commit it resolved to. Bump both
+## together, tools/h3_library.py checks the locks agree.
+dependencies:
+  walkthru-earth/embedded-h3-location:
+    git: "https://github.com/walkthru-earth/embedded-h3-location.git"
+    version: "v2.0.0"
+    require: public

@@ -17,7 +17,7 @@ import re
 import subprocess
 import tempfile
 
-from test_location import compile_h3
+from h3_library import library_flags
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -199,14 +199,12 @@ def main() -> None:
         command = ["clang++", CXX_STD, "-Wall", "-Wextra", "-Werror"]
         for include in (common, root / "firmware/common/logger/src",
                         root / "firmware/common/connectivity/src",
-                        root / "firmware/common/runtime/src", root / "firmware/common/location/src",
-                        root / "firmware/common/power/src",
-                        directory / "h3"):
+                        root / "firmware/common/runtime/src",
+                        root / "firmware/common/power/src"):
             command += ["-I", str(include)]
         if args.sanitize:
             command += ["-fsanitize=address,undefined", "-fno-sanitize-recover=all"]
-        command += [*compile_h3(root, directory, args.sanitize),
-                    str(root / "firmware/common/location/src/os_location.cpp"),
+        command += [*library_flags(root, directory, args.sanitize),
                     str(root / "tools/telemetry_contract_fixture.cpp"),
                     str(root / "firmware/common/logger/src/os_logger_live.cpp"),
                     str(common / "parquet_writer.cpp"), str(common / "lz4_codec.cpp"),
@@ -242,7 +240,7 @@ def main() -> None:
         require(all(f["decimals"] == 0 if f["type"] != 4 else 0 <= f["decimals"] <= live_key_fixture.MAX_LIVE_DECIMALS
                     for f in fields),
                 f"decimals is 0 for integer fields and at most {live_key_fixture.MAX_LIVE_DECIMALS} for Float")
-        require(dictionary["firmware"] == "idf-cores3-parquet-v6.32", "firmware identity")
+        require(dictionary["firmware"] == "idf-cores3-parquet-v6.33", "firmware identity")
         footer_contract.check_board(executable, firmware, dictionary, "m5stack-cores3")
         live = subprocess.check_output([str(executable), "live"], text=True).strip()
         live_key_fixture.assert_rejects_drift("cores3", dictionary["sha256"], dictionary["firmware"], live)

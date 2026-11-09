@@ -9,6 +9,37 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## H3 from the embedded-h3-location library (feat/h3-lib-v2)
+
+**Needs a matched reflash. The app needs no code change beyond the new
+firmware strings.** CoreS3 moves to `idf-cores3-parquet-v6.33` and Waveshare
+to `idf-waveshare-parquet-v2.26`. Columns, field ids, LIVE keys, decimals, the
+schema and dictionary strings, the GET_CONFIG keys, the `dict` and `desc`
+digests, the wire protocol, the Parquet layout and the STAC File Item do not
+change.
+
+**What changed.**
+
+- The firmware gets H3 from walkthru-earth/embedded-h3-location v2.0.0,
+  which vendors the same official H3 4.5.0 the boards used before. The copy
+  that lived in `firmware/common/location` is gone.
+- Cell text, the res 8 rule, the accepted country codes, the cell centre in
+  the `geometry` column and in GET_CONFIG page 1, and the STAC outline
+  coordinates are computed the same way as before. `location-test` checks
+  the accepted country set against the 249 codes of the removed firmware
+  table, kept in `tools/fixtures/location/iso_alpha2.txt`.
+- Only the firmware strings move, because both images now build from a
+  different dependency, as the #157 refresh did. The one log line that
+  carries one is the Waveshare boot line `OS BOARD waveshare-sim7670g-v2
+  firmware=idf-waveshare-parquet-v2.26 ...`, which shows the new string and
+  is otherwise unchanged. CoreS3 prints its firmware string in no log line.
+  No other log line changes.
+
+**Why.** One maintained H3 library for the firmware and other projects,
+instead of a hand copy in each repository.
+
+**What the app must do.** Accept the new firmware strings. Nothing else.
+
 ## Phone cell age limit (fix-140b-phone-cell-age, issue #140)
 
 **Needs a matched reflash and an app change.** CoreS3 moves to

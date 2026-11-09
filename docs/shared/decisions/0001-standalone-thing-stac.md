@@ -157,9 +157,10 @@ These come from the #81 plan and its comments, the firmware and the spec.
 - Every finalized file carries the `opensensor` footer key and the `geo` key
   (`docs/shared/table-and-observation-model.md`), so the Item and Collection
   inputs are all inside the file plus the template it names.
-- The vendored H3 v4.5.0 sources include `cellToBoundary`, but
-  `firmware/common/location/CMakeLists.txt` relies on section GC to drop unused
-  polygon code, and no board calls it today. A board Item writer would pull it in.
+- The vendored H3 v4.5.0 sources include `cellToBoundary`, but the location
+  build relies on section GC to drop unused polygon code, and no board calls
+  it today. Since 2026-11-09 those sources come from the pinned
+  embedded-h3-location library, not a copy in this repository. A board Item writer would pull it in.
   Its flash and RAM cost is not measured.
 
 ### Options (history)

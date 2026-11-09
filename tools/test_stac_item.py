@@ -43,7 +43,7 @@ from referencing import Registry, Resource
 
 import boards as registry
 from host_cxx import CXX_STD
-from test_location import compile_h3
+from h3_library import checkout, compile_library
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / "tools/fixtures/stac"
@@ -367,9 +367,13 @@ def build(board: str, directory: Path, h3_objects: list[str], sanitize: bool,
     executable = directory / f"{board}-{name}"
     include = ["src", "sensors/src", "sensors/modules", "logger/src", "connectivity/src",
                "runtime/src", "location/src", "power/src", "stac/src"]
+    # The test calls H3 directly for its reference outlines, so it sees the
+    # H3 headers the pinned library compiled with.
+    library = checkout(ROOT)
     command = ["clang++", CXX_STD, "-Wall", "-Wextra", "-Werror", "-ffp-contract=off",
-               "-I", str(board_dir(board)), "-I", str(directory / "h3"),
-               "-I", str(COMMON / "location/vendor/h3/h3lib/include")]
+               "-I", str(board_dir(board)), "-I", str(library / "include"),
+               "-I", str(directory / "embedded-h3-location/include"),
+               "-I", str(library / "vendor/h3/h3lib/include")]
     for path in include:
         command += ["-I", str(sources / path)]
     if sanitize:
@@ -378,7 +382,6 @@ def build(board: str, directory: Path, h3_objects: list[str], sanitize: bool,
         # A mutant may leave a helper unused. Warnings still print.
         command.remove("-Werror")
     command += [str(ROOT / "tools/test_stac_item.cpp"),
-                str(sources / "location/src/os_location.cpp"),
                 str(sources / "stac/src/os_stac_item.cpp"), *h3_objects, "-o", str(executable)]
     subprocess.run(command, check=True)
     return executable
@@ -393,9 +396,9 @@ MUTATIONS = [
      "!std::isfinite(value) || !gate_passes(column, data, valid)", "!std::isfinite(value)", "cores3"),
     ("let a null gate value pass", "stac/src/os_stac_item.cpp",
      "if (valid[column.gate_field] == 0)\n    return false;", "if (false)\n    return false;", "cores3"),
-    ("leave each ring open", "location/src/os_location.cpp",
-     "points[point_count] =\n        points[point_count - static_cast<std::size_t>(loop.numVerts)];",
-     "points[point_count] = points[point_count - 1];", "cores3"),
+    ("leave each ring open", "stac/src/os_stac_item.cpp",
+     "for (std::uint32_t i = 0; i < r.count; ++i) {",
+     "for (std::uint32_t i = 0; i + 1 < r.count; ++i) {", "cores3"),
     ("skip the cell sort", "stac/src/os_stac_item.cpp",
      "std::ranges::sort(cells);", "", "waveshare"),
     ("round half down in round2", "stac/src/os_stac_item.cpp",
@@ -567,7 +570,7 @@ def main() -> None:
         schema_proofs(validators, json.loads((FIXTURES / BOARDS[board]["example"]).read_text()))
     with tempfile.TemporaryDirectory(prefix="os-stac-item-test-") as temporary:
         directory = Path(temporary)
-        h3_objects = compile_h3(ROOT, directory, args.sanitize)
+        h3_objects, _ = compile_library(ROOT, directory, args.sanitize)
         numbers = directory / "numbers.txt"
         numbers.write_text(numbers_text(cases))
         for board in BOARDS:
@@ -589,10 +592,10 @@ def main() -> None:
                   f"{validated} Items valid against profile.json and schema.json")
         if not args.skip_mutations:
             if args.sanitize:
-                # Mutants build without sanitizers, so the H3 objects must too.
-                # The generated h3api.h is the same in both folders.
+                # Mutants build without sanitizers, so the library objects
+                # must too. The generated h3api.h is the same in both folders.
                 (directory / "plain").mkdir()
-                h3_objects = compile_h3(ROOT, directory / "plain", False)
+                h3_objects, _ = compile_library(ROOT, directory / "plain", False)
             mutation_proofs(directory, h3_objects, cases, numbers, validators)
     print("stac-item-test: passed")
 
