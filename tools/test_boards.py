@@ -27,6 +27,7 @@ import yaml
 
 import boards
 import check_idf_target
+import live_key_fixture
 
 ROOT = boards.ROOT
 SCHEMA = ROOT / "docs/shared/plugins/v0.1.0/board.json"
@@ -34,6 +35,7 @@ BACKUP_BYTES = 16 * 1024 * 1024
 
 
 def require(condition: bool, message: str) -> None:
+    """Raise AssertionError with message unless condition holds."""
     if not condition:
         raise AssertionError(message)
 
@@ -53,12 +55,14 @@ def scratch(directory: Path) -> Path:
 
 
 def edit_json(path: Path, change: Callable[[dict], None]) -> None:
+    """Rewrite one JSON file through change."""
     manifest = json.loads(path.read_text())
     change(manifest)
     path.write_text(json.dumps(manifest, indent=2) + "\n")
 
 
 def tooling(key: str, value: object) -> Callable[[dict], None]:
+    """An edit that sets one tooling key."""
     def change(manifest: dict) -> None:
         manifest["tooling"][key] = value
     return change
@@ -81,7 +85,16 @@ def rejects(directory: Path, mutation: str, edit: Callable[[Path, list[boards.Bo
     print(f"PASS rejects {mutation}", flush=True)
 
 
+def accepts(directory: Path, change: str, edit: Callable[[Path, list[boards.Board]], None]) -> None:
+    """A fresh scratch root still loads every board after edit."""
+    root = scratch(directory)
+    edit(root, list(boards.boards(root)))
+    require(len(boards.boards(root)) == len(boards.boards()), f"{change}: refused")
+    print(f"PASS accepts {change}", flush=True)
+
+
 def check_failure_modes(directory: Path) -> None:
+    """Every registry defect raises BoardError naming the file, and the near misses still load."""
     first = boards.boards()[0]
     second = boards.boards()[1]
     manifest = first.manifest
@@ -106,6 +119,14 @@ def check_failure_modes(directory: Path) -> None:
     rejects(directory, "malformed JSON", write_first('{"board": "m5stack-cores3",'),
             [f"{manifest}: not readable JSON"])
     rejects(directory, "a JSON array", write_first("[]\n"), [f"{manifest}: not a JSON object"])
+    # json.loads keeps the last of two members with one name, so a repeat is refused, nested or not.
+    text = (ROOT / manifest).read_text()
+    require(text.count('"tooling": {') == 1 and text.startswith("{"), f"{manifest} layout for the repeat cases")
+    rejects(directory, "a repeated backup_prefixes member",
+            write_first(text.replace('"tooling": {', '"tooling": {\n    "backup_prefixes": ["other"],')),
+            [f"{manifest}: repeated JSON member backup_prefixes"])
+    rejects(directory, "a repeated board member", write_first(text.replace("{", '{\n  "board": "other-board",', 1)),
+            [f"{manifest}: repeated JSON member board"])
     rejects(directory, "non UTF-8 bytes", lambda root, every: (root / manifest).write_bytes(b"\xff\xfe{}"),
             [f"{manifest}: not readable JSON"])
     rejects(directory, "a board slug with a space", on_first(lambda m: m.update(board="m5stack cores3")),
@@ -161,13 +182,19 @@ def check_failure_modes(directory: Path) -> None:
     rejects(directory, "a restore only prefix two boards share",
             shared("backup_prefixes", [second.backup_prefix, first.backup_prefixes[-1]]),
             [f"name {first.backup_prefixes[-1]!r} is already used by"])
-    rejects(directory, "a backup prefix that starts with another board's prefix and a dash",
+    # One backup name matches two <prefix>-flash-*.bin globs only when one
+    # prefix starts with the other plus -flash-.
+    rejects(directory, "a backup prefix that starts with another board's prefix and -flash-",
             shared("backup_prefixes", [second.backup_prefix, f"{first.backup_prefix}-flash-old"]),
-            [f"backup prefix '{first.backup_prefix}-flash-old' starts with {first.backup_prefix}-",
+            [f"backup prefix '{first.backup_prefix}-flash-old' starts with {first.backup_prefix}-flash-",
              first.manifest, second.manifest])
-    rejects(directory, "two backup prefixes of one board where one starts with the other and a dash",
-            on_first(tooling("backup_prefixes", [first.backup_prefix, f"{first.backup_prefix}-v2"])),
-            [f"{manifest}: backup prefix '{first.backup_prefix}-v2' starts with {first.backup_prefix}-"])
+    rejects(directory, "two backup prefixes of one board where one starts with the other and -flash-",
+            on_first(tooling("backup_prefixes", [first.backup_prefix, f"{first.backup_prefix}-flash-v2"])),
+            [f"{manifest}: backup prefix '{first.backup_prefix}-flash-v2' starts with {first.backup_prefix}-flash-"])
+    accepts(directory, "a backup prefix that starts with another board's prefix and a dash only",
+            shared("backup_prefixes", [second.backup_prefix, f"{first.backup_prefix}-mini"]))
+    accepts(directory, "two backup prefixes of one board where one starts with the other and a dash only",
+            on_first(tooling("backup_prefixes", [first.backup_prefix, f"{first.backup_prefix}-v2"])))
     rejects(directory, "a slug two boards share",
             lambda root, every: edit_json(root / second.manifest, lambda m: m.update(board=first.slug)),
             [f"name {first.slug!r} is already used by"])
@@ -188,6 +215,7 @@ def check_failure_modes(directory: Path) -> None:
 
 
 def check_resolution() -> None:
+    """Every name of every real board resolves to it, and the CLI exits 2 on a bad name."""
     every = boards.boards()
     require(len(every) >= 2, "the repo has at least the two shipped boards")
     require([b.slug for b in every] == sorted(b.slug for b in every), "boards are sorted by slug")
@@ -354,7 +382,7 @@ def check_target_rules(directory: Path) -> None:
         expected = f"expected {board.backup_prefix}-flash-*.bin"
         names = [f"{prefix}-flash-{stamp}.bin" for prefix in board.backup_prefixes[1:]]
         names += [f"{b.backup_prefix}-flash-{stamp}.bin" for b in every if b != board]
-        names += [f"{board.backup_prefix}-flashx-{stamp}.bin", f"{board.backup_prefix}-flash-{stamp}.img",
+        names += [f"{board.backup_prefix}-flashx-{stamp}.bin", f"{board.backup_prefix}-mini-flash-{stamp}.bin", f"{board.backup_prefix}-flash-{stamp}.img",
                   f"x{board.backup_prefix}-flash-{stamp}.bin"]
         for name in names:
             refuses(f"{board.alias} backup {name}", lambda: check_idf_target.check_backup(backup(name), board),
@@ -365,6 +393,95 @@ def check_target_rules(directory: Path) -> None:
     require(any(len(b.backup_prefixes) > 1 for b in every), "some board has a restore only backup prefix")
     print("PASS check_idf_target applies board.json components, sdkconfig, PSRAM mode and the backup prefix",
           flush=True)
+
+
+def stall_findings(legs: list[dict], every: tuple[boards.Board, ...]) -> list[str]:
+    """Each board's telemetry app is built by some ci.yml bench stall leg."""
+    stalls = [leg for leg in legs if leg.get("bench") == "stall"]
+    if not stalls:
+        return ["ci.yml has no bench stall leg"]
+    # A board may get a stall leg of its own or share one through extra_task.
+    ran = {task for leg in stalls for task in (leg["task"], leg.get("extra_task"))} - {None}
+    return [f"ci.yml bench stall legs do not build {board.alias}" for board in every
+            if not ran & {f"{board.alias}-build", f"{board.alias}-build {board.telemetry_variant}"}]
+
+
+def check_stall_legs() -> None:
+    """Stall legs count together, so a board with a stall leg of its own passes."""
+    every = boards.boards()
+    first, second = every[0], every[1]
+    own = [{"name": f"{b.alias}-stall", "bench": "stall", "task": f"{b.alias}-build"} for b in every]
+    require(stall_findings(own, every) == [], "one stall leg per board passes")
+    shared = [{"name": "stall", "bench": "stall", "task": f"{first.alias}-build",
+               "extra_task": f"{second.alias}-build {second.telemetry_variant}"}]
+    require(stall_findings(shared, every[:2]) == [], "one stall leg with extra_task passes")
+    require(stall_findings(own[1:], every) == [f"ci.yml bench stall legs do not build {first.alias}"],
+            "a board without a stall leg fails")
+    require(stall_findings([{"name": "x", "task": f"{first.alias}-build"}], every) ==
+            ["ci.yml has no bench stall leg"], "no stall leg fails")
+    print("PASS bench stall legs are collected from every matrix leg", flush=True)
+
+
+def clangd_findings(text: str, every: tuple[boards.Board, ...]) -> list[str]:
+    """.clangd routes each board variant to <project>/build/<variant> and names no other board build."""
+    findings: list[str] = []
+    expected = {f"{b.project}/build/{v}" for b in every for v in b.variants}
+    projects = {b.project for b in every}
+    used: set[str] = set()
+    for fragment in yaml.safe_load_all(text):
+        database = ((fragment or {}).get("CompileFlags") or {}).get("CompilationDatabase")
+        if isinstance(database, str) and database.startswith("firmware/"):
+            used.add(database)
+            if database not in expected:
+                findings.append(f".clangd CompilationDatabase {database} is no registry board variant build")
+        conditions = (fragment or {}).get("If") or {}
+        for key in ("PathMatch", "PathExclude"):
+            patterns = conditions.get(key, [])
+            for pattern in [patterns] if isinstance(patterns, str) else patterns:
+                if pattern.startswith("firmware/esp-idf-") and "/".join(pattern.split("/")[:2]) not in projects:
+                    findings.append(f".clangd {key} {pattern} names no registry board project")
+    findings += [f".clangd routes no source to {path}, add a fragment for it" for path in sorted(expected - used)]
+    return findings
+
+
+def check_clangd() -> None:
+    """The .clangd check refuses a missing board build and a build no board owns."""
+    every = boards.boards()
+    text = (ROOT / ".clangd").read_text()
+    require(clangd_findings(text, every) == [], ".clangd routes every registry variant")
+    victim = next(b for b in every if len(b.variants) > 1)
+    path = f"{victim.project}/build/{victim.variants[1]}"
+    require(text.count(f"CompilationDatabase: {path}\n") == 1, f".clangd names {path} once")
+    missing = clangd_findings(text.replace(f"CompilationDatabase: {path}\n", "CompilationDatabase: None\n"), every)
+    require(missing == [f".clangd routes no source to {path}, add a fragment for it"], f"missing build, {missing}")
+    stranger = text + "\n---\nIf:\n  PathMatch: firmware/esp-idf-other/.*\nCompileFlags:\n" \
+        "  CompilationDatabase: firmware/esp-idf-other/build/app\n"
+    found = clangd_findings(stranger, every)
+    require(found == [".clangd CompilationDatabase firmware/esp-idf-other/build/app is no registry board variant build",
+                      ".clangd PathMatch firmware/esp-idf-other/.* names no registry board project"],
+            f"unknown board build, {found}")
+    print("PASS .clangd routes every registry board variant and names no other board", flush=True)
+
+
+def check_live_cross_board() -> None:
+    """The LIVE cross board mutation builds a conflict whether or not the boards share a key."""
+    def fixture(board: str, fields: dict[str, str]) -> dict:
+        return {"board": board, "digests": {"0" * 64: {"builds": [{"firmware": "test", "fields": fields}]}}}
+
+    for what, other_fields in (("shared", {"t": "temp_c", "x": "other_c"}), ("disjoint", {"x": "other_c"})):
+        fixtures = {"aaa": fixture("aaa", other_fields), "zzz": fixture("zzz", {"t": "temp_c", "h": "rh_pct"})}
+        live_key_fixture.key_fields(fixtures)
+        crossed = live_key_fixture.cross_board_relabel(fixtures, "zzz", ["t", "h"])
+        require(fixtures["aaa"]["digests"]["0" * 64]["builds"][0]["fields"] == other_fields, f"{what} input kept")
+        require(crossed["aaa"]["digests"]["0" * 64]["builds"][0]["fields"]["t"] == "relabelled_field",
+                f"{what} relabels key t on the other board")
+        try:
+            live_key_fixture.key_fields(crossed)
+        except AssertionError as error:
+            require("LIVE key t maps to more than one dictionary field" in str(error), f"{what}, {error}")
+        else:
+            raise AssertionError(f"key_fields accepts the {what} cross board relabel")
+    print("PASS the LIVE cross board mutation conflicts with shared and disjoint key sets", flush=True)
 
 
 def check_drift() -> None:
@@ -414,14 +531,7 @@ def check_drift() -> None:
             tasks_ok = {f"{alias}-build {leg['variant']}"}
         if leg["task"] not in tasks_ok:
             findings.append(f"ci.yml leg {leg['name']} task {leg['task']!r}, expected one of {sorted(tasks_ok)}")
-    stall = next((leg for leg in legs if leg.get("bench") == "stall"), None)
-    if stall is None:
-        findings.append("ci.yml has no bench stall leg")
-    else:
-        ran = {stall["task"], stall.get("extra_task")} - {None}
-        for board in every:
-            if not ran & {f"{board.alias}-build", f"{board.alias}-build {board.telemetry_variant}"}:
-                findings.append(f"ci.yml bench stall leg does not build {board.alias}")
+    findings += stall_findings(legs, every)
     repro = ci["jobs"]["repro-paths"]["steps"][-1]["run"].split()
     if repro[:3] != ["pixi", "run", "repro-paths-check"] or len(repro) not in (4, 5):
         findings.append(f"ci.yml repro-paths runs {repro}, expected repro-paths-check <board> [variant]")
@@ -448,12 +558,14 @@ def check_drift() -> None:
                 f"{board.alias}-build", f"{board.alias}-build {leg['variant']}"}:
             findings.append(f"release.yml leg {leg['name']} does not build {board.alias}")
 
+    findings += clangd_findings((ROOT / ".clangd").read_text(), every)
+
     budget = json.loads((ROOT / "tools/stack_budget.json").read_text())["images"]
     if sorted(budget) != sorted(f"{b.alias}/{v}" for b in every for v in b.variants):
         findings.append(f"tools/stack_budget.json images {sorted(budget)} differ from the registry variants")
 
     require(not findings, "board list drift, add the board everywhere or remove it:\n  " + "\n  ".join(findings))
-    print("PASS pixi.toml, wrappers, ci.yml, release.yml and stack_budget.json list exactly the registry boards",
+    print("PASS pixi.toml, wrappers, ci.yml, release.yml, .clangd and stack_budget.json list exactly the registry boards",
           flush=True)
 
 
@@ -503,6 +615,7 @@ def expect(result: subprocess.CompletedProcess[str], code: int, text: str, what:
 
 
 def check_shell(directory: Path) -> None:
+    """The board scripts resolve through the registry and stop before esptool or idf.py."""
     root, env = shell_tree(directory)
     every = boards.boards()
     for board in every:
@@ -609,6 +722,7 @@ def check_shell(directory: Path) -> None:
 
 
 def main() -> None:
+    """Run every registry check in a scratch directory."""
     with tempfile.TemporaryDirectory(prefix="os-boards-") as temporary:
         directory = Path(temporary)
         check_failure_modes(directory)
@@ -616,6 +730,9 @@ def main() -> None:
         check_schema()
         check_target_rules(directory)
         check_example(directory)
+        check_stall_legs()
+        check_clangd()
+        check_live_cross_board()
         check_drift()
         check_shell(directory)
     print("PASS board registry", flush=True)

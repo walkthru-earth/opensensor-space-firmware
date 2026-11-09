@@ -179,6 +179,24 @@ def check_documented(keys: list[str], text: str) -> None:
     require(not missing, f"LIVE keys missing from the LIVE table in docs/shared/ble-sync-protocol.md: {missing}")
 
 
+def cross_board_relabel(fixtures: dict[str, dict], board: str, keys: list[str]) -> dict[str, dict]:
+    """A copy of fixtures where another board maps one of this board's LIVE keys to another field.
+
+    It relabels a key the two boards share. When no other board shares one, it
+    gives the first other board this board's first key under another field, so
+    the cross board conflict exists either way.
+    """
+    others = [name for name in fixtures if name != board]
+    require(bool(others), f"{board} cross board LIVE key check needs a second board in the registry")
+    require(bool(keys), f"{board} cross board LIVE key check needs a LIVE key")
+    crossed = copy.deepcopy(fixtures)
+    latest = {name: next(iter(crossed[name]["digests"].values()))["builds"][-1] for name in others}
+    other, key = next(((name, key) for name in others for key in keys if key in latest[name]["fields"]),
+                      (others[0], keys[0]))
+    latest[other]["fields"][key] = "relabelled_field"
+    return crossed
+
+
 def check_key_meaning(board: str, digest: str, dictionary_fields: list[dict]) -> None:
     """Run the key to field and documentation checks, and prove each one rejects a mutation."""
     key_fields()
@@ -191,13 +209,7 @@ def check_key_meaning(board: str, digest: str, dictionary_fields: list[dict]) ->
     reused = copy.deepcopy(fixtures)
     fields = reused[board]["digests"][digest]["builds"][-1]["fields"]
     fields[keys[0]] = fields[keys[1]]
-    others = [name for name in fixtures if name != board]
-    require(bool(others), f"{board} cross board LIVE key check needs a second board in the registry")
-    other = others[0]
-    crossed = copy.deepcopy(fixtures)
-    other_build = next(iter(crossed[other]["digests"].values()))["builds"][-1]
-    shared = next(key for key in keys if key in other_build["fields"])
-    other_build["fields"][shared] = "relabelled_field"
+    crossed = cross_board_relabel(fixtures, board, keys)
     for case in (reused, crossed):
         try:
             key_fields(case)

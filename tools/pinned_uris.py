@@ -165,6 +165,10 @@ def last_commit(root: Path, path: str) -> str:
 def write(root: Path = ROOT) -> list[str]:
     """Pin each URL to the commit that last changed its path. Return the changed pins."""
     check_history(root)
+    # The pins and headers below come from the registry, so a board.json
+    # added, edited or removed on disk would steer them. Refuse that first.
+    manifests = git(root, "status", "--porcelain", "--untracked-files=all", "--", boards.BOARD_GLOB).stdout.decode()
+    require(not manifests.strip(), f"pin-uris needs every board.json committed, commit it first, {manifests.strip()}")
     todo = pins(root)
     # Every file pin-uris reads or writes must be committed. The pinned bytes
     # and their digests, so the commit that last changed a path holds what is

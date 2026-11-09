@@ -26,6 +26,7 @@ as -h a board name, so argparse never prints help into the eval. A name is the s
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 from dataclasses import dataclass
 import json
 from pathlib import Path
@@ -72,6 +73,7 @@ class Board:
 
     @property
     def telemetry_variant(self) -> str:
+        """The variant that holds board.json and builds the telemetry image."""
         return self.variants[0]
 
     @property
@@ -86,6 +88,7 @@ class Board:
 
     @property
     def backup_prefix(self) -> str:
+        """The prefix that names new backups, the only one flash accepts."""
         return self.backup_prefixes[0]
 
     @property
@@ -95,6 +98,7 @@ class Board:
 
 
 def _strings(value: object, pattern: re.Pattern[str], where: str, *, empty: bool) -> tuple[str, ...]:
+    """A list of unique strings that each match pattern, or BoardError naming where."""
     if not isinstance(value, list) or (not empty and not value):
         raise BoardError(f"{where} must be a {'' if empty else 'non empty '}list of strings")
     if len(set(map(str, value))) != len(value):
@@ -105,11 +109,25 @@ def _strings(value: object, pattern: re.Pattern[str], where: str, *, empty: bool
     return tuple(value)
 
 
+def _unique_members(relative: str) -> Callable[[list[tuple[str, object]]], dict[str, object]]:
+    """A json.loads object hook that refuses a repeated member instead of keeping the last one."""
+    def members(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        names = [name for name, _ in pairs]
+        repeated = sorted({name for name in names if names.count(name) > 1})
+        if repeated:
+            raise BoardError(f"{relative}: repeated JSON member {', '.join(repeated)}")
+        return dict(pairs)
+    return members
+
+
 def load(root: Path, path: Path) -> Board:
     """One board from its board.json. Raise BoardError naming the file on any defect."""
     relative = path.relative_to(root).as_posix()
     try:
-        manifest = json.loads(path.read_text(encoding="utf-8"))
+        # RFC 8259 section 4 leaves repeated names to the parser and json.loads
+        # keeps the last one, so a repeated member is refused, as in
+        # plugin_contract.load_json.
+        manifest = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_unique_members(relative))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise BoardError(f"{relative}: not readable JSON, {error}") from error
     if not isinstance(manifest, dict):
@@ -179,14 +197,16 @@ def boards(root: Path = ROOT) -> tuple[Board, ...]:
             if other is not None:
                 raise BoardError(f"{board.manifest}: name {name!r} is already used by {other.manifest}")
             owner[name] = board
-    # Restore and check_idf_target match <prefix>-flash-*.bin. Two backup
-    # names could match two prefixes only when one prefix starts with the
-    # other plus a dash, so that is refused and every name has one owner.
+    # Restore and check_idf_target match <prefix>-flash-*.bin, and the * can
+    # hold a dash. One name matches two prefixes exactly when one prefix
+    # starts with the other plus -flash-, such as cores3 and cores3-flash-old,
+    # so that is refused and every backup name has one owner. Prefixes such as
+    # acme-s3 and acme-s3-mini never share a name and stay allowed.
     prefixes = [(prefix, board) for board in found for prefix in board.backup_prefixes]
     for prefix, board in prefixes:
         for longer, other in prefixes:
-            if longer.startswith(f"{prefix}-"):
-                raise BoardError(f"{other.manifest}: backup prefix {longer!r} starts with {prefix}- of "
+            if longer.startswith(f"{prefix}-flash-"):
+                raise BoardError(f"{other.manifest}: backup prefix {longer!r} starts with {prefix}-flash- of "
                                  f"{board.manifest}, one backup name could match both")
     return tuple(sorted(found, key=lambda b: b.slug))
 
@@ -227,6 +247,7 @@ def tracked_sources(board: Board, root: Path = ROOT) -> tuple[list[str], list[st
 
 
 def shell_assignments(board: Board, variant: str) -> str:
+    """The shell variables `resolve` prints, each value quoted for eval."""
     values = {
         "alias": board.alias,
         "slug": board.slug,
@@ -241,6 +262,7 @@ def shell_assignments(board: Board, variant: str) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """The CLI. Exit 2 with the reason on any registry or name error."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
     resolve_parser = commands.add_parser("resolve", help="print shell assignments for one board and variant")

@@ -184,6 +184,20 @@ def main() -> None:
                 rejects(lambda: gate.write(repo), "needs the pinned files committed",
                         f"pin-uris with uncommitted {board.slug} {name}")
                 header.write_bytes(original)
+        # The registry steers every pin, so a board.json added, edited or
+        # removed on disk stops pin-uris before it reads anything.
+        manifest = repo / boards.boards(repo)[0].manifest
+        original = manifest.read_bytes()
+        manifest.write_bytes(original + b"\n")
+        rejects(lambda: gate.write(repo), "needs every board.json committed", "pin-uris with an edited board.json")
+        manifest.unlink()
+        rejects(lambda: gate.write(repo), "needs every board.json committed", "pin-uris with a removed board.json")
+        manifest.write_bytes(original)
+        added = repo / "firmware/esp-idf-new-board/app/board.json"
+        added.parent.mkdir(parents=True)
+        added.write_bytes(original)
+        rejects(lambda: gate.write(repo), "needs every board.json committed", "pin-uris with an added board.json")
+        shutil.rmtree(repo / "firmware/esp-idf-new-board")
         gate.require(gate.write(repo) == [], "pin-uris runs once the headers are clean again")
         (repo / template.path).write_bytes((repo / template.path).read_bytes() + b" ")
         # Committed bytes that do not hash to desc are refused, never pinned.
