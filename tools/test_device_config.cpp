@@ -3,8 +3,11 @@
 #include "../firmware/esp-idf-waveshare-sim7670g/logger/pms5003t_identity.h"
 #include <debug_log.h>
 #include <device_config.h>
+#include <numeric_sample.h>
 #include <nvs.h>
+#include <os_gnss.h>
 #include <os_location.h>
+#include <os_logger_location.h>
 
 #include <cassert>
 #include <cstdio>
@@ -438,6 +441,99 @@ void persistence_failure() {
   assert(same(rotated, config::get()));
 }
 
+// Bytes logged since boot, a mark for log_count().
+std::uint32_t log_mark() {
+  char unused[1];
+  std::uint32_t total = 0;
+  oslog.tail(unused, 0, total);
+  return total;
+}
+
+// Counts `needle` in what was logged after `mark`. The ring must still hold
+// all of it.
+std::size_t log_count(std::uint32_t mark, const std::string &needle) {
+  static char ring[DebugLog::kFallbackRingBytes + 1];
+  std::uint32_t total = 0;
+  const auto copied = oslog.tail(ring, sizeof(ring) - 1, total);
+  assert(total >= mark && total - mark <= copied);
+  const std::string logs(ring + copied - (total - mark), total - mark);
+  std::size_t count = 0;
+  for (auto at = logs.find(needle); at != std::string::npos;
+       at = logs.find(needle, at + needle.size()))
+    ++count;
+  return count;
+}
+
+// A stored record from an image that accepted other resolutions (#139). The
+// record keeps its layout and stays in flash. Boot reads it as res 8 with one
+// line, and the next row carries h3_resolution 8.
+void stored_resolution_reset() {
+  constexpr std::uint64_t kAt8 = 0x8828308281fffffULL;
+  std::uint32_t mark = 0;
+  const auto boot = [&mark](const char *record) {
+    set_field(kLocationAt, 40, record);
+    reseal();
+    const auto stored = cfg();
+    mark = log_mark();
+    assert(config::load(false));
+    // Boot writes nothing back, the old text stays until the next save.
+    assert(cfg() == stored);
+    return config::location_settings();
+  };
+  const auto logged = [&mark](const char *needle) {
+    return log_count(mark, needle);
+  };
+  auto location = boot("8828308281fffff|7|EG|fixed");
+  assert(location.cell == kAt8 && location.resolution == 8);
+  assert(std::strcmp(location.country, "EG") == 0);
+  assert(logged("CONFIG location.resolution=7 reset to 8\n") == 1);
+  assert(logged("CONFIG location.resolution=") == 1);
+  assert(logged("invalid-stored-profile") == 0);
+  // The next row of a fixed Thing has the res 8 cell and h3_resolution 8.
+  oslogger::LocationSample<opensensor::NumericSample<4>> row{};
+  row.location = config::sample_labels().location;
+  const auto chosen =
+      opensensor::gnss::select_location(row.location, std::nullopt, 1);
+  assert(chosen.source == telemetry::LocationSource::Configured);
+  assert(oslogger::apply_cell(row, chosen.cell, chosen.source, {0, 1, 2, 3}));
+  assert(row.valid[0] && row.data[0] == static_cast<std::int64_t>(kAt8));
+  assert(row.valid[1] && row.data[1] == 8);
+  // The next save writes res 8 into the same record, and boot is quiet.
+  accept("location.country=EG");
+  assert(std::string(field(kLocationAt)) == "8828308281fffff|8|EG|fixed");
+  mark = log_mark();
+  assert(config::load(false));
+  assert(logged("CONFIG location.resolution=") == 0);
+  // A finer stored cell is published as its res 8 parent.
+  location = boot("8928308280fffff|9|EG|moving");
+  assert(location.cell == kAt8 && location.resolution == 8 &&
+         location.mobility == config::Mobility::Moving);
+  assert(logged("CONFIG location.resolution=9 reset to 8\n") == 1);
+  location = boot("8928308280fffff|15|");
+  assert(location.cell == kAt8 && location.resolution == 8);
+  assert(logged("CONFIG location.resolution=15 reset to 8\n") == 1);
+  location = boot("|0||fixed");
+  assert(location.cell == 0 && location.resolution == 8);
+  assert(logged("CONFIG location.resolution=0 reset to 8\n") == 1 &&
+         logged("invalid-stored-profile") == 0);
+  // A coarser stored cell cannot be restored, so the location is unset. The
+  // refused record logs only the invalid line, never the reset line too.
+  location = boot("85283473fffffff|5|EG|fixed");
+  assert(location.cell == 0 && location.resolution == 8 &&
+         !location.country[0]);
+  assert(logged("CONFIG location.resolution=") == 0 &&
+         logged("CONFIG LOCATION invalid-stored-profile=true") == 1);
+  location = boot("85283473fffffff|8|EG|fixed");
+  assert(location.cell == 0 && !location.country[0]);
+  assert(logged("CONFIG location.resolution=") == 0 &&
+         logged("CONFIG LOCATION invalid-stored-profile=true") == 1);
+  // A malformed record prints only the invalid line.
+  location = boot("8828308281fffff|16|EG|fixed");
+  assert(location.cell == 0);
+  assert(logged("CONFIG location.resolution=") == 0 &&
+         logged("CONFIG LOCATION invalid-stored-profile=true") == 1);
+}
+
 void time_and_location() {
   assert(config::load(false));
   assert(config::get().ntp.enabled && config::get().ntp.dhcp &&
@@ -453,7 +549,17 @@ void time_and_location() {
   reject("thing.mobility=", "thing.mobility");
   reject("thing.mobility=Fixed", "thing.mobility");
   reject("location.cell=fffffffffffffff", "location.cell");
-  reject("location.resolution=16", "location.resolution");
+  // Res 8 is the only published resolution (#139). Every other value, from
+  // BLE, LAN or the provisioning file, is refused as ERROR 12 with this key.
+  for (const char *value :
+       {"0", "5", "7", "9", "15", "16", "", "8 ", "-8", "4294967304"})
+    reject(std::string("location.resolution=") + value, "location.resolution");
+  // parse_uint takes leading zeros for every numeric key, so 08 is 8.
+  accept("location.resolution=08");
+  // A cell coarser than res 8 cannot be restored to res 8, so it is refused.
+  reject("location.cell=85283473fffffff", "location.cell");
+  accept("location.resolution=8");
+  assert(config::get().location.resolution == 8);
   reject("location.country=ZZ", "location.country");
   reject("location.country=eg", "location.country");
   reject("ntp.interval_s=59", "ntp.interval_s");
@@ -467,19 +573,18 @@ void time_and_location() {
   reject("ntp.server1=" + std::string(254, 'a'), "ntp.server1");
   config::Actions actions;
   char bad_key[64];
-  assert(apply("location.cell=8928308280fffff\nlocation.resolution=5\nlocation."
+  assert(apply("location.cell=8928308280fffff\nlocation.resolution=8\nlocation."
                "country=EG",
                actions, bad_key));
   assert(actions.location_changed && !actions.ntp_changed &&
          !actions.wifi_changed);
+  // The res 9 cell is published as its res 8 parent.
   const auto coarse = config::get().location.cell;
+  assert(coarse == 0x8828308281fffffULL);
   auto country_change = config::get().location;
   country_change.country[0] = 'U';
   country_change.country[1] = 'S';
   assert(!config::same_location(country_change, config::get().location));
-  auto cap_change = config::get().location;
-  cap_change.resolution = 6;
-  assert(!config::same_location(cap_change, config::get().location));
   // A mobility change splits the open file like any other location change.
   auto moving = config::get().location;
   moving.mobility = config::Mobility::Moving;
@@ -494,7 +599,7 @@ void time_and_location() {
   assert(config::get().location.mobility == config::Mobility::Moving);
   accept("thing.mobility=fixed");
   assert(config::get().location.mobility == config::Mobility::Fixed);
-  assert(opensensor::location::resolution(coarse) == 5 &&
+  assert(opensensor::location::resolution(coarse) == 8 &&
          coarse != 0x8928308280fffffULL);
   assert(std::string(field(kLocationAt)).find("8928308280fffff") ==
          std::string::npos);
@@ -502,11 +607,13 @@ void time_and_location() {
   assert(std::strstr(json, "\"country\":\"EG\""));
   assert(config::load(false));
   assert(config::get().location.cell == coarse);
-  accept("location.resolution=9");
-  assert(config::get().location.cell == coarse); // finer cannot reconstruct GPS
-  accept("location.resolution=5\nlocation.cell=8928308280fffff");
-  assert(config::get().location.cell ==
-         coarse); // patch order does not leak finer cell
+  // A refused resolution leaves the whole request unapplied, whatever the
+  // patch order.
+  reject("location.resolution=9\nlocation.cell=8928308280fffff",
+         "location.resolution");
+  reject("location.cell=8928308280fffff\nlocation.resolution=5",
+         "location.resolution");
+  assert(config::get().location.cell == coarse);
   assert(apply("ntp.dhcp=0\nntp.public_fallback=0\nntp.server1=ntp.local\nntp."
                "server2=192.168.1.1\nntp.interval_s=7200",
                actions, bad_key));
@@ -542,12 +649,13 @@ void time_and_location() {
   // A sealed record still passes the same validation as a SET_CONFIG value.
   // A record from before #83 has no mobility and reads as a fixed Thing.
   accept("thing.mobility=moving");
-  set_field(kLocationAt, 40, "|7|EG");
+  set_field(kLocationAt, 40, "|8|EG");
   reseal();
   assert(config::load(false));
-  assert(config::get().location.resolution == 7 &&
+  assert(config::get().location.resolution == 8 &&
          std::strcmp(config::get().location.country, "EG") == 0 &&
          config::get().location.mobility == config::Mobility::Fixed);
+  stored_resolution_reset();
   set_field(kLocationAt, 40, "|7|EG|walking");
   reseal();
   assert(config::load(false));
@@ -605,9 +713,9 @@ void setup_state() {
   accept("thing.mobility=moving");
   page();
   assert(std::strstr(json, "\"thing\":{\"mobility\":\"moving\",\"setup\":0}}"));
-  // Worst case. Every field at its widest, a two digit cap and cell
-  // resolution, an 11 and a 12 character centre, a country, "moving" and a
-  // GNSS cell. The frame header takes 2 of the 482 byte budget.
+  // Worst case. Every field at its widest, the fixed res 8 cap and cell
+  // resolution (#139), an 11 and a 12 character centre, a country, "moving"
+  // and a GNSS cell. The frame header takes 2 of the 482 byte budget.
   opensensor::location::Cell finest = 0, gnss = 0;
   assert(opensensor::location::from_degrees(-45.1234567, -170.1234567, 15,
                                             finest));
@@ -615,11 +723,11 @@ void setup_state() {
       opensensor::location::from_degrees(-45.1234567, -170.1234567, 8, gnss));
   char text[opensensor::location::kCellTextBytes];
   assert(opensensor::location::format_cell(finest, text, sizeof(text)));
-  accept(std::string("location.resolution=15\nlocation.country=EG\n"
+  accept(std::string("location.resolution=8\nlocation.country=EG\n"
                      "location.cell=") +
          text);
   const auto worst = page({.gnss = true, .gnss_cell = gnss});
-  assert(std::strstr(json, "\"resolution\":15,\"cell_resolution\":15,"
+  assert(std::strstr(json, "\"resolution\":8,\"cell_resolution\":8,"
                            "\"lat\":-45.") &&
          std::strstr(json, ",\"lon\":-170."));
   assert(std::strlen(text) == 15 && worst < 480);
@@ -635,7 +743,7 @@ void blob_round_trip() {
          "ble.pair=none\nble.pin=024680\nlan.on=0\n"
          "sensor.vendor=Plantower\nsensor.model=PMS5003T\n"
          "sensor.serial=PMS5003T-202604081332\nsensor.batch_candidate=1\n"
-         "location.cell=8928308280fffff\nlocation.resolution=7\n"
+         "location.cell=8928308280fffff\nlocation.resolution=8\n"
          "location.country=EG\nntp.dhcp=0\nntp.server1=ntp.local\n"
          "ntp.server2=192.168.1.1\nntp.interval_s=900");
   // One complete SET_CONFIG is one blob write and one commit.
@@ -651,7 +759,8 @@ void blob_round_trip() {
   assert(same(saved, config::get()));
   assert(config::get().pair == config::PairMode::None &&
          config::get().pin == 24680);
-  assert(config::get().location.cell && config::get().location.resolution == 7);
+  assert(config::get().location.cell == 0x8828308281fffffULL &&
+         config::get().location.resolution == 8);
   assert(config::get().ntp.interval_s == 900 && !config::get().ntp.dhcp);
   const auto logs = log_text();
   assert(logs.find("round-trip-password") == std::string::npos);
