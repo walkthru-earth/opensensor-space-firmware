@@ -94,9 +94,10 @@ example.
    `firmware/esp-idf-*/*/board.json`, so the build, flash, backup, restore,
    target check, lint, core dump, partial rebuild and template tools pick the
    board up with no code edit. Then add the `<alias>-setup`, `<alias>-build`
-   and `<alias>-flash` Pixi tasks, the CI and release legs and the
-   `tools/stack_budget.json` images. `pixi run boards-test` fails until each of
-   them lists exactly the registry boards. Run
+   and `<alias>-flash` Pixi tasks, the CI and release legs, the
+   `tools/stack_budget.json` images and one `.clangd` fragment per variant that
+   points at `firmware/esp-idf-<board>/build/<variant>`. `pixi run boards-test`
+   fails until each of them lists exactly the registry boards. Run
    `pixi run plugin-new-board <path to board.json>` once. It writes the three
    `telemetry_*.inc` files and a first `shipped.lock`, and they are frozen from
    then on. Then follow [Contract and publish](#contract-and-publish).

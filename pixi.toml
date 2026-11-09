@@ -70,7 +70,8 @@ boot-self-test-test = "python tools/test_boot_self_test.py --sanitize"
 # Serial only. Prints the core dump with esp_coredump. With --erase it then
 # clears only the coredump partition, since a raw dump can hold the PSK or the
 # LAN token (#40).
-# pixi run coredump-read {cores3|waveshare} <checked-port> [logger|diagnostic] [--erase] [--dry-run]
+# pixi run coredump-read <board> <checked-port> [variant] [--erase] [--dry-run]
+# <board> is a board.json alias, slug or backup prefix, see tools/boards.py.
 coredump-read = "tools/coredump-read.sh"
 coredump-read-test = "python tools/test_coredump_read.py"
 # Sign app images with the owner's local key in secrets/, never in CI (#45).
