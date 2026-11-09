@@ -9,6 +9,39 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## CoreS3 on M5Unified and M5GFX 0.3.0 (#160)
+
+**Needs a matched CoreS3 reflash. The app needs no code change unless it pins
+`configuration_id` or reads meaning into `charging_status` beyond its legend.**
+Follows the dependency refresh (#157). CoreS3 moves to
+`idf-cores3-parquet-v6.31`. Waveshare is unchanged at
+`idf-waveshare-parquet-v2.24`. Columns, field ids, LIVE keys, decimals, the
+`charging_status` legend `0=discharging,1=charging,2=unknown`, the schema and
+dictionary strings, the `dict` and `desc` digests, the wire protocol and the
+Parquet layout do not change.
+
+**What changed.**
+
+- CoreS3 builds with M5Unified 0.3.0 and M5GFX 0.3.0.
+- The CoreS3 footer `acquisition.config_id` moves from `cores3-acquisition-v4`
+  to `cores3-acquisition-v5`, and the `acquisition.config` JSON now records
+  `"m5unified":"0.3.0"`.
+- `charging_status` (LIVE `chg`) now comes from the AXP2101 charger state
+  through M5Unified `getChargeState()`. Before, it came from the battery
+  current direction bit. 1 still means charging. 0 now covers every not
+  charging state, which is not charging, full, charge disabled, discharging
+  and idle. 2 means the state could not be read, for example on an I2C error.
+  Before, the CoreS3 never wrote 2, so a 2 can now appear in real files.
+- The `DIAG power` serial line keeps its `charging=charging|discharging|unknown`
+  names, mapped by the same rule.
+
+**Why.** M5Unified 0.3.0 replaced the three value `is_charging_t` with the
+`charge_state_t` charger state, and `isCharging()` now returns a bool.
+
+**What the app must do.** Accept the new firmware string. If the app pins
+`configuration_id`, accept `cores3-acquisition-v5`. Treat `chg` 2 as unknown,
+as the legend already says. Reflash the CoreS3 with the matched build.
+
 ## STAC File Item sidecar at finalize (fix/142-stac-file-item, issue #142)
 
 **Needs a matched reflash. No app change is required yet.** CoreS3 moves to

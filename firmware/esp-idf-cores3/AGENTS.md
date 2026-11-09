@@ -20,7 +20,7 @@ in `../../docs/boards/m5stack-cores3/` (start at its `README.md`).
   `OSCommon` own their services; never add a second owner for a bus/radio.
 - M134/PMSA003 is optional. Preserve missing sensor values as null, and keep
   RTC writes on the main task rather than the storage worker.
-- Current firmware is `idf-cores3-parquet-v6.30`, schema v6/dictionary v7 with
+- Current firmware is `idf-cores3-parquet-v6.31`, schema v6/dictionary v7 with
   81 fields. Each `FIELD` row ends with its LIVE key and decimals, so changing
   either changes the digest and needs a new entry in `tools/fixtures/live_keys/cores3.json`.
   Preserve the original 77-field order. Field ids are the 1-based

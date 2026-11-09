@@ -35,7 +35,7 @@ namespace contract {
 constexpr std::int32_t kSchemaVersion = 6;
 constexpr const char *kSchemaName = "cores3-telemetry-v6";
 constexpr const char *kDictionaryVersion = "cores3-telemetry-v7";
-constexpr const char *kFirmware = "idf-cores3-parquet-v6.30";
+constexpr const char *kFirmware = "idf-cores3-parquet-v6.31";
 constexpr const char *kCreatedBy = "opensensor-space-firmware version 0.3";
 // Raw telemetry_fields.inc at a pinned commit on main (#89), so the bytes at
 // the URI hash to kDictionarySha256. It is also the template describedby href.
@@ -50,11 +50,11 @@ static_assert(opensensor::pinned::names(kDictionaryUri,
                                         "telemetry_fields.inc"),
               "kDictionaryUri is the raw field table at a full commit");
 // Version the acquisition procedure separately from the physical file codec.
-constexpr const char *kConfigurationId = "cores3-acquisition-v4";
+constexpr const char *kConfigurationId = "cores3-acquisition-v5";
 constexpr const char *kConfiguration =
     "{\"sample_interval_ms\":10000,\"pms_warmup_us\":30000000,"
     "\"pms_stale_after_ms\":5000,\"pms_uart_rx\":18,\"pms_uart_tx\":17,"
-    "\"pms_baud\":9600,\"m5unified\":\"0.2.29\",\"esp_idf\":\"6.1\",\"ltr553\":"
+    "\"pms_baud\":9600,\"m5unified\":\"0.3.0\",\"esp_idf\":\"6.1\",\"ltr553\":"
     "\"raw-v1\","
     "\"snapshot\":\"latest-available-not-average\"}";
 constexpr const char *kUnknown = "unknown";
@@ -206,8 +206,10 @@ enum ProximityStatus : std::int32_t {
   kProximityValid = 3,
   kProximityIoError = 4,
 };
-// M5Unified Power_Class::is_charging_t. This header stays free of M5Unified
-// for the host fixture, so telemetry_logger.cpp ties the two by static_assert.
+// Mapped from M5Unified charge_state_t. 0 covers every not charging state
+// (not charging, full, disabled, discharging, idle) and 2 every state that was
+// not read. This header stays free of M5Unified for the host fixture, so
+// telemetry_logger.cpp holds the mapping and its static_assert.
 enum ChargingStatus : std::int32_t {
   kChargingDischarging = 0,
   kChargingCharging = 1,

@@ -22,7 +22,7 @@ image evidence. [Current workflow](../../../firmware/esp-idf-cores3/README.md).
 
 - Native startup initializes M5Unified/M5GFX once, completes display DMA/transactions, and attaches the SDSPI card to the existing SPI2 bus. Use the application display/SD mutex for complete transactions; do not call `spi_bus_initialize` or free the board driver’s controller. Mount with `format_if_mount_failed=false` and check every result. The historical Arduino/M5 SD example remains a wiring/startup reference only. [Shared-bus startup][sharing]
 - M5GFX's CoreS3 initialization calls `_set_sd_spimode(..., GPIO_NUM_4)` before display traffic. Preserve that behavior when modifying startup. If replacing the board driver: initialize power/bus, idle other CS lines high, put the card into SPI mode, then communicate with other SPI devices. A card still in SD mode may respond to unrelated traffic despite its CS being high. [M5GFX][gfx], [IDF shared-bus startup][sharing]
-- Native C/IDF: `SDSPI_HOST_DEFAULT`, `sdspi_device_config_t`, `esp_vfs_fat_sdspi_mount`; attach to the existing SPI2 bus when the board driver owns it. Preserve M5GFX bus locking; coordinate lifecycle/multi-call operations at application level too. Do not independently initialize/free the display's bus. [SDSPI guide][sdspi], [M5GFX bus backend](https://github.com/m5stack/M5GFX/blob/0.2.36/src/lgfx/v1/platforms/esp32/common.inl)
+- Native C/IDF: `SDSPI_HOST_DEFAULT`, `sdspi_device_config_t`, `esp_vfs_fat_sdspi_mount`; attach to the existing SPI2 bus when the board driver owns it. Preserve M5GFX bus locking; coordinate lifecycle/multi-call operations at application level too. Do not independently initialize/free the display's bus. [SDSPI guide][sdspi], [M5GFX bus backend](https://github.com/m5stack/M5GFX/blob/0.3.0/src/lgfx/v1/platforms/esp32/common.inl)
 - Use a known FAT32 card first. exFAT is not enabled by default in IDF; a large factory-formatted card can fail to mount despite working electrically. Set `format_if_mount_failed=false`; report mount failure distinctly from a missing card. [FatFs][fatfs]
 - The M5 example requests 25 MHz; this is not a guaranteed throughput or a universal maximum. Reduce the transfer clock when debugging integrity, and inspect rail stability, CS timing and bus loading before increasing it. Protocol probing starts slowly. [M5 example][m5-sd], [signal loading][sharing]
 
@@ -68,8 +68,8 @@ The measured LZ4 comparison cut file bytes by 50.7% and median finalization by 2
 | Acceptance | Write/read/CRC check across rotations; full-card, removal/reinsert and power interruption during write/sync; verify previous files survive and queue overflow is observable. Record card model/capacity/filesystem and SDK versions. |
 
 [m5-sd]: https://docs.m5stack.com/en/arduino/m5cores3/sdcard
-[gfx]: https://github.com/m5stack/M5GFX/blob/0.2.36/src/M5GFX.cpp
-[power]: https://github.com/m5stack/M5Unified/blob/0.2.29/src/utility/Power_Class.inl
+[gfx]: https://github.com/m5stack/M5GFX/blob/0.3.0/src/M5GFX.cpp
+[power]: https://github.com/m5stack/M5Unified/blob/0.3.0/src/utility/Power_Class.inl
 [board]: https://docs.m5stack.com/en/core/CoreS3
 [sharing]: https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32s3/api-reference/peripherals/sdspi_share.html
 [sdspi]: https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32s3/api-reference/peripherals/sdspi_host.html

@@ -15,9 +15,9 @@
 //   pms_status, light_status and proximity_status names are the status
 //   legends in telemetry_contract.h, which collect() writes through the
 //   enums named here.
-//   charging_status is M5Unified Power_Class::is_charging_t, tied to these
-//   values by a static_assert in telemetry_logger.cpp, and its rows must
-//   equal kChargingStatusLegend.
+//   charging_status is ChargingStatus, which charging_status_of in
+//   telemetry_logger.cpp maps from M5Unified charge_state_t and checks by
+//   static_assert, and its rows must equal kChargingStatusLegend.
 //   external_5v_enabled, usb_output_enabled and rtc_read_ok are the bools
 //   collect() writes.
 //   location_source names are telemetry::LocationSource, the stac-opensensor

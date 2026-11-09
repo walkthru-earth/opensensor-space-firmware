@@ -348,17 +348,17 @@
       "sections": {
         ".iram0.text": 129792,
         ".dram0.data": 37120,
-        ".dram0.bss": 60928,
-        ".flash.text": 1287168,
-        ".flash.rodata": 436224,
+        ".dram0.bss": 61184,
+        ".flash.text": 1312768,
+        ".flash.rodata": 447232,
         ".noinit": 256
       },
       "sections_measured": {
         ".iram0.text": 127031,
         ".dram0.data": 36325,
-        ".dram0.bss": 59656,
-        ".flash.text": 1261710,
-        ".flash.rodata": 427528,
+        ".dram0.bss": 59944,
+        ".flash.text": 1286882,
+        ".flash.rodata": 438420,
         ".noinit": 3
       }
     },
