@@ -228,8 +228,8 @@ The `dict` and `desc` digests do not move. The app may add an update screen.
 **What the app must do.** Nothing, unless it adds OTA. An app that adds OTA
 sends `OTA_BEGIN` with the size and SHA-256 of the `.bin`, then chunks of at
 most `max_chunk` bytes at offset `next`, then `OTA_END` with a 120 s timeout,
-then `REBOOT`. On any error it starts again with `OTA_BEGIN`. It never pauses more than 30 s
-between chunks, or the device drops the upload. It shows the
+then `REBOOT`. On any error it starts again with `OTA_BEGIN`. It never pauses
+more than 30 s between chunks, or the device drops the upload. It shows the
 error detail to the owner and never retries a rejected image.
 
 ## BREAKING. Gauge validity tokens, pms_status 6, created_by and repo URLs (yharby/contract-bump, issues #28 #39 #111)

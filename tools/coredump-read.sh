@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Serial only core dump readback, then erase (#40). See tools/coredump_read.py.
+# Serial only core dump readback, erase only with --erase (#40).
+# See tools/coredump_read.py.
 set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${repo_root}/tools/idf-dependencies.lock"
