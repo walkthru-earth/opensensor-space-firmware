@@ -25,6 +25,22 @@
       "propertyNames": {"pattern": "^[a-z][a-z0-9_]{0,63}$"},
       "additionalProperties": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
     },
+    "tooling": {
+      "description": "Host tool facts read by tools/boards.py (#141). Not part of the template, the footer or dict. Required on every firmware/esp-idf-*/*/board.json by the registry.",
+      "type": "object",
+      "required": ["alias", "variants", "backup_prefixes", "flash_bytes", "psram_mode", "sdkconfig", "components_required", "components_forbidden"],
+      "properties": {
+        "alias": {"description": "Short name for pixi tasks, build targets, CI legs and the LIVE fixture. No dash.", "type": "string", "pattern": "^[a-z][a-z0-9]{0,31}$"},
+        "variants": {"description": "App directories of the ESP-IDF project, the directory of this board.json first.", "type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$"}},
+        "backup_prefixes": {"description": "Full flash backup name prefixes. The first names new backups, every one restores.", "type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"}},
+        "flash_bytes": {"description": "Flash capacity. The backup, restore and flash helpers support 16 MiB only.", "enum": [16777216]},
+        "psram_mode": {"description": "CONFIG_SPIRAM_MODE_<value> of the telemetry app.", "enum": ["QUAD", "OCT"]},
+        "sdkconfig": {"description": "Lines every variant's sdkconfig holds, such as the console.", "type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^(CONFIG_[A-Z0-9_]+=\\S.*|# CONFIG_[A-Z0-9_]+ is not set)$"}},
+        "components_required": {"description": "Build components every variant includes.", "type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[A-Za-z0-9_.-]{1,64}$"}},
+        "components_forbidden": {"description": "Case insensitive substrings no build component name may hold.", "type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[A-Za-z0-9_.-]{1,64}$"}}
+      },
+      "additionalProperties": false
+    },
     "segments": {
       "type": "array",
       "minItems": 1,

@@ -70,5 +70,25 @@
       "module": "system",
       "segment": "location"
     }
-  ]
+  ],
+  "tooling": {
+    "alias": "cores3",
+    "variants": [
+      "bringup"
+    ],
+    "backup_prefixes": [
+      "m5stack-cores3",
+      "cores3"
+    ],
+    "flash_bytes": 16777216,
+    "psram_mode": "QUAD",
+    "sdkconfig": [
+      "CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y"
+    ],
+    "components_required": [
+      "m5stack__m5unified",
+      "m5stack__m5gfx"
+    ],
+    "components_forbidden": []
+  }
 }
