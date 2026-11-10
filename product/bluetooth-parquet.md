@@ -8,7 +8,7 @@ A DuckDB filesystem extension could expose sensor SD files through a custom `blu
 
 ## Intended experience
 
-Illustrative SQL only — this scheme and extension do not exist in this project:
+Illustrative SQL only. This scheme and extension do not exist in this project.
 
 ```sql
 SELECT count(*)

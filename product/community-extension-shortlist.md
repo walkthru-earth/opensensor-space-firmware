@@ -95,4 +95,4 @@ For each adopted extension, pin source and DuckDB compatibility, check license/d
 
 Extensions run with the application's privileges; see [DuckDB extension security](https://duckdb.org/docs/current/operations_manual/securing_duckdb/securing_extensions). Ship an approved bundle. Private queries must not silently install extensions, call hosted models, fetch remote macros or emit telemetry.
 
-Other registry groups—enterprise databases, developer tooling, finance, specialist scientific formats and hosted AI—do not solve the present environmental workflow. Revisit only for a concrete feature. No new MCU framework trial is justified by this catalogue.
+Other registry groups, such as enterprise databases, developer tooling, finance, specialist scientific formats and hosted AI, do not solve the present environmental workflow. Revisit only for a concrete feature. No new MCU framework trial is justified by this catalogue.
