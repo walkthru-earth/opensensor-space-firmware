@@ -22,6 +22,44 @@ The current image is a development/field-trial firmware, not a hardened producti
 - `ble.pair=none` is encrypted Just Works without authenticated MITM protection and is for controlled development benches only.
 - Six-digit BLE passkeys have limited entropy. Per-device generation removes a universal credential but does not make an unattended, physically exposed device resistant to determined nearby guessing or physical extraction.
 
+## Serial console
+
+The physical serial console needs no credential. Anyone who can reach the
+board port can run the documented owner commands in
+[OSLogger](../../firmware/common/logger/README.md) and the
+[UART owner provisioning](ble-sync-protocol.md#physical-uart-owner-provisioning)
+section.
+
+- `parquet wifi-profile` exports the Wi-Fi SSID and password.
+- `parquet owner-pin` reads out the fixed owner PIN.
+- `parquet config-hex` changes configuration through the SET_CONFIG handler.
+- `parquet time` sets the clock.
+- `parquet list` and `parquet get` copy finalized files.
+- `parquet erase-archive CONFIRM` erases the archive.
+
+Treat physical access to the port as owner access.
+
+## No factory reset
+
+No factory reset exists. A device that is resold or handed on keeps all of
+the following until someone removes each one.
+
+- The Wi-Fi password, the LAN token and the BLE PIN in the `oscfg` `cfg` record
+- The BLE bonds
+- The location cell and country
+- The owner text (`owner.title`, `owner.description`, `owner.provider`,
+  `owner.url`) and `thing.deployment_id`
+- The Thing id in NVS `parquet/thing`
+- Any core dump in the `coredump` partition
+- The SD archive
+
+Partial tools exist. `ble.clear_bonds` removes the bonds, `lan.rotate_token`
+replaces the LAN token, and SET_CONFIG can clear or replace the Wi-Fi, PIN,
+location and owner values one key at a time. `parquet erase-archive CONFIRM`
+removes the archive and `pixi run coredump-read <board> <port> --erase` clears
+the core dump. None of them resets the Thing id, and none of them is one
+step.
+
 ## Not implemented or verified
 
 This repository does **not** claim secure boot, flash encryption, signed OTA, anti-rollback, protected key storage, remote attestation, sensor calibration, SD-card encryption, or power-loss endurance. The logger has an authenticated LAN OTA (#40), but images are not signed and rollback is off, see [OTA](#ota). Do not burn eFuses as part of normal development; irreversible provisioning needs a separate production design, recovery plan, and hardware verification.
@@ -61,7 +99,9 @@ what that does and does not protect.
   `opensensor_waveshare`. A diagnostic image pushed to a logger is accepted.
   The diagnostic has no LAN, so that board needs USB to get back.
 - There is no LAN or BLE core dump endpoint. A core dump holds task stacks,
-  which can hold the Wi-Fi PSK, the LAN token or the device PIN. `pixi run
+  which can hold the Wi-Fi PSK, the LAN token or the device PIN. On a board
+  running the GNSS reader it can also hold the raw receiver reply line with
+  coordinates, because the reader keeps that line on its task stack. `pixi run
   coredump-read` reads it over USB serial only and prints the backtraces
   without memory. esp_coredump writes the flash read to a temporary file and
   leaves it behind when decoding fails, so the tool points TMPDIR at a private
