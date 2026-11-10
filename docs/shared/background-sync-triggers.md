@@ -82,8 +82,10 @@ Rules: `new_files` is set when a window closes or a `FLUSH` finalizes, cleared w
 
 Current native `ble::publish_advert()` packs flags/counter into an atomic word
 and posts a coalescing event to the NimBLE host task. That task builds the exact
-31-byte legacy ADV and calls `ble_gap_adv_set_data` only when content changes;
-intervals are explicitly 30–60 ms. Board sampling and archive LIST handling
+31-byte legacy ADV and calls `ble_gap_adv_set_data` only when content changes.
+The interval has two stages, fast 30 to 60 ms during the fast and flag windows
+and otherwise slow 1000 to 1280 ms, see
+[link parameters](ble-sync-protocol.md#link-parameters-and-notify-flow). Board sampling and archive LIST handling
 publish snapshots without issuing host commands from their own tasks. UUID/name
 scan response and service-data bytes retain the existing wire contract.
 
@@ -95,7 +97,7 @@ belongs to the historical source; native submissions run on the host task.
 
 ### Advertising interval
 
-Detection latency in `SCAN_MODE_LOW_POWER` (512 ms window every 5.12 s) is set by the device's interval, not the phone's. NimBLE's default (30–60 ms connectable) is fast enough and unchanged; if the interval is ever slowed to save power, keep it ≤ 200 ms for 60 s after any flag flips (`setMinInterval/setMaxInterval`, units 0.625 ms), then relax. The CoreS3 logger is usually USB-powered, so the default fast interval is acceptable.
+Detection latency in `SCAN_MODE_LOW_POWER` (512 ms window every 5.12 s) is set by the device's interval, not the phone's. The device advertises fast at 30 to 60 ms for 30 s after the stack starts, after every disconnect and after `ble::wake_advertising()`, and for 60 s after an advert flag byte changes. Otherwise it advertises slow at 1000 to 1280 ms. The [protocol link parameters](ble-sync-protocol.md#link-parameters-and-notify-flow) own the rule.
 
 ### Address stability
 

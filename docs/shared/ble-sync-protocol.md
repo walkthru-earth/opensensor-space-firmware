@@ -134,7 +134,7 @@ Base UUID `255f595e-XXXX-47ed-8e0d-59994199b680`; the 16-bit field selects the a
 | Attribute | UUID | Props | Payload |
 | --- | --- | --- | --- |
 | **Service** OpenSensor Sync | `255f595e-0001-47ed-8e0d-59994199b680` | — | — |
-| `info` | `…-0002-…` | read | JSON, ≤ 400 bytes, static for a boot |
+| `info` | `…-0002-…` | read | JSON, ≤ 399 bytes, static for a boot |
 | `status` | `…-0003-…` | read, notify | JSON, ≤ 480 bytes |
 | `live` | `…-0004-…` | read, notify | JSON, ≤ 480 bytes |
 | `control` | `…-0005-…` | write (with response) | binary request, ≤ 512 bytes |
@@ -213,7 +213,7 @@ Each field's `live_key` and `decimals` are part of the board's `telemetry_fields
 {"seq":15021,"mono":150210000000,"utc":1757990410000000000,"pms":4,
  "c1":5,"c25":7,"c10":9,"pm1":5,"pm25":7,"pm10":9,
  "n03":900,"n05":250,"n1":30,"n25":2,"n5":0,"n10":0,
- "imu_t":31.4,"als":120,"vbus":5000,"bat":4100,"pct":80,"chg":0}
+ "imu_t":31.4,"als":120,"vbus":5000,"bat":4100,"pct":80,"chg":0,"t":null,"rh":null}
 ```
 
 | Key | Dictionary field |
@@ -305,7 +305,7 @@ by direction.
 
 The status JSON remains bounded to 480 bytes. The actual formatter retains every key at 467 bytes with the widest representable values, including `sd_state`, `dc=65535`, `dr=255`, `clk`/`rtc` at their u8 limit, `ls` at its u32 limit, and the clamped `utc_ms`, `clk_age_s` and `miss` (462 for LZ4), checked by `pixi run logger-status-test`, which also requires 10 bytes of headroom. In addition to the existing counters, `part` is the number of retained `.partial` files found by the startup/list scan, while `qf` and `qb` are the total file count and total bytes currently under `/output/quarantine/` after startup quarantine completes. `qf` and `qb` include files preserved by earlier boots, not only files moved during the current boot; both saturate at their unsigned integer limits rather than wrapping.
 
-`ERROR.op` echoes the **first byte of the request** as received, even when that byte is not a known opcode (code 11); an empty write is reported as `op=0x01 code=1 detail="empty"`. `OPENED.name` is the requested name in full; the device does not shorten it (names are ≤ 399 bytes, so on an MTU-517 link every `OPENED` fits one PDU, another reason the phone must negotiate 517). A `FILE` entry whose name would not fit `payload_max − 5` aborts LIST with error 7 (`detail="mtu"`) and is logged on serial as `BLE LIST SKIP`. An archive exceeding the u32 count capacity aborts LIST with error 7 (`detail="count"`). Filesystem enumeration failures (including an SD read failure after earlier entries) abort LIST with error 8. Neither case produces `LIST_END`. Clients commit a replacement listing only after a valid `LIST_END`; preceding `FILE` entries alone are an incomplete snapshot. The device clears its `new_files` hint only after a complete scan and accepted `LIST_END` delivery. `READ_END.next_offset` always equals `offset + bytes actually delivered in CHUNK frames`; a phone that received fewer bytes has lost a notification and must treat the **window** as failed, never trust `next_offset` over its own count, and a failed window is retried with a new `READ` from the phone's own offset, not an aborted sync. Measured 2026-09-17: an Android phone's Bluetooth stack dropped runs of 16 to 18 consecutive notifications at the start of a window while the board's Wi-Fi was active (the same windows reached a Mac intact), so clients should keep reading until that request's `READ_END` before re-issuing, and are advised to use ≤ 4 KiB windows over BLE (16 KiB over LAN).
+`ERROR.op` echoes the **first byte of the request** as received, even when that byte is not a known opcode (code 11); an empty write is reported as `op=0x01 code=1 detail="empty"`. `OPENED.name` is the requested name in full; the device does not shorten it (names are 9 to 384 bytes, so on an MTU-517 link every `OPENED` fits one PDU, another reason the phone must negotiate 517). A `FILE` entry whose name would not fit `payload_max − 5` aborts LIST with error 7 (`detail="mtu"`) and is logged on serial as `BLE LIST SKIP`. An archive exceeding the u32 count capacity aborts LIST with error 7 (`detail="count"`). Filesystem enumeration failures (including an SD read failure after earlier entries) abort LIST with error 8. Neither case produces `LIST_END`. Clients commit a replacement listing only after a valid `LIST_END`; preceding `FILE` entries alone are an incomplete snapshot. The device clears its `new_files` hint only after a complete scan and accepted `LIST_END` delivery. `READ_END.next_offset` always equals `offset + bytes actually delivered in CHUNK frames`; a phone that received fewer bytes has lost a notification and must treat the **window** as failed, never trust `next_offset` over its own count, and a failed window is retried with a new `READ` from the phone's own offset, not an aborted sync. Measured 2026-09-17: an Android phone's Bluetooth stack dropped runs of 16 to 18 consecutive notifications at the start of a window while the board's Wi-Fi was active (the same windows reached a Mac intact), so clients should keep reading until that request's `READ_END` before re-issuing, and are advised to use ≤ 4 KiB windows over BLE (16 KiB over LAN).
 
 Error codes: 1 malformed request · 2 invalid name · 3 not a finalized Parquet file · 4 open failed · 5 bad handle · 6 range outside file · 7 busy (command queue full on a secure link, transfer in progress, another LIST running, a LIST ended by a storage remount, or a LIST or READ stopped early so the device can close its open file on a critical battery, retry later) · 8 storage unavailable · 9 invalid epoch (outside 2020 to 2100, or invalid microsecond fraction) · 10 nothing to flush · 11 unknown opcode · 12 invalid config (`detail` = key) · 13 not allowed on this link · 14 authentication failed (over LAN, a bad handshake token. Over BLE it is defense in depth and an unpaired client normally never sees it. NimBLE refuses an unencrypted Control write with ATT error 0x05, 0x0C or 0x0F before the firmware runs, and that error is what makes the phone pair. Its CCCD writes have no security flag, so it can subscribe to `response`, but nothing is sent there on an unpaired link except a possible ERROR 14. In this firmware the ATT check applies the same rule as the firmware check (encryption in every mode, plus authentication and a 16 byte Secure Connections key in the passkey modes), so ERROR 14 with `detail="auth"` is only a guarded fallback if the two ever disagree. Then the Control write is acknowledged, not run, and answered with that ERROR. Neither answer is busy, never retry it, pair again) · 15 Wi-Fi unavailable · 16 aborted (proto 3) · 17 no descriptor (`GET_DESCRIPTOR` on an image built without a template) · 18 image rejected (an `OTA_WRITE` or `OTA_END` whose image is for another chip or project, has a broken header, fails its SHA-256 or fails the ESP-IDF image check. See [LAN OTA](#lan-ota)).
 
@@ -401,11 +401,13 @@ Each page remains within the 480-byte JSON limit. NTP policy changes alone do
 not reconnect Wi-Fi or close LAN. Router DHCP option 42 is tried first, then
 configured hosts, then allowed public fallback; association alone never
 establishes UTC. Location normalization happens after the complete patch, so
-cell/resolution key order has no effect. Separate single NVS records hold the
-coherent NTP and location policies; legacy keys keep their existing types.
-Missing records receive defaults; corrupt location becomes unset and corrupt
-NTP becomes disabled. A failed save does not publish the live snapshot; the
-whole legacy multi-key save is still not transactional.
+cell/resolution key order has no effect. The whole configuration is one NVS
+blob under the `cfg` key, written with one `nvs_set_blob` and one commit. The
+NTP and location policies are each one text field inside that record. A
+missing or damaged `cfg` record gets fresh defaults. A location field that
+fails validation at boot reads as unset location, and an NTP field that fails
+validation reads as disabled NTP. A failed save does not publish the live
+snapshot.
 
 Location is the monitoring Thing deployment, explicitly configured
 from the mobile app. The app sends only a cell; firmware derives its center and
@@ -437,7 +439,7 @@ wifi.on=1
 
 Changing Wi-Fi settings over a LAN session is allowed but will usually drop that session; the phone should do provisioning over BLE. `REBOOT` attempts to finalize pending rows first when storage is healthy; failures remain visible in the logger counters and do not establish durability. It answers `REBOOTING` with the delay before restart (≈ 500 ms) so the phone can disconnect cleanly.
 
-`LOG_TAIL` returns the newest `max_bytes` (at most 65535) of the diagnostic ring that mirrors DebugLog output, excluding raw physical-owner command replies, the same `PARQUET …` / `BLE …` / `WIFI …` lines a bench log shows. It exists so an advanced user can see why something failed without a USB cable. It is text for humans, not a stable API. The ring is in PSRAM (64 KiB by default, `CONFIG_OS_LOG_PERSIST_RING_BYTES`) when the board image provides a persistent block, otherwise a 4 KiB internal ring (see [persistent log](#persistent-log)). The reply streams in `LOG` slices of at most 512 bytes over BLE or 1024 over LAN, also bounded by `payload_max`. A tail can contain lines from the previous boot after a warm reboot.
+`LOG_TAIL` returns the newest `max_bytes` (at most 65535) of the diagnostic ring that mirrors DebugLog output, excluding raw physical-owner command replies, the same `PARQUET …` / `BLE …` / `WIFI …` lines a bench log shows. It exists so an advanced user can see why something failed without a USB cable. It is text for humans, not a stable API. The ring is in PSRAM (64 KiB by default, `CONFIG_OS_LOG_PERSIST_RING_BYTES`) when the board image provides a persistent block, otherwise a 4 KiB internal ring (see [persistent log](#persistent-log)). The reply streams in `LOG` frames of at most 512 bytes over BLE or 1024 over LAN, so a text slice is at most 511 or 1023 bytes, also bounded by `payload_max`. A tail can contain lines from the previous boot after a warm reboot.
 
 `WIFI_SCAN` runs on the Wi-Fi task, not on the storage worker, and takes 2–4 s; the phone should show progress. The scan is asynchronous. Other LAN sessions keep reading and receiving frames while it runs, and a scan that does not finish within 15 s ends with `WIFI_SCAN_END` status 15 (unavailable). Hidden networks are omitted; duplicate SSIDs (several access points) are reported once with the strongest RSSI.
 
