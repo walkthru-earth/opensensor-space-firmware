@@ -29,7 +29,7 @@ The [shared contracts](../../README.md#shared-contracts) apply to both board tar
 
 ## Stack and heap budgets
 
-Issue #37 sizes task stacks from two numbers. The static worst case comes from
+Task stacks are sized from two numbers, the method of issue #37. The static worst case comes from
 the build, and the measured high water mark comes from the board.
 
 - **Static.** `pixi run stack-budget --image cores3/bringup --path` prints each
@@ -64,7 +64,7 @@ Bench recipe, about 75 min.
    does not reset the app.
 5. Record the smallest value seen per task and heap below, with the date,
    image hash and what was exercised. A task with less than a quarter of its
-   stack left (cores3-board has 16,384 B) is a finding to raise on issue #37.
+   stack left (cores3-board has 16,384 B) is a finding to raise on issue #61.
 
 | Date | Image hash | Exercised | cores3-board | parquet-sd | os-lan | os_ble_error | nimble_host | tcpip | esp_timer | sys_evt | internal_min | internal_largest | dma_largest | psram_largest |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |

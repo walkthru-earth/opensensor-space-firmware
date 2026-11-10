@@ -7,7 +7,7 @@ pinned ESP-IDF toolchain, component manifests and partition files. Never borrow 
 - Use `pixi run idf-setup`, `pixi run waveshare-build [logger|diagnostic]`
   and the backup-gated `waveshare-flash` task. No Arduino APIs or components.
   See the newest dated USB Parquet readback in the board bench record, at
-  this writing native v2.15 on 2026-10-26. v2.17 to v2.25 have no dated readback yet,
+  this writing native v2.15 on 2026-10-26. v2.17 to v2.26 have no dated readback yet,
   and its GNSS path has only the empty no-fix reply on the bench
   (board `hardware.md`). Earlier Arduino image results remain historical and
   require native readback to extend.
