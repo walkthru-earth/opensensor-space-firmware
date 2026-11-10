@@ -1,6 +1,6 @@
 # STAC metadata contract research
 
-Research snapshot from 2026-10-25 at commit `2b49114`. Nothing here is implemented. It records why and how the firmware could publish a STAC description of its columns, so the mobile app and host tools stop being air quality only.
+Research snapshot from 2026-10-25 at commit `2b49114`. The board template, the `opensensor` footer, GET_DESCRIPTOR and the File Item sidecar (#142) are built. The Thing Collection is not built (#145). It records why and how the firmware could publish a STAC description of its columns, so the mobile app and host tools stop being air quality only.
 
 | File | Content |
 | --- | --- |
@@ -11,7 +11,7 @@ The app-side design is `docs/superpowers/specs/2026-10-25-sensor-agnostic-stac-c
 
 Who writes the STAC Items, Collections and Catalog is settled in [decision 0001](../decisions/0001-standalone-thing-stac.md) (#109). Since 2026-11-04 the board writes the File Item and the Thing Collection, and only the catalog host writes the root Catalog.
 
-When any part lands, move the settled contract into `table-and-observation-model.md` and `ble-sync-protocol.md`, and keep this folder as history.
+The settled contract of each built part lives in `table-and-observation-model.md`, `telemetry-pipeline.md` and `ble-sync-protocol.md`. This folder stays as history.
 
 ## Field names are superseded
 
@@ -58,5 +58,4 @@ The owner decided these points after both audits were written. They supersede th
 - Station becomes Thing with a required `mobility`, and the location moves to a
   native `geometry` column with a `geo` footer key (#83, bridge decisions 31 to
   35). The firmware follows stac-opensensor commit `83787768cc8451109d48a03d4ef5493ffcd403dd`. See the
-  Thing entry in `../mobile-migration.md`. Code comments in `firmware/` and
-  `tools/` that still cite the older spec pin move to the new pin with [#142](https://github.com/walkthru-earth/opensensor-space-firmware/issues/142).
+  Thing entry in `../mobile-migration.md`.

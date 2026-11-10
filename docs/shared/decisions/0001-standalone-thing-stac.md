@@ -52,6 +52,10 @@ follow the PROFILE [Writers](https://github.com/walkthru-earth/stac-opensensor/b
 [Canonical form](https://github.com/walkthru-earth/stac-opensensor/blob/83787768cc8451109d48a03d4ef5493ffcd403dd/PROFILE.md#canonical-form) sections at the pinned commit, so a
 regenerated document equals the board's.
 
+Amendment 2026-11-11. The File Item sidecar landed in [#142](https://github.com/walkthru-earth/opensensor-space-firmware/issues/142) and links
+`location::cells_to_multipolygon()`. H3 comes from embedded-h3-location v2.0.0
+(#163). The Thing Collection is still [#145](https://github.com/walkthru-earth/opensensor-space-firmware/issues/145).
+
 ### Facts that still constrain the implementation
 
 These come from the analysis below and from the code, and they still hold.

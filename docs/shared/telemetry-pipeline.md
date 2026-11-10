@@ -232,7 +232,8 @@ code in `firmware/common/upload/src/`, mainly `os_upload_policy`,
   Today the uploader sends only `.parquet` names, and the BLE and LAN name rule
   accepts only `.parquet` too. Sidecar transport is future work, over the
   uploader in [#144](https://github.com/walkthru-earth/opensensor-space-firmware/issues/144) and over BLE and LAN in [#143](https://github.com/walkthru-earth/opensensor-space-firmware/issues/143). The board writes the
-  Thing Collection from its upload ledger. Neither writer is built yet. The
+  Thing Collection from its upload ledger. The File Item writer is built and
+  both boards opt in. The Thing Collection writer is not built. The
   File Item is [#142](https://github.com/walkthru-earth/opensensor-space-firmware/issues/142) and the Thing Collection is [#145](https://github.com/walkthru-earth/opensensor-space-firmware/issues/145).
 
 MQTT QoS 1 can carry live gauges, alarms and device health. It is not the durable measurement source because duplicates and reconnect gaps are normal. Deduplicate any live copy by the same row identity.

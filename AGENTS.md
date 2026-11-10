@@ -69,7 +69,7 @@ in `firmware/common/`. Device protocol and telemetry contracts live in
 | Telemetry schema, Parquet, UTC, archive paths | `docs/shared/telemetry-pipeline.md`, `docs/shared/table-and-observation-model.md` |
 | Router/local NTP, H3 and country/privacy configuration | `docs/shared/time-and-location.md`, `firmware/common/location/AGENTS.md` |
 | Moving Thing, GNSS receiver and the `gnss_fix` hook | `firmware/common/gnss/AGENTS.md`, `docs/shared/time-and-location.md` |
-| Board STAC File Item and Thing Collection (decided in DR 0001, not built, #142 and #145) | `docs/shared/stac-contract/README.md`, `docs/shared/decisions/0001-standalone-thing-stac.md` |
+| Board STAC File Item sidecar (built, #142) and Thing Collection (not built, #145), decided in DR 0001 | `firmware/common/stac/AGENTS.md`, `docs/shared/stac-contract/README.md`, `docs/shared/decisions/0001-standalone-thing-stac.md` |
 | LAN OTA, boot self test and core dumps (#40) | `firmware/common/connectivity/AGENTS.md`, `firmware/common/runtime/AGENTS.md`, `docs/shared/security-hardening.md` |
 | Host scripts and gates | `tools/AGENTS.md`, `docs/shared/development.md` |
 
