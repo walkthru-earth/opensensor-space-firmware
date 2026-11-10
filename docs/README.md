@@ -39,7 +39,7 @@ To add a board or a new sensor set, start with
 | Dictionary, observation semantics, and proposed Iceberg workflow | [Table and observation model](shared/table-and-observation-model.md) |
 | Small file sizes, encodings, compaction and range reads | [Small Parquet files](shared/parquet-small-files.md) |
 | Decision records, who writes STAC for a standalone Thing and the small file roadmap | [Decisions](shared/decisions/README.md) |
-| Proposed STAC metadata contract, firmware audit and review (research, not implemented) | [STAC contract research](shared/stac-contract/README.md) |
+| STAC metadata contract research, firmware audit and review. The File Item sidecar is built (#142), the Thing Collection is not (#145) | [STAC contract research](shared/stac-contract/README.md) |
 | Proto 3 BLE/LAN frames, disconnect evidence, pairing and UART owner provisioning | [Sync protocol](shared/ble-sync-protocol.md) |
 | LAN transfer scheduling, socket policy and qualification | [LAN performance](shared/lan-performance.md) |
 | Phone visible changes per firmware release and what the app must do | [Mobile migration notes](shared/mobile-migration.md) |
@@ -56,9 +56,11 @@ To add a board or a new sensor set, start with
 | M5Stack CoreS3 with optional M134/PMSA003 | Native OSLogger adapter with a short native USB/SD/sensor/time readback. Proto 3 phone transfers and endurance remain pending. Historical Arduino radio evidence stays image-specific | [CoreS3 board docs](boards/m5stack-cores3/README.md), [trial](../firmware/esp-idf-cores3/README.md) |
 | Waveshare ESP32-S3-SIM7670G-4G V2 with PMS5003T | Native ESP-IDF logger and retained diagnostic with a short native USB/SD readback. Phone transfers and endurance remain pending. Historical Arduino evidence stays in its bench record | [Waveshare board docs](boards/waveshare-esp32-s3-sim7670g/README.md), [trial](../firmware/esp-idf-waveshare-sim7670g/README.md) |
 
-The seven shared ESP-IDF components are OSCommon (encoding and the Parquet writer), OSSensors (sensor drivers),
+The eleven shared ESP-IDF components are OSCommon (encoding and the Parquet writer), OSSensors (sensor drivers),
 OSRuntime (settings/logs), OSConnectivity (local transports), OSLogger (sampling/archive worker),
-OSLocation (official H3 geometry) and `power` (battery health classifier). A shared
+OSLocation (official H3 geometry), `stac` (STAC File Item builder), `gnss` (GNSS fix type, receiver dialects
+and row source rule), `gnss_reader` (UART reader task), `power` (battery health classifier) and `upload`
+(off by default source.coop uploader). A shared
 source or host gate is not a hardware endurance result.
 
 For any physical write, follow the board-specific safety sequence in [AGENTS.md](../AGENTS.md). Keep captures and firmware binaries in the relevant trial's ignored `artifacts/`, and record real-board measurements only in that board's bench record.

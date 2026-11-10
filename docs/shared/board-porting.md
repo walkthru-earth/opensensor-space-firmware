@@ -82,7 +82,9 @@ example.
    results separate. Do not copy another board's GPIO or controller policy.
 2. Register common component directories with CMake `EXTRA_COMPONENT_DIRS` and
    declare the required components. A logger uses
-   `REQUIRES common runtime connectivity logger location`. A board with a
+   `REQUIRES common sensors runtime logger stac upload`. `logger` itself
+   requires `connectivity`, `location`, `power` and `gnss`, and a board with a
+   GNSS receiver adds `gnss gnss_reader`. A board with a
    Plantower PMS module selects the model explicitly. Preserve each board's
    schema and provenance.
 3. Add the board to the board registry, Pixi tasks and board contract
@@ -120,8 +122,9 @@ After `pixi run plugin-new-board` the board has its field tables but no
 contract yet. `pixi run plugin-contract` fails until the published template of
 step 4 is in. It also refuses a slug another board uses (step 1) and a
 `shipped.lock` release that `mobile-migration.md` does not name (step 6). The
-host contract tests and `pixi run gate` check the other steps. Nothing checks
-step 8 until the shared writer exists.
+host contract tests and `pixi run gate` check the other steps.
+`pixi run stac-item-test` checks the File Item part of step 8. Nothing checks
+its Thing Collection part until that writer exists.
 Use the Waveshare V2 files as the example.
 
 1. Board slug. Pick one lowercase slug that matches `^[a-z0-9]+(-[a-z0-9]+)*$`,
@@ -172,11 +175,12 @@ Use the Waveshare V2 files as the example.
    STAC. At finalize it writes a File Item sidecar `<file>.json` next to each
    dated `data_HHMM_` file, with the data href `./<file>.parquet`. It writes
    the Thing Collection from its own upload ledger and is the only writer under
-   `thing=<uuid>/`. Owner only fields come from setup config. The shared writer
-   is not built yet. The File Item is [#142](https://github.com/walkthru-earth/opensensor-space-firmware/issues/142) and the Thing Collection is
-   [#145](https://github.com/walkthru-earth/opensensor-space-firmware/issues/145). It follows the stac-opensensor PROFILE Writers and
-   Canonical form sections. When it lands, a new board measures its flash,
-   internal RAM and PSRAM cost on that board. Sidecar transport is future
+   `thing=<uuid>/`. Owner only fields come from setup config. The File Item
+   writer is built in `firmware/common/stac` ([#142](https://github.com/walkthru-earth/opensensor-space-firmware/issues/142)), and a board opts in
+   through `Config::stac_columns`. The Thing Collection writer is not built
+   ([#145](https://github.com/walkthru-earth/opensensor-space-firmware/issues/145)). Both follow the stac-opensensor PROFILE Writers and
+   Canonical form sections. A new board measures the flash,
+   internal RAM and PSRAM cost of the writer on that board. Sidecar transport is future
    work, over the uploader in [#144](https://github.com/walkthru-earth/opensensor-space-firmware/issues/144) and over BLE and LAN in [#143](https://github.com/walkthru-earth/opensensor-space-firmware/issues/143). Today
    both accept only `.parquet` names.
 9. Builds. Build both existing boards and the new one, `pixi run cores3-build`,

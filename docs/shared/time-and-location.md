@@ -1,4 +1,4 @@
-# Time and private station location
+# Time and private Thing location
 
 Current native ESP-IDF design, 2026-10-09. The reusable implementations are
 `firmware/common/connectivity/src/network_time.*` and the optional
@@ -210,8 +210,8 @@ splits as before. A moving Thing does not split on a phone cell change
 either.
 
 GNSS UTC is not a clock anchor. A fix does not set UTC, so rows keep null UTC
-until a host anchor, the RTC or NTP arrives. Using GNSS time as an anchor is
-follow-up work on #83.
+until a host anchor, the RTC or NTP arrives. GNSS time as an anchor is not
+implemented and no open issue tracks it.
 
 ### Phone cell, `location.phone_cell`
 
