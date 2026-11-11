@@ -9,8 +9,8 @@ fixes. There are no backports to older releases.
 
 Report privately with the "Report a vulnerability" button on the
 [Security tab](https://github.com/walkthru-earth/opensensor-space-firmware/security)
-of this repository. Never open a public issue for a vulnerability. Expect a
-first reply within 7 days.
+of this repository. Never open a public issue for a vulnerability. The
+maintainers answer in the private report.
 
 Never include a device PIN, a Wi-Fi password or a LAN token in a report.
 
