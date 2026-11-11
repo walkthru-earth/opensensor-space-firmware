@@ -58,7 +58,10 @@ replaces the LAN token, and SET_CONFIG can replace the PIN and clear or replace
 the Wi-Fi, location and owner values one key at a time. `parquet erase-archive CONFIRM`
 removes the archive and `pixi run coredump-read <board> <port> --erase` clears
 the core dump. None of them resets the Thing id, and none of them is one
-step.
+step. Clearing or replacing a config value does not remove the old bytes from
+flash either. The firmware opens NVS in the standard read and write mode, so
+NVS only marks the old entry as erased and the bytes stay on the chip until
+NVS erases that page to reclaim space, see [#170](https://github.com/walkthru-earth/opensensor-space-firmware/issues/170).
 
 ## Not implemented or verified
 

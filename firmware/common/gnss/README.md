@@ -24,7 +24,8 @@ Board-neutral GNSS support in two ESP-IDF components.
 
 | `thing.mobility` | Phone cell (`location.phone_cell`) | Fresh fix (at most 15 s old) | Row location |
 | --- | --- | --- | --- |
-| `fixed` | any | any | Configured cell, `location_source` 1 |
+| `fixed`, resolution 8 cell configured | any | any | Configured cell, `location_source` 1 |
+| `fixed`, no cell configured or not resolution 8 | any | any | Four nulls |
 | `moving` | set | any | Phone cell at resolution 8, `location_source` 3 |
 | `moving` | unset | yes | GNSS cell at resolution 8, `location_source` 2 |
 | `moving` | unset | no | Four nulls |
