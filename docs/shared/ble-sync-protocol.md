@@ -401,9 +401,11 @@ Each page remains within the 480-byte JSON limit. NTP policy changes alone do
 not reconnect Wi-Fi or close LAN. Router DHCP option 42 is tried first, then
 configured hosts, then allowed public fallback; association alone never
 establishes UTC. Location normalization happens after the complete patch, so
-cell/resolution key order has no effect. The whole configuration is one NVS
-blob under the `cfg` key, written with one `nvs_set_blob` and one commit. The
-NTP and location policies are each one text field inside that record. A
+cell/resolution key order has no effect. Every key except the owner site keys
+is one NVS blob under the `cfg` key, written with one `nvs_set_blob` and one
+commit and then read back. The owner site keys are a separate `owner` record
+saved the same way. The NTP and location policies are each one text field
+inside the `cfg` record. A
 missing or damaged `cfg` record gets fresh defaults. A location field that
 fails validation at boot reads as unset location, and an NTP field that fails
 validation reads as disabled NTP. A failed save does not publish the live

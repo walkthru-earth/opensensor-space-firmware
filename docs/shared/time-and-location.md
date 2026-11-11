@@ -202,7 +202,7 @@ and the firmware keeps only the cell, its resolution and the fix monotonic
 time. No finer cell is ever computed, so finer GNSS detail stays in the RAM
 of the reply parser only. A core dump from a board running the GNSS reader can
 hold the raw receiver reply line with coordinates, because the reader keeps it
-on its task stack, see [security hardening](security-hardening.md#ota). Waveshare V2 is the first board with the hook, from firmware v2.17.
+on its task stack (#172), see [security hardening](security-hardening.md#ota). Waveshare V2 is the first board with the hook, from firmware v2.17.
 
 A GNSS cell change never splits a batch or file, because the cell is not part
 of the location snapshot that `fits_batch` compares. A file from a moving

@@ -54,8 +54,8 @@ the following until someone removes each one.
 - The SD archive
 
 Partial tools exist. `ble.clear_bonds` removes the bonds, `lan.rotate_token`
-replaces the LAN token, and SET_CONFIG can clear or replace the Wi-Fi, PIN,
-location and owner values one key at a time. `parquet erase-archive CONFIRM`
+replaces the LAN token, and SET_CONFIG can replace the PIN and clear or replace
+the Wi-Fi, location and owner values one key at a time. `parquet erase-archive CONFIRM`
 removes the archive and `pixi run coredump-read <board> <port> --erase` clears
 the core dump. None of them resets the Thing id, and none of them is one
 step.
@@ -101,8 +101,8 @@ what that does and does not protect.
 - There is no LAN or BLE core dump endpoint. A core dump holds task stacks,
   which can hold the Wi-Fi PSK, the LAN token or the device PIN. On a board
   running the GNSS reader it can also hold the raw receiver reply line with
-  coordinates, because the reader keeps that line on its task stack. `pixi run
-  coredump-read` reads it over USB serial only and prints the backtraces
+  coordinates, because the reader keeps that line on its task stack (#172).
+  `pixi run coredump-read` reads it over USB serial only and prints the backtraces
   without memory. esp_coredump writes the flash read to a temporary file and
   leaves it behind when decoding fails, so the tool points TMPDIR at a private
   0700 folder and removes it on every path. The partition stays on the board
