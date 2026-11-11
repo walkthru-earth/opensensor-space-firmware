@@ -8,7 +8,7 @@
 #include <freertos/semphr.h>
 
 namespace oslogger::work {
-enum class StallAction : std::uint8_t { None, Warn, Restart };
+enum class StallAction : std::uint8_t { None, Warn };
 
 // Copy first, then signal. The binary wakeup may coalesce several enqueues;
 // the queues retain every item and the worker checks them before sleeping.
@@ -32,16 +32,12 @@ using watchdog::stall_expired;
 
 // Evaluates storage-worker heartbeat liveness.
 // - Returns None before the first heartbeat or within the 5 s normal window.
-// - Returns Restart when restart_s > 0 and stall_expired(restart_s).
 // - Returns Warn when elapsed > 5 s and >= 30 s have passed since the previous
 //   warning.
 inline StallAction check_stall(std::int64_t now_us, std::int64_t heartbeat_us,
-                               std::int64_t &last_warning_us,
-                               std::uint32_t restart_s) {
+                               std::int64_t &last_warning_us) {
   if (heartbeat_us <= 0 || now_us <= heartbeat_us)
     return StallAction::None;
-  if (stall_expired(now_us, heartbeat_us, restart_s))
-    return StallAction::Restart;
   if (now_us - heartbeat_us > 5000000LL &&
       (last_warning_us == 0 || now_us - last_warning_us > 30000000LL)) {
     last_warning_us = now_us;

@@ -3490,7 +3490,7 @@ void poll() {
     static std::int64_t last_stall_warning_us = 0;
     const auto heartbeat = worker_heartbeat_us.load();
     // Warn only. The reset decision belongs to the watchdog supervisor.
-    if (work::check_stall(now, heartbeat, last_stall_warning_us, 0) ==
+    if (work::check_stall(now, heartbeat, last_stall_warning_us) ==
         work::StallAction::Warn) {
       const char *state_name = "?";
       if (worker_task) {

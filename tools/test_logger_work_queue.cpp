@@ -48,17 +48,16 @@ int main() {
   assert(!oslogger::work::enqueue(&commands, &item, &wakeup));
   assert(!wakeup.pending && commands.depth == 0);
 
-  // Worker stall liveness: passive warnings after 5 s with 30 s cooldown, and
-  // opt-in active watchdog restart when worker_stall_restart_s is configured.
+  // Worker stall liveness: passive warnings after 5 s with 30 s cooldown.
   using oslogger::work::check_stall;
   using oslogger::work::StallAction;
   std::int64_t last_warn = 0;
-  assert(check_stall(10000000LL, 0, last_warn, 0) == StallAction::None);
-  assert(check_stall(5000000LL, 1000000LL, last_warn, 0) == StallAction::None);
-  assert(check_stall(6000001LL, 1000000LL, last_warn, 0) == StallAction::Warn);
+  assert(check_stall(10000000LL, 0, last_warn) == StallAction::None);
+  assert(check_stall(5000000LL, 1000000LL, last_warn) == StallAction::None);
+  assert(check_stall(6000001LL, 1000000LL, last_warn) == StallAction::Warn);
   assert(last_warn == 6000001LL);
-  assert(check_stall(20000000LL, 1000000LL, last_warn, 0) == StallAction::None);
-  assert(check_stall(36000002LL, 1000000LL, last_warn, 0) == StallAction::Warn);
+  assert(check_stall(20000000LL, 1000000LL, last_warn) == StallAction::None);
+  assert(check_stall(36000002LL, 1000000LL, last_warn) == StallAction::Warn);
   assert(last_warn == 36000002LL);
   // begin() seeds the heartbeat before the worker starts. A worker that never
   // stamps warns 5 s after that seed, instead of never, as an unseeded zero
@@ -66,25 +65,12 @@ int main() {
   {
     constexpr std::int64_t seeded = 300000LL;
     std::int64_t first_warn = 0;
-    assert(check_stall(seeded + 5000000LL, seeded, first_warn, 0) ==
+    assert(check_stall(seeded + 5000000LL, seeded, first_warn) ==
            StallAction::None);
-    assert(check_stall(seeded + 5000001LL, seeded, first_warn, 0) ==
+    assert(check_stall(seeded + 5000001LL, seeded, first_warn) ==
            StallAction::Warn);
-    assert(check_stall(seeded + 5000001LL, 0, first_warn, 0) ==
-           StallAction::None);
+    assert(check_stall(seeded + 5000001LL, 0, first_warn) == StallAction::None);
   }
-  // With restart_s = 120, stalls <= 120 s warn/throttle; > 120 s trigger
-  // Restart.
-  assert(check_stall(121000000LL, 1000000LL, last_warn, 120) ==
-         StallAction::Warn);
-  assert(check_stall(121000000LL, 1000000LL, last_warn, 120) ==
-         StallAction::None);
-  assert(check_stall(121000001LL, 1000000LL, last_warn, 120) ==
-         StallAction::Restart);
-  // Values below 5 s clamp to 5 s so short SD flushes never boot-loop.
-  assert(check_stall(5500000LL, 1000000LL, last_warn, 1) == StallAction::None);
-  assert(check_stall(6000001LL, 1000000LL, last_warn, 1) ==
-         StallAction::Restart);
   // Supervisor expiry: none before the first heartbeat or with timeout 0,
   // strictly after the (>= 5 s) timeout, independent of the warn cooldown.
   using oslogger::work::stall_expired;
@@ -94,10 +80,10 @@ int main() {
   assert(stall_expired(61000001LL, 1000000LL, 60));
   assert(!stall_expired(6000000LL, 1000000LL, 1));
   assert(stall_expired(6000001LL, 1000000LL, 1));
-  // The poll warning path never restarts with restart_s = 0, however long.
+  // The poll warning path only warns, however long the stall. The reset
+  // decision is the supervisor's.
   std::int64_t warn_only = 0;
-  assert(check_stall(4000000000LL, 1000000LL, warn_only, 0) ==
-         StallAction::Warn);
+  assert(check_stall(4000000000LL, 1000000LL, warn_only) == StallAction::Warn);
 
   // Boot-loop guard kept in RTC no-init memory.
   namespace wd = oslogger::watchdog;
