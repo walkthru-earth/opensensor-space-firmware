@@ -26,7 +26,9 @@ def main() -> None:
                    "-I", str(root / "firmware/common/logger/src"),
                    "-I", str(root / "firmware/common/runtime/src"),
                    "-I", str(root / "firmware/common/src"),
+                   "-I", str(root / "firmware/common/gnss/src"),
                    str(root / "tools/test_location.cpp"),
+                   str(root / "firmware/common/gnss/src/os_gnss.cpp"),
                    *objects, "-o", str(executable)]
         if args.sanitize:
             command += ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]

@@ -159,7 +159,7 @@ def main() -> None:
         executable = directory / "fixture"
         command = ["clang++", CXX_STD, "-Wall", "-Wextra", "-Werror"]
         for include in ("src", "sensors/src", "sensors/modules", "logger/src", "connectivity/src", "runtime/src",
-                        "power/src"):
+                        "gnss/src", "power/src"):
             command += ["-I", str(common / include)]
         if args.sanitize:
             command += ["-fsanitize=address,undefined", "-fno-sanitize-recover=all"]
@@ -167,6 +167,7 @@ def main() -> None:
                     *library_flags(root, directory, args.sanitize),
                     str(root / "tools/test_waveshare_contract.cpp"),
                     str(common / "logger/src/os_logger_live.cpp"),
+                    str(common / "gnss/src/os_gnss.cpp"),
                     str(common / "power/src/os_battery_health.cpp"),
                     str(common / "src/parquet_writer.cpp"), str(common / "src/lz4_codec.cpp"),
                     str(common / "sensors/src/pms_frame.cpp"), "-o", str(executable)]

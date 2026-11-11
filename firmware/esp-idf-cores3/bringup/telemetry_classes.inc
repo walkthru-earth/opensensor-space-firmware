@@ -21,7 +21,7 @@
 //   external_5v_enabled, usb_output_enabled and rtc_read_ok are the bools
 //   collect() writes.
 //   location_source names are telemetry::LocationSource, the stac-opensensor
-//   profile codes the shared logger writes in apply_location.
+//   profile codes the shared logger writes in apply_cell.
 // No classes.
 //   pms_firmware and pms_error are raw PMSA003 frame bytes with no published
 //   code list. imu_fresh_mask is an M5Unified sensor bitmask, not a code.

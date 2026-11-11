@@ -3342,7 +3342,7 @@ bool begin(const Config &configuration, const Hooks &board_hooks,
   }
   self_test_start_us = esp_timer_get_time();
   // Location columns are optional, but present ones must have the shape
-  // apply_location writes, and a GEOMETRY column needs the location fields.
+  // apply_cell writes, and a GEOMETRY column needs the location fields.
   geometry_field = field_index("geometry");
   {
     const auto cell = field_index("h3_cell_id");

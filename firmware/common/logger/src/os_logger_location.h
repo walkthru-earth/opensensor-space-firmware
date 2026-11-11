@@ -56,18 +56,4 @@ bool apply_cell(Row &row, opensensor::location::Cell published,
                              static_cast<std::int32_t>(center->latitude)));
   return true;
 }
-
-// The configured cell, source 1. Invalid or unset snapshots, and any cell that
-// is not already res 8, produce four nulls (#139).
-template <typename Row>
-bool apply_location(Row &row, const config::LocationSettings &snapshot,
-                    const std::array<std::size_t, 4> &fields) {
-  const auto checked = opensensor::location::published_cell(snapshot.cell);
-  const opensensor::location::Cell published =
-      checked && *checked == snapshot.cell ? *checked : 0;
-  return apply_cell(row, published,
-                    published ? telemetry::LocationSource::Configured
-                              : telemetry::LocationSource::None,
-                    fields);
-}
 } // namespace oslogger
