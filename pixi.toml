@@ -231,6 +231,9 @@ rfc3986-validator = "==0.1.1"
 # tools/test_release_workflow.py parses release.yml. Pinned here, not only
 # reached through pre-commit (#45).
 pyyaml = "==6.0.3"
+# tools/release_sign.py and its test import it. Pinned here, not only reached
+# through esptool, at the version pixi.lock already resolves.
+cryptography = "==50.0.2"
 
 [activation.env]
 # Firmware SDKs are large and are not conda packages, so tools/idf-env.sh
