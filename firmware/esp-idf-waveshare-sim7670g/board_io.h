@@ -6,6 +6,17 @@
 // It is deliberately local to the Waveshare trial; shared services borrow
 // hooks.
 namespace board {
+// V2 pins, the one copy. board_io.cpp configures them and each app prints
+// them in its boot lines.
+inline constexpr int kSensorRx = 1; // sensor TX -> host RX
+inline constexpr int kSensorTx = 2; // sensor RX <- host TX; V1 gauge conflict
+inline constexpr int kSdClk = 5;
+inline constexpr int kSdCmd = 4;
+inline constexpr int kSdData0 = 6;
+inline constexpr int kGaugeSda = 15;
+inline constexpr int kGaugeScl = 16;
+inline constexpr int kIndicatorLed = 38;
+
 bool start_sensor();
 int read_sensor();
 bool mount_card();
