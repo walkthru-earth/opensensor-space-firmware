@@ -3452,13 +3452,16 @@ bool begin(const Config &configuration, const Hooks &board_hooks,
           ? "ok"
           : "bad";
   oslog.printf(
-      "PARQUET BEGIN schema=%s columns=%u sample_s=10 "
-      "interval_s=900 max_rows=90 max_row_groups=%u psram_workspace_bytes=%u "
+      "PARQUET BEGIN schema=%s columns=%u sample_s=%u "
+      "interval_s=%u max_rows=%u max_row_groups=%u psram_workspace_bytes=%u "
       "row_bytes=%u boot=%s thing=%s "
       "codec=%s crc32_check=%s\n",
-      config.schema_name, unsigned(field_count), unsigned(kMaxRowGroups),
-      unsigned(sizeof(WriterState)), unsigned(sizeof(Sample)), boot_text,
-      thing_text, codec_name(selected_codec), crc_check);
+      config.schema_name, unsigned(field_count),
+      unsigned(config.sample_interval_ms / 1000),
+      unsigned(rotation_seconds.load()), unsigned(kMaxRows),
+      unsigned(kMaxRowGroups), unsigned(sizeof(WriterState)),
+      unsigned(sizeof(Sample)), boot_text, thing_text,
+      codec_name(selected_codec), crc_check);
   // Releases the worker held in storage_worker() until BEGIN is out.
   xTaskNotifyGive(worker_task);
   return true;
