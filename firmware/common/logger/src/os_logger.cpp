@@ -2276,13 +2276,6 @@ bool storage_writable(std::size_t &count, bool &storage_ready) {
   return storage_ready && governor.writable();
 }
 
-// The worker's view of the card for power::attempt_close(). writable()
-// requests a storage probe. In Retry with a remount hook that probe may
-// finalize the open file, remount the card and commit the waiting rows to a
-// new file, and the remount marks every open READ handle for the recheck
-// (archive_sync.h). finalize() then closes whatever is open. It reports the
-// write alone, so a free space reading that fails after a good finalize
-// leaves the governor in Retry but is not logged as a failed close.
 // The worker's view of the card for attempt_close(). In Retry, writable()
 // runs the governor probe, which finalizes the open telemetry file,
 // remounts, reports remounted() and mounted() to the archive session and
