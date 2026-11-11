@@ -1,6 +1,6 @@
 # STAC metadata contract research
 
-Research snapshot from 2026-10-25 at commit `2b49114`. Nothing here is implemented. It records why and how the firmware could publish a STAC description of its columns, so the mobile app and host tools stop being air quality only.
+Research snapshot from 2026-10-25 at commit `2b49114`. The board template, the `opensensor` footer, GET_DESCRIPTOR and the File Item sidecar (#142) are built. The Thing Collection is not built (#145). It records why and how the firmware could publish a STAC description of its columns, so the mobile app and host tools stop being air quality only.
 
 | File | Content |
 | --- | --- |
@@ -9,9 +9,9 @@ Research snapshot from 2026-10-25 at commit `2b49114`. Nothing here is implement
 
 The app-side design is `docs/superpowers/specs/2026-10-25-sensor-agnostic-stac-contract.md` in walkthru-earth/opensensor-space-mobile, tracked by walkthru-earth/opensensor-space-mobile#182. Firmware work is tracked by epic #83 and issues #84 to #93.
 
-Who writes the STAC Items, Collections and Catalog is settled in [decision 0001](../decisions/0001-standalone-thing-stac.md) (#109). Since 2026-11-04 the board writes the File Item and the Thing Collection, and only the catalog host writes the root Catalog.
+Who writes the STAC Items, Collections and Catalog is settled in [decision 0001](../decisions/0001-standalone-thing-stac.md) (#109). Since 2026-11-04 the board owns the File Item and the Thing Collection, and only the catalog host writes the root Catalog. The board writes the File Item today (#142). The Thing Collection writer is decided and not built (#145).
 
-When any part lands, move the settled contract into `table-and-observation-model.md` and `ble-sync-protocol.md`, and keep this folder as history.
+The settled contract of each built part lives in `table-and-observation-model.md`, `telemetry-pipeline.md` and `ble-sync-protocol.md`. This folder stays as history.
 
 ## Field names are superseded
 
@@ -20,7 +20,7 @@ The two audits are dated and propose draft field names. Their findings still sta
 v0.1.0 splits the metadata into three layers, as its [PROFILE.md](https://github.com/walkthru-earth/stac-opensensor/blob/83787768cc8451109d48a03d4ef5493ffcd403dd/PROFILE.md) defines.
 
 1. Board template. The firmware build generates one per schema, plain JSON with `"type": "OpenSensorTemplate"`, not STAC and not a profile Collection. It holds the public columns in `item_assets.data.table:columns` (core `unit`, core `roles` and the `opensensor:` column fields, no `title` or `opensensor:scale`), `instruments`, `opensensor:sample_interval_s`, and a `firmware` block with `schema`, `proto_min`, `dict`, `live_keys` and `unit_labels`. Its SHA-256 is the `desc` digest and `GET_DESCRIPTOR` streams it. The dictionary digest reaches it as `file:checksum` on a `describedby` link to `telemetry_fields.inc`. There is no `cube:dimensions`.
-2. Thing Collection. The board writes it since [decision 0001](../decisions/0001-standalone-thing-stac.md). It copies the template columns and adds extent, license and a second `describedby` link to the template with `file:checksum` set to `1220` plus `desc`. Column `title` and `opensensor:scale` come from the owner config when the owner sets them, and `opensensor:scales` only when a column names a scale ([#145](https://github.com/walkthru-earth/opensensor-space-firmware/issues/145)).
+2. Thing Collection. [Decision 0001](../decisions/0001-standalone-thing-stac.md) gives it to the board, and the writer is decided and not built. It will copy the template columns and add extent, license and a second `describedby` link to the template with `file:checksum` set to `1220` plus `desc`. Column `title` and `opensensor:scale` will come from the owner config when the owner sets them, and `opensensor:scales` only when a column names a scale ([#145](https://github.com/walkthru-earth/opensensor-space-firmware/issues/145)).
 3. App profile. `primary`, `hero`, `family`, `display_step` and column labels live in an app file keyed by the dictionary digest, outside any published schema.
 
 | Draft name in the audits | v0.1.0 |
@@ -58,5 +58,4 @@ The owner decided these points after both audits were written. They supersede th
 - Station becomes Thing with a required `mobility`, and the location moves to a
   native `geometry` column with a `geo` footer key (#83, bridge decisions 31 to
   35). The firmware follows stac-opensensor commit `83787768cc8451109d48a03d4ef5493ffcd403dd`. See the
-  Thing entry in `../mobile-migration.md`. Code comments in `firmware/` and
-  `tools/` that still cite the older spec pin move to the new pin with [#142](https://github.com/walkthru-earth/opensensor-space-firmware/issues/142).
+  Thing entry in `../mobile-migration.md`.

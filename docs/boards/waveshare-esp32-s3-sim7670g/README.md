@@ -3,12 +3,12 @@
 The current [V2.0 application](../../../firmware/esp-idf-waveshare-sim7670g/README.md)
 is native **ESP-IDF 6.1**, with logger and UART/read-only TF diagnostic variants.
 The logger retains UART1 PMS5003T, one-bit SDMMC, OPI PSRAM, UART0 console,
-MAX17048 and the 62-column v6 schema with dictionary v7, including battery
+MAX17048 and the 62-column v6 schema with dictionary v8, including battery
 health state, gauge diagnostics and the location columns.
 The newest dated native readback is the
 [2026-10-26 reflash of main 689bb61](bench-verified.md#main-689bb61-usb-reflash-thing-id-and-first-geo-footer-2026-10-26),
 with the Thing id, a null `geometry` column and the `geo` footer key on the
-first file. **Phone sync, endurance and power-cut durability remain
+first file. **Phone sync, GNSS fix, endurance and power-cut durability remain
 unqualified.** Use the [native build/flash workflow](../../../firmware/esp-idf-waveshare-sim7670g/README.md#current-build-and-flash-workflow)
 and [shared development guide](../../shared/development.md).
 
@@ -27,7 +27,7 @@ The board's product name includes a modem, but local sampling and SD copies must
 
 ## Stack and heap budgets
 
-Issue #37 sizes task stacks from two numbers. The static worst case comes from
+Task stacks are sized from two numbers, the method of issue #37. The static worst case comes from
 the build, and the measured high water mark comes from the board.
 
 - **Static.** `pixi run stack-budget --image waveshare/logger --path` prints each
@@ -63,7 +63,7 @@ Bench recipe, about 75 min.
    session that was already open.
 5. Record the smallest value seen per task and heap below, with the date,
    image hash and what was exercised. A task with less than a quarter of its
-   stack left (os-board has 12,288 B) is a finding to raise on issue #37.
+   stack left (os-board has 12,288 B) is a finding to raise on issue #61.
 
 | Date | Image hash | Exercised | os-board | parquet-sd | os-lan | os_ble_error | nimble_host | tcpip | esp_timer | sys_evt | internal_min | internal_largest | dma_largest | psram_largest |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |

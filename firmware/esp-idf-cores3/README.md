@@ -98,10 +98,10 @@ the automatic allocation flag applies to non-SPI initialization, so this
 SDSPI adapter supplies its own buffer.
 
 Shared connectivity now prefers PSRAM for Wi-Fi/lwIP packet storage, with
-**eight static RX and eight static TX DMA buffers**, **32 software RX buffers**
-and **16 cached TX buffers**. Hardware buffers reserve approximately **25.6 KiB**;
-software packets and TCP allocations use PSRAM first, with internal fallback.
-The TCP send/receive limits remain **5,760 bytes per socket**, for three LAN
+**sixteen static RX and eight static TX DMA buffers**, **32 dynamic RX buffers**
+and **32 cached TX buffers**.
+Software packets and TCP allocations use PSRAM first, with internal fallback.
+The TCP send buffer and window are **23,040 bytes per socket** each, for three LAN
 clients, plus SDK metadata. Startup and finalized-file logs report DMA free,
 largest-block and minimum-free values. These bounds follow the SDK's
 [PSRAM Wi-Fi guidance](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32s3/api-guides/wifi-driver/wifi-performance-and-power-save.html#using-psram);

@@ -1,8 +1,10 @@
 # Waveshare ESP32-S3-SIM7670G-4G V2 hardware
 
 The current board adapter uses native ESP-IDF 6.1 UART, I²C and SDMMC drivers,
-with led_strip 3.1.1 for GPIO38. Native builds pass; physical native behavior
-is unqualified. The source checks and measured runs below retain their dated
+with led_strip 3.1.1 for GPIO38. Native builds pass. A short native USB and SD readback of v2.15 on 2026-10-26 is in the
+[bench record](bench-verified.md#main-689bb61-usb-reflash-thing-id-and-first-geo-footer-2026-10-26).
+Phone sync, GNSS fix, endurance and power-cut durability remain unqualified.
+The source checks and measured runs below retain their dated
 historical Arduino-image scope. [Current firmware](../../../firmware/esp-idf-waveshare-sim7670g/README.md).
 
 Source-checked 2026-09-28 for PCB revision **V2.0**, as confirmed by the owner. Identification, flash capacity/type, PSRAM initialization/readback, eFuse status, PMS UART reception and bounded logger TF write/serial readback were measured on the unit. Remaining pin assignments and optional peripheral function are source-checked; RGB visual operation, encrypted BLE transfer and Wi-Fi/LAN remain unverified. See the [bench record](bench-verified.md). [Waveshare product documentation](https://docs.waveshare.com/ESP32-S3-SIM7670G-4G), [Arduino guide with V1/V2 tables](https://docs.waveshare.com/ESP32-S3-SIM7670G-4G/Arduino), [FAQ and recovery](https://docs.waveshare.com/ESP32-S3-SIM7670G-4G/FAQ).

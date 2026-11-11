@@ -39,7 +39,7 @@ lets `ABORT` stop a running `LIST`, `READ` or `LOG_TAIL`.
 
 ## Purpose and non-goals
 
-The system is **offline-first**: the card is the data origin, and a local archive on a phone, laptop or hub is its first copy. Logging and local sync work with no internet. Any link between device and phone — BLE today, Wi-Fi or LoRa device-to-device later — is a sync transport, and if the device or the phone happens to have Wi-Fi or a SIM, that is welcome but never required. Cloud upload, when it exists, is a separate opt-in step that runs *after* local sync and is off by default. This document covers the BLE transport. A phone within Bluetooth range must be able to, without internet or any server:
+The system is **offline-first**: the card is the data origin, and a local archive on a phone, laptop or hub is its first copy. Logging and local sync work with no internet. Any link between device and phone, BLE today, Wi-Fi or LoRa device-to-device later, is a sync transport, and if the device or the phone happens to have Wi-Fi or a SIM, that is welcome but never required. Cloud upload, when it exists, is a separate opt-in step that runs *after* local sync and is off by default. This document covers the BLE transport. A phone within Bluetooth range must be able to, without internet or any server:
 
 1. identify the device and its schema,
 2. watch the latest readings,
@@ -54,7 +54,7 @@ The device **never** deletes, rewrites or renames a finalized file because of th
 | Item | Value |
 | --- | --- |
 | Role | Device = GATT server / peripheral. Phone = central. One connection at a time. |
-| Advertising | Connectable, legacy PDUs, public address (the ESP32-S3 factory MAC, the same bytes `device_id` is built from — never a resolvable private address, see [address stability](#advertising-payload-v21)). **ADV**: flags + 10-byte [service data](#advertising-payload-v21) under the service UUID (31 bytes exactly). **Scan response**: complete local name `OS-xxxx` (`xxxx` = last four hex digits of `device_id`) + complete 128-bit service UUID list. Before 2.1 the UUID list was in the ADV and there was no service data; Android, CoreBluetooth and bleak all merge both PDUs into one record, so a UUID filter finds the device either way. |
+| Advertising | Connectable, legacy PDUs, public address (the ESP32-S3 factory MAC, the same bytes `device_id` is built from, never a resolvable private address, see [address stability](#advertising-payload-v21)). **ADV**: flags + 10-byte [service data](#advertising-payload-v21) under the service UUID (31 bytes exactly). **Scan response**: complete local name `OS-xxxx` (`xxxx` = last four hex digits of `device_id`) + complete 128-bit service UUID list. Before 2.1 the UUID list was in the ADV and there was no service data; Android, CoreBluetooth and bleak all merge both PDUs into one record, so a UUID filter finds the device either way. |
 | MTU | Device accepts up to 517. Phone MUST request ≥ 247 before using `control`; request 517 where supported. MTU ≥ 483 carries the maximum 480-byte STATUS/LIVE JSON in one notification. When an actual JSON value exceeds MTU − 3, its notification is omitted; use characteristic long reads for the complete cached snapshot. Frame sizes derive from the negotiated MTU: `payload_max = min(MTU − 3, 512)`. The 512 cap is the GATT attribute-value limit; Android silently drops notifications above it (measured 2026-09-17), macOS does not, so a device that sends 514-byte frames works from a laptop and fails from a phone. |
 | Security | LE Secure Connections, bonding. Pairing mode is configurable (below); the default is chosen at first boot from whether a display is present, the way Meshtastic does it. In `random` and `fixed` modes every characteristic requires an encrypted **and authenticated** link (MITM); in `none` mode encrypted only. After the first bond, reconnects are silent. Unbonding is done on the phone, or with `ble.clear_bonds`; the device keeps up to 3 bonds and evicts the oldest. |
 | Endianness | Every multi-byte integer is **little-endian**. |
@@ -68,7 +68,7 @@ The device **never** deletes, rewrites or renames a finalized file because of th
 | `fixed` | `ble.pin`, random **per-device** 6-digit value at first boot | no display is detected at first boot (bare ESP32-S3 PCB) | Same phone UX (Android asks for six digits). The owner obtains it with physical serial `parquet owner-pin` (or an attached pairing display), or configures another value before deployment. This owner reply is excluded from LOG_TAIL and is not printed at boot. Firmware does not ship a universal PIN. Existing installations that still stored legacy `123456` rotate it once at boot. |
 | `none` | Just Works | never by default | Encrypted, unauthenticated, no prompt. For lab benches only; must be enabled deliberately. Characteristics drop the `AUTHEN` requirement in this mode so reads succeed. |
 
-The mode and PIN are stored in NVS (`oscfg` namespace) and are **applied at the next boot**, because the NimBLE security parameters are fixed at stack start; `SET_CONFIG` answers with `reboot_required` set and the phone offers `REBOOT`. The first-boot auto-detection result is stored, so removing the display later does not silently change the mode (again like Meshtastic — change the mode before removing the screen). A lost phone is handled by re-pairing or by `ble.clear_bonds=1`.
+The mode and PIN are stored in NVS (`oscfg` namespace) and are **applied at the next boot**, because the NimBLE security parameters are fixed at stack start; `SET_CONFIG` answers with `reboot_required` set and the phone offers `REBOOT`. The first-boot auto-detection result is stored, so removing the display later does not silently change the mode (again like Meshtastic, change the mode before removing the screen). A lost phone is handled by re-pairing or by `ble.clear_bonds=1`.
 
 The `oscfg` namespace replaced the old settings namespace in #93 with no
 migration. It starts empty after that reflash, so the pairing mode and PIN, the
@@ -96,7 +96,7 @@ older fixed-PIN bench/debug notes and is not a current API requirement.
 
 ### Advertising payload (v2.1)
 
-Service data AD (type `0x21`) under the service UUID `255f595e-0001-…`, in the ADV PDU, refreshed in place (one HCI command) whenever a field changes — at most once per sample tick, in practice a few times per file window. A phone never has to connect to learn any of it, and a phone's offloaded scan filter (`deviceAddress` **and** `serviceData` with a mask on byte 1) can wake its app on a bit flip while it sleeps. Everything here is public to anyone in range: presence, counters, health bits — nothing more.
+Service data AD (type `0x21`) under the service UUID `255f595e-0001-…`, in the ADV PDU, refreshed in place (one HCI command) whenever a field changes, at most once per sample tick, in practice a few times per file window. A phone never has to connect to learn any of it, and a phone's offloaded scan filter (`deviceAddress` **and** `serviceData` with a mask on byte 1) can wake its app on a bit flip while it sleeps. Everything here is public to anyone in range: presence, counters, health bits, nothing more.
 
 | Offset | Field | Meaning |
 | --- | --- | --- |
@@ -125,7 +125,7 @@ These are `ble::Options` defaults, set per board through `ossync::ServiceConfig:
 
 The serial log records the requests (`BLE LINK request`, `BLE CONN request`) and what the central chose (`BLE CONN itvl= lat= to=`, `BLE PHY tx= rx=`, `BLE DLE tx= rx=`). A link request the stack refuses or the controller fails is logged as `BLE HCI fail cmd= op= rc= timeout=`, where `timeout=1` (rc 19) means the controller did not answer within 2 s and the BLE host resets. A connection update retried while it keeps failing with the same `rc` logs only the first failure. Values are in Bluetooth units: interval 1.25 ms, timeout 10 ms, PHY 1 = 1M and 2 = 2M.
 
-**Address stability.** Both the Android Companion Device Manager and per-device scan filters key on the advertised address. NimBLE uses the public address derived from the factory MAC; do not enable NimBLE privacy / resolvable private addresses on this device — every presence mechanism would silently stop matching.
+**Address stability.** Both the Android Companion Device Manager and per-device scan filters key on the advertised address. NimBLE uses the public address derived from the factory MAC; do not enable NimBLE privacy / resolvable private addresses on this device. Every presence mechanism would silently stop matching.
 
 ## Service and characteristics
 
@@ -133,8 +133,8 @@ Base UUID `255f595e-XXXX-47ed-8e0d-59994199b680`; the 16-bit field selects the a
 
 | Attribute | UUID | Props | Payload |
 | --- | --- | --- | --- |
-| **Service** OpenSensor Sync | `255f595e-0001-47ed-8e0d-59994199b680` | — | — |
-| `info` | `…-0002-…` | read | JSON, ≤ 400 bytes, static for a boot |
+| **Service** OpenSensor Sync | `255f595e-0001-47ed-8e0d-59994199b680` | none | none |
+| `info` | `…-0002-…` | read | JSON, ≤ 399 bytes, static for a boot |
 | `status` | `…-0003-…` | read, notify | JSON, ≤ 480 bytes |
 | `live` | `…-0004-…` | read, notify | JSON, ≤ 480 bytes |
 | `control` | `…-0005-…` | write (with response) | binary request, ≤ 512 bytes |
@@ -213,14 +213,14 @@ Each field's `live_key` and `decimals` are part of the board's `telemetry_fields
 {"seq":15021,"mono":150210000000,"utc":1757990410000000000,"pms":4,
  "c1":5,"c25":7,"c10":9,"pm1":5,"pm25":7,"pm10":9,
  "n03":900,"n05":250,"n1":30,"n25":2,"n5":0,"n10":0,
- "imu_t":31.4,"als":120,"vbus":5000,"bat":4100,"pct":80,"chg":0}
+ "imu_t":31.4,"als":120,"vbus":5000,"bat":4100,"pct":80,"chg":0,"t":null,"rh":null}
 ```
 
 | Key | Dictionary field |
 | --- | --- |
 | `seq`, `mono`, `utc` | `sequence`, `monotonic_us`, `event_time_utc_us` (null when unsynchronized). `utc` stays in nanoseconds, the file column `event_time_utc_us` × 1000 |
 | `pms` | `pms_status` code: 0 absent, 1 warming, 2 stale, 3 sensor error, 4 valid. Waveshare adds 5 model mismatch and 6 sleeping. Code 6 is reserved for the PMS duty cycle (#39) and no image writes it yet |
-| `pm1`,`pm25`,`pm10` | `pm*_atmospheric_ug_m3` — the values to display |
+| `pm1`,`pm25`,`pm10` | `pm*_atmospheric_ug_m3`, the values to display |
 | `c1`,`c25`,`c10` | `pm*_cf1_ug_m3` |
 | `n03`,`n05`,`n1`,`n25`,`n5`,`n10` | `particles_gt*_per_01l`; PMS5003T exposes only `n03`, `n05`, `n1`, `n25`. It has no `n5`/`n10` measurements |
 | `t` | `ambient_temperature_c`, ambient air temperature only. Waveshare PMS5003T reports it. CoreS3 has no resolved ambient sensor, so `t` is always null there |
@@ -252,19 +252,19 @@ by direction.
 
 | Op | Name | Request body | Response frames |
 | --- | --- | --- | --- |
-| `0x01` | `LIST` | — | `FILE` × n, then `LIST_END` on a complete scan, or `ERROR` |
+| `0x01` | `LIST` | none | `FILE` × n, then `LIST_END` on a complete scan, or `ERROR` |
 | `0x02` | `OPEN` | `name` utf8 (rest of packet) | `OPENED` or `ERROR` |
 | `0x03` | `READ` | `handle` u16, `offset` u32, `length` u32 | `CHUNK` × n, then `READ_END` |
 | `0x04` | `CLOSE` | `handle` u16 | `CLOSED` |
 | `0x05` | `SET_TIME` | `epoch_s` i64, optionally `subsecond_us` u32 | `TIME_SET` or `ERROR` 9; `status` notify |
-| `0x06` | `FLUSH` | — | `FLUSHED` or `ERROR` 10; `status` notify |
-| `0x07` | `STATUS` | — | `status` cache/notify only; **no `response` frame**, so the phone must not wait on `response` for it. If the value exceeds MTU − 3 the notification is omitted and the phone reads the cached characteristic. Over LAN this produces a `STATUS` push frame, so it doubles as a keep-alive ping. |
+| `0x06` | `FLUSH` | none | `FLUSHED` or `ERROR` 10; `status` notify |
+| `0x07` | `STATUS` | none | `status` cache/notify only; **no `response` frame**, so the phone must not wait on `response` for it. If the value exceeds MTU − 3 the notification is omitted and the phone reads the cached characteristic. Over LAN this produces a `STATUS` push frame, so it doubles as a keep-alive ping. |
 | `0x08` | `GET_CONFIG` | empty or one page byte `0..6` | `CONFIG` or BLE `CONFIG_CHUNK` sequence |
 | `0x09` | `SET_CONFIG` | `key=value` lines, utf8, `\n`-separated (see [configuration](#device-configuration-v2)) | `CONFIG` or BLE `CONFIG_CHUNK` sequence; `ERROR` 12 with the offending key as `detail` |
-| `0x0A` | `WIFI_SCAN` | — | `WIFI_AP` × n, then `WIFI_SCAN_END`; `ERROR` 15 if the radio cannot scan |
-| `0x0B` | `REBOOT` | — | `REBOOTING`, then the device finalizes any RAM batch and restarts |
+| `0x0A` | `WIFI_SCAN` | none | `WIFI_AP` × n, then `WIFI_SCAN_END`; `ERROR` 15 if the radio cannot scan |
+| `0x0B` | `REBOOT` | none | `REBOOTING`, then the device finalizes any RAM batch and restarts |
 | `0x0C` | `LOG_TAIL` | `max_bytes` u16 (device clips to the bytes it retains, at most 65535) | `LOG` × n, then `LOG_END` |
-| `0x0D` | `GET_TOKEN` | — | `TOKEN`; **BLE only**, `ERROR` 13 over LAN |
+| `0x0D` | `GET_TOKEN` | none | `TOKEN`; **BLE only**, `ERROR` 13 over LAN |
 | `0x0E` | `GET_DIAG` | empty (any body is `ERROR` 1) | `DIAG`, or `ERROR` 7 `detail="mtu"` when `payload_max` is below 38 |
 | `0x0F` | `ABORT` | empty (any body is `ERROR` 1) | `ABORTED` with the op it stopped, `op=0` when idle |
 | `0x10` | `LIST_SINCE` | cursor, 32 bytes. See [LIST_SINCE](#list_since) | `FILE` × n, then `LIST_SINCE_END`, or `ERROR`. Older firmware answers `ERROR` 11 |
@@ -305,7 +305,7 @@ by direction.
 
 The status JSON remains bounded to 480 bytes. The actual formatter retains every key at 467 bytes with the widest representable values, including `sd_state`, `dc=65535`, `dr=255`, `clk`/`rtc` at their u8 limit, `ls` at its u32 limit, and the clamped `utc_ms`, `clk_age_s` and `miss` (462 for LZ4), checked by `pixi run logger-status-test`, which also requires 10 bytes of headroom. In addition to the existing counters, `part` is the number of retained `.partial` files found by the startup/list scan, while `qf` and `qb` are the total file count and total bytes currently under `/output/quarantine/` after startup quarantine completes. `qf` and `qb` include files preserved by earlier boots, not only files moved during the current boot; both saturate at their unsigned integer limits rather than wrapping.
 
-`ERROR.op` echoes the **first byte of the request** as received, even when that byte is not a known opcode (code 11); an empty write is reported as `op=0x01 code=1 detail="empty"`. `OPENED.name` is the requested name in full; the device does not shorten it (names are ≤ 399 bytes, so on an MTU-517 link every `OPENED` fits one PDU, another reason the phone must negotiate 517). A `FILE` entry whose name would not fit `payload_max − 5` aborts LIST with error 7 (`detail="mtu"`) and is logged on serial as `BLE LIST SKIP`. An archive exceeding the u32 count capacity aborts LIST with error 7 (`detail="count"`). Filesystem enumeration failures (including an SD read failure after earlier entries) abort LIST with error 8. Neither case produces `LIST_END`. Clients commit a replacement listing only after a valid `LIST_END`; preceding `FILE` entries alone are an incomplete snapshot. The device clears its `new_files` hint only after a complete scan and accepted `LIST_END` delivery. `READ_END.next_offset` always equals `offset + bytes actually delivered in CHUNK frames`; a phone that received fewer bytes has lost a notification and must treat the **window** as failed, never trust `next_offset` over its own count, and a failed window is retried with a new `READ` from the phone's own offset, not an aborted sync. Measured 2026-09-17: an Android phone's Bluetooth stack dropped runs of 16 to 18 consecutive notifications at the start of a window while the board's Wi-Fi was active (the same windows reached a Mac intact), so clients should keep reading until that request's `READ_END` before re-issuing, and are advised to use ≤ 4 KiB windows over BLE (16 KiB over LAN).
+`ERROR.op` echoes the **first byte of the request** as received, even when that byte is not a known opcode (code 11); an empty write is reported as `op=0x01 code=1 detail="empty"`. `OPENED.name` is the requested name in full; the device does not shorten it (names are 9 to 384 bytes, so on an MTU-517 link every `OPENED` fits one PDU, another reason the phone must negotiate 517). A `FILE` entry whose name would not fit `payload_max − 5` aborts LIST with error 7 (`detail="mtu"`) and is logged on serial as `BLE LIST SKIP`. An archive exceeding the u32 count capacity aborts LIST with error 7 (`detail="count"`). Filesystem enumeration failures (including an SD read failure after earlier entries) abort LIST with error 8. Neither case produces `LIST_END`. Clients commit a replacement listing only after a valid `LIST_END`; preceding `FILE` entries alone are an incomplete snapshot. The device clears its `new_files` hint only after a complete scan and accepted `LIST_END` delivery. `READ_END.next_offset` always equals `offset + bytes actually delivered in CHUNK frames`; a phone that received fewer bytes has lost a notification and must treat the **window** as failed, never trust `next_offset` over its own count, and a failed window is retried with a new `READ` from the phone's own offset, not an aborted sync. Measured 2026-09-17: an Android phone's Bluetooth stack dropped runs of 16 to 18 consecutive notifications at the start of a window while the board's Wi-Fi was active (the same windows reached a Mac intact), so clients should keep reading until that request's `READ_END` before re-issuing, and are advised to use ≤ 4 KiB windows over BLE (16 KiB over LAN).
 
 Error codes: 1 malformed request · 2 invalid name · 3 not a finalized Parquet file · 4 open failed · 5 bad handle · 6 range outside file · 7 busy (command queue full on a secure link, transfer in progress, another LIST running, a LIST ended by a storage remount, or a LIST or READ stopped early so the device can close its open file on a critical battery, retry later) · 8 storage unavailable · 9 invalid epoch (outside 2020 to 2100, or invalid microsecond fraction) · 10 nothing to flush · 11 unknown opcode · 12 invalid config (`detail` = key) · 13 not allowed on this link · 14 authentication failed (over LAN, a bad handshake token. Over BLE it is defense in depth and an unpaired client normally never sees it. NimBLE refuses an unencrypted Control write with ATT error 0x05, 0x0C or 0x0F before the firmware runs, and that error is what makes the phone pair. Its CCCD writes have no security flag, so it can subscribe to `response`, but nothing is sent there on an unpaired link except a possible ERROR 14. In this firmware the ATT check applies the same rule as the firmware check (encryption in every mode, plus authentication and a 16 byte Secure Connections key in the passkey modes), so ERROR 14 with `detail="auth"` is only a guarded fallback if the two ever disagree. Then the Control write is acknowledged, not run, and answered with that ERROR. Neither answer is busy, never retry it, pair again) · 15 Wi-Fi unavailable · 16 aborted (proto 3) · 17 no descriptor (`GET_DESCRIPTOR` on an image built without a template) · 18 image rejected (an `OTA_WRITE` or `OTA_END` whose image is for another chip or project, has a broken header, fails its SHA-256 or fails the ESP-IDF image check. See [LAN OTA](#lan-ota)).
 
@@ -320,7 +320,7 @@ Rules:
 - CoreS3 v6.10 / Waveshare v2.4 accept the exact incoming anchor for future samples without flushing the current interval or creating a singleton file. Initial UTC, an RTC-to-external upgrade, and a correction strictly larger than two seconds in either direction start a new clock epoch; the next genuine sample closes the previous epoch/window. Small host/network refreshes keep the epoch, and each future row records its exact new anchor and source. Earlier rows retain their original UTC, epoch and anchor. Finalization records the latest same-boot reconciliation anchor in the footer; TIME_SET also supplies boot-scoped evidence to the phone. Accepted time is not an SD durability acknowledgement. Older firmware finalized every anchor and its first timed sample.
 - CoreS3 writes external UTC through its optional BM8563 callback on the main-loop task and can restore it at boot as `clk=2`. Successful Wi-Fi SNTP produces `clk=3`; Wi-Fi association alone is not an anchor. A board without usable RTC starts unanchored on each reboot. Disconnection during an uninterrupted boot retains its current monotonic UTC estimate. A later reboot's anchor must never date a prior unanchored boot.
 - Routine/background sync lists completed files and leaves the current interval open. Explicit “sync now” deliberately requests current unfinished readings using `FLUSH`.
-- `FLUSH` finalizes the RAM batch — and, on firmware v6, any row groups already in the open file — so the phone can pull everything up to now. Use it deliberately (a "sync now" action); it produces a short file and does not change the rotation interval. The `FLUSHED` row count is RAM rows plus rows that were already on the card in the open file.
+- `FLUSH` finalizes the RAM batch, and, on firmware v6, any row groups already in the open file, so the phone can pull everything up to now. Use it deliberately (a "sync now" action); it produces a short file and does not change the rotation interval. The `FLUSHED` row count is RAM rows plus rows that were already on the card in the open file.
 
 ## Device configuration (v2)
 
@@ -332,8 +332,8 @@ Rules:
 | `ble.pin` | 6 digits `000000`–`999999` | next boot | passkey for `fixed` mode |
 | `ble.clear_bonds` | `1` | *action* | forget every bonded phone |
 | `wifi.on` | `0` \| `1` | immediately | station radio on/off (off by default) |
-| `wifi.ssid` | ≤ 32 bytes | immediately | network name |
-| `wifi.psk` | ≤ 63 bytes, empty for an open network | immediately | passphrase, stored in NVS in clear (flash encryption is not used on this board by rule) |
+| `wifi.ssid` | ≤ 32 bytes, no control characters | immediately | network name |
+| `wifi.psk` | empty for an open network, or 8 to 63 bytes, no control characters | immediately | passphrase, stored in NVS in clear (flash encryption is not used on this board by rule) |
 | `lan.on` | `0` \| `1` | immediately | TCP sync server + mDNS while Wi-Fi is connected (on by default) |
 | `lan.rotate_token` | `1` | *action* | new LAN token. A LAN caller reads its `CONFIG` reply first. Every LAN session then receives a [BYE](#bye) with reason `token-rotated` (10) and closes, and phones must fetch the token again over BLE |
 | `ntp.on` | `0` \| `1` (default 1) | immediately | enable automatic native SNTP when Wi-Fi has an IP lease |
@@ -401,11 +401,15 @@ Each page remains within the 480-byte JSON limit. NTP policy changes alone do
 not reconnect Wi-Fi or close LAN. Router DHCP option 42 is tried first, then
 configured hosts, then allowed public fallback; association alone never
 establishes UTC. Location normalization happens after the complete patch, so
-cell/resolution key order has no effect. Separate single NVS records hold the
-coherent NTP and location policies; legacy keys keep their existing types.
-Missing records receive defaults; corrupt location becomes unset and corrupt
-NTP becomes disabled. A failed save does not publish the live snapshot; the
-whole legacy multi-key save is still not transactional.
+cell/resolution key order has no effect. Every key except the owner site keys
+is one NVS blob under the `cfg` key, written with one `nvs_set_blob` and one
+commit and then read back. The owner site keys are a separate `owner` record
+saved the same way. The NTP and location policies are each one text field
+inside the `cfg` record. A
+missing or damaged `cfg` record gets fresh defaults. A location field that
+fails validation at boot reads as unset location, and an NTP field that fails
+validation reads as disabled NTP. A failed save does not publish the live
+snapshot.
 
 Location is the monitoring Thing deployment, explicitly configured
 from the mobile app. The app sends only a cell; firmware derives its center and
@@ -437,7 +441,7 @@ wifi.on=1
 
 Changing Wi-Fi settings over a LAN session is allowed but will usually drop that session; the phone should do provisioning over BLE. `REBOOT` attempts to finalize pending rows first when storage is healthy; failures remain visible in the logger counters and do not establish durability. It answers `REBOOTING` with the delay before restart (≈ 500 ms) so the phone can disconnect cleanly.
 
-`LOG_TAIL` returns the newest `max_bytes` (at most 65535) of the diagnostic ring that mirrors DebugLog output, excluding raw physical-owner command replies, the same `PARQUET …` / `BLE …` / `WIFI …` lines a bench log shows. It exists so an advanced user can see why something failed without a USB cable. It is text for humans, not a stable API. The ring is in PSRAM (64 KiB by default, `CONFIG_OS_LOG_PERSIST_RING_BYTES`) when the board image provides a persistent block, otherwise a 4 KiB internal ring (see [persistent log](#persistent-log)). The reply streams in `LOG` slices of at most 512 bytes over BLE or 1024 over LAN, also bounded by `payload_max`. A tail can contain lines from the previous boot after a warm reboot.
+`LOG_TAIL` returns the newest `max_bytes` (at most 65535) of the diagnostic ring that mirrors DebugLog output, excluding raw physical-owner command replies, the same `PARQUET …` / `BLE …` / `WIFI …` lines a bench log shows. It exists so an advanced user can see why something failed without a USB cable. It is text for humans, not a stable API. The ring is in PSRAM (64 KiB by default, `CONFIG_OS_LOG_PERSIST_RING_BYTES`) when the board image provides a persistent block, otherwise a 4 KiB internal ring (see [persistent log](#persistent-log)). The reply streams in `LOG` frames of at most 512 bytes over BLE or 1024 over LAN, so a text slice is at most 511 or 1023 bytes, also bounded by `payload_max`. A tail can contain lines from the previous boot after a warm reboot.
 
 `WIFI_SCAN` runs on the Wi-Fi task, not on the storage worker, and takes 2–4 s; the phone should show progress. The scan is asynchronous. Other LAN sessions keep reading and receiving frames while it runs, and a scan that does not finish within 15 s ends with `WIFI_SCAN_END` status 15 (unavailable). Hidden networks are omitted; duplicate SSIDs (several access points) are reported once with the strongest RSSI.
 
@@ -810,7 +814,7 @@ The same request bodies and response frames as BLE, carried over **one TCP conne
 | Pushes | `STATUS` (0x48) and `LIVE` (0x49) frames are pushed to every authenticated socket whenever the device would notify `status`/`live` over BLE. They may arrive **between any two response frames** (the sampling loop does not wait for a transfer); the phone dispatches on the type byte and must not assume `CHUNK`s are contiguous on the wire. Frames are never interleaved within a frame because each peer has one transmit ring. A peer holds at most one queued `STATUS` and one queued `LIVE`, and a newer snapshot waits until the older one was sent. |
 | Transmit | Each peer has a `ring_bytes` (24 KiB, PSRAM when present) ring of whole frames. Only the LAN task writes to sockets, with non-blocking sends, so other phones keep receiving what is queued for them while one phone stalls. While a session is open the task wakes at least every 10 ms, so a queued reply leaves within that. The worker waits in `wait_step_ms` (200 ms) steps while a ring is full and keeps taking samples between steps. A peer that accepts no byte for `slow_peer_ms` (15 s) while frames are queued is closed with `slow-peer`, which bounds that wait. That rule runs in the LAN task, so the worker also gives up a frame after twice `slow_peer_ms` (30 s) with no space wake from the LAN task and logs `LAN ERROR operation=deliver slot=N waited_ms=N`. The request then ends as after any failed send. Requests from other phones run after it, because the worker is serial, so a phone should allow at least 30 s for a reply. These are sync service settings with shared defaults. |
 | Token | 32 random bytes generated at first boot and kept in NVS. Obtainable **only** via `GET_TOKEN` over an authenticated BLE link (`ERROR` 13 over LAN). `lan.rotate_token=1` replaces it. The token is a bearer secret for anyone on the LAN: keep it in app-private storage, never log it. |
-| Security | The TCP stream is **not encrypted**; the token authenticates the phone, it does not protect data or the token from an active/passive LAN observer after the handshake, and there is no forward secrecy. Restrict it to a trusted WPA2/WPA3 LAN, disable `lan.on` when not needed, rotate the token after suspected exposure, and prefer BLE for provisioning/control. Do not use LAN sync for anything you would not print on the device screen. TLS requires certificate/trust provisioning and measured ESP32-S3 memory/jitter impact; it is not implemented here rather than being faked with an unverifiable self-signed endpoint. |
+| Security | The TCP stream is **not encrypted**; the token authenticates the phone, and the handshake sends it in clear, so the token and all traffic are readable by anyone who can observe the network, and an open Wi-Fi network exposes them to anyone in range. There is no forward secrecy. Restrict it to a trusted WPA2/WPA3 LAN, disable `lan.on` when not needed, rotate the token after suspected exposure, and prefer BLE for provisioning/control. Do not use LAN sync for anything you would not print on the device screen. TLS requires certificate/trust provisioning and measured ESP32-S3 memory/jitter impact; it is not implemented here rather than being faked with an unverifiable self-signed endpoint. |
 
 Sequence for a phone that already bonded over BLE:
 

@@ -1,7 +1,7 @@
 # Reusable firmware modules
 
-The common tree contains eight opt-in native ESP-IDF components, **OSCommon**,
-**OSSensors**, **OSRuntime**, **OSConnectivity**, **OSLogger**, **OSLocation**, `power` and `upload`. The target is ESP32-S3 with
+The common tree contains eleven opt-in native ESP-IDF components, **OSCommon**,
+**OSSensors**, **OSRuntime**, **OSConnectivity**, **OSLogger**, **OSLocation**, `stac`, `gnss`, `gnss_reader`, `power` and `upload`. The target is ESP32-S3 with
 ESP-IDF 6.1; application source uses no Arduino APIs. Pure framing, encoding and
 math plus the actual status/provisioning helpers remain host-testable. Boards
 own peripheral initialization and consume only the required components.
@@ -12,6 +12,9 @@ own peripheral initialization and consume only the required components.
 | `sensors/src/os_ltr553.h` | LTR553 register setup and raw validity | Existing bus read/write and timing callbacks |
 | `sensors/src/os_max17048.h` | MAX17048 VCELL/SOC and diagnostic register reads, decoding, range checks and a verified reset-indicator clear | Existing bus read callback, optional write callback, battery-installed policy |
 | `power/src/os_battery_health.*` | Pure battery state classifier with debounce, hysteresis and post-reset settling | Validated thresholds, monotonic time, gauge samples and any load shedding |
+| `stac/src/os_stac_item.*` | STAC File Item builder for the `<file>.json` sidecar the logger writes at finalize. Per file statistics and the resolution 8 cell outline | `Config::stac_columns` table built from the board FIELD and SEM tables. The logger owns every file operation |
+| `gnss/src/os_gnss.*` | GNSS fix type, receiver dialects, fix to H3 resolution 8 cell, freshness and the per row location source rule | `Hooks::gnss_fix` on a board with a receiver |
+| `gnss_reader/src/os_gnss_reader.*` | Reusable UART reader task that polls the receiver and keeps the newest fix | `ReaderConfig` with the UART, pins, baud, dialect and optional power callback |
 | `upload/src/os_upload_*` | Off by default source.coop uploader. SigV4, STS, policy, append only ledger, session and an HTTPS transport | Provisioned API key, trusted UTC, the archive and ledger IO and when a step runs |
 | `src/numeric_sample.h` | Fixed-size numeric rows with explicit validity/nulls | Board field dictionary and collection |
 | `src/utc_clock.h` | UTC anchor arithmetic, source codes, calendar conversion and supported bounds | Coherent anchor locking, host sync and optional RTC adapter |
@@ -59,7 +62,7 @@ own PR with the reason and both board builds green.
 | `cadence::kMaxBatchRows = 90` | `logger/src/os_logger_cadence.h` | Rows in one RAM batch, which is one row group and the loss window on reset. Footer `file.row_group_rows_max` | Rows per group are the rotation window divided by `Config::sample_interval_ms`, at most 90. A file holds at most `kMaxRowGroups = 8` groups (720 rows), so a fast period with a long window closes several files per window. The period must pass `cadence::valid_sample_interval()`, 1 s to 300 s and a divisor of 300 s |
 | 480 byte STATUS and LIVE JSON | `ble::kMaxJson` in `connectivity/src/ble_sync.h` | Each snapshot, so one BLE frame (512) and MTU 483 carry it | Add up every `live_key` of the board at its widest value. A LIVE document that does not fit is not published at all, never truncated. Prove the worst case with a host test like `logger-live-test` |
 | `footer::kMaxJsonBytes = 4096` | `logger/src/os_logger_footer.h` | The one `opensensor` footer value, compact JSON per stac-opensensor `footer.json` v0.1.0 | The board strings (`acquisition.config` above all) must keep the JSON under 4096 bytes. A footer that does not fit fails the file closed with `footer-overflow`, never truncated. CoreS3 writes 1663 bytes and Waveshare 2287. The contract tests print the length |
-| BLE name at most 11 characters | `ble::wire::kMaxLocalName` in `connectivity/src/ble_advert.h` | Prefix plus four device id characters, so the full service UUID fits the legacy scan response | `Config::ble_name_prefix` is 1 to 7 characters of `[A-Za-z0-9-]`. Required, with no default in `firmware/common`. The mDNS host is the name in lower case. CoreS3 and Waveshare pass `OS-` (`OS-xxxx`, `os-xxxx`). The current app filters its scan with `AQ-`, so it must scan by the GATT service UUID or learn each new prefix, see [mobile-migration.md](../../docs/shared/mobile-migration.md) |
+| BLE name at most 11 characters | `ble::wire::kMaxLocalName` in `connectivity/src/ble_advert.h` | Prefix plus four device id characters, so the full service UUID fits the legacy scan response | `Config::ble_name_prefix` is 1 to 7 characters of `[A-Za-z0-9-]`. Required, with no default in `firmware/common`. The mDNS host is the name in lower case. CoreS3 and Waveshare pass `OS-` (`OS-xxxx`, `os-xxxx`) |
 
 Both boards keep the default values. Footer `acquisition.sample_interval_ms`
 comes from the live `Config::sample_interval_ms` (default `10000`), the same
@@ -79,8 +82,9 @@ air quality fixture board with no PMS, a 30 s period and an `SL-` prefix.
 ## Consumption
 
 Board projects list the common paths in `EXTRA_COMPONENT_DIRS`; their component
-`CMakeLists.txt` declares `REQUIRES common sensors runtime connectivity logger`
-for a logger or `common sensors runtime` for the retained Waveshare
+`CMakeLists.txt` declares `REQUIRES common sensors runtime logger stac upload`
+for a logger (`logger` itself requires `connectivity`, `location`, `power` and
+`gnss`, and a board with a GNSS receiver adds `gnss gnss_reader`) or `common sensors runtime` for the retained Waveshare
 diagnostic, whose Plantower parser now lives in `sensors`. Use the root Pixi
 build tasks rather than Arduino CLI:
 
@@ -122,7 +126,7 @@ requires board measurements.
 
 Both current board logger adapters consume OSLogger. CoreS3 retains M5Unified,
 its 81-column `cores3-telemetry-v6` schema with dictionary v7, SPI/display arbitration and optional BM8563 hooks.
-Waveshare supplies its 62-column PMS5003T `waveshare-sim7670g-telemetry-v6` schema with dictionary v7 and one-bit SDMMC adapter,
+Waveshare supplies its 62-column PMS5003T `waveshare-sim7670g-telemetry-v6` schema with dictionary v8 and one-bit SDMMC adapter,
 with no RTC hook in this image. Its retained diagnostic consumes common/runtime for the parser and physical
 console, without starting the logger or radio services. Source integration does not transfer hardware measurements between
 boards; use each board's bench record for the deployed image and tested scope.

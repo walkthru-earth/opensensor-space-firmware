@@ -22,11 +22,13 @@ Board-neutral GNSS support in two ESP-IDF components.
    page 1 `location.gnss_cell` through `readback_cell()`, so the hook must be
    safe from any task, never from an ISR. `latest()` is.
 
-| `thing.mobility` | Fresh fix (at most 15 s old) | Row location |
-| --- | --- | --- |
-| `fixed` | any | Configured cell, `location_source` 1 |
-| `moving` | yes | GNSS cell at resolution 8, `location_source` 2 |
-| `moving` | no | Four nulls |
+| `thing.mobility` | Phone cell (`location.phone_cell`) | Fresh fix (at most 15 s old) | Row location |
+| --- | --- | --- | --- |
+| `fixed`, resolution 8 cell configured | any | any | Configured cell, `location_source` 1 |
+| `fixed`, no cell configured or not resolution 8 | any | any | Four nulls |
+| `moving` | set | any | Phone cell at resolution 8, `location_source` 3 |
+| `moving` | unset | yes | GNSS cell at resolution 8, `location_source` 2 |
+| `moving` | unset | no | Four nulls |
 
 A reply without a fix clears the stored fix at once. A silent receiver keeps
 it until it is no longer fresh. Polls are about 12 s apart, so one silent poll

@@ -1,4 +1,4 @@
-# Time and private station location
+# Time and private Thing location
 
 Current native ESP-IDF design, 2026-10-09. The reusable implementations are
 `firmware/common/connectivity/src/network_time.*` and the optional
@@ -200,7 +200,9 @@ becomes an H3 resolution 8 cell the moment it is parsed. The raw
 latitude and longitude never reach a log, the card, BLE, LAN or the LIVE view,
 and the firmware keeps only the cell, its resolution and the fix monotonic
 time. No finer cell is ever computed, so finer GNSS detail stays in the RAM
-of the reply parser only. Waveshare V2 is the first board with the hook, from firmware v2.17.
+of the reply parser only. A core dump from a board running the GNSS reader can
+hold the raw receiver reply line with coordinates, because the reader keeps it
+on its task stack (#172), see [security hardening](security-hardening.md#ota). Waveshare V2 is the first board with the hook, from firmware v2.17.
 
 A GNSS cell change never splits a batch or file, because the cell is not part
 of the location snapshot that `fits_batch` compares. A file from a moving
@@ -210,8 +212,8 @@ splits as before. A moving Thing does not split on a phone cell change
 either.
 
 GNSS UTC is not a clock anchor. A fix does not set UTC, so rows keep null UTC
-until a host anchor, the RTC or NTP arrives. Using GNSS time as an anchor is
-follow-up work on #83.
+until a host anchor, the RTC or NTP arrives. GNSS time as an anchor is not
+implemented and no open issue tracks it.
 
 ### Phone cell, `location.phone_cell`
 

@@ -106,7 +106,7 @@ Version device capabilities, manifests, dictionaries, deployment history, calcul
 | Nulls, provenance and UTC/unsynced paths | Pairing, recovery and community privacy |
 | Open file foundation | Acoustic calibration, useful ranking and accepted connectors |
 
-## Source checks — 2026-09-10
+## Source checks, 2026-09-10
 
 - [AirGradient local API](https://www.airgradient.com/documentation/kb/where-do-i-access-the-api-documentation-api-token-and-local-api) and [sharing](https://www.airgradient.com/documentation/kb/kb-diy-data-ownership-and-sharing): distinguish the complete offline workflow, not a claim that AirGradient always needs cloud.
 - [OpenAQ API](https://docs.openaq.org/about/about), [ingestion](https://github.com/openaq/openaq-lcs-fetch) and [terms](https://docs.openaq.org/about/terms): preserve semantics and attribution.

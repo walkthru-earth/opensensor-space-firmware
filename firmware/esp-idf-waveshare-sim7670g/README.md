@@ -24,7 +24,11 @@ were checked on **2026-11-09**. LZ4 is vendored **1.11.0**, and this board
 has no M5Unified/M5GFX dependency. The optional shared location component uses
 embedded-h3-location **v2.0.0** with official H3 **4.5.0**.
 
-**Native hardware qualification is pending.** Arduino-era SD, sensor, battery
+**Native hardware qualification is partial.** A short native USB and SD
+readback of v2.15 on 2026-10-26 is in the
+[bench record](../../docs/boards/waveshare-esp32-s3-sim7670g/bench-verified.md#main-689bb61-usb-reflash-thing-id-and-first-geo-footer-2026-10-26).
+Phone sync, GNSS fix, endurance and power-cut durability remain unqualified.
+Arduino-era SD, sensor, battery
 and pairing observations below stay tied to their recorded images. Host tests
 and source migration do not establish native hardware behavior.
 
@@ -100,9 +104,10 @@ Both variants reserve a heap-owned **4 KiB internal DMA transfer buffer** before
 mounting TF and lend it to ESP-IDF for **eight-sector chunks**. The single card
 owner retains it for the mount; failed mounts release it. This prevents
 per-transfer DMA allocation when FatFs buffers live in PSRAM. The logger's
-shared connectivity prefers PSRAM for Wi-Fi/lwIP packets and uses **eight
-static RX and eight static TX DMA buffers**, **32 software RX buffers** and
-**16 cached TX buffers**. The diagnostic has no radios or PSRAM. These changes
+shared connectivity prefers PSRAM for Wi-Fi/lwIP packets and uses **sixteen
+static RX and eight static TX DMA buffers**, **32 dynamic RX buffers** and
+**32 cached TX buffers**, with a TCP send buffer and window of **23,040 bytes**
+each. The diagnostic has no radios or PSRAM. These changes
 use the pinned SDK's [SD buffer API](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32s3/api-reference/storage/sdmmc.html#unaligned-buffer-performance);
 native Waveshare throughput/coexistence remains unqualified.
 

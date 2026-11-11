@@ -2,7 +2,9 @@
 
 Opt-in native ESP-IDF logger engine shared by ESP32-S3 board adapters. Add the
 common component directories to the board CMake project and declare
-`REQUIRES common runtime connectivity logger location`. ESP-IDF and managed dependency
+`REQUIRES common sensors runtime logger stac upload`. `logger` itself requires
+`connectivity`, `location`, `power` and `gnss`, and a board with a GNSS receiver
+adds `gnss gnss_reader`. ESP-IDF and managed dependency
 versions are pinned by the shared toolchain lock and component manifests.
 
 ## Adapter contract

@@ -3,8 +3,8 @@
 This repository targets ESP32-S3 with native **ESP-IDF 6.1**. Application source
 uses no Arduino APIs or Arduino component. Board pins, PSRAM mode, power
 sequencing, storage mounting and hardware evidence belong to the board adapter;
-the eight opt-in components (OSCommon, OSSensors, OSRuntime, OSConnectivity,
-OSLogger, OSLocation, `power` and `upload`) belong to [`firmware/common`](../../firmware/common/README.md).
+the eleven opt-in components (OSCommon, OSSensors, OSRuntime, OSConnectivity,
+OSLogger, OSLocation, `stac`, `gnss`, `gnss_reader`, `power` and `upload`) belong to [`firmware/common`](../../firmware/common/README.md).
 
 ## Host and toolchain
 
@@ -27,7 +27,7 @@ pixi run waveshare-build diagnostic
 | Board adapter | Source | Configuration | Hardware scope |
 | --- | --- | --- | --- |
 | [CoreS3](../../firmware/esp-idf-cores3/README.md) | `bringup/main.cpp` and board telemetry adapter | 16 MB flash, Quad PSRAM, USB Serial/JTAG console, native M5 components and SDSPI on existing SPI2 | Short native USB Parquet/SD/network UTC check passed; phone transfers/endurance pending; [image evidence](../boards/m5stack-cores3/bench-verified.md#board-1-first-native-esp-idf-flash-and-readback) |
-| [Waveshare V2](../../firmware/esp-idf-waveshare-sim7670g/README.md) | `logger/main.cpp` or `diagnostic/main.cpp`, board IO adapter | 16 MB flash, OPI PSRAM for logger, no PSRAM for diagnostic, UART0 console and one-bit SDMMC | Native qualification pending; historical Arduino images in the board bench record |
+| [Waveshare V2](../../firmware/esp-idf-waveshare-sim7670g/README.md) | `logger/main.cpp` or `diagnostic/main.cpp`, board IO adapter | 16 MB flash, OPI PSRAM for logger, no PSRAM for diagnostic, UART0 console and one-bit SDMMC | Short native USB and SD readback of v2.15 on 2026-10-26, see the [bench record](../boards/waveshare-esp32-s3-sim7670g/bench-verified.md#main-689bb61-usb-reflash-thing-id-and-first-geo-footer-2026-10-26). Phone sync, GNSS fix, endurance and power-cut durability remain unqualified |
 
 `tools/idf-dependencies.lock` pins ESP-IDF 6.1 and its exact source commit.
 Component manifests pin M5Unified **0.3.0**, M5GFX **0.3.0**, mDNS **1.15.1**
@@ -292,8 +292,11 @@ checkers that read `cspell.json` know the project words.
 The migration passed native board and generic component builds plus host
 contracts. Those results establish compilation and logic compatibility.
 A subsequent [dated CoreS3 native flash/readback](../boards/m5stack-cores3/bench-verified.md#board-1-first-native-esp-idf-flash-and-readback)
-qualifies only its short SD/USB/sensor/time run. Waveshare native hardware
-remains pending. Historical Arduino results retain their original image scope.
+qualifies only its short SD/USB/sensor/time run. Waveshare has a short native
+USB and SD readback of v2.15 on 2026-10-26 in its
+[bench record](../boards/waveshare-esp32-s3-sim7670g/bench-verified.md#main-689bb61-usb-reflash-thing-id-and-first-geo-footer-2026-10-26),
+and its phone sync, GNSS fix, endurance and power-cut durability remain
+unqualified. Historical Arduino results retain their original image scope.
 Proto 3 phone transfers, reconnect, coexistence, sustained arbitration and
 power-cut durability need separate device qualification.
 
@@ -305,8 +308,8 @@ identity and generated dependency resolution; document any older compatibility
 choice with evidence. Do not silently track floating `latest`/`master` or add
 Arduino APIs/components. SDK and host-tool environments remain separate.
 
-All eight components (OSCommon, OSSensors, OSRuntime, OSConnectivity, OSLogger,
-OSLocation, `power` and `upload`) stay board-neutral and reusable.
+All eleven components (OSCommon, OSSensors, OSRuntime, OSConnectivity, OSLogger,
+OSLocation, `stac`, `gnss`, `gnss_reader`, `power` and `upload`) stay board-neutral and reusable.
 Each board owns pin maps, controller initialization, power/display/sensor/RTC
 capabilities, filesystem mounting and its measurement/provenance dictionary.
 Reuse board-neutral interfaces with borrowed IO callbacks rather than copying
