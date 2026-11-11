@@ -132,7 +132,7 @@ resolved versions. As of 2026-11-09 the workspace requires Pixi 0.84.1 and the
 lock resolves Python 3.15.2, pyarrow 26.0.1, DuckDB 2.0.0, bleak 3.1.0,
 pyserial 3.5, esptool 5.6.0, CMake 4.4.5, Ninja 1.13.2, ccache 4.14.3,
 clang-tools, clangxx and compiler-rt 23.1.4, cppcheck 2.22.0, jsonschema
-4.26.0, rfc3986-validator 0.1.1, PyYAML 6.0.3, cryptography 50.0.2, pre-commit 4.7.0, ripgrep
+4.26.0, rfc3986-validator 0.1.1, PyYAML 6.0.3, cryptography 50.0.2, ripgrep
 15.2.0, GNU coreutils 9.12, Git 2.56.0, Rust 1.99.1 and pip 26.2.2. esptool
 5.6.0 no longer pulls in bitstring, and pyarrow 26 now pulls in NumPy.
 
