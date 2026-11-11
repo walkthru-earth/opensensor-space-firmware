@@ -46,8 +46,8 @@ bool start_sensor() {
   config.source_clk = UART_SCLK_DEFAULT;
   sensor_ready =
       uart_param_config(UART_NUM_1, &config) == ESP_OK &&
-      uart_set_pin(UART_NUM_1, 2, 1, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE) ==
-          ESP_OK &&
+      uart_set_pin(UART_NUM_1, kSensorTx, kSensorRx, UART_PIN_NO_CHANGE,
+                   UART_PIN_NO_CHANGE) == ESP_OK &&
       uart_driver_install(UART_NUM_1, 1024, 0, 0, nullptr, 0) == ESP_OK;
   return sensor_ready;
 }
@@ -73,9 +73,9 @@ bool mount(bool keep_buffer) {
       opensensor::storage::SdTransferBuffer::kSectors;
   sdmmc_slot_config_t slot = SDMMC_SLOT_CONFIG_DEFAULT();
   slot.width = 1;
-  slot.clk = GPIO_NUM_5;
-  slot.cmd = GPIO_NUM_4;
-  slot.d0 = GPIO_NUM_6;
+  slot.clk = static_cast<gpio_num_t>(kSdClk);
+  slot.cmd = static_cast<gpio_num_t>(kSdCmd);
+  slot.d0 = static_cast<gpio_num_t>(kSdData0);
   slot.flags |= SDMMC_SLOT_FLAG_INTERNAL_PULLUP;
   const esp_vfs_fat_sdmmc_mount_config_t config =
       opensensor::storage::archive_mount_config();
@@ -126,8 +126,8 @@ bool start_gauge() {
     return true;
   i2c_master_bus_config_t config{};
   config.i2c_port = I2C_NUM_0;
-  config.sda_io_num = GPIO_NUM_15;
-  config.scl_io_num = GPIO_NUM_16;
+  config.sda_io_num = static_cast<gpio_num_t>(kGaugeSda);
+  config.scl_io_num = static_cast<gpio_num_t>(kGaugeScl);
   config.clk_source = I2C_CLK_SRC_DEFAULT;
   config.glitch_ignore_cnt = 7;
   config.flags.enable_internal_pullup = true;
@@ -179,7 +179,7 @@ bool start_indicator() {
   if (led)
     return true;
   led_strip_config_t config{};
-  config.strip_gpio_num = 38;
+  config.strip_gpio_num = kIndicatorLed;
   config.max_leds = 1;
   config.led_model = LED_MODEL_WS2812;
   config.color_component_format = LED_STRIP_COLOR_COMPONENT_FMT_GRB;

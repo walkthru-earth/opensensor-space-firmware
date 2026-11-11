@@ -47,11 +47,11 @@ static_assert(
 
 void collect(oslogger::Row &row, std::int64_t now, std::int64_t, void *) {
   const auto &pms = latest;
-  const PmsStatus status = !pms.present        ? kPmsMissing
-                           : now < 30000000    ? kPmsWarming
-                           : pms.age_ms > 5000 ? kPmsStale
-                           : pms.error         ? kPmsSensorError
-                                               : kPmsValid;
+  const PmsStatus status = !pms.present                    ? kPmsMissing
+                           : now < kPmsWarmupUs            ? kPmsWarming
+                           : pms.age_ms > kPmsStaleAfterMs ? kPmsStale
+                           : pms.error                     ? kPmsSensorError
+                                                           : kPmsValid;
   row.integer(pms_status, status);
   if (pms.present) {
     row.counter(pms_age_ms, pms.age_ms);

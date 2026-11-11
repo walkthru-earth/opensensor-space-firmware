@@ -484,15 +484,15 @@ void clear_sensor(Settings &settings) {
 
 // Invalid records are disabled or unset rather than silently enabling
 // external traffic or location.
-void apply_location(bool valid, char *record, Settings &settings) {
-  if (!valid || !decode_location(record, settings.location)) {
+void apply_location(char *record, Settings &settings) {
+  if (!decode_location(record, settings.location)) {
     settings.location = LocationSettings{};
     oslog.println("CONFIG LOCATION invalid-stored-profile=true");
   }
 }
 
-void apply_ntp(bool valid, char *record, Settings &settings) {
-  if (!valid || !decode_ntp(record, settings.ntp)) {
+void apply_ntp(char *record, Settings &settings) {
+  if (!decode_ntp(record, settings.ntp)) {
     settings.ntp = NtpSettings{};
     settings.ntp.enabled = false;
     settings.ntp.public_fallback = false;
@@ -516,8 +516,8 @@ void load_blob(BlobPayload &payload, Settings &settings) {
   std::memcpy(settings.token, payload.token, sizeof(settings.token));
   if (!decode_sensor(payload.sensor, settings))
     clear_sensor(settings);
-  apply_location(true, payload.location, settings);
-  apply_ntp(true, payload.ntp, settings);
+  apply_location(payload.location, settings);
+  apply_ntp(payload.ntp, settings);
 }
 
 // Boot only. Leaves phone_cell_set_us alone, so never publish a non-zero

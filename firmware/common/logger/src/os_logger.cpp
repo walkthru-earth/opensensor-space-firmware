@@ -2276,13 +2276,6 @@ bool storage_writable(std::size_t &count, bool &storage_ready) {
   return storage_ready && governor.writable();
 }
 
-// The worker's view of the card for power::attempt_close(). writable()
-// requests a storage probe. In Retry with a remount hook that probe may
-// finalize the open file, remount the card and commit the waiting rows to a
-// new file, and the remount marks every open READ handle for the recheck
-// (archive_sync.h). finalize() then closes whatever is open. It reports the
-// write alone, so a free space reading that fails after a good finalize
-// leaves the governor in Retry but is not logged as a failed close.
 // The worker's view of the card for attempt_close(). In Retry, writable()
 // runs the governor probe, which finalizes the open telemetry file,
 // remounts, reports remounted() and mounted() to the archive session and
@@ -3349,7 +3342,7 @@ bool begin(const Config &configuration, const Hooks &board_hooks,
   }
   self_test_start_us = esp_timer_get_time();
   // Location columns are optional, but present ones must have the shape
-  // apply_location writes, and a GEOMETRY column needs the location fields.
+  // apply_cell writes, and a GEOMETRY column needs the location fields.
   geometry_field = field_index("geometry");
   {
     const auto cell = field_index("h3_cell_id");
@@ -3459,13 +3452,16 @@ bool begin(const Config &configuration, const Hooks &board_hooks,
           ? "ok"
           : "bad";
   oslog.printf(
-      "PARQUET BEGIN schema=%s columns=%u sample_s=10 "
-      "interval_s=900 max_rows=90 max_row_groups=%u psram_workspace_bytes=%u "
+      "PARQUET BEGIN schema=%s columns=%u sample_s=%u "
+      "interval_s=%u max_rows=%u max_row_groups=%u psram_workspace_bytes=%u "
       "row_bytes=%u boot=%s thing=%s "
       "codec=%s crc32_check=%s\n",
-      config.schema_name, unsigned(field_count), unsigned(kMaxRowGroups),
-      unsigned(sizeof(WriterState)), unsigned(sizeof(Sample)), boot_text,
-      thing_text, codec_name(selected_codec), crc_check);
+      config.schema_name, unsigned(field_count),
+      unsigned(config.sample_interval_ms / 1000),
+      unsigned(rotation_seconds.load()), unsigned(kMaxRows),
+      unsigned(kMaxRowGroups), unsigned(sizeof(WriterState)),
+      unsigned(sizeof(Sample)), boot_text, thing_text,
+      codec_name(selected_codec), crc_check);
   // Releases the worker held in storage_worker() until BEGIN is out.
   xTaskNotifyGive(worker_task);
   return true;
@@ -3490,7 +3486,7 @@ void poll() {
     static std::int64_t last_stall_warning_us = 0;
     const auto heartbeat = worker_heartbeat_us.load();
     // Warn only. The reset decision belongs to the watchdog supervisor.
-    if (work::check_stall(now, heartbeat, last_stall_warning_us, 0) ==
+    if (work::check_stall(now, heartbeat, last_stall_warning_us) ==
         work::StallAction::Warn) {
       const char *state_name = "?";
       if (worker_task) {

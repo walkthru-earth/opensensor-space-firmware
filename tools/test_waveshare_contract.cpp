@@ -13,6 +13,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <os_gnss.h>
 #include <os_logger_cadence.h>
 #include <os_logger_footer.h>
 #include <os_logger_live.h>
@@ -640,8 +641,11 @@ int main(int argc, char **argv) {
   for (std::size_t i = 0; i < 90; ++i) {
     auto &row = rows[i];
     row.location = location;
-    oslogger::apply_location(
-        row, row.location,
+    // The production path of collect(), with no receiver fix.
+    const auto chosen =
+        opensensor::gnss::select_location(row.location, std::nullopt, 0);
+    oslogger::apply_cell(
+        row, chosen.cell, chosen.source,
         {h3_cell_id, h3_resolution, location_source, geometry});
     const auto now = std::int64_t(10000000 + i * 10000000);
     row.integer(schema_version, kSchemaVersion);

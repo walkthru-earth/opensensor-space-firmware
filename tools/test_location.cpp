@@ -5,6 +5,7 @@
 // set, so a library bump that changes any of them fails here.
 #include "os_location.h"
 #include <numeric_sample.h>
+#include <os_gnss.h>
 #include <os_logger_location.h>
 
 #include <array>
@@ -174,15 +175,21 @@ int main(int argc, char **argv) {
   for (const char *code : {"", "A", "ZZ", "AA", "XK", "UK", "QM", "us", "USA"})
     assert(!valid_country(code));
 
-  // Exercise the exact production envelope and mapping helper. A queued
-  // snapshot owns its settings; later owner changes cannot rewrite its values.
+  // Exercise the exact production envelope and the mapping collect() uses,
+  // select_location then apply_cell, with no receiver fix. A queued snapshot
+  // owns its settings; later owner changes cannot rewrite its values.
+  const auto apply = [](auto &row) {
+    const auto chosen =
+        opensensor::gnss::select_location(row.location, std::nullopt, 0);
+    return oslogger::apply_cell(row, chosen.cell, chosen.source, {0, 1, 2, 3});
+  };
   config::LocationSettings current{.cell = kAt8,
                                    .resolution = 8,
                                    .country = "US",
                                    .mobility = config::Mobility::Fixed};
   oslogger::LocationSample<opensensor::NumericSample<4>> captured{};
   captured.location = current;
-  assert(oslogger::apply_location(captured, captured.location, {0, 1, 2, 3}));
+  assert(apply(captured));
   current.cell = 0;
   std::strcpy(current.country, "EG");
   assert(captured.location.cell == kAt8);
@@ -194,13 +201,12 @@ int main(int argc, char **argv) {
   // A snapshot cell that is not res 8 is never published, finer or coarser.
   for (const Cell other : {fine, coarse}) {
     captured.location.cell = other;
-    assert(
-        !oslogger::apply_location(captured, captured.location, {0, 1, 2, 3}));
+    assert(!apply(captured));
     for (const auto present : captured.valid)
       assert(!present);
   }
   captured.location = {};
-  assert(!oslogger::apply_location(captured, captured.location, {0, 1, 2, 3}));
+  assert(!apply(captured));
   for (const auto present : captured.valid)
     assert(!present);
 }

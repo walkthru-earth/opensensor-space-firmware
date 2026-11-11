@@ -16,6 +16,13 @@ backup/
 # tools/check_secrets.py fails lint if anything here is ever tracked.
 # No trailing slash, so a secrets symlink or file is ignored too.
 /secrets
+# Environment files and key material anywhere in the tree.
+.env
+.env.*
+*.pem
+*.key
+# Captures and exports at the repo root.
+/artifacts/
 
 # Host Python bytecode
 __pycache__/
@@ -27,6 +34,8 @@ firmware/**/build/
 # Native ESP-IDF generated files
 **/managed_components/
 **/sdkconfig.old
+# The resolved sdkconfig belongs in the build directory, never beside a board.
+firmware/**/sdkconfig
 tools/fixtures/**/build/
 firmware/common/logger/tests/compile/build/
 tools/fixtures/**/dependencies.lock

@@ -51,6 +51,9 @@ static_assert(opensensor::pinned::names(kDictionaryUri,
               "kDictionaryUri is the raw field table at a full commit");
 // Version the acquisition procedure separately from the physical file codec.
 constexpr const char *kConfigurationId = "cores3-acquisition-v5";
+// kConfiguration embeds the same numbers.
+constexpr std::int64_t kPmsWarmupUs = 30000000;
+constexpr std::uint32_t kPmsStaleAfterMs = 5000;
 constexpr const char *kConfiguration =
     "{\"sample_interval_ms\":10000,\"pms_warmup_us\":30000000,"
     "\"pms_stale_after_ms\":5000,\"pms_uart_rx\":18,\"pms_uart_tx\":17,"

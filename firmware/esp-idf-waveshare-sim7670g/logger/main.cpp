@@ -29,13 +29,13 @@
 
 namespace {
 using namespace telemetry::contract;
-constexpr int kSensorRx = 1;
-constexpr int kSensorTx = 2;
-constexpr int kSdClk = 5;
-constexpr int kSdCmd = 4;
-constexpr int kSdData0 = 6;
-constexpr int kGaugeSda = 15;
-constexpr int kGaugeScl = 16;
+using board::kGaugeScl;
+using board::kGaugeSda;
+using board::kSdClk;
+using board::kSdCmd;
+using board::kSdData0;
+using board::kSensorRx;
+using board::kSensorTx;
 // SIM7670G GNSS on UART2, ESP32-S3-A-SIM7670X-4G-HAT V2.0 schematic. ESP TX
 // GPIO18 to modem RXD, ESP RX GPIO17 from modem TXD. GPIO21 enables the modem
 // supply, wired OR with the 4G DIP switch, so it is driven high and never low.

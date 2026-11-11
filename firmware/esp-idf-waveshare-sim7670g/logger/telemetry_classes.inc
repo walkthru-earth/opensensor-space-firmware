@@ -18,7 +18,7 @@
 //   generated status constants equal to the enums named here.
 //   gauge_hibernating is the bool MAX17048 hibernating() returns.
 //   location_source names are telemetry::LocationSource, the stac-opensensor
-//   profile codes the shared logger writes in apply_location.
+//   profile codes the shared logger writes in apply_cell.
 // No classes.
 //   pms_firmware and pms_error are raw PMS5003T frame bytes with no published
 //   code list. gauge_status_flags is the MAX17048 STATUS bitmask, not a code.

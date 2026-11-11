@@ -7,7 +7,8 @@
 #
 # The SHA-256 pin fails the configure step when an SDK upgrade changes the
 # upstream file, so whoever moves the SDK must check whether the fix landed
-# upstream and then drop or rebase the patch.
+# upstream and then drop or rebase the patch. A second pin covers the patch
+# file, so the bytes that are applied are the reviewed ones.
 include_guard(GLOBAL)
 
 set(OS_NIMBLE_PATCH_DIR "${CMAKE_CURRENT_LIST_DIR}/../common/vendor/esp-nimble")
@@ -37,6 +38,15 @@ function(os_patch_nimble)
             "os_patch_nimble: ${upstream} changed (sha256 ${actual}, pinned ${expected}). "
             "Check whether the SDK now carries the stale ack drain from esp-nimble "
             "79316193f9, then drop or rebase ${patch_file} and update this pin.")
+    endif()
+    # The patch itself, as recorded in the README table beside it.
+    set(expected_patch "380807492b52fef1d6acdf94b06a50a3dbcc6a7386a3441504c8dd22f572f81d")
+    file(SHA256 "${patch_file}" actual_patch)
+    if(NOT actual_patch STREQUAL expected_patch)
+        message(FATAL_ERROR
+            "os_patch_nimble: ${patch_file} changed (sha256 ${actual_patch}, pinned "
+            "${expected_patch}). Review the change, then update this pin and the table "
+            "in ${OS_NIMBLE_PATCH_DIR}/README.md together.")
     endif()
 
     # The patch runs on a fresh copy in work/ each configure. The compiled

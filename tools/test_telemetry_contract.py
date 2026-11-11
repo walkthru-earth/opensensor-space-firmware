@@ -200,6 +200,7 @@ def main() -> None:
         for include in (common, root / "firmware/common/logger/src",
                         root / "firmware/common/connectivity/src",
                         root / "firmware/common/runtime/src",
+                        root / "firmware/common/gnss/src",
                         root / "firmware/common/power/src"):
             command += ["-I", str(include)]
         if args.sanitize:
@@ -207,6 +208,7 @@ def main() -> None:
         command += [*library_flags(root, directory, args.sanitize),
                     str(root / "tools/telemetry_contract_fixture.cpp"),
                     str(root / "firmware/common/logger/src/os_logger_live.cpp"),
+                    str(root / "firmware/common/gnss/src/os_gnss.cpp"),
                     str(common / "parquet_writer.cpp"), str(common / "lz4_codec.cpp"),
                     "-o", str(executable)]
         subprocess.run(command, check=True)

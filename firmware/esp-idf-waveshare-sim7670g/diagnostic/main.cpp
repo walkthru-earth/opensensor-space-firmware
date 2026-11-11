@@ -14,11 +14,11 @@
 // Waveshare ESP32-S3-SIM7670G-4G V2.0 with the owner's four-wire PMS5003T.
 // This diagnostic probes TF capacity without formatting or writing files.
 namespace {
-constexpr int kSensorRx = 1; // sensor TX -> host RX
-constexpr int kSensorTx = 2; // sensor RX <- host TX; V1 gauge conflict
-constexpr int kSdClk = 5;
-constexpr int kSdCmd = 4;
-constexpr int kSdData0 = 6;
+using board::kSdClk;
+using board::kSdCmd;
+using board::kSdData0;
+using board::kSensorRx;
+using board::kSensorTx;
 constexpr std::uint32_t kBaud = 9600;
 constexpr std::uint32_t kReportMs = 10000;
 
