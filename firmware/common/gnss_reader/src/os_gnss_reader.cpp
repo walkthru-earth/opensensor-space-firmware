@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <optional>
 #include <string_view>
+#include <type_traits>
 
 namespace opensensor::gnss {
 namespace {
@@ -36,6 +37,35 @@ void store(const std::optional<Fix> &fix) {
 }
 
 uart_port_t port() { return static_cast<uart_port_t>(settings.uart_port); }
+
+// A receiver reply line and a parsed Reading hold the raw position. Zeroes
+// one on every exit path of its scope, so a core dump of this task's stack
+// holds no coordinate. The stores go through a volatile pointer so they are
+// not dropped, as opensensor::upload::text::secure_zero does for secrets.
+// Declare it right after the object it wipes. For a parse result it wipes
+// the contained Reading, an error result holds no position.
+template <typename T> void wipe_bytes(T &object) {
+  static_assert(std::is_trivially_copyable_v<T>);
+  volatile auto *bytes = reinterpret_cast<volatile unsigned char *>(&object);
+  for (std::size_t i = 0; i < sizeof(T); ++i)
+    bytes[i] = 0;
+}
+
+template <typename T> class WipeOnExit {
+public:
+  explicit WipeOnExit(T &object) : object_(object) {}
+  ~WipeOnExit() {
+    if constexpr (std::is_trivially_copyable_v<T>)
+      wipe_bytes(object_);
+    else if (object_)
+      wipe_bytes(*object_);
+  }
+  WipeOnExit(const WipeOnExit &) = delete;
+  WipeOnExit &operator=(const WipeOnExit &) = delete;
+
+private:
+  T &object_;
+};
 
 void send(std::string_view command) {
   uart_flush_input(port());
@@ -86,6 +116,7 @@ Reply exchange(std::string_view command, std::uint32_t timeout_ms,
   const auto deadline =
       esp_timer_get_time() + static_cast<std::int64_t>(timeout_ms) * 1000;
   std::array<char, kLineBytes> buffer{};
+  const WipeOnExit wipe_buffer(buffer);
   std::size_t length = 0;
   while (read_line(buffer, length, deadline) == Line::Text) {
     const std::string_view line(buffer.data(), length);
@@ -126,7 +157,8 @@ bool poll_fix(const Dialect &dialect, State &shown) {
   bool answered = false;
   std::optional<Fix> fix;
   exchange(dialect.fix_query(), kReplyTimeoutMs, [&](std::string_view line) {
-    const auto reading = dialect.parse_fix(line);
+    auto reading = dialect.parse_fix(line);
+    const WipeOnExit wipe_reading(reading);
     if (!reading && reading.error() == ParseError::NotThisLine)
       return;
     answered = true;
@@ -149,10 +181,11 @@ void stream_fix(const Dialect &dialect, State &shown) {
       esp_timer_get_time() +
       static_cast<std::int64_t>(settings.poll_period_ms) * 1000;
   std::array<char, kLineBytes> buffer{};
+  const WipeOnExit wipe_buffer(buffer);
   std::size_t length = 0;
   while (read_line(buffer, length, deadline) == Line::Text) {
-    const auto reading =
-        dialect.parse_fix(std::string_view(buffer.data(), length));
+    auto reading = dialect.parse_fix(std::string_view(buffer.data(), length));
+    const WipeOnExit wipe_reading(reading);
     if (!reading && reading.error() == ParseError::NotThisLine)
       continue;
     std::optional<Fix> fix;
