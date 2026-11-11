@@ -412,7 +412,7 @@ struct PosixQuarantineIO {
 // provenance, and never replaces an existing quarantined fragment.
 void check_same_boot_quarantine() {
   namespace fs = std::filesystem;
-  char temporary[] = "/tmp/aq-quarantine-XXXXXX";
+  char temporary[] = "/tmp/os-quarantine-XXXXXX";
   assert(::mkdtemp(temporary));
   const fs::path root = fs::path(temporary) / "output";
   const char *relative =
@@ -464,7 +464,7 @@ void check_find_partials() {
   namespace fs = std::filesystem;
   using opensensor::logger::detail::DirectoryWalk;
   using opensensor::logger::detail::find_partials;
-  char temporary[] = "/tmp/aq-find-partials-XXXXXX";
+  char temporary[] = "/tmp/os-find-partials-XXXXXX";
   assert(::mkdtemp(temporary));
   const fs::path root = fs::path(temporary) / "output";
   const auto touch = [](const fs::path &path) {
@@ -660,7 +660,7 @@ struct FaultyDirectoryIO : PosixDirectoryIO {
 void check_find_partials_failures() {
   namespace fs = std::filesystem;
   using opensensor::logger::detail::find_partials;
-  char temporary[] = "/tmp/aq-find-faults-XXXXXX";
+  char temporary[] = "/tmp/os-find-faults-XXXXXX";
   assert(::mkdtemp(temporary));
   const fs::path root = fs::path(temporary) / "output";
   const auto touch = [](const fs::path &path) {

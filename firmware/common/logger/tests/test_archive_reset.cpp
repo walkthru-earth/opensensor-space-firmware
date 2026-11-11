@@ -184,7 +184,7 @@ void check_entry_cap() {
 } // namespace
 
 int main() {
-  char temporary[] = "/tmp/aq-archive-reset-XXXXXX";
+  char temporary[] = "/tmp/os-archive-reset-XXXXXX";
   assert(::mkdtemp(temporary));
   card = temporary;
   using opensensor::logger::detail::archive_root_valid;
