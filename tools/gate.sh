@@ -3,8 +3,13 @@
 #
 # Every task below is an existing pixi task, run with its sanitizer flag when
 # the script supports one. Tasks that need a board, a serial port, Bluetooth,
-# a LAN peer, the network or the ESP-IDF SDK are deliberately absent. The SDK
-# builds run in the CI board job instead.
+# a LAN peer or the ESP-IDF SDK are deliberately absent. The SDK builds run in
+# the CI board job instead.
+#
+# One network use remains. The tests that build the pinned embedded-h3-location
+# library (tools/h3_library.py) clone its tag from GitHub the first time, into
+# the user cache, and check the clone against the commit in the board locks.
+# Later runs with that cache need no network.
 #
 # Each task runs under GNU timeout from the pixi coreutils pin. A task that
 # outlives OS_GATE_TASK_TIMEOUT seconds (default 300) is stopped, reported as
