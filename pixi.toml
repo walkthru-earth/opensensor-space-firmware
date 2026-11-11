@@ -132,8 +132,9 @@ logger-power-test = "python tools/test_logger_power.py --sanitize"
 waveshare-flash = "firmware/esp-idf-waveshare-sim7670g/flash.sh"
 
 # --- host code quality ---
-fmt = "rg --files -0 firmware tools -g '*.c' -g '*.h' -g '*.cpp' -g '*.hpp' -g '*.ino' -g '!**/vendor/**' -g '!**/build/**' -g '!**/managed_components/**' | xargs -0 clang-format -i"
-fmt-check = "rg --files -0 firmware tools -g '*.c' -g '*.h' -g '*.cpp' -g '*.hpp' -g '*.ino' -g '!**/vendor/**' -g '!**/build/**' -g '!**/managed_components/**' | xargs -0 clang-format --dry-run --Werror"
+# tools/fmt.sh lists the sources once for both tasks and fails when it finds none.
+fmt = "bash tools/fmt.sh"
+fmt-check = "bash tools/fmt.sh --check"
 lint = "bash tools/lint.sh"
 # Full host gate, the same entry point CI runs. See tools/gate.sh for the task list.
 gate = "bash tools/gate.sh"
