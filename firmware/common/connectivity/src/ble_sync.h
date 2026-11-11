@@ -147,7 +147,6 @@ enum Error : std::uint8_t {
 // phone's offloaded scan filter can wake its app on a flag bit; the name and
 // the 128-bit UUID list ride in the scan response. Little-endian.
 constexpr std::uint8_t kAdvertVersion = 1;
-constexpr std::size_t kAdvertPayloadBytes = 10;
 enum AdvertFlag : std::uint8_t {
   kAdvNoUtc = 1U << 0,         // no UTC anchor this boot: rows go to `unsynced`
   kAdvNewFiles = 1U << 1,      // a file finalized since the last completed LIST
@@ -163,8 +162,8 @@ struct AdvertState {
 };
 
 // Which transport a control request arrived on. The storage worker answers on
-// the same link (ble::send_response or lan::send_response) and a file handle
-// is only honoured on the link that opened it.
+// the same link (ble::deliver or lan::deliver) and a file handle is only
+// honoured on the link that opened it.
 enum class Link : std::uint8_t { Ble = 0, Lan = 1 };
 
 struct ControlRequest {
