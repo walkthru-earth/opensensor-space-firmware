@@ -39,8 +39,10 @@ void store(const std::optional<Fix> &fix) {
 uart_port_t port() { return static_cast<uart_port_t>(settings.uart_port); }
 
 // A receiver reply line and a parsed Reading hold the raw position. Zeroes
-// one on every exit path of its scope, so a core dump of this task's stack
-// holds no coordinate. The stores go through a volatile pointer so they are
+// one on every exit path of its scope, so a later core dump of this task's
+// stack does not find them there. Copies left in the frames of called
+// functions are not wiped, so this narrows exposure and does not remove it
+// (#172). The stores go through a volatile pointer so they are
 // not dropped, as opensensor::upload::text::secure_zero does for secrets.
 // Declare it right after the object it wipes. For a parse result it wipes
 // the contained Reading, an error result holds no position.

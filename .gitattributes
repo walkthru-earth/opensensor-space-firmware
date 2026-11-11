@@ -5,3 +5,5 @@ firmware/**/telemetry_fields.inc text eol=lf
 # Published board templates (#86). desc is the SHA-256 of these exact bytes,
 # so git never converts line endings or adds a final newline
 docs/shared/templates/**/*.json -text
+# The NimBLE patch is pinned by SHA-256 in os_nimble_patches.cmake, so keep its exact bytes
+firmware/common/vendor/esp-nimble/*.patch -text
