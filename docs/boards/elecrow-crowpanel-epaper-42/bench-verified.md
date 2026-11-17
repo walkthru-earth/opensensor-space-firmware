@@ -58,6 +58,19 @@ No board was connected to a serial port, flashed or captured for this entry.
   logging=1` and rows 0 to 4 at 10 s with no drops. No panic or reset.
 - Still no SEN63C wired, `OS SEN6X absent error=write-nack` as expected.
 
+## Theme setting image, 2026-11-17
+
+- Same unit and port, `ports`, `chip`, `flash-id` and `efuse` checked again.
+  Full 8,388,608 byte backup before the write, SHA-256
+  `c100b7cf678b6a614d231782d2d14459584087c9d2f7674b37b055ddefcf2a96`.
+- Image built from commit `bd75c21`, SHA-256
+  `4e00de0d045da915323fdfcc060ef149a932ec8f435340f5daf5279cb6e36c42`, written
+  with `pixi run crowpanel-flash`, all four regions hash verified.
+- The 40 second boot capture shows `App version: bd75c21`, `OS PANEL settings
+  operation=load error=0 ... theme=light`, `OS DISPLAY ready=1`, `OS READY
+  logging=1` and rows 0 to 2 at 10 s with no drops. No panic or reset.
+- How the Dark theme looks on the glass and any ghosting are not checked yet.
+
 Not shown yet. What the panel draws, the keys and the settings popup, SEN63C
 readings, a finalized Parquet file read back from the card, BLE and LAN sync,
 endurance and power-cut durability.
