@@ -7,11 +7,13 @@ per board for the current dictionary digest (`dict`).
 | --- | --- |
 | M5Stack CoreS3 | `m5stack-cores3/<dict sha256>.json` |
 | Waveshare ESP32-S3 SIM7670G | `waveshare-esp32-s3-sim7670g/<dict sha256>.json` |
+| ELECROW CrowPanel ESP32-S3 4.2" E-paper with SEN63C | `elecrow-crowpanel-epaper-42/<dict sha256>.json` |
 
-[`index.json`](index.json) holds two maps. `templates` maps each `dict` to
-its board, the firmware schema name, the template `href` (relative to this
-folder) and `desc`. `by_desc` maps each `desc` to its board, `dict` and `href`,
-so a reader that resolves by `desc` needs no scan.
+[`index.json`](index.json) holds two maps, one entry per board in each.
+`templates` maps each `dict` to its board, the firmware schema name, the
+template `href` (relative to this folder) and `desc`. `by_desc` maps each
+`desc` to its board, `dict` and `href`, so a reader that resolves by `desc`
+needs no scan.
 
 ## Byte exact
 

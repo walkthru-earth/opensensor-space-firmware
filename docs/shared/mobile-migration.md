@@ -9,12 +9,31 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## Metadata-driven apps, decision 0003 (docs/metadata-driven-contract)
+
+**Contract only, no firmware or wire change.** No image, digest, column, LIVE
+key or `GET_CONFIG` byte changes. [Decision 0003](decisions/0003-metadata-driven-apps.md)
+(owner, 2026-11-17) records the plan.
+
+**What changed.** The LIVE rule in the
+[sync protocol](ble-sync-protocol.md#live-key-stability) drops the reviewed
+dict digest list. A phone may show LIVE for any template it has verified,
+the full SHA-256 matching the footer `template.sha256` or the template link
+`file:checksum` and starting with the served 16 hex `desc`, filtered by
+`opensensor:plausible_range` and `opensensor:valid_when`. Display hints in the
+template, the board setup and settings manifest, `thing.setup_ack` and
+`setup_v` on page 1 and a board settings page are planned and marked so.
+
+**What the app must do.** Drop the per digest LIVE profile gate and read
+meaning from the verified template (opensensor-space-mobile #219). Build
+nothing for the planned parts until a firmware entry says they shipped.
+
 ## CrowPanel e-paper board with the SEN63C (feat/crowpanel-epaper-sen63c)
 
-**A new board. The app needs a LIVE profile for the new digest and the new
-columns.** CoreS3 and Waveshare do not change. The new board is
-`elecrow-crowpanel-epaper-42`, the ELECROW CrowPanel ESP32-S3 4.2" E-paper
-HMI v1.2 with a Sensirion SEN63C on I2C.
+**A new board. The app reads its LIVE keys, labels and scales from the
+verified template, with no per board profile.** CoreS3 and Waveshare do not
+change. The new board is `elecrow-crowpanel-epaper-42`, the ELECROW CrowPanel
+ESP32-S3 4.2" E-paper HMI v1.2 with a Sensirion SEN63C on I2C.
 
 **What changed.**
 
@@ -61,11 +80,20 @@ HMI v1.2 with a Sensirion SEN63C on I2C.
 **Why.** A low power air quality Thing with its own screen, using a Sensirion
 sensor that also measures CO2.
 
-**What the app must do.** Add a LIVE profile for dict `e7279c4e…` with the
-keys above. Show `m1`, `m25`, `m4`, `m10` as PM mass in ug/m3, `t` in degC,
-`rh` in %, and `co2` in ppm. Treat `sen` like `pms` on the other boards, but
-read it as its own key. Read the new columns by name when it opens a
-CrowPanel file. Do not expect a STAC sidecar next to a CrowPanel file. Nothing changes for CoreS3 or Waveshare.
+**What the app must do.** Show LIVE for this board once its template
+verifies, as the sync protocol describes, with no per board LIVE profile
+([decision 0003](decisions/0003-metadata-driven-apps.md), owner decision
+2026-11-17). Read each key's column through `firmware.live_keys`, and its
+label, UCUM unit and scale from the template hints and the stac-opensensor
+property registry, so `m1`, `m25`, `m4`, `m10` read as PM mass in ug/m3, `t`
+in degC, `rh` in % and `co2` in ppm. Filter values by
+`opensensor:plausible_range` and `opensensor:valid_when`, which gates the PM
+and CO2 keys on `sen6x_status`. Until the hints and registry exist, the
+mobile refactor (opensensor-space-mobile #219) derives labels from the
+column `cf:standard_name` and UCUM unit, and from the `opensensor:property`
+URI where a column has no `cf:standard_name`, so `pm4_mass_ug_m3` reads as
+PM4 from `pm4_mass_concentration`. Read the new columns by name when it
+opens a CrowPanel file. Do not expect a STAC sidecar next to a CrowPanel file. Nothing changes for CoreS3 or Waveshare.
 
 ## H3 from the embedded-h3-location library (feat/h3-lib-v2)
 

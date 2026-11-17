@@ -205,7 +205,7 @@ Notified once per sample. Each board declares a short `live_key` next to the fie
 
 **LIVE rule.** Every LIVE key the board declares is present in every LIVE object. Its value is a number, or JSON `null` when the sample has no usable reading for it. That covers a value that is invalid or unavailable, a non-finite float (NaN or Inf), a value whose printed text is 32 characters or longer (at the decimals the boards use today, only a float of magnitude 1e27 or more gets there), and a UTC instant whose nanosecond form overflows INT64. Null is never sent as zero. An absent key means only that the board has no such field. The set of keys a board can send comes from its dictionary, the `live_key` in its `telemetry_fields.inc` (later the template `firmware.live_keys`). Clients parse the object by key name and ignore keys they do not know. Breaking changes are listed in [mobile-migration.md](mobile-migration.md).
 
-Each field's `live_key` and `decimals` are part of the board's `telemetry_fields.inc`, so the `info.dict` digest covers the LIVE key map and how each float prints. A client picks its reviewed LIVE profile by that digest. The current digests are CoreS3 `3b4d8500…`, Waveshare `a8605aaf…` and CrowPanel `e7279c4e…`. The full values are in [`templates/index.json`](templates/index.json). The digest hashes raw bytes, so a comment, whitespace or line ending edit to `telemetry_fields.inc` moves it. A client that does not know the digest still syncs files but shows no LIVE, see [LIVE key stability](#live-key-stability).
+Each field's `live_key` and `decimals` are part of the board's `telemetry_fields.inc`, so the `info.dict` digest covers the LIVE key map and how each float prints. The current digests are CoreS3 `3b4d8500…`, Waveshare `a8605aaf…` and CrowPanel `e7279c4e…`. The full values are in [`templates/index.json`](templates/index.json). The digest hashes raw bytes, so a comment, whitespace or line ending edit to `telemetry_fields.inc` moves it. A client reads what each key means from the board template, `firmware.live_keys` and the column it names, and may show LIVE for any template whose SHA-256 it has verified, see [LIVE key stability](#live-key-stability).
 
 **Float precision.** Integers print with no point. A float prints rounded to the `decimals` its field declares, chosen from the sensor resolution, so `1.00` and `1.0` are both possible and both mean the number one. Today CoreS3 prints `t` with two decimals (SHT20 steps 0.01 degC) and `imu_t` and `rh` with one. Waveshare prints `t` and `rh` with one (PMS5003T steps 0.1). Clients parse the value as a number and keep their own display rounding.
 
@@ -241,9 +241,9 @@ The whole object must fit 480 bytes. The firmware never sends a truncated object
 
 - A LIVE key never changes meaning once released. Meaning is the quantity, the unit, the source (board or ambient air) and what each existing code value means. Adding a new code value is allowed and counts as a layout change below. Changing what an existing code value means is not allowed. A new meaning gets a new key. A retired key is never reused.
 - Each key in the table above means the same thing on every board. `imu_t` is always the IMU die temperature, never air. `t` is always ambient air temperature. A board that declares a key and has no valid value for it sends the key as null.
-- Firmware may add or drop keys. Clients read keys by name and ignore keys they do not know. An app shows LIVE only for a dict digest it has a reviewed LIVE profile for (opensensor-space-mobile #184). An unknown or retired digest still syncs files, but the app has no LIVE profile for it and does not show LIVE. It never guesses a meaning from a device name, a firmware string or a value.
+- Firmware may add or drop keys. Clients read keys by name and ignore keys they do not know. A phone may show LIVE for any board template it has verified as in [How a phone checks it](#get_descriptor), the full 64 hex SHA-256 matching the footer `template.sha256` or the template link `file:checksum`, and starting with the 16 hex `desc` the device serves. The short `desc` alone never verifies a template. The phone maps each key through the template `firmware.live_keys` to its column, and filters each value by that column's `opensensor:plausible_range` and `opensensor:valid_when`. When the `valid_when` column has no LIVE key the phone cannot check the gate and does not show that value. The template stays valid and the value stays in the file. Today that is only CoreS3 `als`, gated on `light_status`. There is no reviewed digest list ([decision 0003](decisions/0003-metadata-driven-apps.md), owner decision 2026-11-17, replacing opensensor-space-mobile #184). A phone that cannot verify a template still syncs files and shows no LIVE. It never guesses a meaning from a device name, a firmware string or a value.
 - Older CoreS3 builds that sent the IMU die temperature as `t` predate this rule and are not supported. No release may do the same.
-- Every firmware release whose LIVE layout changes says **needs app update** in its release notes and in its [mobile-migration.md](mobile-migration.md) entry. A layout change is a key added, removed or renamed, a new code value, or a change in the decimals a float prints with. A digest that moves without a layout change still gets a fixture in `tools/fixtures/live_keys/` and a migration entry. The app shows no LIVE for the new digest until it maps it to a LIVE profile, and file sync is unaffected.
+- Every firmware release whose LIVE layout changes says **needs app update** in its release notes and in its [mobile-migration.md](mobile-migration.md) entry. A layout change is a key added, removed or renamed, a new code value, or a change in the decimals a float prints with. A digest that moves without a layout change still gets a fixture in `tools/fixtures/live_keys/` and a migration entry. The app reads the new layout from the new template, and file sync is unaffected.
 
 ### `control` (write) and `response` (notify)
 
@@ -383,6 +383,19 @@ the requested object means unsupported, not an unset location.
 | 4 | `{"ntp":{"server2":""}}` |
 | 5 | `{"owner":{"title":"","provider":"","url":""},"thing":{"deployment_id":""}}`, 74 bytes empty and 458 at the worst case |
 | 6 | `{"owner":{"description":""}}`, 348 bytes at the worst case |
+
+**Planned, not built** ([decision 0003](decisions/0003-metadata-driven-apps.md)).
+No firmware sends these yet, and the bytes above are what boards send today.
+Page 1 `thing` gains `setup_ack`, a bitmask of the setup steps the phone has
+finished in the order of the template `firmware.setup`, and `setup_v`, which
+names the step list those bits refer to. A `setup_v` the phone does not
+expect reads as no step done. The device stores both, the phone sets them
+with a planned `SET_CONFIG` key, and the advert `setup` bit stays derived
+from the config for required steps. A new page after page
+6 carries the board specific settings that the template `firmware.config_keys`
+declares, such as the CrowPanel panel and SEN63C options that only the panel
+knob can change today. The keys, page number and limits are fixed in the PR
+that builds them, with a [mobile-migration.md](mobile-migration.md) entry.
 
 The owner keys (#148) live in their own CRC-checked NVS record, separate from
 the main configuration record, so existing keys and types do not change. The
