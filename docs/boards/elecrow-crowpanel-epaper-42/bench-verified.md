@@ -36,6 +36,28 @@ No board was connected to a serial port, flashed or captured for this entry.
 - No SEN63C was wired. The log shows `OS SEN6X absent error=write-nack`, as
   expected, so rows hold null sensor values.
 
+## Reflash with 3.75 MiB app slots, 2026-11-17
+
+- Same owner unit and port, checked again with `ports`, `chip`, `flash-id`
+  and `efuse` (MAC unchanged, 8 MB flash, PSRAM 8 MB AP_3v3).
+- Full 8,388,608 byte backup before the write, SHA-256
+  `99bd40af0a2200cb712c0249af449ecc77897ff9bcc4fabcfbacd38d2b8f1a1d`. The
+  first backup attempt stopped at 72% with a short serial read and wrote no
+  file, the second completed and verified.
+- Image `opensensor_crowpanel.bin` built from commit `a25aeca`, 1,712,224
+  bytes, SHA-256
+  `a626960ea7cc3d750a95f7639cc0b017b4ba13bba8dded46e3402f66dd323a01`, written
+  with `pixi run crowpanel-flash` in one pass, all four regions hash verified.
+  This write moved the board to the new partition table, app1 at 0x3d0000,
+  coredump at 0x790000 and the unused data partition at 0x7a0000, with NVS
+  still at 0x9000.
+- The 60 second boot capture shows `App version: a25aeca`, the coredump
+  partition found at 0x790000, `OS PANEL settings operation=load error=0`,
+  `OS DISPLAY ready=1`, `OS TF mounted=1`, `PARQUET STORAGE state=ready`,
+  `PARQUET SCAN files=2 retained_partials=0 quarantine_files=0`, `OS READY
+  logging=1` and rows 0 to 4 at 10 s with no drops. No panic or reset.
+- Still no SEN63C wired, `OS SEN6X absent error=write-nack` as expected.
+
 Not shown yet. What the panel draws, the keys and the settings popup, SEN63C
 readings, a finalized Parquet file read back from the card, BLE and LAN sync,
 endurance and power-cut durability.
