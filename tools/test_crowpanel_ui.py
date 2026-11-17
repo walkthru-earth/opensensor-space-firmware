@@ -23,7 +23,7 @@ DISPLAY = ROOT / "firmware/esp-idf-crowpanel-epaper/display"
 PREVIEW = ROOT / "firmware/esp-idf-crowpanel-epaper/artifacts/ui-preview"
 # The host-portable part of the display stack. epd_uc8276c.cpp needs ESP-IDF.
 SOURCES = ["canvas.cpp", "chart.cpp", "history.cpp", "pages.cpp",
-           "ui_model.cpp", "fonts_gen.cpp"]
+           "settings.cpp", "ui_model.cpp", "fonts_gen.cpp"]
 
 
 def compile_one(main: Path, out: Path, sanitize: bool) -> None:

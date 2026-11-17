@@ -2,6 +2,7 @@ idf_component_register(
     SRCS "../../logger/main.cpp" "../../board_io.cpp"
          "../../display/canvas.cpp" "../../display/chart.cpp"
          "../../display/history.cpp" "../../display/pages.cpp"
+         "../../display/settings.cpp"
          "../../display/ui_model.cpp" "../../display/fonts_gen.cpp"
          "../../display/epd_uc8276c.cpp"
     INCLUDE_DIRS "../../logger" "../../display"

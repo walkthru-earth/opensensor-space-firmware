@@ -1,6 +1,7 @@
 // Host tests for the CrowPanel e-paper UI, canvas clipping, UTF-8, history
-// rings, chart gaps, PM2.5 bands, reading quality, navigation and the refresh
-// cadence. Built and run by tools/test_crowpanel_ui.py with sanitizers.
+// rings, chart gaps, PM2.5 bands, reading quality, navigation, the refresh
+// cadence, the settings blob and popup and the sleeping screen. Built and run
+// by tools/test_crowpanel_ui.py with sanitizers.
 
 #include <array>
 #include <cmath>
@@ -10,12 +11,14 @@
 #include <memory>
 #include <optional>
 #include <string_view>
+#include <vector>
 
 #include "air_band.h"
 #include "canvas.h"
 #include "chart.h"
 #include "history.h"
 #include "pages.h"
+#include "settings.h"
 #include "ui_model.h"
 
 using namespace opensensor::ui;
@@ -319,8 +322,11 @@ void test_navigation() {
   const Nav p = navigate(4, Input::Press);
   CHECK(p.page == 4 && p.full_refresh);
   CHECK(navigate(5, Input::Exit).page == kDashboardPage);
-  CHECK(navigate(2, Input::Menu).page == kStatusPage);
-  CHECK(navigate(kStatusPage, Input::Menu).page == kDashboardPage);
+  // Menu belongs to the settings popup, navigate keeps the page.
+  CHECK(navigate(2, Input::Menu).page == 2);
+  CHECK(navigate(kStatusPage, Input::Menu).page == kStatusPage);
+  // The status page is one turn back from the dashboard.
+  CHECK(navigate(kDashboardPage, Input::Up).page == kStatusPage);
   CHECK(navigate(200, Input::Down).page == 1);
 
   RefreshPolicy policy;
@@ -395,6 +401,480 @@ void test_pairing_screen() {
   CHECK(b->bytes != first->bytes);
 }
 
+bool copy_ok(std::string_view s) {
+  return s.find(':') == std::string_view::npos &&
+         s.find(';') == std::string_view::npos &&
+         s.find("—") == std::string_view::npos;
+}
+
+std::string_view value_of(Row r, const Settings &s, const PopupState &p,
+                          const SettingsInfo &info, std::array<char, 24> &buf) {
+  return row_value(buf, r, s, p, info);
+}
+
+void test_settings_blob() {
+  const Settings d{};
+  CHECK(refresh_seconds(d) == 10);
+  CHECK(!sleep_after_seconds(d));
+  CHECK(start_page(d) == kDashboardPage);
+  CHECK(d.co2_asc && d.altitude_m == 0 && d.temp_offset_dc == 0);
+
+  const SettingsBlob db = encode(d);
+  CHECK(db[0] == kSettingsVersion);
+  CHECK(decode(db) == d);
+
+  const Settings s{.refresh = RefreshEvery::M5,
+                   .start_page = StartPage::LastViewed,
+                   .last_page = kStatusPage,
+                   .co2_asc = false,
+                   .altitude_m = 2950,
+                   .temp_offset_dc = -73,
+                   .sleep_after = SleepAfter::H1};
+  const SettingsBlob b = encode(s);
+  // Explicit little endian, independent of the host.
+  CHECK(b[5] == (2950 & 0xFF) && b[6] == (2950 >> 8));
+  CHECK(b[7] == 0xB7 && b[8] == 0xFF); // -73 as two's complement.
+  CHECK(decode(b) == s);
+  CHECK(refresh_seconds(s) == 300);
+  CHECK(sleep_after_seconds(s) == 3600U);
+  CHECK(start_page(s) == kStatusPage);
+  CHECK(refresh_seconds({.refresh = RefreshEvery::S30}) == 30);
+  CHECK(refresh_seconds({.refresh = RefreshEvery::M1}) == 60);
+  CHECK(sleep_after_seconds({.sleep_after = SleepAfter::M10}) == 600U);
+  CHECK(sleep_after_seconds({.sleep_after = SleepAfter::M30}) == 1800U);
+  // Every temperature offset survives the round trip.
+  for (int v = kTempOffsetMinDc; v <= kTempOffsetMaxDc; ++v) {
+    Settings t{};
+    t.temp_offset_dc = static_cast<std::int16_t>(v);
+    CHECK(decode(encode(t)).temp_offset_dc == v);
+  }
+
+  // Empty, a bad version and a short blob.
+  CHECK(decode({}) == d);
+  SettingsBlob bad = b;
+  bad[0] = 2;
+  CHECK(decode(bad) == d);
+  bad[0] = 0;
+  CHECK(decode(bad) == d);
+  const std::vector<std::uint8_t> shorter(b.begin(), b.begin() + 5);
+  const Settings sh = decode(shorter);
+  CHECK(sh.refresh == s.refresh && sh.start_page == s.start_page &&
+        sh.last_page == s.last_page && sh.co2_asc == s.co2_asc);
+  CHECK(sh.altitude_m == 0 && sh.temp_offset_dc == 0 &&
+        sh.sleep_after == SleepAfter::Off);
+  // One byte of a two byte field is not enough.
+  const std::vector<std::uint8_t> half(b.begin(), b.begin() + 6);
+  CHECK(decode(half).altitude_m == 0);
+  // A longer blob reads its first ten bytes.
+  std::vector<std::uint8_t> longer(b.begin(), b.end());
+  longer.push_back(0xEE);
+  CHECK(decode(longer) == s);
+
+  // Each field out of range falls back on its own, the rest still decode.
+  const auto out_of_range = [&](std::size_t at, std::uint8_t v) {
+    SettingsBlob x = b;
+    x[at] = v;
+    return decode(x);
+  };
+  CHECK(out_of_range(1, 4).refresh == RefreshEvery::S10);
+  CHECK(out_of_range(1, 4).sleep_after == SleepAfter::H1);
+  CHECK(out_of_range(2, 2).start_page == StartPage::Dashboard);
+  CHECK(out_of_range(3, kPageCount).last_page == kDashboardPage);
+  CHECK(out_of_range(4, 2).co2_asc);
+  CHECK(out_of_range(9, 4).sleep_after == SleepAfter::Off);
+  CHECK(out_of_range(9, 4).altitude_m == 2950);
+  SettingsBlob hi = b;
+  hi[5] = (3001 & 0xFF);
+  hi[6] = (3001 >> 8);
+  CHECK(decode(hi).altitude_m == 0 && decode(hi).temp_offset_dc == -73);
+  SettingsBlob cold = b;
+  cold[7] = 0x9B; // -101
+  cold[8] = 0xFF;
+  CHECK(decode(cold).temp_offset_dc == 0);
+  SettingsBlob warm = b;
+  warm[7] = 51;
+  warm[8] = 0;
+  CHECK(decode(warm).temp_offset_dc == 0);
+  // A corrupt start page cannot open an unknown page.
+  Settings lost{};
+  lost.start_page = StartPage::LastViewed;
+  lost.last_page = 200;
+  CHECK(start_page(lost) == kDashboardPage);
+}
+
+constexpr SettingsInfo kAllThere{.wifi_configured = true,
+                                 .wifi_on = true,
+                                 .sensor_present = true,
+                                 .fan_cleaning = false};
+
+PopupState opened() {
+  PopupState p{};
+  Settings s{};
+  CHECK(popup_input(p, s, kAllThere, Input::Menu) == Effect::Opened);
+  CHECK(p.open && p.selected == Row::Refresh && !p.editing);
+  return p;
+}
+
+PopupState at(Row r) {
+  PopupState p = opened();
+  p.selected = r;
+  return p;
+}
+
+void test_popup_rows() {
+  // A closed popup ignores everything but Menu.
+  {
+    PopupState p{};
+    Settings s{};
+    for (const Input in : {Input::Up, Input::Down, Input::Press, Input::Exit})
+      CHECK(popup_input(p, s, kAllThere, in) == Effect::None && !p.open);
+  }
+  // Selection moves down with Down and wraps both ways.
+  {
+    PopupState p = opened();
+    Settings s{};
+    CHECK(popup_input(p, s, kAllThere, Input::Down) == Effect::None);
+    CHECK(p.selected == Row::StartPage);
+    p.selected = Row::Refresh;
+    CHECK(popup_input(p, s, kAllThere, Input::Up) == Effect::None);
+    CHECK(p.selected == Row::SleepAfter);
+    CHECK(popup_input(p, s, kAllThere, Input::Down) == Effect::None);
+    CHECK(p.selected == Row::Refresh);
+    for (int i = 0; i < kRowCount; ++i)
+      static_cast<void>(popup_input(p, s, kAllThere, Input::Down));
+    CHECK(p.selected == Row::Refresh);
+    CHECK(s == Settings{});
+  }
+  // Refresh cycles 10 s, 30 s, 1 min, 5 min and back.
+  {
+    PopupState p = at(Row::Refresh);
+    Settings s{};
+    std::array<char, 24> buf{};
+    CHECK(value_of(Row::Refresh, s, p, kAllThere, buf) == "10 s");
+    CHECK(popup_input(p, s, kAllThere, Input::Press) == Effect::Changed);
+    CHECK(s.refresh == RefreshEvery::S30);
+    CHECK(value_of(Row::Refresh, s, p, kAllThere, buf) == "30 s");
+    static_cast<void>(popup_input(p, s, kAllThere, Input::Press));
+    CHECK(value_of(Row::Refresh, s, p, kAllThere, buf) == "1 min");
+    static_cast<void>(popup_input(p, s, kAllThere, Input::Press));
+    CHECK(value_of(Row::Refresh, s, p, kAllThere, buf) == "5 min");
+    static_cast<void>(popup_input(p, s, kAllThere, Input::Press));
+    CHECK(s.refresh == RefreshEvery::S10);
+  }
+  // Start page toggles.
+  {
+    PopupState p = at(Row::StartPage);
+    Settings s{};
+    std::array<char, 24> buf{};
+    CHECK(value_of(Row::StartPage, s, p, kAllThere, buf) == "Dashboard");
+    CHECK(popup_input(p, s, kAllThere, Input::Press) == Effect::Changed);
+    CHECK(s.start_page == StartPage::LastViewed);
+    CHECK(value_of(Row::StartPage, s, p, kAllThere, buf) == "Last page");
+    CHECK(popup_input(p, s, kAllThere, Input::Press) == Effect::Changed);
+    CHECK(s.start_page == StartPage::Dashboard);
+  }
+  // Wi-Fi is read only status, Press never changes anything.
+  {
+    std::array<char, 24> buf{};
+    for (const bool configured : {false, true}) {
+      for (const bool on : {false, true}) {
+        PopupState p = at(Row::Wifi);
+        Settings s{};
+        const SettingsInfo info{.wifi_configured = configured,
+                                .wifi_on = on,
+                                .sensor_present = true,
+                                .fan_cleaning = false};
+        CHECK(popup_input(p, s, info, Input::Press) == Effect::None);
+        CHECK(s == Settings{} && p.open && !p.editing);
+        const std::string_view v = value_of(Row::Wifi, s, p, info, buf);
+        CHECK(v == (!configured ? "Not set up" : (on ? "On" : "Off")));
+      }
+    }
+  }
+  // Fan cleaning needs a sensor that is not cleaning already.
+  {
+    std::array<char, 24> buf{};
+    PopupState p = at(Row::FanCleaning);
+    Settings s{};
+    CHECK(popup_input(p, s, kAllThere, Input::Press) == Effect::FanClean);
+    CHECK(value_of(Row::FanCleaning, s, p, kAllThere, buf) == "Run now");
+    SettingsInfo running = kAllThere;
+    running.fan_cleaning = true;
+    CHECK(popup_input(p, s, running, Input::Press) == Effect::None);
+    CHECK(value_of(Row::FanCleaning, s, p, running, buf) == "Running");
+    SettingsInfo none = kAllThere;
+    none.sensor_present = false;
+    CHECK(popup_input(p, s, none, Input::Press) == Effect::None);
+    CHECK(value_of(Row::FanCleaning, s, p, none, buf) == "No sensor");
+    CHECK(s == Settings{});
+  }
+  // CO2 self calibration toggles and says off is for the lab.
+  {
+    std::array<char, 24> buf{};
+    PopupState p = at(Row::Co2Asc);
+    Settings s{};
+    CHECK(value_of(Row::Co2Asc, s, p, kAllThere, buf) == "On");
+    CHECK(popup_input(p, s, kAllThere, Input::Press) == Effect::Changed);
+    CHECK(!s.co2_asc);
+    CHECK(value_of(Row::Co2Asc, s, p, kAllThere, buf) == "Off (lab only)");
+    CHECK(popup_input(p, s, kAllThere, Input::Press) == Effect::Changed);
+    CHECK(s.co2_asc);
+  }
+  // Sleep after cycles Off, 10 min, 30 min, 1 h and back.
+  {
+    std::array<char, 24> buf{};
+    PopupState p = at(Row::SleepAfter);
+    Settings s{};
+    CHECK(value_of(Row::SleepAfter, s, p, kAllThere, buf) == "Off");
+    for (const std::string_view want : {"10 min", "30 min", "1 h", "Off"}) {
+      CHECK(popup_input(p, s, kAllThere, Input::Press) == Effect::Changed);
+      CHECK(value_of(Row::SleepAfter, s, p, kAllThere, buf) == want);
+    }
+  }
+  // Menu and Exit close it.
+  for (const Input in : {Input::Menu, Input::Exit}) {
+    PopupState p = opened();
+    Settings s{};
+    CHECK(popup_input(p, s, kAllThere, in) == Effect::Closed && !p.open);
+  }
+  // Every label and value obeys the copy rule.
+  {
+    std::array<char, 24> buf{};
+    Settings s{};
+    s.co2_asc = false;
+    s.temp_offset_dc = -15;
+    PopupState p = opened();
+    for (std::uint8_t i = 0; i < kRowCount; ++i) {
+      const auto r = static_cast<Row>(i);
+      CHECK(!row_label(r).empty() && copy_ok(row_label(r)));
+      CHECK(!value_of(r, s, p, kAllThere, buf).empty());
+      CHECK(copy_ok(value_of(r, s, p, kAllThere, buf)));
+    }
+  }
+}
+
+void test_popup_numeric() {
+  std::array<char, 24> buf{};
+  // Altitude, Up raises by 50 and clamps at 3000, Down lowers and clamps at 0.
+  {
+    PopupState p = at(Row::Altitude);
+    Settings s{};
+    CHECK(value_of(Row::Altitude, s, p, kAllThere, buf) == "0 m");
+    CHECK(popup_input(p, s, kAllThere, Input::Press) == Effect::None);
+    CHECK(p.editing && p.edit_value == 0);
+    CHECK(popup_input(p, s, kAllThere, Input::Down) == Effect::None);
+    CHECK(p.edit_value == 0 && p.selected == Row::Altitude);
+    for (int i = 0; i < 7; ++i)
+      CHECK(popup_input(p, s, kAllThere, Input::Up) == Effect::None);
+    CHECK(p.edit_value == 350 && s.altitude_m == 0);
+    CHECK(value_of(Row::Altitude, s, p, kAllThere, buf) == "350 m");
+    CHECK(popup_input(p, s, kAllThere, Input::Press) == Effect::Changed);
+    CHECK(!p.editing && s.altitude_m == 350);
+    // Pressing again without a change is not a change.
+    CHECK(popup_input(p, s, kAllThere, Input::Press) == Effect::None);
+    CHECK(popup_input(p, s, kAllThere, Input::Press) == Effect::None);
+    CHECK(s.altitude_m == 350);
+    CHECK(popup_input(p, s, kAllThere, Input::Press) == Effect::None);
+    for (int i = 0; i < 100; ++i)
+      static_cast<void>(popup_input(p, s, kAllThere, Input::Up));
+    CHECK(p.edit_value == kAltitudeMaxM);
+    // Exit cancels, the popup stays open on the row.
+    CHECK(popup_input(p, s, kAllThere, Input::Exit) == Effect::None);
+    CHECK(p.open && !p.editing && s.altitude_m == 350);
+    CHECK(value_of(Row::Altitude, s, p, kAllThere, buf) == "350 m");
+    // Menu while editing drops the edit and closes.
+    static_cast<void>(popup_input(p, s, kAllThere, Input::Press));
+    static_cast<void>(popup_input(p, s, kAllThere, Input::Down));
+    CHECK(popup_input(p, s, kAllThere, Input::Menu) == Effect::Closed);
+    CHECK(!p.open && !p.editing && s.altitude_m == 350);
+  }
+  // Temperature offset steps 0.1 C between -10.0 and +5.0 C.
+  {
+    PopupState p = at(Row::TempOffset);
+    Settings s{};
+    CHECK(value_of(Row::TempOffset, s, p, kAllThere, buf) == "0.0 °C");
+    static_cast<void>(popup_input(p, s, kAllThere, Input::Press));
+    for (int i = 0; i < 15; ++i)
+      static_cast<void>(popup_input(p, s, kAllThere, Input::Down));
+    CHECK(value_of(Row::TempOffset, s, p, kAllThere, buf) == "-1.5 °C");
+    CHECK(popup_input(p, s, kAllThere, Input::Press) == Effect::Changed);
+    CHECK(s.temp_offset_dc == -15);
+    static_cast<void>(popup_input(p, s, kAllThere, Input::Press));
+    for (int i = 0; i < 500; ++i)
+      static_cast<void>(popup_input(p, s, kAllThere, Input::Down));
+    CHECK(p.edit_value == kTempOffsetMinDc);
+    CHECK(value_of(Row::TempOffset, s, p, kAllThere, buf) == "-10.0 °C");
+    for (int i = 0; i < 500; ++i)
+      static_cast<void>(popup_input(p, s, kAllThere, Input::Up));
+    CHECK(p.edit_value == kTempOffsetMaxDc);
+    CHECK(value_of(Row::TempOffset, s, p, kAllThere, buf) == "+5.0 °C");
+    CHECK(popup_input(p, s, kAllThere, Input::Press) == Effect::Changed);
+    CHECK(s.temp_offset_dc == 50);
+    s.temp_offset_dc = 20;
+    p.editing = false;
+    CHECK(value_of(Row::TempOffset, s, p, kAllThere, buf) == "+2.0 °C");
+    s.temp_offset_dc = -5;
+    CHECK(value_of(Row::TempOffset, s, p, kAllThere, buf) == "-0.5 °C");
+  }
+}
+
+void test_ui_handle() {
+  const SettingsInfo info = kAllThere;
+  // Menu opens the popup from every page and keeps the page under it.
+  for (std::uint8_t page = 0; page < kPageCount; ++page) {
+    UiState ui{.page = page};
+    Settings s{};
+    const Outcome o = handle(ui, s, info, Input::Menu);
+    CHECK(o.effect == Effect::Opened && ui.popup.open && ui.page == page);
+    CHECK(!o.page_changed && !o.full_refresh);
+    // Turning the knob now moves the selection, not the page.
+    const Outcome d = handle(ui, s, info, Input::Down);
+    CHECK(ui.page == page && !d.page_changed);
+    CHECK(ui.popup.selected == Row::StartPage);
+    const Outcome c = handle(ui, s, info, Input::Exit);
+    CHECK(c.effect == Effect::Closed && c.full_refresh);
+    CHECK(!ui.popup.open && ui.page == page);
+    static_cast<void>(handle(ui, s, info, Input::Menu));
+    CHECK(handle(ui, s, info, Input::Menu).effect == Effect::Closed);
+    CHECK(s == Settings{});
+  }
+  // With the popup closed the pages behave as navigate() does.
+  for (std::uint8_t page = 0; page < kPageCount; ++page) {
+    for (const Input in : {Input::Up, Input::Down, Input::Press, Input::Exit}) {
+      UiState ui{.page = page};
+      Settings s{};
+      const Nav want = navigate(page, in);
+      const Outcome o = handle(ui, s, info, in);
+      CHECK(ui.page == want.page && o.full_refresh == want.full_refresh);
+      CHECK(o.page_changed == (want.page != page));
+      CHECK(o.effect == Effect::None && !ui.popup.open);
+    }
+  }
+  // Effects pass through handle().
+  {
+    UiState ui{};
+    Settings s{};
+    static_cast<void>(handle(ui, s, info, Input::Menu));
+    ui.popup.selected = Row::FanCleaning;
+    CHECK(handle(ui, s, info, Input::Press).effect == Effect::FanClean);
+    ui.popup.selected = Row::Refresh;
+    CHECK(handle(ui, s, info, Input::Press).effect == Effect::Changed);
+    CHECK(s.refresh == RefreshEvery::S30);
+  }
+  // Last viewed tracks the page, Dashboard leaves last_page alone.
+  {
+    UiState ui{};
+    Settings s{};
+    CHECK(handle(ui, s, info, Input::Down).effect == Effect::None);
+    CHECK(s.last_page == kDashboardPage);
+    static_cast<void>(handle(ui, s, info, Input::Menu));
+    ui.popup.selected = Row::StartPage;
+    CHECK(handle(ui, s, info, Input::Press).effect == Effect::Changed);
+    CHECK(s.start_page == StartPage::LastViewed && s.last_page == 1);
+    static_cast<void>(handle(ui, s, info, Input::Exit));
+    const Outcome o = handle(ui, s, info, Input::Down);
+    CHECK(o.page_changed && o.effect == Effect::Changed && s.last_page == 2);
+    CHECK(handle(ui, s, info, Input::Press).effect == Effect::None);
+    CHECK(start_page(s) == 2);
+  }
+  // Any key wakes a sleeping screen and does nothing else.
+  for (const Input in :
+       {Input::Up, Input::Down, Input::Press, Input::Menu, Input::Exit}) {
+    UiState ui{.page = 3};
+    Settings s{};
+    static_cast<void>(handle(ui, s, info, Input::Menu));
+    ui.popup.selected = Row::Altitude;
+    static_cast<void>(handle(ui, s, info, Input::Press));
+    CHECK(ui.popup.editing);
+    fall_asleep(ui);
+    CHECK(ui.asleep && !ui.popup.open && !ui.popup.editing);
+    const Outcome o = handle(ui, s, info, in);
+    CHECK(!ui.asleep && o.full_refresh && o.effect == Effect::None);
+    CHECK(ui.page == 3 && !ui.popup.open && s == Settings{});
+  }
+}
+
+Model sample_model() {
+  Model m{};
+  for (std::size_t i = 0; i < kMetricCount; ++i)
+    m.now[i] = {.value = 888.0F, .quality = Quality::Valid, .warm_left_s = 0};
+  m.status.utc_s = 1795437120;
+  m.status.thing = "OS-7F3A2C";
+  m.status.device_name = "OS-7F3A2C";
+  m.status.sensor_present = true;
+  return m;
+}
+
+void test_render_settings_and_sleep() {
+  auto b = std::make_unique<Buffer>();
+  auto page = std::make_unique<Buffer>();
+  auto h = std::make_unique<History>();
+  Model m = sample_model();
+  for (std::uint32_t t = 0; t < 3600; t += 10)
+    h->push(t, all(static_cast<float>(t % 300)));
+  Settings s{};
+  for (std::uint8_t p = 0; p < kPageCount; ++p) {
+    UiState ui{.page = p};
+    render_screen(page->canvas, ui, s, kAllThere, m, *h);
+    static_cast<void>(handle(ui, s, kAllThere, Input::Menu));
+    render_screen(b->canvas, ui, s, kAllThere, m, *h);
+    CHECK(b->bytes != page->bytes);
+    // Outside the popup frame the page is untouched.
+    bool same = true;
+    for (int y = 0; y < 20; ++y)
+      for (int x = 0; x < kWidth; ++x)
+        same = same && b->canvas.get(x, y) == page->canvas.get(x, y);
+    CHECK(same);
+    // Every row selected and every numeric row in edit draws.
+    for (std::uint8_t r = 0; r < kRowCount; ++r) {
+      ui.popup.selected = static_cast<Row>(r);
+      ui.popup.editing = false;
+      render_screen(b->canvas, ui, s, kAllThere, m, *h);
+      if (ui.popup.selected == Row::Altitude ||
+          ui.popup.selected == Row::TempOffset) {
+        static_cast<void>(handle(ui, s, kAllThere, Input::Press));
+        render_screen(b->canvas, ui, s, {}, m, *h);
+      }
+    }
+  }
+  // Asleep, no reading and no clock, only the names.
+  {
+    UiState ui{.page = 1};
+    fall_asleep(ui);
+    render_screen(b->canvas, ui, s, kAllThere, m, *h);
+    auto empty = std::make_unique<Buffer>();
+    Model other = sample_model();
+    for (auto &r : other.now)
+      r.value = 12.0F;
+    other.status.utc_s = 0;
+    render_screen(empty->canvas, ui, s, kAllThere, other, *h);
+    CHECK(b->bytes == empty->bytes);
+    // Some ink, and nothing in the header band.
+    CHECK(ink_count(b->canvas, {0, 0, kWidth, kHeight}) > 500);
+    CHECK(ink_count(b->canvas, {0, 0, kWidth, 40}) == 0);
+    // Without names it still draws.
+    other.status.thing = {};
+    other.status.device_name = {};
+    render_asleep(empty->canvas, other);
+    CHECK(empty->bytes != b->bytes);
+  }
+  // A pairing passkey wins over sleep and over the popup.
+  {
+    Model pm = sample_model();
+    pm.status.pairing_passkey = 42U;
+    auto want = std::make_unique<Buffer>();
+    render(want->canvas, kDashboardPage, pm, *h);
+    UiState ui{};
+    fall_asleep(ui);
+    render_screen(b->canvas, ui, s, kAllThere, pm, *h);
+    CHECK(b->bytes == want->bytes);
+    ui.asleep = false;
+    static_cast<void>(handle(ui, s, kAllThere, Input::Menu));
+    render_screen(b->canvas, ui, s, kAllThere, pm, *h);
+    CHECK(b->bytes == want->bytes);
+  }
+}
+
 } // namespace
 
 int main() {
@@ -407,6 +887,11 @@ int main() {
   test_navigation();
   test_render_all_pages();
   test_pairing_screen();
+  test_settings_blob();
+  test_popup_rows();
+  test_popup_numeric();
+  test_ui_handle();
+  test_render_settings_and_sleep();
   std::printf("crowpanel ui, %d checks passed\n", g_checks);
   return 0;
 }

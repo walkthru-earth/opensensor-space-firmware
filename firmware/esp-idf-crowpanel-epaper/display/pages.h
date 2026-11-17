@@ -25,7 +25,8 @@ inline constexpr std::array<Metric, kMetricCount> kChartOrder{
 };
 
 // Buttons on the panel. Up and Down are the rotary switch, Press is pushing
-// it, Menu and Exit are the two keys on the side.
+// it, Menu and Exit are the two keys on the side. The board passes each one
+// to handle() in settings.h, which sends it to the settings popup or here.
 enum class Input : std::uint8_t { Up, Down, Press, Menu, Exit };
 
 struct Nav {
@@ -33,9 +34,11 @@ struct Nav {
   bool full_refresh; // The user asked for a clean redraw.
 };
 
-// Up and Down step through the pages and wrap. Press keeps the page and asks
-// for a full refresh to clear ghosting. Exit returns to the dashboard. Menu
-// toggles between the dashboard and the status page.
+// Page navigation with the settings popup closed. Up and Down step through
+// the pages and wrap, so the status page is one turn back from the
+// dashboard. Press keeps the page and asks for a full refresh to clear
+// ghosting. Exit returns to the dashboard. Menu opens the settings popup in
+// handle(), so here it keeps the page.
 [[nodiscard]] Nav navigate(std::uint8_t page, Input in);
 
 enum class Refresh : std::uint8_t { Full, Partial };
@@ -56,5 +59,10 @@ private:
 // Draws `page` of the model into the canvas, clearing it first.
 void render(Canvas &c, std::uint8_t page, const Model &model,
             const History &history);
+
+// The sleeping screen, clearing the canvas first. It names the Thing and the
+// device and says how to wake it. It shows no reading and no clock, so a
+// sleeping panel never passes an old value off as current (#165).
+void render_asleep(Canvas &c, const Model &model);
 
 } // namespace opensensor::ui

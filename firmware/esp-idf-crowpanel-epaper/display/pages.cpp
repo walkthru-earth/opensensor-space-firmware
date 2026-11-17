@@ -402,8 +402,8 @@ void status_page(Canvas &c, std::uint8_t page, const Model &m) {
 // reads from across a room, and the device name tells two boards apart.
 void pairing_page(Canvas &c, const Status &st) {
   c.text(fonts::title, kWidth / 2, 70, "Pair with phone", Align::Center);
-  c.text(fonts::label, kWidth / 2, 104,
-         "Enter this code on the phone:", Align::Center);
+  c.text(fonts::label, kWidth / 2, 104, "Enter this code on the phone",
+         Align::Center);
   Text t{};
   const int n = std::snprintf(t.data(), t.size(), "%06u",
                               static_cast<unsigned>(*st.pairing_passkey));
@@ -419,7 +419,37 @@ void pairing_page(Canvas &c, const Status &st) {
          "Only someone reading this screen can pair.", Align::Center);
 }
 
+// One centred "name value" line of the sleeping screen, skipped when the
+// value is empty.
+int asleep_line(Canvas &c, int y, std::string_view name,
+                std::string_view value) {
+  if (value.empty())
+    return y;
+  const int nw = text_width(fonts::small, name) + 6;
+  const int vw = text_width(fonts::label, value);
+  const int x = (kWidth - nw - vw) / 2;
+  c.text(fonts::small, x, y, name);
+  c.text(fonts::label, x + nw, y, value);
+  return y + 22;
+}
+
 } // namespace
+
+void render_asleep(Canvas &c, const Model &model) {
+  c.clear();
+  const Status &st = model.status;
+  const Rect card{40, 52, kWidth - 80, 196};
+  c.round_rect(card);
+  c.text(fonts::label, kWidth / 2, card.y + 34, "OpenSensor", Align::Center);
+  c.text(fonts::title, kWidth / 2, card.y + 78, "Screen is asleep",
+         Align::Center);
+  c.text(fonts::small, kWidth / 2, card.y + 102, "Press any button to wake it",
+         Align::Center);
+  c.dotted_hline(card.x + 24, card.y + 122, card.w - 48, 1, 3);
+  int y = card.y + 148;
+  y = asleep_line(c, y, "Thing", st.thing);
+  static_cast<void>(asleep_line(c, y, "Device", st.device_name));
+}
 
 Nav navigate(std::uint8_t page, Input in) {
   if (page >= kPageCount)
@@ -435,8 +465,7 @@ Nav navigate(std::uint8_t page, Input in) {
   case Input::Press:
     return {.page = page, .full_refresh = true};
   case Input::Menu:
-    return {.page = page == kStatusPage ? kDashboardPage : kStatusPage,
-            .full_refresh = false};
+    return {.page = page, .full_refresh = false};
   case Input::Exit:
     return {.page = kDashboardPage, .full_refresh = false};
   }

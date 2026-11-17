@@ -15,6 +15,7 @@
 #include "canvas.h"
 #include "history.h"
 #include "pages.h"
+#include "settings.h"
 #include "ui_model.h"
 
 using namespace opensensor::ui;
@@ -106,6 +107,20 @@ int emit(const std::string &dir, const char *name, std::uint8_t page,
   return 0;
 }
 
+int emit_screen(const std::string &dir, const char *name, const UiState &ui,
+                const Settings &s, const SettingsInfo &info, const Model &m,
+                const History &h) {
+  auto b = std::make_unique<Buffer>();
+  render_screen(b->canvas, ui, s, info, m, h);
+  const std::string path = dir + "/" + name + ".pbm";
+  if (!write_pbm(path, *b)) {
+    std::fprintf(stderr, "cannot write %s\n", path.c_str());
+    return 1;
+  }
+  std::printf("%s\n", path.c_str());
+  return 0;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -145,6 +160,29 @@ int main(int argc, char **argv) {
     h->push(end + 10, bad);
     fill_now(m, bad, end + 10);
     rc |= emit(dir, "dashboard-bad-air", kDashboardPage, m, *h);
+
+    // The settings popup over the dashboard, then editing the altitude.
+    const SettingsInfo info{.wifi_configured = true,
+                            .wifi_on = true,
+                            .sensor_present = true,
+                            .fan_cleaning = false};
+    Settings s{};
+    s.refresh = RefreshEvery::S30;
+    s.altitude_m = 300;
+    s.temp_offset_dc = -15;
+    s.sleep_after = SleepAfter::M30;
+    UiState ui{};
+    static_cast<void>(handle(ui, s, info, Input::Menu));
+    rc |= emit_screen(dir, "settings", ui, s, info, m, *h);
+    for (int i = 0; i < 5; ++i)
+      static_cast<void>(handle(ui, s, info, Input::Down));
+    static_cast<void>(handle(ui, s, info, Input::Press));
+    static_cast<void>(handle(ui, s, info, Input::Up));
+    rc |= emit_screen(dir, "settings-edit-altitude", ui, s, info, m, *h);
+
+    // The screen asleep after 30 minutes idle.
+    fall_asleep(ui);
+    rc |= emit_screen(dir, "asleep", ui, s, info, m, *h);
   }
 
   // Just booted, 12 s in, no clock, PM and CO2 still warming.
@@ -214,6 +252,21 @@ int main(int argc, char **argv) {
         Reading{.value = 0.0F, .quality = Quality::Absent, .warm_left_s = 0});
     rc |= emit(dir, "dashboard-no-sensor", kDashboardPage, m, *h);
     rc |= emit(dir, "chart-empty", 2, m, *h);
+
+    // Settings on a Thing with no Wi-Fi set up and no sensor, the Wi-Fi row
+    // selected, over the status page.
+    const SettingsInfo info{.wifi_configured = false,
+                            .wifi_on = false,
+                            .sensor_present = false,
+                            .fan_cleaning = false};
+    Settings s{};
+    s.co2_asc = false;
+    s.start_page = StartPage::LastViewed;
+    UiState ui{.page = kStatusPage};
+    static_cast<void>(handle(ui, s, info, Input::Menu));
+    for (int i = 0; i < 2; ++i)
+      static_cast<void>(handle(ui, s, info, Input::Down));
+    rc |= emit_screen(dir, "settings-no-wifi-no-sensor", ui, s, info, m, *h);
   }
 
   // A phone pairs. The passkey here is a fixed example, never a real one.
