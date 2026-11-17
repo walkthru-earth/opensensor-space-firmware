@@ -19,13 +19,18 @@ shows no LIVE for it and its panel settings are reachable only from the knob.
 ## Decision
 
 1. **Display hints are published.** A board template may carry, per column,
-   `title` with translations, `description`, `opensensor:decimals` and
-   `opensensor:group`, and per template a main metric `opensensor:primary`
-   and a default `opensensor:scale`. stac-opensensor adds a shared property
-   registry keyed by the `opensensor:property` URI with label, short label,
-   symbol, definition, group, default decimals and default scale, in the
-   spirit of STAC Browser's `@radiantearth/stac-fields`. The template value
-   wins over the registry. The app profile keyed by `dict` goes away.
+   `title` with translations, `description`, `opensensor:decimals`,
+   `opensensor:group` and a default `opensensor:scale`, and per template a
+   main metric `opensensor:primary` and the scale definitions in
+   `opensensor:scales`. Core `title` and `description` stay plain strings in
+   the default language, and other languages go in `opensensor:title_i18n`
+   and `opensensor:description_i18n`, maps keyed by BCP 47 tag.
+   stac-opensensor adds a shared property registry, `registry/properties.json`
+   keyed by the `opensensor:property` URI with label, short label,
+   definition, group, default decimals and default scale, and
+   `registry/scales.json`, in the spirit of STAC Browser's
+   `@radiantearth/stac-fields`. The template value wins over the registry, in
+   the order below. The app profile keyed by `dict` goes away.
 2. **LIVE for any verified template.** A phone may show LIVE for any template
    it has verified as the sync protocol describes, the full SHA-256 matching
    the footer `template.sha256` or the template link `file:checksum`, and
@@ -52,6 +57,18 @@ shows no LIVE for it and its panel settings are reachable only from the knob.
    their confirmations. Debug cannot send `REBOOT` or `SET_CONFIG`. The silent
    clock, token and `lan.on` actions stay hidden below the Developer level.
 
+## Resolution order
+
+| Hint | First match wins |
+| --- | --- |
+| Label | Column `opensensor:title_i18n` for the language, column `title` (owner config over template), registry label for the property, then the column name with `_` read as spaces |
+| Decimals | Column `opensensor:decimals`, registry default, then 0 for an integer column and 2 otherwise |
+| Scale | Column `opensensor:scale`, registry default, then none |
+| Primary | Collection `opensensor:primary`, template `opensensor:primary`, the first `physicalMeasurement` column with a scale, then the first `physicalMeasurement` column |
+
+`opensensor:group` is one of `particulate`, `gas`, `climate`, `light`,
+`motion`, `location`, `power`, `time` or `device`.
+
 ## Planned shapes
 
 None of this is built. The names below are the plan, and the PR that builds
@@ -59,11 +76,11 @@ each part may refine them with a migration entry.
 
 | Part | Where | Shape |
 | --- | --- | --- |
-| Column hints | Module manifest column, template `table:columns` | `title`, `description`, `opensensor:decimals` (defaults to `firmware.decimals`), `opensensor:group`, `opensensor:scale` |
-| Template hints | `board.json`, template top level | `opensensor:primary` names one column |
+| Column hints | Module manifest column, template `table:columns` | `title`, `opensensor:title_i18n`, `description`, `opensensor:description_i18n`, `opensensor:decimals` (defaults to `firmware.decimals`), `opensensor:group`, `opensensor:scale` |
+| Template hints | `board.json`, template top level | `opensensor:primary` names one column, `opensensor:scales` holds the scales its columns name |
 | Setup steps | `board.json` `setup`, template `firmware.setup` | Ordered `[{"id", "req", "keys"}]`. `id` names a step in the app catalog, `req` marks a step setup cannot finish without, optional `keys` lists the `config_keys` a generic step shows |
 | Settings sections | `board.json` `settings`, template `firmware.settings` | Ordered `[{"id", "keys"}]`, same ids as setup |
-| Config keys | `board.json` `config_keys`, template `firmware.config_keys` | Map from `SET_CONFIG` key to `type`, `values` (enum or range), `applies` (`immediately`, `next sample`, `next boot` or `action`), `page` and an i18n `label`. Never a value, never a secret key |
+| Config keys | `board.json` `config_keys`, template `firmware.config_keys` | Map from `SET_CONFIG` key to `type`, `values` (enum or range), `applies` (`immediately`, `next sample`, `next boot` or `action`), `page`, a plain `label` and an optional `label_i18n` map of the same shape as `opensensor:title_i18n`. Never a value, never a secret key |
 | Setup record | `GET_CONFIG` page 1 `thing` | `setup_ack`, a bitmask in `firmware.setup` order, and `setup_v`, which names the step list the bits refer to. A different `setup_v` reads as no step done |
 | Board settings | A new `GET_CONFIG` page after page 6 | The board specific keys from `config_keys`, within the 480 byte page limit |
 
@@ -87,12 +104,15 @@ move in lockstep (owner decision 14). Portolan adoption comes later.
    live value. The stac-opensensor scales and the app use WHO 2021 guideline
    and interim targets. Pick one for the panel, or publish both as scales.
    No display code changes until then.
-2. Translation shape for `title` and `label`, for example a language map or
-   a `title:<lang>` key, follows the stac-opensensor PR.
+2. Translation shape is settled by stac-opensensor
+   [#16](https://github.com/walkthru-earth/stac-opensensor/pull/16), as in
+   decision 1. The firmware generator follows it once that lands.
 3. Page number and key names for the board settings page, and the exact
    `setup_v` rule.
-4. A CO2 scale, a resolvable property for PM4, and bit definitions for
-   `sen6x_device_status` are missing from the registry.
+4. A CO2 scale is missing. The registry in stac-opensensor #16 has a PM4
+   label. Its schema adopts `classification:bitfields`, but the bit
+   definitions for `sen6x_device_status` are open and the firmware generator
+   does not emit bitfields yet.
 5. CoreS3 `als` is gated on `light_status`, which has no LIVE key, so a phone
    cannot show it in LIVE. Add a LIVE key for `light_status`, or accept that.
 

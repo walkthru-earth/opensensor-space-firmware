@@ -138,11 +138,24 @@ profile role rules are checked.
 
 Display hints move into the template ([decision 0003](../decisions/0003-metadata-driven-apps.md),
 owner decision 2026-11-17). A column may then author `title` with
-translations, `description`, `opensensor:decimals`, `opensensor:group` and a
-default `opensensor:scale`. `opensensor:decimals` defaults to
-`firmware.decimals`. This is planned, not built. Today the v0.1.0 module
-schema and the vendored stac-opensensor `template.json` still refuse `title`
-and `opensensor:scale` in a column. Both open up once stac-opensensor
+`opensensor:title_i18n`, `description` with `opensensor:description_i18n`,
+`opensensor:decimals`, `opensensor:group` and a default `opensensor:scale`,
+names as in stac-opensensor
+[#16](https://github.com/walkthru-earth/stac-opensensor/pull/16). `title` and
+`description` stay plain strings in the default language, and the i18n maps
+are keyed by BCP 47 tag. `opensensor:group` is one of `particulate`, `gas`,
+`climate`, `light`, `motion`, `location`, `power`, `time` or `device`. The
+app resolves a label from the column i18n for its language, then the column
+`title` (owner config over template), then the registry label, then the
+column name with `_` read as spaces. Decimals come from the column, then the
+registry, then 0 for an integer column and 2 otherwise. A scale comes from
+the column, then the registry, then none. The primary metric comes from the
+Collection, then the template, then the first `physicalMeasurement` column
+with a scale, then the first `physicalMeasurement` column. The decision
+record has the same order. The generator writes the column
+`opensensor:decimals` from `firmware.decimals`. This is planned, not built.
+Today the v0.1.0 module schema and the vendored stac-opensensor
+`template.json` still refuse `title` and `opensensor:scale` in a column. Both open up once stac-opensensor
 publishes the fields. Adding a hint moves `desc` on every board using that
 segment and never moves `dict`.
 
@@ -260,13 +273,14 @@ setup cannot finish without the step. `keys`, optional, lists the
 from its typed keys, skips it when it has none, and keeps setup pending when
 such a step is required.
 
-A Key is `{"type", "values", "applies", "page", "label"}`. `type` is one of
+A Key is `{"type", "values", "applies", "page", "label", "label_i18n"}`. `type` is one of
 the `SET_CONFIG` value kinds, such as boolean, integer, enum or text.
 `values`, optional, is the enum list or the range. `applies` is `immediately`,
 `next sample`, `next boot` or `action`, as in the
 [sync protocol](../ble-sync-protocol.md#device-configuration-v2) table.
-`page` is the `GET_CONFIG` page that reads the key back. `label` is an i18n
-label. A Key never holds a current or default value. `ble.pin`, `wifi.psk`
+`page` is the `GET_CONFIG` page that reads the key back. `label` is a plain
+string in the default language, and the optional `label_i18n` is a map keyed
+by BCP 47 tag, the same shape as a column `opensensor:title_i18n`. A Key never holds a current or default value. `ble.pin`, `wifi.psk`
 and the LAN token are never declared, and no manifest can lower the app
 safety floors listed in the decision record.
 
@@ -289,8 +303,8 @@ final.
     {"id": "sensor", "keys": ["sen6x.altitude_m", "sen6x.co2_asc", "sen6x.temp_offset_dc", "sen6x.fan_clean"]}
   ],
   "config_keys": {
-    "panel.theme": {"type": "enum", "values": ["light", "dark"], "applies": "immediately", "page": 7, "label": {"en": "Theme"}},
-    "sen6x.fan_clean": {"type": "boolean", "applies": "action", "page": 7, "label": {"en": "Clean the fan"}}
+    "panel.theme": {"type": "enum", "values": ["light", "dark"], "applies": "immediately", "page": 7, "label": "Theme", "label_i18n": {"ar": "المظهر"}},
+    "sen6x.fan_clean": {"type": "boolean", "applies": "action", "page": 7, "label": "Clean the fan"}
   }
 }
 ```
