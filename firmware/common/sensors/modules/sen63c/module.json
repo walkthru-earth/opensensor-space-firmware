@@ -1,0 +1,262 @@
+{
+  "type": "OpenSensorModule",
+  "module_version": "0.1.0",
+  "stac_opensensor": "0.1.0",
+  "id": "sen63c",
+  "procedure": "sen63c",
+  "vendor": "Sensirion",
+  "model": "SEN63C",
+  "buses": [
+    "i2c"
+  ],
+  "requires": {
+    "i2c_address": [
+      107
+    ]
+  },
+  "status": {
+    "column": "sen6x_status"
+  },
+  "segments": {
+    "core": [
+      {
+        "name": "sen6x_status",
+        "unit": "{code}",
+        "roles": [
+          "qualityInformation"
+        ],
+        "classification:classes": [
+          {
+            "value": 0,
+            "name": "missing",
+            "nodata": true
+          },
+          {
+            "value": 1,
+            "name": "warming"
+          },
+          {
+            "value": 2,
+            "name": "stale"
+          },
+          {
+            "value": 3,
+            "name": "sensor-error"
+          },
+          {
+            "value": 4,
+            "name": "valid"
+          }
+        ],
+        "opensensor:property": "urn:walkthru-earth:property:environmental_sensor_status",
+        "opensensor:aggregate": "mode",
+        "firmware": {
+          "type": "Int32",
+          "unit": "code",
+          "validity": "always",
+          "live_key": "sen",
+          "decimals": 0
+        }
+      },
+      {
+        "name": "sen6x_device_status",
+        "unit": "{bitmask}",
+        "roles": [
+          "qualityInformation"
+        ],
+        "opensensor:property": "urn:walkthru-earth:property:environmental_sensor_device_status_flags",
+        "opensensor:valid_when": {
+          "column": "sen6x_device_status",
+          "finite": true
+        },
+        "opensensor:aggregate": "mode",
+        "firmware": {
+          "type": "Int64",
+          "unit": "bitmask",
+          "validity": "sen6x_present",
+          "live_key": "",
+          "decimals": 0
+        }
+      },
+      {
+        "name": "pm1_mass_ug_m3",
+        "unit": "ug/m3",
+        "roles": [
+          "physicalMeasurement"
+        ],
+        "cf:standard_name": "mass_concentration_of_pm1_ambient_aerosol_particles_in_air",
+        "opensensor:property": "http://vocab.nerc.ac.uk/standard_name/mass_concentration_of_pm1_ambient_aerosol_particles_in_air/",
+        "opensensor:valid_when": {
+          "column": "sen6x_status",
+          "equals": 4
+        },
+        "opensensor:settle_s": 30,
+        "opensensor:aggregate": "mean",
+        "opensensor:plausible_range": [
+          0,
+          1000
+        ],
+        "firmware": {
+          "type": "Float",
+          "unit": "ug/m3",
+          "validity": "sen6x_valid",
+          "live_key": "m1",
+          "decimals": 1
+        }
+      },
+      {
+        "name": "pm25_mass_ug_m3",
+        "unit": "ug/m3",
+        "roles": [
+          "physicalMeasurement"
+        ],
+        "cf:standard_name": "mass_concentration_of_pm2p5_ambient_aerosol_particles_in_air",
+        "opensensor:property": "http://vocab.nerc.ac.uk/collection/P07/current/YUDG9DXK/",
+        "opensensor:valid_when": {
+          "column": "sen6x_status",
+          "equals": 4
+        },
+        "opensensor:settle_s": 30,
+        "opensensor:aggregate": "mean",
+        "opensensor:plausible_range": [
+          0,
+          1000
+        ],
+        "firmware": {
+          "type": "Float",
+          "unit": "ug/m3",
+          "validity": "sen6x_valid",
+          "live_key": "m25",
+          "decimals": 1
+        }
+      },
+      {
+        "name": "pm4_mass_ug_m3",
+        "unit": "ug/m3",
+        "roles": [
+          "physicalMeasurement"
+        ],
+        "opensensor:property": "urn:walkthru-earth:property:pm4_mass_concentration",
+        "opensensor:valid_when": {
+          "column": "sen6x_status",
+          "equals": 4
+        },
+        "opensensor:settle_s": 30,
+        "opensensor:aggregate": "mean",
+        "opensensor:plausible_range": [
+          0,
+          1000
+        ],
+        "firmware": {
+          "type": "Float",
+          "unit": "ug/m3",
+          "validity": "sen6x_valid",
+          "live_key": "m4",
+          "decimals": 1
+        }
+      },
+      {
+        "name": "pm10_mass_ug_m3",
+        "unit": "ug/m3",
+        "roles": [
+          "physicalMeasurement"
+        ],
+        "cf:standard_name": "mass_concentration_of_pm10_ambient_aerosol_particles_in_air",
+        "opensensor:property": "http://vocab.nerc.ac.uk/standard_name/mass_concentration_of_pm10_ambient_aerosol_particles_in_air/",
+        "opensensor:valid_when": {
+          "column": "sen6x_status",
+          "equals": 4
+        },
+        "opensensor:settle_s": 30,
+        "opensensor:aggregate": "mean",
+        "opensensor:plausible_range": [
+          0,
+          1000
+        ],
+        "firmware": {
+          "type": "Float",
+          "unit": "ug/m3",
+          "validity": "sen6x_valid",
+          "live_key": "m10",
+          "decimals": 1
+        }
+      },
+      {
+        "name": "ambient_temperature_c",
+        "unit": "Cel",
+        "roles": [
+          "physicalMeasurement"
+        ],
+        "cf:standard_name": "air_temperature",
+        "opensensor:property": "http://vocab.nerc.ac.uk/collection/P07/current/CFSN0023/",
+        "opensensor:valid_when": {
+          "column": "ambient_temperature_c",
+          "finite": true
+        },
+        "opensensor:aggregate": "mean",
+        "opensensor:plausible_range": [
+          -40,
+          80
+        ],
+        "firmware": {
+          "type": "Float",
+          "unit": "degC",
+          "validity": "sen6x_present",
+          "live_key": "t",
+          "decimals": 1
+        }
+      },
+      {
+        "name": "relative_humidity_percent",
+        "unit": "%",
+        "roles": [
+          "physicalMeasurement"
+        ],
+        "cf:standard_name": "relative_humidity",
+        "opensensor:property": "http://vocab.nerc.ac.uk/collection/P07/current/CFSN0413/",
+        "opensensor:valid_when": {
+          "column": "relative_humidity_percent",
+          "finite": true
+        },
+        "opensensor:aggregate": "mean",
+        "opensensor:plausible_range": [
+          0,
+          100
+        ],
+        "firmware": {
+          "type": "Float",
+          "unit": "%",
+          "validity": "sen6x_present",
+          "live_key": "rh",
+          "decimals": 1
+        }
+      },
+      {
+        "name": "co2_ppm",
+        "unit": "[ppm]",
+        "roles": [
+          "physicalMeasurement"
+        ],
+        "cf:standard_name": "mole_fraction_of_carbon_dioxide_in_air",
+        "opensensor:property": "http://vocab.nerc.ac.uk/standard_name/mole_fraction_of_carbon_dioxide_in_air/",
+        "opensensor:valid_when": {
+          "column": "sen6x_status",
+          "equals": 4
+        },
+        "opensensor:settle_s": 24,
+        "opensensor:aggregate": "mean",
+        "opensensor:plausible_range": [
+          380,
+          32000
+        ],
+        "firmware": {
+          "type": "Int32",
+          "unit": "ppm",
+          "validity": "sen6x_valid",
+          "live_key": "co2",
+          "decimals": 0
+        }
+      }
+    ]
+  }
+}

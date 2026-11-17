@@ -1,0 +1,29 @@
+{
+  "board": "crowpanel",
+  "convention": "Every field valid with integers 1 and floats 1.0, rendered by the shared emitter through tools/live_sample.h. utc is the stored microseconds times 1000 on the wire.",
+  "digests": {
+    "e7279c4edbe87071e4a51889124a43d7ffcd1977c79c8575887ae35bdee10903": {
+      "note": "Dictionary crowpanel-epaper-telemetry-v1, the first CrowPanel table, SEN63C PM, ambient temperature, humidity and CO2.",
+      "builds": [
+        {
+          "firmware": "idf-crowpanel-parquet-v0.1",
+          "emitter": "board field table through oslogger::format_live",
+          "fields": {
+            "seq": "sequence",
+            "mono": "monotonic_us",
+            "utc": "event_time_utc_us",
+            "sen": "sen6x_status",
+            "m1": "pm1_mass_ug_m3",
+            "m25": "pm25_mass_ug_m3",
+            "m4": "pm4_mass_ug_m3",
+            "m10": "pm10_mass_ug_m3",
+            "t": "ambient_temperature_c",
+            "rh": "relative_humidity_percent",
+            "co2": "co2_ppm"
+          },
+          "payload": "{\"seq\":1,\"mono\":1,\"utc\":1000,\"sen\":1,\"m1\":1.0,\"m25\":1.0,\"m4\":1.0,\"m10\":1.0,\"t\":1.0,\"rh\":1.0,\"co2\":1}"
+        }
+      ]
+    }
+  }
+}

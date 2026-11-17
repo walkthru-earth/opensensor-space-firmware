@@ -10,17 +10,21 @@ import subprocess
 import sys
 import tempfile
 
+import json
+
 import boards
 
 
 BOARD = "waveshare-sim7670g-v2"
 STAMP = "20260930T123456Z"
+LARGE = 16_777_216
+SMALL = 8_388_608
 
 
-def make_image(path: Path, marker: bytes) -> None:
+def make_image(path: Path, marker: bytes, size: int = LARGE) -> None:
     with path.open("wb") as stream:
         stream.write(marker)
-        stream.truncate(16_777_216)
+        stream.truncate(size)
 
 
 def copy_registry(root: Path) -> None:
@@ -30,6 +34,14 @@ def copy_registry(root: Path) -> None:
         target = root / board.manifest
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(boards.ROOT / board.manifest, target)
+    # A synthetic 8 MiB board, the plugin weather example under another name.
+    manifest = json.loads((boards.ROOT / "docs/shared/plugins/examples/weather.board.json").read_text())
+    manifest["board"] = "example-small-s3"
+    manifest["tooling"] = {**manifest["tooling"], "alias": "small", "backup_prefixes": ["example-small-s3"],
+                           "flash_bytes": SMALL}
+    target = root / "firmware/esp-idf-example-small-s3/app/board.json"
+    target.parent.mkdir(parents=True)
+    target.write_text(json.dumps(manifest, indent=2) + "\n")
 
 
 def run_case(script: Path, fake_bin: Path, mode: str, source: Path, board: str = BOARD,
@@ -40,6 +52,7 @@ def run_case(script: Path, fake_bin: Path, mode: str, source: Path, board: str =
         OS_FAKE_ESPTOOL_MODE=mode,
         OS_FAKE_SOURCE=str(source),
         OS_FAKE_STAMP=stamp,
+        OS_FAKE_ARGS=str(fake_bin.parent / "esptool-args.txt"),
         OS_REAL_PYTHON=sys.executable,
     )
     return subprocess.run(
@@ -67,6 +80,7 @@ def main() -> None:
         (fake_bin / "python").write_text(
             "#!/bin/sh\n"
             "case \"$1\" in */tools/boards.py) exec \"$OS_REAL_PYTHON\" \"$@\" ;; esac\n"
+            "printf '%s\\n' \"$*\" > \"$OS_FAKE_ARGS\"\n"
             "for arg do output=$arg; done\n"
             "case \"$OS_FAKE_ESPTOOL_MODE\" in\n"
             "  fail) printf partial > \"$output\"; exit 8 ;;\n"
@@ -93,7 +107,8 @@ def main() -> None:
 
         result = run_case(script, fake_bin, "complete", first)
         assert result.returncode == 0, result
-        assert published.stat().st_size == 16_777_216
+        assert published.stat().st_size == LARGE
+        assert f"read-flash 0 {LARGE} " in (root / "esptool-args.txt").read_text()
         original_hash = hashlib.sha256(first.read_bytes()).hexdigest()
         assert hashlib.sha256(published.read_bytes()).hexdigest() == original_hash
         assert original_hash in result.stdout and "backup verified" in result.stdout
@@ -110,7 +125,20 @@ def main() -> None:
             stamp = f"20260930T12350{index}Z"
             result = run_case(script, fake_bin, "complete", first, name, stamp)
             assert result.returncode == 0, result
-            assert (backup / f"{BOARD}-flash-{stamp}.bin").stat().st_size == 16_777_216, result
+            assert (backup / f"{BOARD}-flash-{stamp}.bin").stat().st_size == LARGE, result
+        # An 8 MiB board reads and publishes exactly 8 MiB, and refuses a 16 MiB read.
+        small = root / "small.bin"
+        make_image(small, b"small", SMALL)
+        result = run_case(script, fake_bin, "complete", small, "small", "20260930T123500Z")
+        assert result.returncode == 0, result
+        assert f"read-flash 0 {SMALL} " in (root / "esptool-args.txt").read_text()
+        small_published = backup / "example-small-s3-flash-20260930T123500Z.bin"
+        assert small_published.stat().st_size == SMALL, result
+        assert hashlib.sha256(small_published.read_bytes()).hexdigest() == hashlib.sha256(small.read_bytes()).hexdigest()
+        result = run_case(script, fake_bin, "complete", first, "small", "20260930T123501Z")
+        assert result.returncode == 1 and f"backup size mismatch: {LARGE} bytes" in result.stderr, result
+        assert not (backup / "example-small-s3-flash-20260930T123501Z.bin").exists(), result
+        assert not list(backup.glob(".*")), list(backup.iterdir())
         # A name no board.json declares, or no name, fails before esptool with no image.
         before = sorted(backup.iterdir())
         for name in ("waveshare-v3", ""):
@@ -119,7 +147,7 @@ def main() -> None:
             assert ("unknown board 'waveshare-v3'" if name else "usage") in result.stderr, result
             assert sorted(backup.iterdir()) == before, list(backup.iterdir())
     print("PASS backup publication: failed, short, verified and same-name collision readbacks, "
-          "board alias and slug, unknown board refused")
+          "board alias and slug, an 8 MiB board read at its own size, unknown board refused")
 
 
 if __name__ == "__main__":

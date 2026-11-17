@@ -23,6 +23,11 @@ Why half the slot (issue #45)
   is time to trim the image or plan a new partition table. Waiting for the
   image to stop fitting would leave no OTA path for boards in the field.
   Raising the share is an owner decision recorded here with new measurements.
+
+  8 MiB boards (2026-11-17). The first CrowPanel layout had 3 MiB slots and
+  its 1,710,960 byte image was 54.4 %. The owner kept the 50 % share and moved
+  the unused SPIFFS space into the slots instead, so each slot is 0x3C0000
+  (3.75 MiB) and the same image is 43.5 %. No firmware code reads SPIFFS.
 """
 
 from __future__ import annotations

@@ -1,0 +1,24 @@
+# ELECROW CrowPanel ESP32-S3 4.2 inch e-paper HMI, board v1.2. 8 MB XMC
+# flash and 8 MB octal PSRAM (AP_3v3), measured on the owner unit
+# 2026-11-17. The console is UART0 on GPIO43/44 through the on-board CH340.
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_USE_MALLOC=y
+CONFIG_SPIRAM_ALLOW_NOINIT_SEG_EXTERNAL_MEMORY=y
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+CONFIG_ESP_CONSOLE_UART_NUM=0
+CONFIG_ESP_CONSOLE_UART_BAUDRATE=115200
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="logger/partitions.csv"
+CONFIG_LWIP_SNTP_MAX_SERVERS=3
+CONFIG_LWIP_DHCP_GET_NTP_SRV=y
+# DFS 80 to 240 MHz with light sleep off, applied by opensensor::power::configure_dfs.
+# 80 MHz keeps APB at 80 MHz, so the panel, SD and sensor bus clocks are
+# unchanged. The LAN task holds 240 MHz while a peer is authenticated.
+CONFIG_PM_ENABLE=y
+CONFIG_OS_PM_DFS_MIN_MHZ=80
+CONFIG_OS_PM_DFS_MAX_MHZ=240
+# H3 allocates through the os_h3_ PSRAM hooks in firmware/common/location
+# (src/os_h3_alloc.cpp), which fail the build if this differs.
+CONFIG_EMBEDDED_H3_LOCATION_ALLOC_PREFIX="os_h3_"

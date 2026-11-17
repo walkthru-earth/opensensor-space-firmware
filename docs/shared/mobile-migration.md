@@ -9,6 +9,64 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## CrowPanel e-paper board with the SEN63C (feat/crowpanel-epaper-sen63c)
+
+**A new board. The app needs a LIVE profile for the new digest and the new
+columns.** CoreS3 and Waveshare do not change. The new board is
+`elecrow-crowpanel-epaper-42`, the ELECROW CrowPanel ESP32-S3 4.2" E-paper
+HMI v1.2 with a Sensirion SEN63C on I2C.
+
+**What changed.**
+
+- Firmware `idf-crowpanel-parquet-v0.1`, schema and dictionary
+  `crowpanel-epaper-telemetry-v1`, dict digest
+  `e7279c4edbe87071e4a51889124a43d7ffcd1977c79c8575887ae35bdee10903`, desc
+  digest `40544faf12a82d7895a5231758a2901cd4be851b918e839258f4c764879e0a98`.
+  The template is in
+  [`templates/elecrow-crowpanel-epaper-42/`](templates/elecrow-crowpanel-epaper-42/)
+  and listed in [`templates/index.json`](templates/index.json).
+- 39 columns. The sensor columns are `sen6x_status` (Int32 code, 0 absent,
+  1 warming, 2 stale, 3 sensor error, 4 valid), `sen6x_device_status` (Int64
+  bitmask, the raw SEN63C device status register), `pm1_mass_ug_m3`,
+  `pm25_mass_ug_m3`, `pm4_mass_ug_m3`, `pm10_mass_ug_m3`,
+  `ambient_temperature_c`, `relative_humidity_percent` (all Float) and
+  `co2_ppm` (Int32). The system, clock and location columns are the same ones
+  the other boards write.
+- LIVE keys `seq`, `mono`, `utc`, `sen`, `m1`, `m25`, `m4`, `m10`, `t`, `rh`
+  and `co2`. Every float prints with one decimal. PM and `co2` keys are null unless
+  `sen == 4`. `co2` is also null while the SEN63C reports no CO2 value, as
+  in the first 24 s after a start. The widest LIVE
+  object is 175 bytes and the all-null one 118 bytes.
+- No STAC File Item sidecar on this board yet. Its dated files have no
+  `<file>.json` next to them until stac-opensensor carries a CrowPanel example.
+- The board advertises `OS-xxxx` and speaks proto 3 like the others. While a
+  phone pairs, the e-paper shows the six digit passkey. It never reaches a log.
+- New boot and runtime log lines, all prefixed `OS`. `OS BOARD
+  elecrow-crowpanel-epaper-42 firmware=idf-crowpanel-parquet-v0.1 ...`,
+  `OS SEN6X bus ...`, `OS SEN6X present ...`, `OS SEN6X started ...`,
+  `OS SEN6X absent ...`, `OS SEN6X lost ...`, `OS SEN6X stale ...`,
+  `OS SEN6X start-failed ...`, `OS SEN6X status=...`, `OS DISPLAY ready=...`,
+  `OS TF mounted=...` and `OS READY ...`.
+- The panel settings popup adds `OS PANEL settings operation=load|save
+  error=... refresh_s=... start_page=... sleep_s=... altitude_m=...
+  co2_asc=... temp_offset_dc=... theme=light|dark`, with `theme` last.
+  `OS SEN6X config when=start|change altitude_m=... co2_asc=...
+  temp_offset_dc=...`, `OS SEN6X config-change action=restart`,
+  `OS SEN6X config-failed ...`, `OS SEN6X fan-cleaning started ...`,
+  `OS SEN6X fan-cleaning done` and `OS SEN6X fan-cleaning-failed ...`. A
+  temperature offset set on the panel is applied by the sensor, so the stored
+  `ambient_temperature_c` already includes it. During a fan cleaning the
+  sensor columns are null for about 10 s plus the warm up.
+
+**Why.** A low power air quality Thing with its own screen, using a Sensirion
+sensor that also measures CO2.
+
+**What the app must do.** Add a LIVE profile for dict `e7279c4e…` with the
+keys above. Show `m1`, `m25`, `m4`, `m10` as PM mass in ug/m3, `t` in degC,
+`rh` in %, and `co2` in ppm. Treat `sen` like `pms` on the other boards, but
+read it as its own key. Read the new columns by name when it opens a
+CrowPanel file. Do not expect a STAC sidecar next to a CrowPanel file. Nothing changes for CoreS3 or Waveshare.
+
 ## H3 from the embedded-h3-location library (feat/h3-lib-v2)
 
 **Needs a matched reflash. The app needs no code change beyond the new

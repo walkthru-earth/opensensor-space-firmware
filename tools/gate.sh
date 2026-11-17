@@ -59,6 +59,7 @@ tasks=(
   "release-workflow-test"
   "telemetry-contract-test --sanitize"
   "waveshare-contract-test --sanitize"
+  "crowpanel-contract-test --sanitize"
   "column-semantics-test"
   "board-template-check-test"
   "published-templates-test"
@@ -69,6 +70,10 @@ tasks=(
   "pms-frame-test"
   "ltr553-test"
   "max17048-test"
+  "sen6x-test"
+  # CrowPanel e-paper dashboard on host and its baked fonts
+  "crowpanel-ui-test"
+  "crowpanel-fonts-test"
   # Battery health states and thresholds
   "battery-health-test"
   # Uploader signer, STS, policy, ledger and session on fakes (#81)

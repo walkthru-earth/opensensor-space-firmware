@@ -20,8 +20,9 @@ case "$(basename "${backup}")" in
   "${backup_prefix}"-flash-*.bin) ;;
   *) printf 'backup does not match selected board, expected %s-flash-*.bin\n' "${backup_prefix}" >&2; exit 2 ;;
 esac
-if [[ "$(wc -c <"${backup}" | tr -d " ")" != 16777216 ]]; then
-  printf 'backup must be exactly 16777216 bytes\n' >&2; exit 2
+# The full flash capacity the board registers in tooling.flash_bytes.
+if [[ "$(wc -c <"${backup}" | tr -d " ")" != "${flash_bytes}" ]]; then
+  printf 'backup must be exactly %s bytes\n' "${flash_bytes}" >&2; exit 2
 fi
 build_dir="${trial_dir}/build/${variant}"
 target="${board}/${variant}"

@@ -33,7 +33,7 @@ touches an existing one.
 | Schemas, v0.1.0 | [`v0.1.0/module.json`](v0.1.0/module.json), [`v0.1.0/board.json`](v0.1.0/board.json), [`v0.1.0/lock.json`](v0.1.0/lock.json) |
 | Examples | [`examples/bme280.module.json`](examples/bme280.module.json), [`examples/weather.board.json`](examples/weather.board.json) |
 | Logger segments | [`firmware/common/logger/system.module.json`](../../../firmware/common/logger/system.module.json) |
-| Shared sensor modules | `firmware/common/sensors/modules/<id>/module.json` for `pmsa003`, `pms5003t`, `ltr553`, `sht20`, `max17048` and `battery_health` |
+| Shared sensor modules | `firmware/common/sensors/modules/<id>/module.json` for `pmsa003`, `pms5003t`, `ltr553`, `sht20`, `max17048`, `battery_health` and `sen63c` |
 | Board local modules | CoreS3 `bringup/modules/` (`m5_imu`, `axp2101`, `bm8563`, `ft6336`), Waveshare `logger/modules/waveshare` |
 | Board manifests and locks | `board.json` and `shipped.lock` beside each board `telemetry_fields.inc` |
 | Gate | [`tools/plugin_contract.py`](../../../tools/plugin_contract.py), `pixi run plugin-contract`, proved by mutation in `pixi run plugin-contract-test`, part of `pixi run gate` |

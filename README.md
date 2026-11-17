@@ -17,10 +17,11 @@ here instead of repeating them.
 | Board app | Firmware | Schema and dictionary | Columns | Sensor set 1 | Hardware evidence |
 | --- | --- | --- | --- | --- | --- |
 | [M5Stack CoreS3](firmware/esp-idf-cores3/README.md) | v6.33 | `cores3-telemetry-v6`, `cores3-telemetry-v7` | 81 | Optional M134 (PMSA003), onboard IMU, light, RTC and power | Short native USB and SD readback of v6.21 on 2026-10-26. [Bench record](docs/boards/m5stack-cores3/bench-verified.md#main-689bb61-usb-reflash-thing-id-and-first-geo-footer-2026-10-26) |
+| [ELECROW CrowPanel ESP32-S3 4.2" E-paper v1.2](firmware/esp-idf-crowpanel-epaper/README.md) | v0.1 | `crowpanel-epaper-telemetry-v1`, `crowpanel-epaper-telemetry-v1` | 39 | SEN63C PM, temperature, humidity and CO2, e-paper dashboard | None yet, host builds and contract tests only. [Bench record](docs/boards/elecrow-crowpanel-epaper-42/bench-verified.md) |
 | [Waveshare ESP32-S3-SIM7670G-4G V2](firmware/esp-idf-waveshare-sim7670g/README.md) | v2.26 | `waveshare-sim7670g-telemetry-v6`, `waveshare-sim7670g-telemetry-v8` | 62 | PMS5003T with temperature and humidity, MAX17048 battery gauge | Short native USB and SD readback of v2.15 on 2026-10-26. [Bench record](docs/boards/waveshare-esp32-s3-sim7670g/bench-verified.md#main-689bb61-usb-reflash-thing-id-and-first-geo-footer-2026-10-26) |
 
-Phone transfers, endurance and power-cut durability remain unqualified on both
-boards. The firmware proves on-device Parquet is feasible, not that it is
+Phone transfers, endurance and power-cut durability remain unqualified on every
+board. The firmware proves on-device Parquet is feasible, not that it is
 production durable. See [security hardening](docs/shared/security-hardening.md)
 for the open limits.
 
@@ -32,6 +33,7 @@ pixi run idf-setup
 pixi run cores3-build
 pixi run waveshare-build              # logger
 pixi run waveshare-build diagnostic   # UART and read-only TF fixture
+pixi run crowpanel-build              # CrowPanel e-paper with the SEN63C
 pixi run gate                         # host gate, the same one CI runs
 ```
 

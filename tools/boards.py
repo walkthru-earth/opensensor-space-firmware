@@ -16,11 +16,11 @@ Shell scripts resolve a board name and an optional variant with
 
     eval "$(python tools/boards.py resolve -- <name> [variant])"
 
-which sets alias, slug, project, app, variant, telemetry, backup_prefix and
-backup_prefixes, or prints the reason and exits 2. The `--` keeps a name such
-as -h a board name, so argparse never prints help into the eval. A name is the short alias
-(cores3), the footer slug (m5stack-cores3) or the first backup prefix
-(waveshare-sim7670g-v2).
+which sets alias, slug, project, app, variant, telemetry, backup_prefix,
+backup_prefixes and flash_bytes, or prints the reason and exits 2. The `--`
+keeps a name such as -h a board name, so argparse never prints help into the
+eval. A name is the short alias (cores3), the footer slug (m5stack-cores3) or
+the first backup prefix (waveshare-sim7670g-v2).
 """
 
 from __future__ import annotations
@@ -38,9 +38,10 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 PROJECT_GLOB = "firmware/esp-idf-*"
 BOARD_GLOB = f"{PROJECT_GLOB}/*/board.json"
-# The one flash capacity the backup, restore and flash helpers support. A
-# board with another capacity extends the schema enum and the helpers first.
-FLASH_BYTES = 16 * 1024 * 1024
+# The flash capacities the backup, restore and flash helpers support, each
+# with a partition layout in check_idf_target.PARTITION_LAYOUTS. A board with
+# another capacity extends the schema enum, this tuple and that table first.
+FLASH_SIZES = (8 * 1024 * 1024, 16 * 1024 * 1024)
 
 SLUG = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 # No dash, CI derives the stack budget image key as ${leg name%%-*}/variant.
@@ -66,7 +67,7 @@ class Board:
     project: str  # ESP-IDF project, relative posix path such as firmware/esp-idf-cores3
     variants: tuple[str, ...]  # app directories the project builds, the telemetry app first
     backup_prefixes: tuple[str, ...]  # the first names new backups, every one restores
-    flash_bytes: int
+    flash_bytes: int  # exact full flash capacity, the size of every backup and restore image
     psram_mode: str  # CONFIG_SPIRAM_MODE_<psram_mode> in the telemetry app
     sdkconfig: tuple[str, ...]  # lines every variant's sdkconfig holds
     components_required: tuple[str, ...]  # build components every variant includes
@@ -154,8 +155,9 @@ def load(root: Path, path: Path) -> Board:
                          f"{path.parent.name!r}")
     prefixes = _strings(tooling["backup_prefixes"], SLUG, f"{where}.backup_prefixes", empty=False)
     flash = tooling["flash_bytes"]
-    if type(flash) is not int or flash != FLASH_BYTES:
-        raise BoardError(f"{where}.flash_bytes {flash!r} is not {FLASH_BYTES}, the only capacity the helpers support")
+    if type(flash) is not int or flash not in FLASH_SIZES:
+        raise BoardError(f"{where}.flash_bytes {flash!r} is not one of {', '.join(map(str, FLASH_SIZES))}, "
+                         "the capacities the helpers support")
     psram = tooling["psram_mode"]
     if psram not in PSRAM_MODES:
         raise BoardError(f"{where}.psram_mode {psram!r} is not one of {', '.join(PSRAM_MODES)}")
@@ -263,6 +265,7 @@ def shell_assignments(board: Board, variant: str) -> str:
         "telemetry": "1" if variant == board.telemetry_variant else "0",
         "backup_prefix": board.backup_prefix,
         "backup_prefixes": " ".join(board.backup_prefixes),
+        "flash_bytes": str(board.flash_bytes),
     }
     return "".join(f"{key}={shlex.quote(value)}\n" for key, value in values.items())
 

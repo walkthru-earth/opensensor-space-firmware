@@ -131,6 +131,13 @@ logger-power-test = "python tools/test_logger_power.py --sanitize"
 # Destructive: requires the checked port and exact full-backup file.
 waveshare-flash = "firmware/esp-idf-waveshare-sim7670g/flash.sh"
 
+# --- CrowPanel ESP32-S3 4.2" e-paper with the SEN63C ---
+crowpanel-setup = "firmware/esp-idf-crowpanel-epaper/setup.sh"
+crowpanel-build = "firmware/esp-idf-crowpanel-epaper/build.sh"
+crowpanel-contract-test = "python tools/test_crowpanel_contract.py"
+# Destructive: requires the checked port and exact full-backup file.
+crowpanel-flash = "firmware/esp-idf-crowpanel-epaper/flash.sh"
+
 # --- host code quality ---
 # tools/fmt.sh lists the sources once for both tasks and fails when it finds none.
 fmt = "bash tools/fmt.sh"
@@ -176,6 +183,15 @@ pinned-uris-test = "python tools/test_pinned_uris.py"
 # Pin kDictionaryUri and kTemplateHref to the commits that last wrote their bytes (#89).
 pin-uris = "python tools/pinned_uris.py --write"
 max17048-test = "python tools/test_max17048.py --sanitize"
+sen6x-test = "python tools/test_sen6x.py --sanitize"
+# CrowPanel e-paper dashboard. The test runs the canvas, charts, pages and
+# history on host with sanitizers. The preview writes every page as PNG to the
+# board's ignored artifacts/ui-preview/. crowpanel-fonts rebakes fonts_gen.cpp
+# from the vendored Inter and crowpanel-fonts-test fails when it is stale.
+crowpanel-ui-test = "python tools/test_crowpanel_ui.py --sanitize"
+crowpanel-ui-preview = "python tools/test_crowpanel_ui.py --preview"
+crowpanel-fonts = "python tools/crowpanel_gen_fonts.py"
+crowpanel-fonts-test = "python tools/crowpanel_gen_fonts.py --check"
 battery-health-test = "python tools/test_battery_health.py --sanitize"
 upload-test = "python tools/test_upload.py --sanitize"
 coredump-report-test = "python tools/test_coredump_report.py --sanitize"
@@ -231,6 +247,10 @@ pyyaml = "==6.0.3"
 # tools/release_sign.py and its test import it. Pinned here, not only reached
 # through esptool, at the version pixi.lock already resolves.
 cryptography = "==50.0.2"
+# tools/crowpanel_gen_fonts.py bakes the e-paper bitmap fonts. Its output is
+# committed, so a firmware build needs no Pillow. conda-forge has 13.0.0 on
+# 2026-11-17 for both platforms.
+pillow = "==13.0.0"
 
 [activation.env]
 # Firmware SDKs are large and are not conda packages, so tools/idf-env.sh
