@@ -46,6 +46,7 @@ enum class [[nodiscard]] Sen6xError : std::uint8_t {
   Crc = 4,            // a received word failed its CRC-8
   BadText = 5,        // a string reply holds a byte outside printable ASCII
   RestartTooSoon = 6, // start refused inside the 24 s CO2 conditioning window
+  OutOfRange = 7,     // an argument outside the datasheet range, no bus traffic
 };
 
 constexpr const char *sen6x_error_name(Sen6xError error) {
@@ -62,6 +63,8 @@ constexpr const char *sen6x_error_name(Sen6xError error) {
     return "bad-text";
   case Sen6xError::RestartTooSoon:
     return "restart-too-soon";
+  case Sen6xError::OutOfRange:
+    return "out-of-range";
   }
   return "unknown";
 }
@@ -139,6 +142,16 @@ struct Sen6xStatus {
   constexpr bool sen63c_error() const { return (raw & kSen63cErrors) != 0; }
 };
 
+// Set Temperature Offset Parameters, 0x60B2, datasheet 4.8.14 table 41. The
+// compensated temperature is T + slope * T + offset, in the slot given. The
+// five slots add up. Volatile, a reset puts every slot back to zero.
+struct Sen6xTemperatureOffset {
+  std::int16_t offset_x200 = 0;      // offset in C times 200
+  std::int16_t slope_x10000 = 0;     // normalized slope times 10000
+  std::uint16_t time_constant_s = 0; // 0 applies within the next second
+  std::uint16_t slot = 0;            // 0 to 4
+};
+
 // Firmware version, 0xD100, datasheet table 48.
 struct Sen6xVersion {
   std::uint8_t major = 0;
@@ -184,6 +197,13 @@ public:
   static constexpr Sen6xCommand kGetVersion{0xD100, 20};
   static constexpr Sen6xCommand kDeviceReset{0xD304, 1200};
   static constexpr Sen6xCommand kStartFanCleaning{0x5607, 20};
+  static constexpr Sen6xCommand kSetTemperatureOffset{0x60B2, 20};
+  static constexpr Sen6xCommand kSetCo2AutoCalibration{0x6711, 20};
+  static constexpr Sen6xCommand kSetSensorAltitude{0x6736, 20};
+
+  // Valid Set Sensor Altitude input, datasheet 4.8.39.
+  static constexpr std::uint16_t kMaxAltitudeM = 3000;
+  static constexpr std::uint16_t kTemperatureOffsetSlots = 5;
 
   static constexpr std::uint16_t kUnknownU16 = 0xFFFF;
   static constexpr std::uint16_t kUnknownI16 = 0x7FFF;
@@ -271,6 +291,58 @@ public:
   // Idle mode only. The caller waits kFanCleaningMs before the next start.
   [[nodiscard]] std::expected<void, Sen6xError> start_fan_cleaning() {
     return send(kStartFanCleaning);
+  }
+
+  // Any mode, datasheet 4.8.14. A slot above 4 is refused with no bus
+  // traffic, the sensor would ignore it.
+  [[nodiscard]] std::expected<void, Sen6xError>
+  set_temperature_offset(const Sen6xTemperatureOffset &offset) {
+    if (offset.slot >= kTemperatureOffsetSlots)
+      return std::unexpected(Sen6xError::OutOfRange);
+    return send_words(kSetTemperatureOffset,
+                      std::array<std::uint16_t, 4>{
+                          std::bit_cast<std::uint16_t>(offset.offset_x200),
+                          std::bit_cast<std::uint16_t>(offset.slope_x10000),
+                          offset.time_constant_s, offset.slot});
+  }
+
+  // CO2 automatic self calibration on or off. Idle mode only and volatile,
+  // the sensor turns it back on after a reset, datasheet 4.8.35. In the field
+  // it must stay on.
+  [[nodiscard]] std::expected<void, Sen6xError>
+  set_co2_auto_calibration(bool enabled) {
+    return send_words(kSetCo2AutoCalibration,
+                      std::array<std::uint16_t, 1>{
+                          static_cast<std::uint16_t>(enabled ? 1 : 0)});
+  }
+
+  // Altitude in metres for the CO2 pressure compensation, 0 to 3000. Idle
+  // mode only and volatile, a reset puts back 0, datasheet 4.8.39.
+  [[nodiscard]] std::expected<void, Sen6xError>
+  set_sensor_altitude(std::uint16_t metres) {
+    if (metres > kMaxAltitudeM)
+      return std::unexpected(Sen6xError::OutOfRange);
+    return send_words(kSetSensorAltitude, std::array<std::uint16_t, 1>{metres});
+  }
+
+  // The bytes of a write with data, the command then each word MSB first
+  // with its CRC, datasheet 4.7.
+  template <std::size_t N>
+  [[nodiscard]] static constexpr std::array<std::uint8_t, 2 + N * 3>
+  encode_write(std::uint16_t command,
+               const std::array<std::uint16_t, N> &words) {
+    std::array<std::uint8_t, 2 + N * 3> bytes{};
+    bytes[0] = static_cast<std::uint8_t>(command >> 8);
+    bytes[1] = static_cast<std::uint8_t>(command & 0xFFu);
+    for (std::size_t i = 0; i < N; ++i) {
+      const std::array<std::uint8_t, 2> word{
+          static_cast<std::uint8_t>(words[i] >> 8),
+          static_cast<std::uint8_t>(words[i] & 0xFFu)};
+      bytes[2 + i * 3] = word[0];
+      bytes[3 + i * 3] = word[1];
+      bytes[4 + i * 3] = sen6x_crc8(word);
+    }
+    return bytes;
   }
 
   // Unsigned subtraction keeps this right across one clock wrap.
@@ -377,6 +449,19 @@ private:
     const std::array<std::uint8_t, 2> bytes{
         static_cast<std::uint8_t>(command.id >> 8),
         static_cast<std::uint8_t>(command.id & 0xFFu)};
+    if (!io_.write(io_.context, kAddress, bytes))
+      return std::unexpected(Sen6xError::WriteNack);
+    io_.delay_ms(io_.context, command.execution_ms);
+    return {};
+  }
+
+  // Writes the command with N data words and waits its execution time.
+  template <std::size_t N>
+  std::expected<void, Sen6xError>
+  send_words(Sen6xCommand command, const std::array<std::uint16_t, N> &words) {
+    if (!io_ready())
+      return std::unexpected(Sen6xError::IoUnset);
+    const auto bytes = encode_write(command.id, words);
     if (!io_.write(io_.context, kAddress, bytes))
       return std::unexpected(Sen6xError::WriteNack);
     io_.delay_ms(io_.context, command.execution_ms);

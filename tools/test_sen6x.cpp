@@ -60,8 +60,9 @@ void put_word(std::vector<std::uint8_t> &out, std::uint16_t word) {
 }
 
 struct FakeBus {
-  std::vector<std::uint16_t> commands; // every command id written
-  std::vector<std::uint32_t> delays;   // every delay asked for
+  std::vector<std::uint16_t> commands;           // every command id written
+  std::vector<std::vector<std::uint8_t>> writes; // every write, whole
+  std::vector<std::uint32_t> delays;             // every delay asked for
   std::deque<std::vector<std::uint8_t>> replies;
   bool nack_write = false;
   bool nack_read = false;
@@ -80,7 +81,8 @@ struct FakeBus {
                     std::span<const std::uint8_t> data) {
     auto &bus = *static_cast<FakeBus *>(context);
     assert(address == Sen6x::kAddress);
-    assert(data.size() == 2);
+    assert(data.size() >= 2 && (data.size() - 2) % 3 == 0);
+    bus.writes.emplace_back(data.begin(), data.end());
     bus.commands.push_back(
         static_cast<std::uint16_t>((data[0] << 8) | data[1]));
     return !bus.nack_write;
@@ -271,6 +273,50 @@ void unset_io() {
   assert(std::strcmp(opensensor::sen6x_error_name(Sen6xError::Crc), "crc") ==
          0);
 }
+// Datasheet 4.8.14, 4.8.35 and 4.8.39. Each data word goes MSB first with
+// its CRC, and an out of range argument never reaches the bus.
+void configuration_writes() {
+  FakeBus bus;
+  Sen6x sensor(bus.io());
+  // -1.5 C is -300 in units of 1/200 C, 0xFED4.
+  assert(sensor
+             .set_temperature_offset({.offset_x200 = -300,
+                                      .slope_x10000 = 0,
+                                      .time_constant_s = 0,
+                                      .slot = 0})
+             .has_value());
+  assert(sensor.set_co2_auto_calibration(false).has_value());
+  assert(sensor.set_co2_auto_calibration(true).has_value());
+  assert(sensor.set_sensor_altitude(350).has_value());
+  const auto crc = [](std::uint16_t word) {
+    const std::array<std::uint8_t, 2> data{static_cast<std::uint8_t>(word >> 8),
+                                           static_cast<std::uint8_t>(word)};
+    return opensensor::sen6x_crc8(data);
+  };
+  using Bytes = std::vector<std::uint8_t>;
+  assert((bus.writes[0] == Bytes{0x60, 0xB2, 0xFE, 0xD4, crc(0xFED4), 0x00,
+                                 0x00, crc(0x0000), 0x00, 0x00, crc(0x0000),
+                                 0x00, 0x00, crc(0x0000)}));
+  assert((bus.writes[1] == Bytes{0x67, 0x11, 0x00, 0x00, crc(0x0000)}));
+  assert((bus.writes[2] == Bytes{0x67, 0x11, 0x00, 0x01, crc(0x0001)}));
+  assert((bus.writes[3] == Bytes{0x67, 0x36, 0x01, 0x5E, crc(0x015E)}));
+  assert((bus.delays == std::vector<std::uint32_t>{20, 20, 20, 20}));
+  // The datasheet example word 0xBEEF has CRC 0x92.
+  static_assert(Sen6x::encode_write(
+                    0x6736, std::array<std::uint16_t, 1>{0xBEEF})[4] == 0x92);
+
+  const auto high = sensor.set_sensor_altitude(3001);
+  assert(!high && high.error() == Sen6xError::OutOfRange);
+  assert(sensor.set_sensor_altitude(3000).has_value());
+  const auto slot = sensor.set_temperature_offset({.slot = 5});
+  assert(!slot && slot.error() == Sen6xError::OutOfRange);
+  assert(bus.writes.size() == 5);
+  assert(std::strcmp(opensensor::sen6x_error_name(Sen6xError::OutOfRange),
+                     "out-of-range") == 0);
+  bus.nack_write = true;
+  const auto nack = sensor.set_co2_auto_calibration(true);
+  assert(!nack && nack.error() == Sen6xError::WriteNack);
+}
 } // namespace
 
 int main() {
@@ -280,5 +326,6 @@ int main() {
   identity();
   lifecycle();
   unset_io();
+  configuration_writes();
   return 0;
 }
