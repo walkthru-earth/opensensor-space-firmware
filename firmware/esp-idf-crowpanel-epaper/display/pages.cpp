@@ -124,10 +124,10 @@ void hero(Canvas &c, const Model &m, const History &h) {
     c.text(pf, pill.x + 8, pill.y + 15, word);
   }
 
-  // The last hour on the right.
+  // The last 2 h on the right.
   const Rect plot{218, 50, 172, 66};
-  const Series s = h.series(Metric::Pm25, Window::Hour);
-  c.text(fonts::small, plot.x, 42, "Last hour");
+  const Series s = h.series(Metric::Pm25, Window::Recent);
+  c.text(fonts::small, plot.x, 42, "Last 2 hours");
   const Range range = data_range(s);
   if (range.valid) {
     Text a{};
@@ -142,7 +142,7 @@ void hero(Canvas &c, const Model &m, const History &h) {
   }
   c.dotted_hline(plot.x, plot.y - 2, plot.w, 1, 3);
   c.hline(plot.x, plot.bottom() + 2, plot.w);
-  c.text(fonts::small, plot.x, plot.bottom() + 16, "-60 min");
+  c.text(fonts::small, plot.x, plot.bottom() + 16, "-2 h");
   // No zero floor here, the labels name the data min and max, so the trace
   // spans exactly that band unless it is narrower than the metric's min_span.
   if (range.valid)
@@ -168,7 +168,7 @@ void tile(Canvas &c, Rect box, Metric metric, const Model &m,
            Align::Right);
   }
   const Rect spark{x, box.y + 57, box.w - 2 * kMargin, 16};
-  sparkline(c, spark, h.series(metric, Window::Hour), mi.zero_floor,
+  sparkline(c, spark, h.series(metric, Window::Recent), mi.zero_floor,
             mi.min_span);
 }
 

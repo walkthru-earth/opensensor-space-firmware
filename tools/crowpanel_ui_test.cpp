@@ -123,8 +123,8 @@ void test_history() {
   h->push(1010, all(2.0F));
   h->push(1020, all(kNaN));
   h->push(1060, all(5.0F)); // Skips the 1030, 1040 and 1050 slots.
-  const Series s = h->series(Metric::Pm25, Window::Hour);
-  CHECK(s.size() == History::kHourSlots);
+  const Series s = h->series(Metric::Pm25, Window::Recent);
+  CHECK(s.size() == History::kRecentSlots);
   const std::size_t n = s.size();
   CHECK(s[n - 1] == 5.0F);
   CHECK(std::isnan(s[n - 2]) && std::isnan(s[n - 3]) && std::isnan(s[n - 4]));
@@ -137,13 +137,13 @@ void test_history() {
   CHECK(d[d.size() - 1] == 5.0F);
   CHECK(d[d.size() - 2] == 1.5F);
 
-  // Same slot replaces in the hour ring and averages in the day ring.
+  // Same slot replaces in the recent ring and averages in the day ring.
   h->push(1065, all(7.0F));
-  CHECK(h->series(Metric::Rh, Window::Hour)[n - 1] == 7.0F);
+  CHECK(h->series(Metric::Rh, Window::Recent)[n - 1] == 7.0F);
   CHECK(h->series(Metric::Rh, Window::Day)[d.size() - 1] == 6.0F);
   // Time going backwards is ignored.
   h->push(900, all(99.0F));
-  CHECK(h->series(Metric::Rh, Window::Hour)[n - 1] == 7.0F);
+  CHECK(h->series(Metric::Rh, Window::Recent)[n - 1] == 7.0F);
 
   // Minute 18 has only NaN, minutes 19 and 20 have no push at all.
   h->push(1080, all(kNaN));
@@ -155,19 +155,19 @@ void test_history() {
   CHECK(d2[d2.size() - 4] == 6.0F);
 
   // A gap longer than the window clears it.
-  h->push(1200 + 2 * 3600, all(3.0F));
-  const Series s3 = h->series(Metric::Pm1, Window::Hour);
+  h->push(1200 + 3 * 3600, all(3.0F));
+  const Series s3 = h->series(Metric::Pm1, Window::Recent);
   int finite = 0;
   for (std::size_t i = 0; i < s3.size(); ++i)
     finite += std::isfinite(s3[i]) ? 1 : 0;
   CHECK(finite == 1);
   // Wrapping past the ring end keeps order oldest first.
   auto w = std::make_unique<History>();
-  for (std::uint32_t t = 0; t < 2 * 3600; t += 10)
+  for (std::uint32_t t = 0; t < 3 * 3600; t += 10)
     w->push(t, all(static_cast<float>(t)));
-  const Series s4 = w->series(Metric::Pm10, Window::Hour);
-  CHECK(s4[s4.size() - 1] == 7190.0F);
-  CHECK(s4[0] == 7190.0F - 10.0F * (History::kHourSlots - 1));
+  const Series s4 = w->series(Metric::Pm10, Window::Recent);
+  CHECK(s4[s4.size() - 1] == 10790.0F);
+  CHECK(s4[0] == 10790.0F - 10.0F * (History::kRecentSlots - 1));
 }
 
 void test_chart() {
