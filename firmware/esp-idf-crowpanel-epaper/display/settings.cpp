@@ -15,7 +15,7 @@ static constexpr std::array<std::uint32_t, 4> kSleepSeconds{0, 600, 1800, 3600};
 static constexpr std::array<std::string_view, 4> kSleepNames{"Off", "10 min",
                                                              "30 min", "1 h"};
 static constexpr std::array<std::string_view, kRowCount> kRowLabels{
-    "Screen refresh",  "Start on", "Wi-Fi",       "Fan cleaning",
+    "Screen refresh",  "Start on", "Theme",       "Wi-Fi",      "Fan cleaning",
     "CO₂ calibration", "Altitude", "Temp offset", "Sleep after"};
 
 // The range and step of a numeric row.
@@ -97,6 +97,7 @@ SettingsBlob encode(const Settings &s) {
       static_cast<std::uint8_t>(off & 0xFFU),
       static_cast<std::uint8_t>(off >> 8U),
       std::to_underlying(s.sleep_after),
+      std::to_underlying(s.theme),
   };
 }
 
@@ -126,6 +127,8 @@ Settings decode(std::span<const std::uint8_t> blob) {
   }
   if (has(10) && blob[9] < kSleepSeconds.size())
     s.sleep_after = static_cast<SleepAfter>(blob[9]);
+  if (has(11) && blob[10] <= std::to_underlying(Theme::Dark))
+    s.theme = static_cast<Theme>(blob[10]);
   return s;
 }
 
@@ -196,6 +199,9 @@ Effect popup_input(PopupState &p, Settings &s, const SettingsInfo &board,
     s.start_page = s.start_page == StartPage::Dashboard ? StartPage::LastViewed
                                                         : StartPage::Dashboard;
     return Effect::Changed;
+  case Row::Theme:
+    s.theme = s.theme == Theme::Light ? Theme::Dark : Theme::Light;
+    return Effect::Changed;
   case Row::Wifi:
     // Read only, the shared device config owns Wi-Fi.
     return Effect::None;
@@ -232,8 +238,9 @@ Outcome handle(UiState &ui, Settings &s, const SettingsInfo &board, Input in) {
   }
   Outcome out{};
   if (ui.popup.open || in == Input::Menu) {
+    const Theme before = s.theme;
     out.effect = popup_input(ui.popup, s, board, in);
-    out.full_refresh = out.effect == Effect::Closed;
+    out.full_refresh = out.effect == Effect::Closed || s.theme != before;
   } else {
     if (ui.page >= kPageCount)
       ui.page = kDashboardPage;
@@ -268,6 +275,8 @@ std::string_view row_value(std::span<char> buf, Row r, const Settings &s,
   case Row::StartPage:
     return copy_into(buf, s.start_page == StartPage::LastViewed ? "Last page"
                                                                 : "Dashboard");
+  case Row::Theme:
+    return copy_into(buf, s.theme == Theme::Dark ? "Dark" : "Light");
   case Row::Wifi:
     if (!board.wifi_configured)
       return copy_into(buf, "Not set up");
@@ -302,9 +311,11 @@ std::string_view row_value(std::span<char> buf, Row r, const Settings &s,
 namespace {
 
 constexpr int kPopupW = 320;
-constexpr int kPopupHead = 32;
-constexpr int kPopupRow = 23;
-constexpr int kPopupFoot = 28;
+// Nine rows fit the same 244 px box eight rows of 23 px had, so the popup
+// still clears the header rule at y 22.
+constexpr int kPopupHead = 30;
+constexpr int kPopupRow = 21;
+constexpr int kPopupFoot = 25;
 constexpr int kPopupH = kPopupHead + kRowCount * kPopupRow + kPopupFoot;
 constexpr int kPad = 12;
 
@@ -332,14 +343,14 @@ void render_settings(Canvas &c, const Settings &s, const PopupState &p,
   c.fill({box.x - 3, box.y - 3, box.w + 6, box.h + 6}, Ink::White);
   c.rect(box);
   c.rect({box.x + 1, box.y + 1, box.w - 2, box.h - 2});
-  c.text(fonts::title, box.x + kPad, box.y + 23, "Settings");
+  c.text(fonts::title, box.x + kPad, box.y + 22, "Settings");
   c.hline(box.x + 8, box.y + kPopupHead - 3, box.w - 16);
 
   const int right = box.right() - kPad;
   for (std::uint8_t i = 0; i < kRowCount; ++i) {
     const auto r = static_cast<Row>(i);
     const int ry = box.y + kPopupHead + i * kPopupRow;
-    const int base = ry + 16;
+    const int base = ry + 15;
     const bool selected = r == p.selected;
     const bool editing = selected && p.editing;
     const Rect bar{box.x + 5, ry, box.w - 10, kPopupRow - 1};
@@ -373,17 +384,16 @@ void render_settings(Canvas &c, const Settings &s, const PopupState &p,
 void render_screen(Canvas &c, const UiState &ui, const Settings &s,
                    const SettingsInfo &board, const Model &model,
                    const History &history) {
-  if (model.status.pairing_passkey) {
-    render(c, ui.page, model, history);
-    return;
-  }
-  if (ui.asleep) {
+  if (ui.asleep && !model.status.pairing_passkey) {
+    // E-paper rests mostly white, so sleep ignores the theme.
     render_asleep(c, model);
     return;
   }
   render(c, ui.page, model, history);
-  if (ui.popup.open)
+  if (ui.popup.open && !model.status.pairing_passkey)
     render_settings(c, s, ui.popup, board);
+  if (s.theme == Theme::Dark)
+    c.invert_all();
 }
 
 } // namespace opensensor::ui

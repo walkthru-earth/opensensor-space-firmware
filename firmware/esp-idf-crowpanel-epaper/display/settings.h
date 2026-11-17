@@ -33,6 +33,10 @@ enum class RefreshEvery : std::uint8_t { S10, S30, M1, M5 };
 enum class StartPage : std::uint8_t { Dashboard, LastViewed };
 // Idle time before the screen sleeps.
 enum class SleepAfter : std::uint8_t { Off, M10, M30, H1 };
+// Light is black ink on white. Dark inverts the whole frame, white ink on
+// black. The asleep screen stays light either way, so the resting glass is
+// mostly white.
+enum class Theme : std::uint8_t { Light, Dark };
 
 inline constexpr std::uint16_t kAltitudeMaxM = 3000;
 inline constexpr std::uint16_t kAltitudeStepM = 50;
@@ -51,6 +55,7 @@ struct Settings {
   std::uint16_t altitude_m = 0; // SEN63C CO2 pressure compensation.
   std::int16_t temp_offset_dc = 0;
   SleepAfter sleep_after = SleepAfter::Off;
+  Theme theme = Theme::Light;
   bool operator==(const Settings &) const = default;
 };
 
@@ -61,12 +66,15 @@ sleep_after_seconds(const Settings &s);
 // The page to show after a reset.
 [[nodiscard]] std::uint8_t start_page(const Settings &s);
 
-// The NVS blob, version 1, 10 bytes, multi-byte fields little endian.
+// The NVS blob, version 1, 11 bytes, multi-byte fields little endian.
 //   0 version (1)        1 refresh            2 start_page
 //   3 last_page          4 co2_asc (0 or 1)   5..6 altitude_m (u16)
 //   7..8 temp_offset_dc (i16, two's complement)   9 sleep_after
+//   10 theme
+// New fields are appended and keep version 1, so a shorter blob saved by an
+// older image still decodes and the missing fields take their defaults.
 inline constexpr std::uint8_t kSettingsVersion = 1;
-inline constexpr std::size_t kSettingsBlobBytes = 10;
+inline constexpr std::size_t kSettingsBlobBytes = 11;
 using SettingsBlob = std::array<std::uint8_t, kSettingsBlobBytes>;
 
 [[nodiscard]] SettingsBlob encode(const Settings &s);
@@ -77,6 +85,7 @@ using SettingsBlob = std::array<std::uint8_t, kSettingsBlobBytes>;
 enum class Row : std::uint8_t {
   Refresh,
   StartPage,
+  Theme,
   Wifi,
   FanCleaning,
   Co2Asc,
@@ -84,7 +93,7 @@ enum class Row : std::uint8_t {
   TempOffset,
   SleepAfter,
 };
-inline constexpr std::uint8_t kRowCount = 8;
+inline constexpr std::uint8_t kRowCount = 9;
 
 // Board state the popup shows and that decides what Press does.
 struct SettingsInfo {
@@ -142,6 +151,8 @@ struct Outcome {
 // nothing else. With the popup open the key goes to popup_input(). Otherwise
 // MENU opens the popup and every other key goes to navigate(). With
 // StartPage::LastViewed a page change updates last_page and returns Changed.
+// A theme change asks for a full refresh, a partial one would leave the old
+// frame ghosting under every pixel that flipped.
 [[nodiscard]] Outcome handle(UiState &ui, Settings &s,
                              const SettingsInfo &board, Input in);
 
@@ -157,7 +168,8 @@ void render_settings(Canvas &c, const Settings &s, const PopupState &p,
 
 // The full frame for the state. The pairing screen wins over sleep and the
 // popup, so a passkey always shows. Asleep draws render_asleep(). Otherwise
-// the page, with the popup over it when open.
+// the page, with the popup over it when open. Theme::Dark inverts the whole
+// frame at the end, except the asleep screen, which always stays light.
 void render_screen(Canvas &c, const UiState &ui, const Settings &s,
                    const SettingsInfo &board, const Model &model,
                    const History &history);

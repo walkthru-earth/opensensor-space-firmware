@@ -53,6 +53,8 @@ public:
   void rect(Rect r, Ink ink = Ink::Black);
   void fill(Rect r, Ink ink = Ink::Black);
   void invert_rect(Rect r);
+  // Flips every pixel of the frame, black becomes white and white black.
+  void invert_all();
   // A rectangle with its four corner pixels cut, which reads as rounded at
   // this size.
   void round_rect(Rect r, Ink ink = Ink::Black);

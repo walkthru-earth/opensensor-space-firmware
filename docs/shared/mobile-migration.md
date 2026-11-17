@@ -47,7 +47,9 @@ HMI v1.2 with a Sensirion SEN63C on I2C.
   `OS SEN6X absent ...`, `OS SEN6X lost ...`, `OS SEN6X stale ...`,
   `OS SEN6X start-failed ...`, `OS SEN6X status=...`, `OS DISPLAY ready=...`,
   `OS TF mounted=...` and `OS READY ...`.
-- The panel settings popup adds `OS PANEL settings operation=load|save ...`,
+- The panel settings popup adds `OS PANEL settings operation=load|save
+  error=... refresh_s=... start_page=... sleep_s=... altitude_m=...
+  co2_asc=... temp_offset_dc=... theme=light|dark`, with `theme` last.
   `OS SEN6X config when=start|change altitude_m=... co2_asc=...
   temp_offset_dc=...`, `OS SEN6X config-change action=restart`,
   `OS SEN6X config-failed ...`, `OS SEN6X fan-cleaning started ...`,

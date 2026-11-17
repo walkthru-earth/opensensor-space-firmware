@@ -812,14 +812,15 @@ void log_panel_settings(const char *operation, esp_err_t error) {
   const auto sleep_s = ui::sleep_after_seconds(panel_settings);
   oslog.printf("OS PANEL settings operation=%s error=%d refresh_s=%lu "
                "start_page=%u sleep_s=%lu altitude_m=%u co2_asc=%u "
-               "temp_offset_dc=%d\n",
+               "temp_offset_dc=%d theme=%s\n",
                operation, error,
                static_cast<unsigned long>(ui::refresh_seconds(panel_settings)),
                static_cast<unsigned>(ui::start_page(panel_settings)),
                static_cast<unsigned long>(sleep_s ? *sleep_s : 0),
                static_cast<unsigned>(panel_settings.altitude_m),
                panel_settings.co2_asc,
-               static_cast<int>(panel_settings.temp_offset_dc));
+               static_cast<int>(panel_settings.temp_offset_dc),
+               panel_settings.theme == ui::Theme::Dark ? "dark" : "light");
 }
 
 // A missing namespace or key is a first boot, so defaults and no error.

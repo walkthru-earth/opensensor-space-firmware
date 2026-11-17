@@ -1,6 +1,7 @@
 // Renders the CrowPanel pages for synthetic scenarios to PBM files, the same
 // 1 bit frames the panel receives. tools/test_crowpanel_ui.py turns them into
-// PNGs under the board's ignored artifacts/ui-preview/.
+// PNGs under the board's ignored artifacts/ui-preview/. Names ending in
+// -dark are the same scenes with Theme::Dark.
 //
 // Usage: crowpanel-ui-preview <out dir>
 
@@ -121,6 +122,15 @@ int emit_screen(const std::string &dir, const char *name, const UiState &ui,
   return 0;
 }
 
+// The page through render_screen() with the dark theme, as the panel draws
+// it once Theme is set to Dark.
+int emit_dark(const std::string &dir, const char *name, std::uint8_t page,
+              const Model &m, const History &h) {
+  Settings s{};
+  s.theme = Theme::Dark;
+  return emit_screen(dir, name, UiState{.page = page}, s, SettingsInfo{}, m, h);
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -145,6 +155,8 @@ int main(int argc, char **argv) {
     m.status = base_status();
     fill_now(m, last, end);
     rc |= emit(dir, "dashboard", kDashboardPage, m, *h);
+    rc |= emit_dark(dir, "dashboard-dark", kDashboardPage, m, *h);
+    rc |= emit_dark(dir, "chart-PM2.5-dark", 1, m, *h);
     for (std::uint8_t p = 1; p < kStatusPage; ++p) {
       const std::string name =
           "chart-" + std::string(info(kChartOrder[p - 1U]).label == "CO₂"
@@ -153,6 +165,7 @@ int main(int argc, char **argv) {
       rc |= emit(dir, name.c_str(), p, m, *h);
     }
     rc |= emit(dir, "status", kStatusPage, m, *h);
+    rc |= emit_dark(dir, "status-dark", kStatusPage, m, *h);
 
     // The same day with bad air right now.
     std::array<float, kMetricCount> bad = last;
@@ -174,7 +187,19 @@ int main(int argc, char **argv) {
     UiState ui{};
     static_cast<void>(handle(ui, s, info, Input::Menu));
     rc |= emit_screen(dir, "settings", ui, s, info, m, *h);
-    for (int i = 0; i < 5; ++i)
+    // Down twice to Theme and press, the popup now draws dark.
+    {
+      UiState dark_ui = ui;
+      Settings dark = s;
+      for (int i = 0; i < 2; ++i)
+        static_cast<void>(handle(dark_ui, dark, info, Input::Down));
+      static_cast<void>(handle(dark_ui, dark, info, Input::Press));
+      rc |= emit_screen(dir, "settings-theme-dark", dark_ui, dark, info, m, *h);
+      UiState asleep_ui = dark_ui;
+      fall_asleep(asleep_ui);
+      rc |= emit_screen(dir, "asleep-dark", asleep_ui, dark, info, m, *h);
+    }
+    for (int i = 0; i < 6; ++i)
       static_cast<void>(handle(ui, s, info, Input::Down));
     static_cast<void>(handle(ui, s, info, Input::Press));
     static_cast<void>(handle(ui, s, info, Input::Up));
@@ -264,7 +289,7 @@ int main(int argc, char **argv) {
     s.start_page = StartPage::LastViewed;
     UiState ui{.page = kStatusPage};
     static_cast<void>(handle(ui, s, info, Input::Menu));
-    for (int i = 0; i < 2; ++i)
+    for (int i = 0; i < 3; ++i)
       static_cast<void>(handle(ui, s, info, Input::Down));
     rc |= emit_screen(dir, "settings-no-wifi-no-sensor", ui, s, info, m, *h);
   }
@@ -277,6 +302,7 @@ int main(int argc, char **argv) {
     m.status.ble = Link::Connected;
     m.status.pairing_passkey = 123456U;
     rc |= emit(dir, "pairing", kDashboardPage, m, *h);
+    rc |= emit_dark(dir, "pairing-dark", kDashboardPage, m, *h);
   }
   return rc;
 }

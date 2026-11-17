@@ -127,6 +127,12 @@ void Canvas::invert_rect(Rect r) {
       pixel(x, y, invert(get(x, y)));
 }
 
+void Canvas::invert_all() {
+  std::transform(
+      frame_.begin(), frame_.end(), frame_.begin(),
+      [](std::uint8_t byte) { return static_cast<std::uint8_t>(~byte); });
+}
+
 void Canvas::round_rect(Rect r, Ink ink) {
   if (r.w < 3 || r.h < 3) {
     rect(r, ink);

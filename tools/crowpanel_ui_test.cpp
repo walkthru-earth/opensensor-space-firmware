@@ -1,8 +1,10 @@
 // Host tests for the CrowPanel e-paper UI, canvas clipping, UTF-8, history
 // rings, chart gaps, PM2.5 bands, reading quality, navigation, the refresh
-// cadence, the settings blob and popup and the sleeping screen. Built and run
+// cadence, the settings blob and popup, the theme and the sleeping screen.
+// Built and run
 // by tools/test_crowpanel_ui.py with sanitizers.
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -76,6 +78,15 @@ void test_canvas() {
   CHECK(ink_count(c, {0, 0, 40, 40}) == 12);
   c.invert_rect({10, 10, 4, 3});
   CHECK(ink_count(c, {0, 0, 40, 40}) == 0);
+  // invert_all flips every pixel and twice gives the frame back.
+  c.fill({10, 10, 4, 3});
+  const auto before = b->bytes;
+  c.invert_all();
+  CHECK(ink_count(c, {0, 0, kWidth, kHeight}) == kWidth * kHeight - 12);
+  CHECK(c.get(10, 10) == Ink::White && c.get(0, 0) == Ink::Black);
+  c.invert_all();
+  CHECK(b->bytes == before);
+  c.clear();
   c.line(0, 0, 9, 3);
   CHECK(c.get(0, 0) == Ink::Black && c.get(9, 3) == Ink::Black);
   c.clear(Ink::Black);
@@ -470,6 +481,7 @@ void test_settings_blob() {
   CHECK(!sleep_after_seconds(d));
   CHECK(start_page(d) == kDashboardPage);
   CHECK(d.co2_asc && d.altitude_m == 0 && d.temp_offset_dc == 0);
+  CHECK(d.theme == Theme::Light);
 
   const SettingsBlob db = encode(d);
   CHECK(db[0] == kSettingsVersion);
@@ -481,8 +493,10 @@ void test_settings_blob() {
                    .co2_asc = false,
                    .altitude_m = 2950,
                    .temp_offset_dc = -73,
-                   .sleep_after = SleepAfter::H1};
+                   .sleep_after = SleepAfter::H1,
+                   .theme = Theme::Dark};
   const SettingsBlob b = encode(s);
+  CHECK(b.size() == 11 && b[10] == 1);
   // Explicit little endian, independent of the host.
   CHECK(b[5] == (2950 & 0xFF) && b[6] == (2950 >> 8));
   CHECK(b[7] == 0xB7 && b[8] == 0xFF); // -73 as two's complement.
@@ -517,7 +531,13 @@ void test_settings_blob() {
   // One byte of a two byte field is not enough.
   const std::vector<std::uint8_t> half(b.begin(), b.begin() + 6);
   CHECK(decode(half).altitude_m == 0);
-  // A longer blob reads its first ten bytes.
+  // A blob saved before the theme existed, ten bytes, keeps every older field
+  // and gives Light.
+  const std::vector<std::uint8_t> old(b.begin(), b.begin() + 10);
+  Settings want_old = s;
+  want_old.theme = Theme::Light;
+  CHECK(decode(old) == want_old);
+  // A longer blob reads its first eleven bytes.
   std::vector<std::uint8_t> longer(b.begin(), b.end());
   longer.push_back(0xEE);
   CHECK(decode(longer) == s);
@@ -535,6 +555,9 @@ void test_settings_blob() {
   CHECK(out_of_range(4, 2).co2_asc);
   CHECK(out_of_range(9, 4).sleep_after == SleepAfter::Off);
   CHECK(out_of_range(9, 4).altitude_m == 2950);
+  CHECK(out_of_range(10, 2).theme == Theme::Light);
+  CHECK(out_of_range(10, 0xFF).theme == Theme::Light);
+  CHECK(out_of_range(10, 2).sleep_after == SleepAfter::H1);
   SettingsBlob hi = b;
   hi[5] = (3001 & 0xFF);
   hi[6] = (3001 >> 8);
@@ -596,6 +619,34 @@ void test_popup_rows() {
       static_cast<void>(popup_input(p, s, kAllThere, Input::Down));
     CHECK(p.selected == Row::Refresh);
     CHECK(s == Settings{});
+  }
+  // The display rows sit together, Theme right after Start on.
+  {
+    constexpr std::array<Row, kRowCount> kOrder{
+        Row::Refresh,  Row::StartPage,   Row::Theme,
+        Row::Wifi,     Row::FanCleaning, Row::Co2Asc,
+        Row::Altitude, Row::TempOffset,  Row::SleepAfter};
+    PopupState p = opened();
+    Settings s{};
+    for (const Row want : kOrder) {
+      CHECK(p.selected == want);
+      static_cast<void>(popup_input(p, s, kAllThere, Input::Down));
+    }
+    CHECK(p.selected == Row::Refresh);
+    CHECK(row_label(Row::Theme) == "Theme");
+  }
+  // Theme toggles Light and Dark.
+  {
+    PopupState p = at(Row::Theme);
+    Settings s{};
+    std::array<char, 24> buf{};
+    CHECK(value_of(Row::Theme, s, p, kAllThere, buf) == "Light");
+    CHECK(popup_input(p, s, kAllThere, Input::Press) == Effect::Changed);
+    CHECK(s.theme == Theme::Dark);
+    CHECK(value_of(Row::Theme, s, p, kAllThere, buf) == "Dark");
+    CHECK(popup_input(p, s, kAllThere, Input::Press) == Effect::Changed);
+    CHECK(s.theme == Theme::Light);
+    CHECK(p.open && !p.editing && p.selected == Row::Theme);
   }
   // Refresh cycles 10 s, 30 s, 1 min, 5 min and back.
   {
@@ -810,8 +861,33 @@ void test_ui_handle() {
     ui.popup.selected = Row::FanCleaning;
     CHECK(handle(ui, s, info, Input::Press).effect == Effect::FanClean);
     ui.popup.selected = Row::Refresh;
-    CHECK(handle(ui, s, info, Input::Press).effect == Effect::Changed);
+    const Outcome r = handle(ui, s, info, Input::Press);
+    CHECK(r.effect == Effect::Changed && !r.full_refresh);
     CHECK(s.refresh == RefreshEvery::S30);
+  }
+  // A theme change asks for a full refresh both ways, any other change and
+  // moving the selection do not.
+  {
+    UiState ui{};
+    Settings s{};
+    static_cast<void>(handle(ui, s, info, Input::Menu));
+    ui.popup.selected = Row::StartPage;
+    const Outcome d = handle(ui, s, info, Input::Down);
+    CHECK(ui.popup.selected == Row::Theme && !d.full_refresh);
+    const Outcome dark = handle(ui, s, info, Input::Press);
+    CHECK(dark.effect == Effect::Changed && dark.full_refresh);
+    CHECK(s.theme == Theme::Dark && !dark.page_changed && ui.popup.open);
+    const Outcome light = handle(ui, s, info, Input::Press);
+    CHECK(light.effect == Effect::Changed && light.full_refresh);
+    CHECK(s.theme == Theme::Light);
+    ui.popup.selected = Row::SleepAfter;
+    const Outcome sleep = handle(ui, s, info, Input::Press);
+    CHECK(sleep.effect == Effect::Changed && !sleep.full_refresh);
+    // The RefreshPolicy turns that request into a full refresh.
+    RefreshPolicy policy;
+    static_cast<void>(policy.next(false, false));
+    CHECK(policy.next(false, false) == Refresh::Partial);
+    CHECK(policy.next(dark.page_changed, dark.full_refresh) == Refresh::Full);
   }
   // Last viewed tracks the page, Dashboard leaves last_page alone.
   {
@@ -927,6 +1003,89 @@ void test_render_settings_and_sleep() {
   }
 }
 
+// True when every bit of `dark` is the opposite of the same bit in `light`.
+bool is_inverse(const Buffer &light, const Buffer &dark) {
+  for (std::size_t i = 0; i < kFrameBytes; ++i)
+    if (static_cast<std::uint8_t>(~light.bytes[i]) != dark.bytes[i])
+      return false;
+  return true;
+}
+
+// The pixels where `dark` is not the inverse of `light`, as a bounding box.
+// Empty (w 0) when the frames are exact inverses.
+Rect inverse_mismatch(const Buffer &light, const Buffer &dark) {
+  int x0 = kWidth;
+  int y0 = kHeight;
+  int x1 = -1;
+  int y1 = -1;
+  for (int y = 0; y < kHeight; ++y)
+    for (int x = 0; x < kWidth; ++x)
+      if (light.canvas.get(x, y) == dark.canvas.get(x, y)) {
+        x0 = std::min(x0, x);
+        y0 = std::min(y0, y);
+        x1 = std::max(x1, x);
+        y1 = std::max(y1, y);
+      }
+  if (x1 < 0)
+    return {};
+  return {x0, y0, x1 - x0 + 1, y1 - y0 + 1};
+}
+
+// Dark is the exact bitwise inverse of Light for every page, on the pairing
+// screen and with the popup open, where only the Theme row's own value text
+// differs. The asleep screen is the same light frame in both themes.
+void test_theme() {
+  auto light = std::make_unique<Buffer>();
+  auto dark = std::make_unique<Buffer>();
+  auto h = std::make_unique<History>();
+  const Model m = sample_model();
+  for (std::uint32_t t = 0; t < 3600; t += 10)
+    h->push(t, all(static_cast<float>(t % 300)));
+  Settings ls{};
+  Settings ds{};
+  ds.theme = Theme::Dark;
+  for (std::uint8_t p = 0; p < kPageCount; ++p) {
+    UiState ui{.page = p};
+    render_screen(light->canvas, ui, ls, kAllThere, m, *h);
+    render_screen(dark->canvas, ui, ds, kAllThere, m, *h);
+    CHECK(is_inverse(*light, *dark));
+    CHECK(inverse_mismatch(*light, *dark).w == 0);
+    static_cast<void>(handle(ui, ls, kAllThere, Input::Menu));
+    for (std::uint8_t r = 0; r < kRowCount; ++r) {
+      ui.popup.selected = static_cast<Row>(r);
+      render_screen(light->canvas, ui, ls, kAllThere, m, *h);
+      render_screen(dark->canvas, ui, ds, kAllThere, m, *h);
+      // "Light" against "Dark" in the right half of one row, nothing else.
+      const Rect diff = inverse_mismatch(*light, *dark);
+      CHECK(diff.w > 0 && diff.h > 0 && diff.h < 21);
+      CHECK(diff.x > kWidth / 2);
+    }
+  }
+  // Pairing follows the theme.
+  {
+    Model pm = sample_model();
+    pm.status.pairing_passkey = 123456U;
+    UiState ui{};
+    render_screen(light->canvas, ui, ls, kAllThere, pm, *h);
+    render_screen(dark->canvas, ui, ds, kAllThere, pm, *h);
+    CHECK(is_inverse(*light, *dark));
+    // A pairing phone over a sleeping screen still shows the dark passkey.
+    fall_asleep(ui);
+    render_screen(dark->canvas, ui, ds, kAllThere, pm, *h);
+    CHECK(is_inverse(*light, *dark));
+  }
+  // Asleep stays light, mostly white glass whatever the theme.
+  {
+    UiState ui{.page = 2};
+    fall_asleep(ui);
+    render_screen(light->canvas, ui, ls, kAllThere, m, *h);
+    render_screen(dark->canvas, ui, ds, kAllThere, m, *h);
+    CHECK(light->bytes == dark->bytes);
+    CHECK(ink_count(dark->canvas, {0, 0, kWidth, kHeight}) <
+          kWidth * kHeight / 4);
+  }
+}
+
 } // namespace
 
 int main() {
@@ -944,6 +1103,7 @@ int main() {
   test_popup_numeric();
   test_ui_handle();
   test_render_settings_and_sleep();
+  test_theme();
   std::printf("crowpanel ui, %d checks passed\n", g_checks);
   return 0;
 }
