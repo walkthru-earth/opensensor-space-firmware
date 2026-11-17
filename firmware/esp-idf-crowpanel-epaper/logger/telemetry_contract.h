@@ -36,7 +36,7 @@ constexpr const char *kBoard = "elecrow-crowpanel-epaper-42";
 constexpr const char *kDictionaryUri =
     "https://raw.githubusercontent.com/walkthru-earth/"
     "opensensor-space-firmware/"
-    "91c776a17ecadc91f0bd51523c30f691cb9ff5ba/"
+    "9b1baebb62509349596f3d02f4cbd864133310d8/"
     "firmware/esp-idf-crowpanel-epaper/logger/telemetry_fields.inc";
 static_assert(opensensor::pinned::names(
                   kDictionaryUri, "firmware/esp-idf-crowpanel-epaper/logger/"

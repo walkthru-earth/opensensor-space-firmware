@@ -21,7 +21,7 @@ HMI v1.2 with a Sensirion SEN63C on I2C.
 - Firmware `idf-crowpanel-parquet-v0.1`, schema and dictionary
   `crowpanel-epaper-telemetry-v1`, dict digest
   `e7279c4edbe87071e4a51889124a43d7ffcd1977c79c8575887ae35bdee10903`, desc
-  digest `3156b9a0405f9e350103416906c4946110bbfd4952bbee1820f60c14b9acc8b9`.
+  digest `40544faf12a82d7895a5231758a2901cd4be851b918e839258f4c764879e0a98`.
   The template is in
   [`templates/elecrow-crowpanel-epaper-42/`](templates/elecrow-crowpanel-epaper-42/)
   and listed in [`templates/index.json`](templates/index.json).
