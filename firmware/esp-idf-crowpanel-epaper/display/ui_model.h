@@ -112,6 +112,11 @@ struct Status {
   std::string_view sensor_fw;                 // "2.0" style.
   std::optional<std::uint32_t> sensor_status; // SEN6x device status register.
   bool sensor_present = false;
+  // The BLE passkey while a phone pairs, 0 to 999999. Set only while the
+  // pairing is active, then every page gives way to the pairing screen. The
+  // screen is the one place the passkey appears, never a log.
+  std::optional<std::uint32_t> pairing_passkey;
+  std::string_view device_name; // BLE local name, shown with the passkey.
 };
 
 struct Model {

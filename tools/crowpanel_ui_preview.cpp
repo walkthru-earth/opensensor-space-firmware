@@ -88,7 +88,9 @@ Status base_status() {
           .sensor_serial = "A1B2C3D4E5F60718",
           .sensor_fw = "2.0",
           .sensor_status = 0U,
-          .sensor_present = true};
+          .sensor_present = true,
+          .pairing_passkey = std::nullopt,
+          .device_name = "OS-7F3A2C"};
 }
 
 int emit(const std::string &dir, const char *name, std::uint8_t page,
@@ -212,6 +214,16 @@ int main(int argc, char **argv) {
         Reading{.value = 0.0F, .quality = Quality::Absent, .warm_left_s = 0});
     rc |= emit(dir, "dashboard-no-sensor", kDashboardPage, m, *h);
     rc |= emit(dir, "chart-empty", 2, m, *h);
+  }
+
+  // A phone pairs. The passkey here is a fixed example, never a real one.
+  {
+    auto h = std::make_unique<History>();
+    Model m{};
+    m.status = base_status();
+    m.status.ble = Link::Connected;
+    m.status.pairing_passkey = 123456U;
+    rc |= emit(dir, "pairing", kDashboardPage, m, *h);
   }
   return rc;
 }

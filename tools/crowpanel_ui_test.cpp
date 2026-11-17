@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string_view>
 
 #include "air_band.h"
@@ -357,13 +358,41 @@ void test_render_all_pages() {
                  .sensor_serial = "1234567890ABCDEF1234567890ABCDEF",
                  .sensor_fw = "2.0",
                  .sensor_status = 0xFFFFFFFFU,
-                 .sensor_present = true};
+                 .sensor_present = true,
+                 .pairing_passkey = std::nullopt,
+                 .device_name = "OS-ABCDEF"};
   for (std::uint32_t t = 0; t < 3 * 3600; t += 10)
     h->push(t, all(static_cast<float>(t % 500)));
   for (std::uint8_t p = 0; p < kPageCount; ++p)
     render(b->canvas, p, full, *h);
   full.status.utc_s = -1;
   render(b->canvas, kStatusPage, full, *h);
+}
+
+// While a phone pairs every page shows the same pairing screen, the passkey
+// drawn with six digits, and the page comes back once the passkey clears.
+void test_pairing_screen() {
+  auto b = std::make_unique<Buffer>();
+  auto first = std::make_unique<Buffer>();
+  auto h = std::make_unique<History>();
+  Model m{};
+  m.status.pairing_passkey = 42U;
+  m.status.device_name = "OS-1A2B3C";
+  render(first->canvas, kDashboardPage, m, *h);
+  for (std::uint8_t p = 1; p < kPageCount; ++p) {
+    render(b->canvas, p, m, *h);
+    CHECK(b->bytes == first->bytes);
+  }
+  // The hero digits fill the middle band.
+  CHECK(ink_count(first->canvas, {0, 126, kWidth, 64}) > 2000);
+  // 000042 is wider than 42 would be alone.
+  CHECK(text_width(fonts::hero, "000042") > 3 * text_width(fonts::hero, "42"));
+  m.status.pairing_passkey = 999999U;
+  m.status.device_name = {};
+  render(b->canvas, kStatusPage, m, *h);
+  m.status.pairing_passkey.reset();
+  render(b->canvas, kStatusPage, m, *h);
+  CHECK(b->bytes != first->bytes);
 }
 
 } // namespace
@@ -377,6 +406,7 @@ int main() {
   test_quality_and_format();
   test_navigation();
   test_render_all_pages();
+  test_pairing_screen();
   std::printf("crowpanel ui, %d checks passed\n", g_checks);
   return 0;
 }

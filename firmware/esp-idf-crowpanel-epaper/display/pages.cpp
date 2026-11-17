@@ -398,6 +398,27 @@ void status_page(Canvas &c, std::uint8_t page, const Model &m) {
          "PM2.5 word uses the US EPA 24 h AQI bands as a guide");
 }
 
+// The whole page while a phone pairs. The passkey is the hero line, so it
+// reads from across a room, and the device name tells two boards apart.
+void pairing_page(Canvas &c, const Status &st) {
+  c.text(fonts::title, kWidth / 2, 70, "Pair with phone", Align::Center);
+  c.text(fonts::label, kWidth / 2, 104,
+         "Enter this code on the phone:", Align::Center);
+  Text t{};
+  const int n = std::snprintf(t.data(), t.size(), "%06u",
+                              static_cast<unsigned>(*st.pairing_passkey));
+  c.text(fonts::hero, kWidth / 2, 190, view(t, n), Align::Center);
+  if (!st.device_name.empty()) {
+    const int m = std::snprintf(t.data(), t.size(), "Device %.*s",
+                                static_cast<int>(st.device_name.size()),
+                                st.device_name.data());
+    c.text(fonts::label, kWidth / 2, 232, view(t, m), Align::Center);
+  }
+  c.hline(0, 274, kWidth);
+  c.text(fonts::small, kWidth / 2, 291,
+         "Only someone reading this screen can pair.", Align::Center);
+}
+
 } // namespace
 
 Nav navigate(std::uint8_t page, Input in) {
@@ -438,7 +459,9 @@ void render(Canvas &c, std::uint8_t page, const Model &model,
   if (page >= kPageCount)
     page = kDashboardPage;
   header(c, model.status);
-  if (page == kDashboardPage)
+  if (model.status.pairing_passkey)
+    pairing_page(c, model.status);
+  else if (page == kDashboardPage)
     dashboard(c, model, history);
   else if (page == kStatusPage)
     status_page(c, page, model);
