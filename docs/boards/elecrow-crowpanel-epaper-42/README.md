@@ -22,6 +22,9 @@ qualified yet, see the [bench record](bench-verified.md).
 The SEN63C uses a 6 pin 1.25 mm connector (cable side JST GHR-06V-S or ACES
 51452-006H0H0-001), per the Sensirion SEN6x datasheet, table 17. Pins 1 and 6
 are joined inside the sensor, and so are 2 and 5, so one of each is enough.
+Pin 1 is on the left when you face the socket (datasheet figure 4). Counting
+from the other end lands power and ground on the right pins but swaps SDA and
+SCL, and the board then logs `OS SEN6X absent`.
 
 | SEN63C pin | Signal | CrowPanel |
 | --- | --- | --- |

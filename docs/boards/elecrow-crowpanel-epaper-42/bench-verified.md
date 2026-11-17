@@ -71,6 +71,31 @@ No board was connected to a serial port, flashed or captured for this entry.
   logging=1` and rows 0 to 2 at 10 s with no drops. No panic or reset.
 - How the Dark theme looks on the glass and any ghosting are not checked yet.
 
-Not shown yet. What the panel draws, the keys and the settings popup, SEN63C
-readings, a finalized Parquet file read back from the card, BLE and LAN sync,
-endurance and power-cut durability.
+## First SEN63C wiring, 2026-11-17
+
+- Same unit, port and image (`App version: bd75c21`), no flash write. The
+  SEN63C was wired with four jumpers on pins 1 to 4 (3V3, GND, IO8 SDA, IO9
+  SCL), with no external pull-ups, so the bus ran on the ESP32-S3 internal
+  pull-ups only. That is outside the I2C rise time limits and is not a
+  qualified setup.
+- The first try counted the sensor socket from pin 6, which swaps SDA and SCL
+  and leaves power and ground right, because pins 1 and 6 are both VDD and
+  pins 2 and 5 are both GND. The board logged `OS SEN6X absent
+  error=write-nack` and nothing was damaged. Pin 1 is on the left facing the
+  socket, Sensirion SEN6x datasheet figure 4.
+- After the swap the 90 second capture shows `OS SEN6X present
+  product=SEN63C serial=1554990D1F2585A5 version=5.3 match=1`, `OS SEN6X
+  started`, rows 0 to 7 at 10 s with `dropped=0` and no I2C or CRC error.
+- The first status read after the start showed `co2_error=1` (0x00001000),
+  cleared by the board, and every later read was 0. The capture reset the
+  board a few seconds after the owner powered it, so the sensor was most
+  likely restarted inside the 24 s CO2 conditioning window of the previous
+  boot's start (datasheet 4.8.1). The driver cannot see a start made before a
+  reset. Not reproduced on a cold power up yet.
+- The owner saw readings on the panel with the Dark theme on. The values were
+  not recorded and are not checked against a reference.
+
+Not shown yet. The keys and the settings popup on the glass, SEN63C values
+against a reference, the bus with the 10 k pull-ups, a finalized Parquet file
+read back from the card, BLE and LAN sync, endurance and power-cut
+durability.
