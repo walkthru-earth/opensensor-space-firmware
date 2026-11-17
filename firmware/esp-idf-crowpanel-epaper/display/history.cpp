@@ -18,6 +18,7 @@ void History::reset() {
   day_count_.fill(0);
   recent_slot_ = 0;
   day_slot_ = 0;
+  last_push_s_.reset();
   started_ = false;
 }
 
@@ -66,8 +67,13 @@ void History::push(std::uint32_t mono_s,
                    std::span<const float, kMetricCount> values) {
   const std::uint32_t recent = mono_s / kRecentStep;
   const std::uint32_t day = mono_s / kDayStep;
+  // Slots alone miss an older sample in the same slot, 10 s after 19 s,
+  // which would replace the newer value and join the minute mean.
+  if (last_push_s_ && mono_s < *last_push_s_)
+    return;
   if (started_ && (recent < recent_slot_ || day < day_slot_))
     return;
+  last_push_s_ = mono_s;
   advance(mono_s);
   const std::size_t recent_pos = recent % kRecentSlots;
   const std::size_t day_pos = day % kDaySlots;

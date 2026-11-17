@@ -172,6 +172,29 @@ void test_history() {
   const Series s4 = w->series(Metric::Pm10, Window::Recent);
   CHECK(s4[s4.size() - 1] == 10790.0F);
   CHECK(s4[0] == 10790.0F - 10.0F * (History::kRecentSlots - 1));
+
+  // An older sample in the same 10 s slot and minute is ignored, it must not
+  // replace the newer value or join the minute mean.
+  auto o = std::make_unique<History>();
+  const auto last = [&o](Window win) {
+    const Series ser = o->series(Metric::Pm25, win);
+    return ser[ser.size() - 1];
+  };
+  o->push(11, all(10.0F));
+  o->push(10, all(90.0F));
+  CHECK(last(Window::Recent) == 10.0F);
+  CHECK(last(Window::Day) == 10.0F);
+  // The same time and a later time in the same slot still count.
+  o->push(11, all(30.0F));
+  CHECK(last(Window::Recent) == 30.0F);
+  CHECK(last(Window::Day) == 20.0F);
+  o->push(19, all(50.0F));
+  CHECK(last(Window::Recent) == 50.0F);
+  CHECK(last(Window::Day) == 30.0F);
+  // reset() forgets the last push time.
+  o->reset();
+  o->push(5, all(7.0F));
+  CHECK(last(Window::Recent) == 7.0F);
 }
 
 void test_chart() {
@@ -189,6 +212,35 @@ void test_chart() {
   CHECK(t.lo < 21.0F && t.hi > 21.0F && t.count >= 2);
   t = nice_ticks(20.4F, 21.7F, 5);
   CHECK(t.decimals == 1 && t.step == 0.5F);
+  // Every 1, 2, 5 step of the first power of ten rounds out to seven ticks
+  // here, so the search moves on to 20.
+  t = nice_ticks(9.5F, 54.5F, 6);
+  CHECK(t.count <= 6 && t.lo <= 9.5F && t.hi >= 54.5F);
+  CHECK(t.lo == 0.0F && t.hi == 60.0F && t.step == 20.0F && t.count == 4);
+  // Fewer than three ticks cannot always cover a range around zero.
+  t = nice_ticks(-1.0F, 1.0F, 2);
+  CHECK(t.count <= 3 && t.lo <= -1.0F && t.hi >= 1.0F);
+  // A sweep of ranges across magnitudes never exceeds the limit and always
+  // covers the data.
+  bool sweep_ok = true;
+  for (int m = 3; m <= 8; ++m)
+    for (int e = -3; e <= 4; ++e)
+      for (int a = 0; a <= 40; ++a)
+        for (int span = 1; span <= 40; ++span) {
+          const float scale = std::pow(10.0F, static_cast<float>(e));
+          const float lo = (static_cast<float>(a) * 0.37F - 7.0F) * scale;
+          const float hi = lo + static_cast<float>(span) * 0.53F * scale;
+          const Ticks st = nice_ticks(lo, hi, m);
+          const float slack = st.step * 1e-3F;
+          if (st.count > m || st.count < 2 || st.step <= 0.0F ||
+              st.lo > lo + slack || st.hi < hi - slack) {
+            std::fprintf(stderr, "nice_ticks(%g, %g, %d) count %d step %g\n",
+                         static_cast<double>(lo), static_cast<double>(hi), m,
+                         st.count, static_cast<double>(st.step));
+            sweep_ok = false;
+          }
+        }
+  CHECK(sweep_ok);
 
   // A NaN in the middle leaves its column blank and breaks the line.
   auto b = std::make_unique<Buffer>();

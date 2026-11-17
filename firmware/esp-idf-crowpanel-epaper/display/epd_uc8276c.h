@@ -53,7 +53,8 @@ class Panel {
 public:
   // Configures the pins, adds the panel to SPI2 at 10 MHz and allocates two
   // 15000 B frames in DMA capable internal RAM. Resets the panel and checks
-  // the controller. Leaves it in deep sleep, the first show() is full.
+  // the controller. Leaves it in deep sleep, the first show() is full. A
+  // failure frees the frames and releases the device and SPI2 again.
   [[nodiscard]] std::expected<void, Error> begin(const Pins &pins = {});
 
   // Refreshes the glass and leaves the controller in standby with the

@@ -32,8 +32,8 @@ struct Ticks {
 };
 
 // "Nice" axis ticks (1, 2 or 5 times a power of ten) that cover [lo, hi]
-// with at most `max_ticks` ticks. A flat range is widened so the line sits
-// in the middle.
+// with at most `max_ticks` ticks, and never fewer than three allowed. A flat
+// range is widened so the line sits in the middle.
 [[nodiscard]] Ticks nice_ticks(float lo, float hi, int max_ticks);
 
 // The y pixel of `v` inside `plot` for the scale lo..hi, clamped to it.

@@ -12,6 +12,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 
 #include "series.h"
@@ -55,6 +56,7 @@ private:
   std::array<std::uint16_t, kMetricCount> day_count_{};
   std::uint32_t recent_slot_ = 0; // Absolute slot of the newest recent entry.
   std::uint32_t day_slot_ = 0;    // Absolute minute of the newest day entry.
+  std::optional<std::uint32_t> last_push_s_; // Time of the newest push.
   bool started_ = false;
 };
 

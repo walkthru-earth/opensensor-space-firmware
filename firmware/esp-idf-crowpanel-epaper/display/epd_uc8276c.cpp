@@ -218,13 +218,14 @@ std::expected<void, Error> Panel::refresh(Mode mode) {
 
 // Deep sleep is only entered from power off, so a booster that is still on
 // goes off first. A failed power off still sends 0x07, the next show()
-// resets either way.
+// resets either way. The reset loses panel RAM, so the next show() is full.
 void Panel::enter_deep() {
   if (state_ == State::On && cmd(0x02))
     static_cast<void>(wait_idle(1000));
   static constexpr std::array<std::uint8_t, 1> kCheck{0xA5};
   static_cast<void>(cmd(0x07, kCheck));
   state_ = State::Deep;
+  have_prev_ = false;
 }
 
 std::expected<void, Error> Panel::begin(const Pins &p) {
@@ -275,6 +276,19 @@ std::expected<void, Error> Panel::begin(const Pins &p) {
   };
   if (spi_bus_initialize(SPI2_HOST, &bus, SPI_DMA_CH_AUTO) != ESP_OK)
     return std::unexpected(Error::SpiBus);
+  // Every later failure gives back the frames, the device and the bus, so
+  // a board that cannot use the panel keeps its DMA memory and SPI2.
+  const auto fail = [this](Error e) -> std::expected<void, Error> {
+    heap_caps_free(tx_);
+    heap_caps_free(prev_);
+    tx_ = nullptr;
+    prev_ = nullptr;
+    if (dev_ != nullptr)
+      static_cast<void>(spi_bus_remove_device(handle(dev_)));
+    dev_ = nullptr;
+    static_cast<void>(spi_bus_free(SPI2_HOST));
+    return std::unexpected(e);
+  };
   const spi_device_interface_config_t cfg{
       .command_bits = 0,
       .address_bits = 0,
@@ -295,14 +309,14 @@ std::expected<void, Error> Panel::begin(const Pins &p) {
   };
   spi_device_handle_t dev = nullptr;
   if (spi_bus_add_device(SPI2_HOST, &cfg, &dev) != ESP_OK)
-    return std::unexpected(Error::SpiDevice);
+    return fail(Error::SpiDevice);
   dev_ = dev;
   tx_ = static_cast<std::uint8_t *>(
       heap_caps_malloc(kBytes, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
   prev_ = static_cast<std::uint8_t *>(
       heap_caps_malloc(kBytes, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
   if (tx_ == nullptr || prev_ == nullptr)
-    return std::unexpected(Error::NoMemory);
+    return fail(Error::NoMemory);
 
   // A reset here is the intended wake, the panel may be in deep sleep from
   // before a software restart. The UC8276C idles BUSY high, the SSD1683 of
@@ -311,7 +325,7 @@ std::expected<void, Error> Panel::begin(const Pins &p) {
   delay_ms(80);
   if (gpio_get_level(pin(p.busy)) == 0) {
     ESP_LOGE(kTag, "controller SSD1683 (board v1.0) is not supported");
-    return std::unexpected(Error::UnsupportedController);
+    return fail(Error::UnsupportedController);
   }
   ESP_LOGI(kTag, "controller UC8276C (board v1.2)");
   state_ = State::Deep;

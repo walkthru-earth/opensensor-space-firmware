@@ -36,10 +36,16 @@ Wi-Fi, Thing id, firmware and sensor state.
 
 | Key | Action |
 | --- | --- |
-| Rotary up or down | Next or previous page, wraps |
+| Rotary down or up | Next or previous page, wraps |
 | Rotary press | Full refresh of the current page, clears ghosting |
-| Menu | Toggle the dashboard and the status page |
+| Menu | Opens the settings popup over any page |
 | Exit | Back to the dashboard |
+
+While the popup is open the knob picks a row and a press changes it. On
+Altitude and Temp offset a press starts an edit, turn to adjust, press to
+keep, Exit to cancel. Menu or Exit closes the popup. The rows and what they
+do are in the
+[board guide](../../docs/boards/elecrow-crowpanel-epaper-42/README.md#keys-and-the-settings-popup).
 
 Updates use partial refresh, with a full refresh on every page change and on
 every 30th update. While a phone pairs, the screen shows the six digit BLE

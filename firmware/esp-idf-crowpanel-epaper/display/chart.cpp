@@ -26,7 +26,9 @@ Range data_range(const Series &s) {
 }
 
 Ticks nice_ticks(float lo, float hi, int max_ticks) {
-  max_ticks = std::max(max_ticks, 2);
+  // Two ticks cannot always cover a range, -1 to 1 needs three with any
+  // step, so three is the floor.
+  max_ticks = std::max(max_ticks, 3);
   if (!std::isfinite(lo) || !std::isfinite(hi))
     return {};
   if (hi < lo)
@@ -38,14 +40,23 @@ Ticks nice_ticks(float lo, float hi, int max_ticks) {
   }
   const double span = static_cast<double>(hi) - lo;
   const double raw = span / (max_ticks - 1);
-  const double mag = std::pow(10.0, std::floor(std::log10(raw)));
+  double mag = std::pow(10.0, std::floor(std::log10(raw)));
+  // Rounding the ends out to the step can add a tick, so the search goes on
+  // to 1, 2 and 5 times the next powers of ten until the ticks fit. Any step
+  // of at least twice `raw` fits, 20 times `mag` at the latest, so four
+  // powers of ten is a safe bound.
   double step = mag;
-  for (const double f : {1.0, 2.0, 5.0, 10.0}) {
-    step = f * mag;
-    const double first = std::floor(lo / step) * step;
-    const double last = std::ceil(hi / step) * step;
-    if (std::lround((last - first) / step) + 1 <= max_ticks)
-      break;
+  bool fits = false;
+  for (int decade = 0; decade < 4 && !fits; ++decade, mag *= 10.0) {
+    for (const double f : {1.0, 2.0, 5.0}) {
+      step = f * mag;
+      const double first = std::floor(lo / step) * step;
+      const double last = std::ceil(hi / step) * step;
+      if (std::lround((last - first) / step) + 1 <= max_ticks) {
+        fits = true;
+        break;
+      }
+    }
   }
   const double first = std::floor(lo / step) * step;
   const double last = std::ceil(hi / step) * step;

@@ -28,6 +28,10 @@ FIRMWARE = Path(__file__).resolve().parents[1] / "firmware/esp-idf-crowpanel-epa
 TEMPLATES = "elecrow-crowpanel-epaper-42"
 MASS = ("pm1_mass_ug_m3", "pm25_mass_ug_m3", "pm4_mass_ug_m3", "pm10_mass_ug_m3")
 MASS_VALUES = (1.2, 3.4, 5.6, 7.8)
+# SHA-256 of the (name, type) pairs of the first 39 fields, the schema v1
+# Thing baseline. Fields append only, so later fields never change it.
+BASELINE_FIELDS = 39
+BASELINE_SHA256 = "c18588b4d31725ecd24cf1f6422a8799eb31e4e336addc2efd8d651e715fe1aa"
 
 
 def require(condition: bool, message: str) -> None:
@@ -157,9 +161,11 @@ def main() -> None:
         names = {field["name"] for field in fields}
         # Schema v1 is the Thing baseline of this board. Later fields append
         # only, so this 39-column prefix never changes.
-        baseline = hashlib.sha256(json.dumps([(f["name"], f["type"]) for f in fields[:39]],
+        baseline = hashlib.sha256(json.dumps([(f["name"], f["type"]) for f in fields[:BASELINE_FIELDS]],
                                              separators=(",", ":")).encode()).hexdigest()
-        print(f"CrowPanel 39-column baseline {baseline}", flush=True)
+        require(len(fields) >= BASELINE_FIELDS and baseline == BASELINE_SHA256,
+                f"39-column baseline changed, got {baseline}")
+        print(f"PASS CrowPanel 39-column baseline {baseline[:8]}", flush=True)
         require(len(fields) == len(names) == 39, "unique versioned fields")
         require([f["live"] for f in fields if f["live"]] == [
             "seq", "mono", "utc", "sen", "m1", "m25", "m4", "m10", "t", "rh", "co2"], "LIVE keys in field order")
