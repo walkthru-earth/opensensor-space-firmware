@@ -12,7 +12,7 @@ image identity and its limits before any claim moves into the board README.
 - Firmware `idf-crowpanel-parquet-v0.1`, dictionary
   `crowpanel-epaper-telemetry-v1`, dict digest
   `e7279c4edbe87071e4a51889124a43d7ffcd1977c79c8575887ae35bdee10903`.
-- Host build only. The app image is 1,702,544 bytes in a 3 MiB (0x300000) OTA
-  slot, 1,443,184 bytes (46%) free.
+- Host build only. The app image is 1,702,288 bytes in a 3 MiB (0x300000) OTA
+  slot, 1,443,440 bytes (46%) free.
 
 No board was connected to a serial port, flashed or captured for this entry.

@@ -56,7 +56,7 @@ pixi run crowpanel-ui-test
 pixi run crowpanel-ui-preview   # PNG pages in artifacts/ui-preview/
 ```
 
-The image is 1,702,544 bytes in a 3 MiB OTA slot, 46% free (2026-11-17).
+The image is 1,702,288 bytes in a 3 MiB OTA slot, 46% free (2026-11-17).
 Flashing follows the root checklist. The first flash of a factory board needs
 the full erase in the [board guide](../../docs/boards/elecrow-crowpanel-epaper-42/README.md#first-flash).
 Later flashes use the backup-gated helper.
@@ -73,3 +73,7 @@ pixi run crowpanel-flash <checked port> backup/crowpanel-epaper-42-flash-<stamp>
 - `self_test_field` is `pm25_mass_ug_m3`. The boot self test (#40) marks the
   running app valid only after that column holds a valid value within 180 s,
   so a board without a working SEN63C never passes it.
+- No STAC File Item sidecar yet. The app leaves `Config::stac_columns` unset,
+  because `stac-item-test` proves every board that writes the sidecar against a
+  stac-opensensor example and that repo has no CrowPanel example. Adding one is
+  a contract change in stac-opensensor first, then this board opts in.

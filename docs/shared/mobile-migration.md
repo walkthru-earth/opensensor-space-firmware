@@ -37,6 +37,8 @@ HMI v1.2 with a Sensirion SEN63C on I2C.
   `sen == 4`. `co2` is also null while the SEN63C reports no CO2 value, as
   in the first 24 s after a start. The widest LIVE
   object is 175 bytes and the all-null one 118 bytes.
+- No STAC File Item sidecar on this board yet. Its dated files have no
+  `<file>.json` next to them until stac-opensensor carries a CrowPanel example.
 - The board advertises `OS-xxxx` and speaks proto 3 like the others. While a
   phone pairs, the e-paper shows the six digit passkey. It never reaches a log.
 - New boot and runtime log lines, all prefixed `OS`. `OS BOARD
@@ -53,7 +55,7 @@ sensor that also measures CO2.
 keys above. Show `m1`, `m25`, `m4`, `m10` as PM mass in ug/m3, `t` in degC,
 `rh` in %, and `co2` in ppm. Treat `sen` like `pms` on the other boards, but
 read it as its own key. Read the new columns by name when it opens a
-CrowPanel file. Nothing changes for CoreS3 or Waveshare.
+CrowPanel file. Do not expect a STAC sidecar next to a CrowPanel file. Nothing changes for CoreS3 or Waveshare.
 
 ## H3 from the embedded-h3-location library (feat/h3-lib-v2)
 
