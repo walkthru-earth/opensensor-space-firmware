@@ -231,7 +231,7 @@ Each field's `live_key` and `decimals` are part of the board's `telemetry_fields
 | `als` | CoreS3 `light_ch0_raw` |
 | `sen` | CrowPanel `sen6x_status` code: 0 absent, 1 warming, 2 stale, 3 sensor error, 4 valid. A SEN63C fan speed warning alone stays 4 |
 | `m1`,`m25`,`m4`,`m10` | CrowPanel `pm*_mass_ug_m3`, SEN63C mass concentration, the values to display. Null unless `sen == 4` |
-| `co2` | CrowPanel `co2_ppm`, SEN63C CO2 in ppm, null during the CO2 warm up and when the sensor reports no value |
+| `co2` | CrowPanel `co2_ppm`, SEN63C CO2 in ppm. Null unless `sen == 4`, and null while the sensor reports no value, as in the first 24 s after a start |
 
 PM keys hold values only when `pms == 4` (CrowPanel `sen == 4`) and are null otherwise. The snapshot is the same row that was queued for storage; it is a display convenience, not a substitute for the stored file.
 

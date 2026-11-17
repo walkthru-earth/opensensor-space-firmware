@@ -2,8 +2,8 @@
 
 General OpenSensor firmware for ESP32-S3 Things. Boards plug in sensors through
 logger hooks and a field dictionary, and air quality is the first sensor set.
-CoreS3 and Waveshare V2 each have one active, self-contained native ESP-IDF
-application. Do not add Arduino APIs or an Arduino component. Shared code lives
+CoreS3, Waveshare V2 and the CrowPanel e-paper each have one active,
+self-contained native ESP-IDF application. Do not add Arduino APIs or an Arduino component. Shared code lives
 in `firmware/common/`. Device protocol and telemetry contracts live in
 `docs/shared/`. Open only the relevant file in `docs/README.md` after this one.
 
@@ -62,6 +62,7 @@ in `firmware/common/`. Device protocol and telemetry contracts live in
 | Task | Open next |
 | --- | --- |
 | CoreS3 pins, build, current bench evidence | `firmware/esp-idf-cores3/AGENTS.md`, `docs/boards/m5stack-cores3/README.md` |
+| CrowPanel e-paper pins, SEN63C wiring, UI, first flash | `firmware/esp-idf-crowpanel-epaper/AGENTS.md`, `docs/boards/elecrow-crowpanel-epaper-42/README.md` |
 | Waveshare V2 pins, build, current bench evidence | `firmware/esp-idf-waveshare-sim7670g/AGENTS.md`, `docs/boards/waveshare-esp32-s3-sim7670g/README.md` |
 | Shared drivers, writer, settings, radio, logger | `firmware/common/AGENTS.md`, then its scoped `AGENTS.md` |
 | New ESP32-S3 board, logger hooks, sensor modules and plugin manifests | `docs/shared/board-porting.md`, `firmware/common/logger/README.md`, `docs/shared/plugins/README.md` |
@@ -183,14 +184,16 @@ write, run these commands in order.
 5. `pixi run backup --board <board> --port <port>`
 
 Confirm the backup in `backup/` is exactly the board's registered
-`tooling.flash_bytes`, **16,777,216 bytes** for CoreS3 and Waveshare V2, and
-that this matches the full flash capacity reported by `flash-id`. The helpers
+`tooling.flash_bytes`, **16,777,216 bytes** for CoreS3 and Waveshare V2 and
+**8,388,608 bytes** for the CrowPanel e-paper, and that this matches the full flash capacity reported by `flash-id`. The helpers
 support 8 MiB and 16 MiB. A board with another capacity extends the schema enum,
 `tools/boards.py` and the partition layouts in `tools/check_idf_target.py` first. The first four
 commands read flash/device state. `chip` can reset a running app on exit. Never
 write eFuses or format the card. Never assume flash size from a product name.
 CoreS3 native USB readback must use esptool's default baud. 921600 corrupted a
 measured read. See the selected board's docs for recovery and power rules.
+The CrowPanel's first flash had an owner waiver for a full erase without a
+backup (2026-11-17), see its board docs. It covers that first flash only.
 LAN OTA (#40) writes the inactive app slot over an authenticated LAN session,
 and activation rewrites the otadata boot selection (`esp_ota_set_boot_partition`).
 Images are not signed and rollback is off, so never claim either.
@@ -206,7 +209,7 @@ pip packages. Run `pixi run gate`, the same entry point CI runs. It covers
 `fmt-check`, `lint` and every host contract task with sanitizers. For writer/schema or
 archive changes run the relevant `pixi run parquet-test --sanitize`, `reader-test`,
 `telemetry-contract-test --sanitize`, `archive-sync-test` and board contract
-gates. Every firmware PR builds both boards. Perform proportional real-device readback
+gates. Every firmware PR builds every board. Perform proportional real-device readback
 before claiming hardware behavior. Keep captures/exports/binaries in ignored
 trial `artifacts/`, never `build/`. Full-card owner copies live in ignored
 `exports/`. `docs/shared/development.md` has setup and exact task names.
