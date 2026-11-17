@@ -69,6 +69,7 @@ tasks=(
   "pms-frame-test"
   "ltr553-test"
   "max17048-test"
+  "sen6x-test"
   # Battery health states and thresholds
   "battery-health-test"
   # Uploader signer, STS, policy, ledger and session on fakes (#81)

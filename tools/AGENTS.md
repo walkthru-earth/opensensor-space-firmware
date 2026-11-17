@@ -30,7 +30,7 @@ C++ contract tests and cannot prove behavior on a physical board.
 | Native SDK and affected board builds | `idf-setup`, `cores3-build`, `waveshare-build [logger|diagnostic]` |
 | SDK compile fixtures for shared connectivity and logger, no board target, C++ dialect check only. They need ESP-IDF, so the gate skips them | `connectivity-build-test`, `logger-build-test` |
 | Bench only `parquet bench-stall` image, parser bounds and default-off guard | `OS_BENCH=stall cores3-build` or `waveshare-build logger`, `logger-bench-stall-test` |
-| Shared sensor drivers on fake buses | `pms-frame-test`, `ltr553-test`, `max17048-test` |
+| Shared sensor drivers on fake buses | `pms-frame-test`, `ltr553-test`, `max17048-test`, `sen6x-test` |
 | Battery health states, thresholds, debounce, settling and the boot Low or Critical tie | `battery-health-test` |
 | Uploader SigV4 against the public AWS vectors, STS body and bounded XML parser, upload policy rules, append only ledger and the session on fakes (#81) | `upload-test` |
 | COREDUMP line once per saved core dump, NVS record and its read or write failures | `coredump-report-test` |

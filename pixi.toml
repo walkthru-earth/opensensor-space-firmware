@@ -176,6 +176,7 @@ pinned-uris-test = "python tools/test_pinned_uris.py"
 # Pin kDictionaryUri and kTemplateHref to the commits that last wrote their bytes (#89).
 pin-uris = "python tools/pinned_uris.py --write"
 max17048-test = "python tools/test_max17048.py --sanitize"
+sen6x-test = "python tools/test_sen6x.py --sanitize"
 battery-health-test = "python tools/test_battery_health.py --sanitize"
 upload-test = "python tools/test_upload.py --sanitize"
 coredump-report-test = "python tools/test_coredump_report.py --sanitize"
