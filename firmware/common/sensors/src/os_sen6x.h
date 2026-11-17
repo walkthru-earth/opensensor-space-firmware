@@ -47,6 +47,9 @@ enum class [[nodiscard]] Sen6xError : std::uint8_t {
   BadText = 5,        // a string reply holds a byte outside printable ASCII
   RestartTooSoon = 6, // start refused inside the 24 s CO2 conditioning window
   OutOfRange = 7,     // an argument outside the datasheet range, no bus traffic
+  // A CO2 calibration write inside the 24 s CO2 conditioning window, no bus
+  // traffic
+  ConditioningWindow = 8,
 };
 
 constexpr const char *sen6x_error_name(Sen6xError error) {
@@ -65,6 +68,8 @@ constexpr const char *sen6x_error_name(Sen6xError error) {
     return "restart-too-soon";
   case Sen6xError::OutOfRange:
     return "out-of-range";
+  case Sen6xError::ConditioningWindow:
+    return "conditioning-window";
   }
   return "unknown";
 }
@@ -172,8 +177,11 @@ public:
   static constexpr std::uint8_t kAddress = 0x6B;
   // Power on until I2C communication may start, datasheet table 1.
   static constexpr std::uint32_t kPowerUpMs = 100;
-  // After a start the SEN63C conditions its CO2 sensor for 24 s and must not
-  // be started again inside that window, datasheet 4.8.1.
+  // After a start the SEN63C conditions its CO2 sensor for 24 s, datasheet
+  // 4.8.1. Inside that window it must not be started again, and after a stop
+  // it must not take Set CO2 Sensor Automatic Self Calibration, Perform
+  // Forced CO2 Recalibration or Perform CO2 Sensor Factory Reset. This
+  // driver sends only the first of those three.
   static constexpr std::uint32_t kCo2ConditioningMs = 24000;
   // First results after a start take about 1.1 s, datasheet 4.8.1.
   static constexpr std::uint32_t kFirstResultMs = 1100;
@@ -210,6 +218,15 @@ public:
 
   explicit constexpr Sen6x(const Sen6xIo &io) : io_(io) {}
 
+  // Milliseconds left in the CO2 conditioning window of the last start
+  // attempt that reached the bus, 0 outside it or before any start.
+  [[nodiscard]] constexpr std::uint32_t
+  conditioning_left_ms(std::uint32_t now_ms) const {
+    if (!last_start_ms_.has_value() || restart_allowed(*last_start_ms_, now_ms))
+      return 0;
+    return kCo2ConditioningMs - (now_ms - *last_start_ms_);
+  }
+
   // Starts continuous measurement. `now_ms` is a monotonic millisecond clock.
   // A start inside kCo2ConditioningMs of the previous start attempt is
   // refused with no bus traffic, because a restart there raises a sticky CO2
@@ -219,7 +236,7 @@ public:
   start_continuous_measurement(std::uint32_t now_ms) {
     if (!io_ready())
       return std::unexpected(Sen6xError::IoUnset);
-    if (last_start_ms_.has_value() && !restart_allowed(*last_start_ms_, now_ms))
+    if (conditioning_left_ms(now_ms) != 0)
       return std::unexpected(Sen6xError::RestartTooSoon);
     last_start_ms_ = now_ms;
     return send(kStartContinuousMeasurement);
@@ -308,9 +325,15 @@ public:
 
   // CO2 automatic self calibration on or off. Idle mode only and volatile,
   // the sensor turns it back on after a reset, datasheet 4.8.35. In the field
-  // it must stay on.
+  // it must stay on. Inside the CO2 conditioning window of the last start it
+  // is refused with no bus traffic, datasheet 4.8.1. `now_ms` is the clock
+  // start_continuous_measurement() takes.
   [[nodiscard]] std::expected<void, Sen6xError>
-  set_co2_auto_calibration(bool enabled) {
+  set_co2_auto_calibration(bool enabled, std::uint32_t now_ms) {
+    if (!io_ready())
+      return std::unexpected(Sen6xError::IoUnset);
+    if (conditioning_left_ms(now_ms) != 0)
+      return std::unexpected(Sen6xError::ConditioningWindow);
     return send_words(kSetCo2AutoCalibration,
                       std::array<std::uint16_t, 1>{
                           static_cast<std::uint16_t>(enabled ? 1 : 0)});

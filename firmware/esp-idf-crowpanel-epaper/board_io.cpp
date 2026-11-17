@@ -159,9 +159,15 @@ bool sensor_read(void *, std::uint8_t address, std::span<std::uint8_t> data) {
           : i2c_master_receive(sensor, data.data(), data.size(), kI2cTimeoutMs);
   return sensor_error == ESP_OK;
 }
+// vTaskDelay(n) wakes on the n-th tick boundary, which can come up to one
+// tick early because the current tick is already partly gone. Rounding up and
+// one extra tick make the wait at least `milliseconds`, so a SEN6x command has
+// finished before the next transaction. Zero still yields for one tick.
 void sensor_delay_ms(void *, std::uint32_t milliseconds) {
-  const TickType_t ticks = pdMS_TO_TICKS(milliseconds);
-  vTaskDelay(ticks ? ticks : 1);
+  const auto ticks = static_cast<TickType_t>(
+      (static_cast<std::uint64_t>(milliseconds) * configTICK_RATE_HZ + 999) /
+      1000);
+  vTaskDelay(ticks + 1);
 }
 int sensor_last_error() { return sensor_error; }
 

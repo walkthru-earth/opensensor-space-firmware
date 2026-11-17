@@ -71,7 +71,9 @@ SCL. PM values appear after about 30 s of warm up and CO2 after about 24 s.
 
 Changing Altitude or CO2 calibration restarts the measurement, because the
 SEN63C takes both in idle mode only (datasheet 4.8.35 and 4.8.39), so PM and
-CO2 warm up again. The temperature offset applies at once (4.8.14). The
+CO2 warm up again. A change made within 24 s of a start waits for that CO2
+conditioning window to end before it is sent (4.8.1). The temperature
+offset applies at once (4.8.14). The
 sensor applies it itself, so it changes the stored `ambient_temperature_c`
 column, not just the screen. Every change logs
 `OS SEN6X config when=... altitude_m=... co2_asc=... temp_offset_dc=...`.

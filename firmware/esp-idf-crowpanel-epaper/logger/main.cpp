@@ -103,6 +103,9 @@ struct SensorControl {
   SensorSettings wanted{};
   SensorSettings applied{};
   bool configured = false; // `applied` is in the sensor since the last stop
+  // A stop the sensor did not take. It is sent again before the next
+  // configure, fan cleaning or start, which all need idle mode.
+  bool stop_pending = false;
   std::uint32_t fan_clean_seen = 0;
   std::int64_t cleaning_until_us = 0; // 0 when no fan cleaning runs
 };
@@ -205,6 +208,7 @@ void probe(std::int64_t now) {
                version ? control.version.data() : "unknown", match);
   snapshot.present = true;
   control.configured = false;
+  control.stop_pending = false; // the stop above covers it
   control.failures = 0;
   control.absent_logged = false;
   control.next_attempt_us = now;
@@ -234,7 +238,7 @@ bool configure(std::int64_t now) {
   auto done = sen6x.set_sensor_altitude(s.altitude_m);
   const char *operation = "set-altitude";
   if (done) {
-    done = sen6x.set_co2_auto_calibration(s.co2_asc);
+    done = sen6x.set_co2_auto_calibration(s.co2_asc, now_ms(now));
     operation = "set-co2-asc";
   }
   if (done) {
@@ -256,9 +260,45 @@ bool configure(std::int64_t now) {
   return true;
 }
 
+// Stops a running measurement, the idle commands need it. Rows go null at
+// once, but the sensor counts as idle only after a stop it took. A failed
+// stop stays pending and the next fan cleaning or start sends it again.
+[[nodiscard]] std::expected<void, Sen6xError> stop(std::int64_t now) {
+  if (!snapshot.measuring && !control.stop_pending)
+    return {};
+  snapshot.measuring = false;
+  snapshot.has_values = false;
+  control.stop_pending = true;
+  const auto stopped = sen6x.stop_measurement();
+  if (!stopped) {
+    control.configured = false;
+    sensor_failed("stop", stopped.error(), now);
+    return stopped;
+  }
+  control.stop_pending = false;
+  return {};
+}
+
 void start(std::int64_t now) {
-  if (!control.configured && !configure(now))
-    return;
+  if (control.stop_pending) {
+    if (!stop(now)) {
+      back_off(now);
+      return;
+    }
+    now = esp_timer_get_time(); // the stop waited 1400 ms
+  }
+  // Datasheet 4.8.1. After a stop inside the 24 s CO2 conditioning window
+  // the sensor must not take the CO2 self calibration write, and the start
+  // has to wait for the same window, so the whole configure waits for it.
+  if (!control.configured) {
+    if (const auto left_ms = sen6x.conditioning_left_ms(now_ms(now));
+        left_ms != 0) {
+      control.next_attempt_us = now + static_cast<std::int64_t>(left_ms) * 1000;
+      return;
+    }
+    if (!configure(now))
+      return;
+  }
   const auto started = sen6x.start_continuous_measurement(now_ms(now));
   if (started) {
     snapshot.measuring = true;
@@ -310,12 +350,11 @@ void measure(std::int64_t now) {
   if (now - since > kRestartAfterUs) {
     oslog.printf("OS SEN6X stale age_us=%lld action=restart\n",
                  static_cast<long long>(now - since));
-    static_cast<void>(sen6x.stop_measurement());
-    snapshot.measuring = false;
-    snapshot.has_values = false;
+    static_cast<void>(stop(now));
     // No new result can mean the sensor reset and lost the panel settings.
     control.configured = false;
-    control.next_attempt_us = now;
+    if (snapshot.present)
+      control.next_attempt_us = now;
   }
 }
 
@@ -328,27 +367,15 @@ SensorRequests take_requests() {
   return requests;
 }
 
-// Stops a running measurement, the idle commands need it.
-void stop(std::int64_t now) {
-  if (!snapshot.measuring)
-    return;
-  const auto stopped = sen6x.stop_measurement();
-  snapshot.measuring = false;
-  snapshot.has_values = false;
-  if (!stopped) {
-    control.configured = false;
-    sensor_failed("stop", stopped.error(), now);
-  }
-}
-
 // Datasheet 4.8.23. Idle mode only, the fan runs at full speed for 10 s and
-// the next start waits for it. Rows stay null while it runs.
-void fan_clean(std::int64_t now) {
+// the next start waits for it. Rows stay null while it runs. False while the
+// stop it needs failed, so the request waits for the next poll. A lost sensor
+// drops it.
+bool fan_clean(std::int64_t now) {
   if (!snapshot.present || control.cleaning_until_us != 0)
-    return;
-  stop(now);
-  if (!snapshot.present)
-    return;
+    return true;
+  if (!stop(now))
+    return !snapshot.present;
   const auto cleaning = sen6x.start_fan_cleaning();
   if (!cleaning) {
     oslog.printf("OS SEN6X fan-cleaning-failed error=%s i2c_error=%d\n",
@@ -356,7 +383,7 @@ void fan_clean(std::int64_t now) {
                  board::sensor_last_error());
     sensor_failed("fan-cleaning", cleaning.error(), now);
     control.next_attempt_us = now;
-    return;
+    return true;
   }
   control.cleaning_until_us =
       esp_timer_get_time() +
@@ -364,6 +391,7 @@ void fan_clean(std::int64_t now) {
   control.next_attempt_us = control.cleaning_until_us;
   oslog.printf("OS SEN6X fan-cleaning started duration_ms=%lu\n",
                static_cast<unsigned long>(Sen6x::kFanCleaningMs));
+  return true;
 }
 
 // Takes what the panel asked for. A new altitude or CO2 calibration needs
@@ -372,17 +400,16 @@ void fan_clean(std::int64_t now) {
 void apply_requests(std::int64_t now) {
   const auto requests = take_requests();
   control.wanted = requests.settings;
-  if (requests.fan_clean_seq != control.fan_clean_seen) {
+  if (requests.fan_clean_seq != control.fan_clean_seen && fan_clean(now))
     control.fan_clean_seen = requests.fan_clean_seq;
-    fan_clean(now);
-  }
   if (!snapshot.present || !control.configured ||
       control.wanted == control.applied)
     return;
   if (control.wanted.altitude_m != control.applied.altitude_m ||
       control.wanted.co2_asc != control.applied.co2_asc) {
     oslog.println("OS SEN6X config-change action=restart");
-    stop(now);
+    // A failed stop stays pending, start() sends it before configure().
+    static_cast<void>(stop(now));
     control.configured = false;
     control.next_attempt_us = std::max(control.next_attempt_us, now);
     return;
@@ -636,8 +663,10 @@ void poll_feed(std::int64_t now) {
     sample_pending = false;
     due = sample = true;
   } else if (!logging && now - feed_state.last_publish_us >= kFeedTickUs) {
-    // No rows without logging, so the screen samples on its own.
+    // No rows without logging, so the screen samples on its own and restarts
+    // the status latch the way collect_sen63c() does for a row.
     sources.last = board_modules::reading_of(snapshot, now);
+    snapshot.device_status = snapshot.device_status_latest;
     sample_mono_us = now;
     due = sample = true;
   } else if (now - feed_state.last_publish_us >= kFeedTickUs) {
@@ -876,7 +905,10 @@ void ui_task(void *) {
     bool input = false;
     ui::Input key{};
     TickType_t wait = pdMS_TO_TICKS(200);
-    while (xQueueReceive(key_queue, &key, wait) == pdTRUE) {
+    // Without keys the screen still shows readings and the pairing passkey.
+    if (!key_queue)
+      vTaskDelay(wait);
+    while (key_queue && xQueueReceive(key_queue, &key, wait) == pdTRUE) {
       const auto out =
           ui::handle(state, panel_settings, settings_info_of(local), key);
       page_changed = page_changed || out.page_changed;
@@ -1067,7 +1099,7 @@ bool init_board() {
   control.wanted = sensor_requests.settings;
   const bool display_ok = start_display();
   const bool bus_ok = board::start_sensor_bus(Sen6x::kAddress);
-  vTaskDelay(pdMS_TO_TICKS(Sen6x::kPowerUpMs));
+  board::sensor_delay_ms(nullptr, Sen6x::kPowerUpMs);
   oslog.printf("OS SEN6X bus ready=%u sda=%d scl=%d addr=0x%02x hz=%lu "
                "pullups=internal external_10k_required=1\n",
                bus_ok, board::kSensorSda, board::kSensorScl, Sen6x::kAddress,

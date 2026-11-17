@@ -285,8 +285,9 @@ void configuration_writes() {
                                       .time_constant_s = 0,
                                       .slot = 0})
              .has_value());
-  assert(sensor.set_co2_auto_calibration(false).has_value());
-  assert(sensor.set_co2_auto_calibration(true).has_value());
+  // No start yet, so no conditioning window.
+  assert(sensor.set_co2_auto_calibration(false, 0).has_value());
+  assert(sensor.set_co2_auto_calibration(true, 0).has_value());
   assert(sensor.set_sensor_altitude(350).has_value());
   const auto crc = [](std::uint16_t word) {
     const std::array<std::uint8_t, 2> data{static_cast<std::uint8_t>(word >> 8),
@@ -314,8 +315,41 @@ void configuration_writes() {
   assert(std::strcmp(opensensor::sen6x_error_name(Sen6xError::OutOfRange),
                      "out-of-range") == 0);
   bus.nack_write = true;
-  const auto nack = sensor.set_co2_auto_calibration(true);
+  const auto nack = sensor.set_co2_auto_calibration(true, 0);
   assert(!nack && nack.error() == Sen6xError::WriteNack);
+}
+
+// Datasheet 4.8.1. After a stop inside the 24 s CO2 conditioning window the
+// ASC write is refused with no bus traffic. Altitude and the temperature
+// offset are not restricted.
+void conditioning_window() {
+  FakeBus bus;
+  Sen6x sensor(bus.io());
+  assert(sensor.conditioning_left_ms(5000) == 0);
+  assert(sensor.start_continuous_measurement(1000).has_value());
+  assert(sensor.stop_measurement().has_value());
+  assert(sensor.conditioning_left_ms(1000) == 24000);
+  assert(sensor.conditioning_left_ms(24999) == 1);
+  const auto commands = bus.commands.size();
+  const auto early = sensor.set_co2_auto_calibration(true, 24999);
+  assert(!early && early.error() == Sen6xError::ConditioningWindow);
+  assert(bus.commands.size() == commands);
+  assert(std::strcmp(opensensor::sen6x_error_name(early.error()),
+                     "conditioning-window") == 0);
+  assert(sensor.set_sensor_altitude(100).has_value());
+  assert(sensor.set_temperature_offset({.slot = 0}).has_value());
+  assert(sensor.conditioning_left_ms(25000) == 0);
+  assert(sensor.set_co2_auto_calibration(true, 25000).has_value());
+  assert((bus.commands ==
+          std::vector<std::uint16_t>{0x0021, 0x0104, 0x6736, 0x60B2, 0x6711}));
+
+  // A failed start still opens the window, the sensor may have taken it.
+  bus.nack_write = true;
+  assert(!sensor.start_continuous_measurement(60000).has_value());
+  bus.nack_write = false;
+  const auto after_nack = sensor.set_co2_auto_calibration(false, 70000);
+  assert(!after_nack && after_nack.error() == Sen6xError::ConditioningWindow);
+  assert(sensor.set_co2_auto_calibration(false, 84000).has_value());
 }
 } // namespace
 
@@ -327,5 +361,6 @@ int main() {
   lifecycle();
   unset_io();
   configuration_writes();
+  conditioning_window();
   return 0;
 }

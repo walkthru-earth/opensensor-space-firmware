@@ -24,7 +24,7 @@ def main() -> None:
         subprocess.run([str(executable)], check=True)
     print("SEN6x CRC-8, SEN63C and number concentration decode, sentinels, "
           "CRC mismatch, NACK, status bits, identity text, restart window, "
-          "unset IO and configuration writes passed")
+          "unset IO, configuration writes and CO2 conditioning window passed")
 
 
 if __name__ == "__main__":
