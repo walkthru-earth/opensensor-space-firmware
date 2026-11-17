@@ -200,6 +200,13 @@ check_config(const Config &config) {
   return {};
 }
 
+// The footer thing.deployment_id for an owner value: the owner's id when
+// set, else Config::deployment_id. `parquet status` prints the same (#178).
+[[nodiscard]] constexpr const char *deployment_id(const Config &config,
+                                                  const char *owner) {
+  return detail::present(owner) ? owner : config.deployment_id;
+}
+
 // Writes the footer JSON and a NUL into `out` and returns its length without
 // the NUL. Fails closed, never truncates. check_config() rules apply, and the
 // ids and file.compression must be non empty.
@@ -224,8 +231,7 @@ build(std::span<char> out, const Config &config, const Ids &ids,
   json.text("id", ids.thing);
   json.text("device_id", ids.device);
   json.text("board", config.board);
-  json.text("deployment_id",
-            present(ids.deployment) ? ids.deployment : config.deployment_id);
+  json.text("deployment_id", deployment_id(config, ids.deployment));
   json.text("mobility", ids.mobility);
   json.close();
   json.open("firmware");

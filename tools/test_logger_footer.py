@@ -162,8 +162,7 @@ FILE_LABELS = re.compile(
     r"\[\[nodiscard\]\] bool same_file_labels\(const A &a, const B &b\) \{\s*"
     r"return config::same_location\(a\.location, b\.location\) &&\s*"
     r"config::same_deployment\(a\.deployment, b\.deployment\);\s*\}")
-FOOTER_DEPLOYMENT = ('json.text("deployment_id",\n'
-                     '            present(ids.deployment) ? ids.deployment : config.deployment_id);')
+FOOTER_DEPLOYMENT = 'json.text("deployment_id", deployment_id(config, ids.deployment));'
 
 
 def check_deployment(logger: str, labels: str, footer: str) -> None:

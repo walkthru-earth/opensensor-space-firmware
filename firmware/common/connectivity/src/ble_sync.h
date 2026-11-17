@@ -12,6 +12,7 @@
 #include "ble_policy.h"
 #include "device_config.h"
 #include "disconnect.h"
+#include "frame_ring.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -266,6 +267,13 @@ bool send_response(const std::uint8_t *frame, std::size_t length,
                    std::uint32_t expected_generation = 0);
 bool send_error(Op op, Error code, const char *detail,
                 std::uint32_t expected_generation = 0);
+// From a task that must never wait (os-lan). One attempt: Full when the
+// response lock is busy or no notify credit is free now, so the caller retries
+// later. Closed when BLE is off, the peer left, the generation moved on or the
+// frame does not fit the link.
+[[nodiscard]] ossync::EnqueueResult
+try_send_response(const std::uint8_t *frame, std::size_t length,
+                  std::uint32_t expected_generation);
 // Largest `response` payload for the current link (MTU - 3), or 0 if none.
 std::uint16_t payload_max();
 // Increments on every connect/disconnect so the worker can drop stale handles.

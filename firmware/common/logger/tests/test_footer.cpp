@@ -134,7 +134,11 @@ void footer_bytes() {
     const auto key = text.find(R"("deployment_id":")");
     check(key != std::string_view::npos);
     const auto start = key + std::string_view(R"("deployment_id":")").size();
-    return std::string(text.substr(start, text.find('"', start) - start));
+    const auto written =
+        std::string(text.substr(start, text.find('"', start) - start));
+    // parquet status prints the id the next footer writes (#178).
+    check(written == footer::deployment_id(config, deployment));
+    return written;
   };
   check(deployment_of("cairo-07") == "cairo-07");
   check(deployment_of("") == "unknown");

@@ -1335,6 +1335,22 @@ bool send_error(Op op, Error code, const char *detail,
   return send_response(frame, length, expected_generation);
 }
 
+ossync::EnqueueResult try_send_response(const std::uint8_t *frame,
+                                        std::size_t length,
+                                        std::uint32_t expected_generation) {
+  if (!enabled.load() || !response_mutex)
+    return ossync::EnqueueResult::Closed;
+  const auto session =
+      expected_generation ? expected_generation : generation.load();
+  // The storage worker holds the lock across a whole credit wait. Never wait
+  // for it here.
+  if (xSemaphoreTake(response_mutex, 0) != pdTRUE)
+    return ossync::EnqueueResult::Full;
+  const auto result = enqueue_response(frame, length, session);
+  xSemaphoreGive(response_mutex);
+  return result;
+}
+
 // Future hook for a board wake gesture, no caller yet (see ble_sync.h).
 void wake_advertising() {
   if (enabled.load())

@@ -3,6 +3,7 @@
 #include <array>
 #include <cassert>
 #include <cstdint>
+#include <vector>
 
 namespace {
 std::array<std::uint8_t, 32> frame(std::uint16_t word11, std::uint16_t word12) {
@@ -55,4 +56,23 @@ int main() {
   for (std::uint8_t byte : bytes)
     temp_parser.push(byte, result);
   assert(result.has_temperature_humidity && result.temperature_deci_c == 251);
+
+  // A cut frame, then a header with a bad length, then a good frame (#178).
+  // The checksum failure moves the bad header to the front with its length
+  // word already there. It counts as a length failure, not a second checksum
+  // failure, and the good frame still parses on its last byte.
+  plantower::Parser resync{plantower::Model::Pms5003t};
+  std::vector<std::uint8_t> stream(bytes.begin(), bytes.begin() + 14);
+  for (std::uint8_t byte : {0x42, 0x4d, 0x00, 0x04})
+    stream.push_back(byte);
+  stream.insert(stream.end(), bytes.begin(), bytes.end());
+  std::size_t parsed = 0, at = 0;
+  for (std::uint8_t byte : stream) {
+    ++at;
+    if (resync.push(byte, result))
+      parsed = at;
+  }
+  assert(parsed == stream.size());
+  assert(resync.checksum_failures() == 1 && resync.length_failures() == 1);
+  assert(result.temperature_deci_c == 251 && result.atmospheric_pm25 == 5);
 }
