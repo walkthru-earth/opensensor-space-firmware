@@ -76,7 +76,7 @@ each part may refine them with a migration entry.
 
 | Part | Where | Shape |
 | --- | --- | --- |
-| Column hints | Module manifest column, template `table:columns` | `title`, `opensensor:title_i18n`, `description`, `opensensor:description_i18n`, `opensensor:decimals` (defaults to `firmware.decimals`), `opensensor:group`, `opensensor:scale` |
+| Column hints | Module manifest column, template `table:columns` | `title`, `opensensor:title_i18n`, `description`, `opensensor:description_i18n`, `opensensor:decimals` (the generator fills it from `firmware.decimals` when the column authors none), `opensensor:group`, `opensensor:scale` |
 | Template hints | `board.json`, template top level | `opensensor:primary` names one column, `opensensor:scales` holds the scales its columns name |
 | Setup steps | `board.json` `setup`, template `firmware.setup` | Ordered `[{"id", "req", "keys"}]`. `id` names a step in the app catalog, `req` marks a step setup cannot finish without, optional `keys` lists the `config_keys` a generic step shows |
 | Settings sections | `board.json` `settings`, template `firmware.settings` | Ordered `[{"id", "keys"}]`, same ids as setup |
@@ -102,7 +102,9 @@ move in lockstep (owner decision 14). Portolan adoption comes later.
    EPA 2024 AQI bands in
    `firmware/esp-idf-crowpanel-epaper/display/air_band.h`, applied to the
    live value. The stac-opensensor scales and the app use WHO 2021 guideline
-   and interim targets. Pick one for the panel, or publish both as scales.
+   and interim targets, and each scale now carries a `period`, `P1D` for the
+   WHO PM2.5 and PM10 scales, so neither is meant for a single live value.
+   Pick one for the panel, or publish both as scales.
    No display code changes until then.
 2. Translation shape is settled by stac-opensensor
    [#16](https://github.com/walkthru-earth/stac-opensensor/pull/16), as in

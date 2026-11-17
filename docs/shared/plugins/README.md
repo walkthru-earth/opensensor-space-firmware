@@ -152,8 +152,9 @@ registry, then 0 for an integer column and 2 otherwise. A scale comes from
 the column, then the registry, then none. The primary metric comes from the
 Collection, then the template, then the first `physicalMeasurement` column
 with a scale, then the first `physicalMeasurement` column. The decision
-record has the same order. The generator writes the column
-`opensensor:decimals` from `firmware.decimals`. This is planned, not built.
+record has the same order. The generator fills the column
+`opensensor:decimals` from `firmware.decimals` only when the column does not
+author one. This is planned, not built.
 Today the v0.1.0 module schema and the vendored stac-opensensor
 `template.json` still refuse `title` and `opensensor:scale` in a column. Both open up once stac-opensensor
 publishes the fields. Adding a hint moves `desc` on every board using that
