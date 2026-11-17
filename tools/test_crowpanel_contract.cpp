@@ -65,10 +65,12 @@ constexpr livewidest::Widest kWidest[] = {
 };
 // Measured 2026-11-17 with every declared key present, a one digit code
 // counted as null since null is wider, and each float at its field's
-// decimals. A change here means a LIVE key, its widest value or its decimals
-// changed, update the numbers.
-constexpr std::size_t kWidestLiveBytes = 0;
-constexpr std::size_t kAllNullLiveBytes = 0;
+// decimals (all print one). The widest object is 175 bytes, 480 - 175 = 305
+// bytes of headroom. The all-null object sent on overflow is 118 bytes. A
+// change here means a LIVE key, its widest value or its decimals changed,
+// update the numbers.
+constexpr std::size_t kWidestLiveBytes = 175;
+constexpr std::size_t kAllNullLiveBytes = 118;
 void assert_live_keys(const oslogger::Field *table, std::size_t count) {
   const auto bytes = livewidest::measure(table, count, kWidest);
   const auto nulls = livewidest::all_null(table, count);

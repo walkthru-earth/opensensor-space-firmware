@@ -432,8 +432,11 @@ def check_target_rules(directory: Path) -> None:
         short = backup(f"{board.backup_prefix}-flash-short.bin", board, board.flash_bytes - 4096)
         refuses(f"{board.alias} backup of its flash less 4 KiB", lambda: check_idf_target.check_backup(short, board),
                 f"backup must be exactly {board.flash_bytes} bytes")
-        half = backup(f"{board.backup_prefix}-flash-half.bin", board, SMALL_BYTES)
-        refuses(f"{board.alias} backup of 8 MiB", lambda: check_idf_target.check_backup(half, board),
+        # The other common capacity, 8 MiB for a 16 MiB board and 16 MiB for an 8 MiB one.
+        other = SMALL_BYTES if board.flash_bytes != SMALL_BYTES else BACKUP_BYTES
+        wrong = backup(f"{board.backup_prefix}-flash-other.bin", board, other)
+        refuses(f"{board.alias} backup of {other // (1024 * 1024)} MiB",
+                lambda: check_idf_target.check_backup(wrong, board),
                 f"backup must be exactly {board.flash_bytes} bytes")
     # An 8 MiB board takes an 8 MiB backup and refuses a 16 MiB one.
     small = add_small_board(scratch(directory / "small-target"))
@@ -723,11 +726,15 @@ def check_shell(directory: Path) -> None:
 
     for board in every:
         good = image(f"{board.backup_prefix}-flash-20261109T000000Z.bin", board.flash_bytes)
-        half = image(f"{board.backup_prefix}-flash-20261109T000001Z.bin", SMALL_BYTES)
-        expect(run(root, env, "flash-idf-board.sh", board.alias, "/dev/null", half), 2,
-               f"backup must be exactly {board.flash_bytes} bytes", f"flash-idf-board.sh {board.alias} 8 MiB backup")
-        expect(run(root, env, "restore-flash.sh", "--board", board.alias, "--port", "/dev/null", half), 2,
-               f"expected a complete {board.flash_bytes}-byte image", f"restore-flash.sh {board.alias} 8 MiB image")
+        # A backup of the other common capacity, 8 MiB or 16 MiB.
+        other = SMALL_BYTES if board.flash_bytes != SMALL_BYTES else BACKUP_BYTES
+        mebibytes = other // (1024 * 1024)
+        wrong = image(f"{board.backup_prefix}-flash-20261109T000001Z.bin", other)
+        expect(run(root, env, "flash-idf-board.sh", board.alias, "/dev/null", wrong), 2,
+               f"backup must be exactly {board.flash_bytes} bytes",
+               f"flash-idf-board.sh {board.alias} {mebibytes} MiB backup")
+        expect(run(root, env, "restore-flash.sh", "--board", board.alias, "--port", "/dev/null", wrong), 2,
+               f"expected a complete {board.flash_bytes}-byte image", f"restore-flash.sh {board.alias} {mebibytes} MiB image")
         for name in board.names:
             expect(run(root, env, "flash-idf-board.sh", name, "/dev/null", good), 2,
                    "build and verify the selected native firmware first", f"flash-idf-board.sh {name}")
@@ -749,11 +756,11 @@ def check_shell(directory: Path) -> None:
     # the blocked python that would run esptool.
     for board in every:
         for prefix in board.backup_prefixes:
-            path = image(f"{prefix}-flash-20261109T000000Z.bin")
+            path = image(f"{prefix}-flash-20261109T000000Z.bin", board.flash_bytes)
             expect(run(root, env, "restore-flash.sh", "--board", board.slug, "--port", "/dev/null", path), 97,
                    "BLOCKED python -m esptool", f"restore-flash.sh {board.slug} {prefix}")
         other = next(b for b in every if b != board)
-        path = image(f"{other.backup_prefix}-flash-20261109T000000Z.bin")
+        path = image(f"{other.backup_prefix}-flash-20261109T000000Z.bin", board.flash_bytes)
         expect(run(root, env, "restore-flash.sh", "--board", board.alias, "--port", "/dev/null", path), 2,
                "backup name does not match board", f"restore-flash.sh {board.alias} wrong image")
     expect(run(root, env, "restore-flash.sh", "--board", "nope", "--port", "/dev/null", path), 2,

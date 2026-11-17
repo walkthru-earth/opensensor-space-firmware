@@ -3,11 +3,19 @@
 # file, and so is CompilationDatabase.
 #
 # The board compile databases are written by `pixi run cores3-build`,
-# `pixi run waveshare-build logger` and `pixi run waveshare-build diagnostic`.
+# `pixi run waveshare-build logger`, `pixi run waveshare-build diagnostic`
+# and `pixi run crowpanel-build`.
 # Shared code under firmware/common is in no database of its own, so it
 # borrows a board one. Its own sources are in that database, and headers take
 # the command of a nearby source.
 
+# The CrowPanel e-paper board has one logger build.
+If:
+  PathMatch: firmware/esp-idf-crowpanel-epaper/.*
+CompileFlags:
+  CompilationDatabase: firmware/esp-idf-crowpanel-epaper/build/logger
+
+---
 # The Waveshare V2 diagnostic image has its own build.
 If:
   PathMatch: firmware/esp-idf-waveshare-sim7670g/diagnostic/.*
@@ -31,6 +39,7 @@ If:
   PathMatch: firmware/.*
   PathExclude:
     - firmware/esp-idf-waveshare-sim7670g/.*
+    - firmware/esp-idf-crowpanel-epaper/.*
     - firmware/common/gnss_reader/.*
 CompileFlags:
   CompilationDatabase: firmware/esp-idf-cores3/build/bringup

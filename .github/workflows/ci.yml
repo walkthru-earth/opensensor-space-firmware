@@ -110,6 +110,10 @@ jobs:
             task: waveshare-build diagnostic
             project: firmware/esp-idf-waveshare-sim7670g
             variant: diagnostic
+          - name: crowpanel-logger
+            task: crowpanel-build
+            project: firmware/esp-idf-crowpanel-epaper
+            variant: logger
           # Generic component fixtures. They prove the shared components build
           # without Arduino or M5 dependencies and have no image to size.
           - name: component-fixtures
@@ -122,6 +126,9 @@ jobs:
           - name: bench-stall
             task: cores3-build
             extra_task: waveshare-build logger
+            bench: stall
+          - name: bench-stall-crowpanel
+            task: crowpanel-build
             bench: stall
     env:
       IDF_CCACHE_ENABLE: "1"

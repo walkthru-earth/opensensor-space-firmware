@@ -155,9 +155,9 @@ void Panel::hw_reset() {
 // Reset and register init, out of Deep. Leaves the booster off.
 std::expected<void, Error> Panel::init() {
   struct Reg {
-    std::uint8_t cmd;
-    std::uint8_t len;
-    std::array<std::uint8_t, 5> data;
+    std::uint8_t cmd = 0;
+    std::uint8_t len = 0;
+    std::array<std::uint8_t, 5> data{};
   };
   static constexpr std::array<Reg, 9> kInit{{
       {.cmd = 0x00, .len = 2, .data = {0x3F, 0xCA}}, // LUT from registers.

@@ -269,6 +269,12 @@
         }
       ]
     },
+    "os-ui": {
+      "about": "CrowPanel e-paper UI task. Renders the dashboard from the UI feed and drives the UC8276C panel over SPI.",
+      "entry": [
+        "*{anonymous}::ui_task(*"
+      ]
+    },
     "esp_timer": {
       "about": "esp_timer task. Runs the worker watchdog supervisor.",
       "entry": [
@@ -450,6 +456,65 @@
         ".flash.text": 164618,
         ".flash.rodata": 63620,
         ".noinit": 0
+      }
+    },
+    "crowpanel/logger": {
+      "build": "firmware/esp-idf-crowpanel-epaper/build/logger",
+      "tasks": {
+        "parquet-sd": {
+          "stack_bytes": 24576,
+          "measured": 11104,
+          "budget": 12224
+        },
+        "nimble_host": {
+          "measured": 5840,
+          "budget": 6464
+        },
+        "os_ble_error": {
+          "stack_bytes": 4096,
+          "measured": 2544,
+          "budget": 2816
+        },
+        "os-lan": {
+          "stack_bytes": 8192,
+          "measured": 4832,
+          "budget": 5376
+        },
+        "board": {
+          "task_name": "os-board",
+          "stack_bytes": 12288,
+          "measured": 4704,
+          "budget": 5184
+        },
+        "os-ui": {
+          "stack_bytes": 8192,
+          "measured": 3072,
+          "budget": 3392
+        },
+        "esp_timer": {
+          "measured": 592,
+          "budget": 704
+        },
+        "sys_evt": {
+          "measured": 1040,
+          "budget": 1152
+        }
+      },
+      "sections": {
+        ".iram0.text": 128000,
+        ".dram0.data": 35072,
+        ".dram0.bss": 58624,
+        ".flash.text": 1171200,
+        ".flash.rodata": 401408,
+        ".noinit": 256
+      },
+      "sections_measured": {
+        ".iram0.text": 125295,
+        ".dram0.data": 34193,
+        ".dram0.bss": 57320,
+        ".flash.text": 1148102,
+        ".flash.rodata": 393480,
+        ".noinit": 3
       }
     }
   }

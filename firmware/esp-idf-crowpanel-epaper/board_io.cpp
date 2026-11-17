@@ -8,6 +8,7 @@
 #include <fat_volume.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <numeric>
 #include <sd_transfer_buffer.h>
 #include <sdmmc_cmd.h>
 
@@ -222,9 +223,9 @@ void indicator(bool on) {
 }
 
 bool start_keys() {
-  std::uint64_t mask = 0;
-  for (const int key : kKeys)
-    mask |= 1ULL << key;
+  const auto mask = std::accumulate(
+      kKeys.begin(), kKeys.end(), std::uint64_t{0},
+      [](std::uint64_t bits, int key) { return bits | (1ULL << key); });
   const gpio_config_t pins{.pin_bit_mask = mask,
                            .mode = GPIO_MODE_INPUT,
                            .pull_up_en = GPIO_PULLUP_ENABLE,
