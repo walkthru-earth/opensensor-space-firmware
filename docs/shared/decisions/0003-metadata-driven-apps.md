@@ -1,0 +1,97 @@
+# 0003 Metadata-driven apps
+
+| | |
+| --- | --- |
+| Status | Decided 2026-11-17 by the owner. Not built |
+| Date | 2026-11-17 |
+| Issue | [#17](https://github.com/walkthru-earth/opensensor-space-firmware/issues/17), mobile [#219](https://github.com/walkthru-earth/opensensor-space-mobile/issues/219) |
+| Related | [0001](0001-standalone-thing-stac.md), [plugin contract](../plugins/README.md), [sync protocol](../ble-sync-protocol.md), [STAC contract](../stac-contract/README.md) |
+| Spec | stac-opensensor `PROFILE.md` at [`f423805a55a0a69e859287036f5325ee1b3c1551`](https://github.com/walkthru-earth/stac-opensensor/blob/f423805a55a0a69e859287036f5325ee1b3c1551/PROFILE.md) lines 43 to 47 and 352, which this record reverses |
+
+## Context
+
+A new board needs app code today before the phone shows it well. The app
+keeps a reviewed LIVE profile per `dict` digest, labels and scales by column
+name, and a fixed setup wizard and Device settings order. The CrowPanel
+(#182) showed the cost. Its template is verified and complete, yet the app
+shows no LIVE for it and its panel settings are reachable only from the knob.
+
+## Decision
+
+1. **Display hints are published.** A board template may carry, per column,
+   `title` with translations, `description`, `opensensor:decimals` and
+   `opensensor:group`, and per template a main metric `opensensor:primary`
+   and a default `opensensor:scale`. stac-opensensor adds a shared property
+   registry keyed by the `opensensor:property` URI with label, short label,
+   symbol, definition, group, default decimals and default scale, in the
+   spirit of STAC Browser's `@radiantearth/stac-fields`. The template value
+   wins over the registry. The app profile keyed by `dict` goes away.
+2. **LIVE for any verified template.** A phone may show LIVE for any template
+   whose SHA-256 matches the footer `template.sha256` or the served `desc`.
+   `opensensor:plausible_range` and `opensensor:valid_when` still filter each
+   value. There is no reviewed digest list.
+3. **The board declares setup and settings.** The board `board.json` lists
+   ordered setup steps, ordered settings sections and typed `config_keys`.
+   The generator copies them into the template `firmware` block, so they
+   are hashed with it and a change moves `desc`, never `dict`. The app keeps
+   a fixed catalog of step components (name, location, mobility, site, wifi,
+   pairing, lan, bonds and a generic form). Find, Pair, Permission and Done
+   stay app owned. The device stores which steps are done. Board specific
+   settings that live only on the device today, such as the CrowPanel panel
+   and SEN63C options in NVS `ospanel`, get `SET_CONFIG` keys on a new
+   `GET_CONFIG` page. The NVS namespace and its keys stay as they are. Setup
+   is local. It lives in BLE and the template, never in a STAC Collection or
+   Item. The template declares names and types, never values.
+4. **App safety floors stay in the app.** No manifest can lower them.
+   Location is required for a fixed Thing. PIN, Wi-Fi PSK and LAN token are
+   never declared, echoed or logged, and the app keeps its own secret key
+   list. Reboot, token rotation, forget bonds and pairing mode `none` keep
+   their confirmations. Debug cannot send `REBOOT` or `SET_CONFIG`. The silent
+   clock, token and `lan.on` actions stay hidden below the Developer level.
+
+## Planned shapes
+
+None of this is built. The names below are the plan, and the PR that builds
+each part may refine them with a migration entry.
+
+| Part | Where | Shape |
+| --- | --- | --- |
+| Column hints | Module manifest column, template `table:columns` | `title`, `description`, `opensensor:decimals` (defaults to `firmware.decimals`), `opensensor:group`, `opensensor:scale` |
+| Template hints | `board.json`, template top level | `opensensor:primary` names one column |
+| Setup steps | `board.json` `setup`, template `firmware.setup` | Ordered `[{"id", "req", "keys"}]`. `id` names a step in the app catalog, `req` marks a step setup cannot finish without, optional `keys` lists the `config_keys` a generic step shows |
+| Settings sections | `board.json` `settings`, template `firmware.settings` | Ordered `[{"id", "keys"}]`, same ids as setup |
+| Config keys | `board.json` `config_keys`, template `firmware.config_keys` | Map from `SET_CONFIG` key to `type`, `values` (enum or range), `applies` (`immediately`, `next sample`, `next boot` or `action`), `page` and an i18n `label`. Never a value, never a secret key |
+| Setup record | `GET_CONFIG` page 1 `thing` | `setup_ack`, a bitmask in `firmware.setup` order, and `setup_v`, which names the step list the bits refer to. A different `setup_v` reads as no step done |
+| Board settings | A new `GET_CONFIG` page after page 6 | The board specific keys from `config_keys`, within the 480 byte page limit |
+
+A step is done when its `setup_ack` bit is set. A required step whose result
+the config proves, such as a cell for a fixed Thing, is derived from the
+config instead, as the advert `setup` bit is today. An unknown step id
+renders a generic form from its typed `config_keys`. Without keys it is
+skipped, and an unknown required step leaves setup pending.
+
+## Order
+
+Clean state first, then the contracts in this repo and stac-opensensor, then
+the mobile refactor. There is no backward compatibility. Firmware and app
+move in lockstep (owner decision 14). Portolan adoption comes later.
+
+## Open questions for the owner
+
+1. **CrowPanel air bands.** The CrowPanel screen colours PM2.5 with the US
+   EPA 2024 AQI bands in
+   `firmware/esp-idf-crowpanel-epaper/display/air_band.h`, applied to the
+   live value. The stac-opensensor scales and the app use WHO 2021 guideline
+   and interim targets. Pick one for the panel, or publish both as scales.
+   No display code changes until then.
+2. Translation shape for `title` and `label`, for example a language map or
+   a `title:<lang>` key, follows the stac-opensensor PR.
+3. Page number and key names for the board settings page, and the exact
+   `setup_v` rule.
+4. A CO2 scale, a resolvable property for PM4, and bit definitions for
+   `sen6x_device_status` are missing from the registry.
+
+## What would reopen it
+
+A template the phone cannot verify, a display hint that changes a stored
+value, or a manifest that needs to weaken a safety floor.
