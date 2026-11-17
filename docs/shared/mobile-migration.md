@@ -47,6 +47,14 @@ HMI v1.2 with a Sensirion SEN63C on I2C.
   `OS SEN6X absent ...`, `OS SEN6X lost ...`, `OS SEN6X stale ...`,
   `OS SEN6X start-failed ...`, `OS SEN6X status=...`, `OS DISPLAY ready=...`,
   `OS TF mounted=...` and `OS READY ...`.
+- The panel settings popup adds `OS PANEL settings operation=load|save ...`,
+  `OS SEN6X config when=start|change altitude_m=... co2_asc=...
+  temp_offset_dc=...`, `OS SEN6X config-change action=restart`,
+  `OS SEN6X config-failed ...`, `OS SEN6X fan-cleaning started ...`,
+  `OS SEN6X fan-cleaning done` and `OS SEN6X fan-cleaning-failed ...`. A
+  temperature offset set on the panel is applied by the sensor, so the stored
+  `ambient_temperature_c` already includes it. During a fan cleaning the
+  sensor columns are null for about 10 s plus the warm up.
 
 **Why.** A low power air quality Thing with its own screen, using a Sensirion
 sensor that also measures CO2.

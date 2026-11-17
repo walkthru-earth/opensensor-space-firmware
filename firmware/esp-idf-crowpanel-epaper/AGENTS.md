@@ -21,6 +21,12 @@ Never borrow a sibling trial's settings.
   It reads a copy of the latest row and the pairing passkey through the UI
   feed in `logger/main.cpp`, never the logger or the card. The 2 h and 24 h
   chart history lives in RAM and starts empty after each reset.
+- The settings popup (`display/settings.*`) is pure UI state. The UI task
+  saves it as a versioned blob in NVS namespace `ospanel` key `ui` and hands
+  altitude, CO2 self calibration, temperature offset and fan cleaning to the
+  board task through `sensor_requests` under the feed mutex. Only the board
+  task talks to the sensor. The Wi-Fi row is read-only, because
+  `config::apply_lines` is safe only from the control worker.
 - Sensor collection is the module table in `logger/sensor_modules.h` from
   the shared `sen63c` manifest. The screen and the stored row come from the
   same `reading_of` result. The checked-in `telemetry_*.inc` must equal the

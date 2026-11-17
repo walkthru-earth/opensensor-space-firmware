@@ -46,6 +46,37 @@ and then `OS SEN6X present ...` once the sensor answers. `OS SEN6X absent ...`
 means the board did not find it, usually a missing pull-up or swapped SDA and
 SCL. PM values appear after about 30 s of warm up and CO2 after about 24 s.
 
+## Keys and the settings popup
+
+- Turn the knob to change page. Down goes to the next page, Up to the
+  previous one. One turn Up from the dashboard is the status page.
+- MENU opens the settings popup over any page. Turn the knob to pick a row,
+  press it to change the value, and MENU or EXIT closes the popup.
+- On Altitude and Temp offset a press starts an edit. Turn to adjust, press
+  to keep the value, EXIT to cancel.
+- Settings are saved to NVS namespace `ospanel` 5 seconds after the last
+  change. The `oscfg` and `parquet` namespaces are never touched.
+
+| Row | Values | Effect |
+| --- | --- | --- |
+| Screen refresh | 10 s, 30 s, 1 min, 5 min | How often new readings redraw the screen. Keys redraw at once. Logging stays at 10 s. |
+| Start on | Dashboard, Last page | The page shown after a reset. |
+| Wi-Fi | status only | On, Off or Not set up. Wi-Fi is set up and switched from the phone app. |
+| Fan cleaning | Run now | Stops the measurement, runs the fan at full speed for 10 s, then starts again. Rows logged meanwhile hold null sensor values. |
+| CO2 calibration | On, Off | SEN63C automatic self calibration. Keep it on for a Thing in the field. |
+| Altitude | 0 to 3000 m, 50 m steps | Pressure compensation for CO2. |
+| Temp offset | -10.0 to +5.0 C, 0.1 C steps | Sent to the sensor, see below. |
+| Sleep after | Off, 10 min, 30 min, 1 h | Puts the panel to sleep with no readings on it. Any key wakes it, and so does a phone that pairs. |
+
+Changing Altitude or CO2 calibration restarts the measurement, because the
+SEN63C takes both in idle mode only (datasheet 4.8.35 and 4.8.39), so PM and
+CO2 warm up again. The temperature offset applies at once (4.8.14). The
+sensor applies it itself, so it changes the stored `ambient_temperature_c`
+column, not just the screen. Every change logs
+`OS SEN6X config when=... altitude_m=... co2_asc=... temp_offset_dc=...`.
+The sensor forgets all three at a reset, so the board writes them before
+every start.
+
 ## First flash
 
 The image the owner unit carries before OpenSensor has a 0x6000 byte NVS
