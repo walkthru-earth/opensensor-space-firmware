@@ -106,9 +106,11 @@ example.
 4. Audit strapping pins, peripheral ownership, flash capacity, PSRAM, console
    and recovery. Before any physical write follow the full checked-port
    [identification and backup sequence](../../AGENTS.md#before-any-physical-flash-write).
-   The backup, restore and flash helpers support only 16 MiB flash, the one
-   value `tooling.flash_bytes` accepts. Extend the schema enum, `tools/boards.py`
-   and the helpers deliberately for a different capacity. Preserve NVS identity,
+   The backup, restore and flash helpers read the exact capacity from
+   `tooling.flash_bytes`, which accepts 8 MiB and 16 MiB. Each capacity has one
+   partition layout in `tools/check_idf_target.py`, and the board
+   `partitions.csv` must match it. Extend the schema enum, `tools/boards.py`
+   and that layout table deliberately for a different capacity. Preserve NVS identity,
    credentials, keys, types and partition offsets.
 5. Qualify a small diagnostic, sensor byte contract, card logging and immutable
    readback on the exact board. Keep captures and image hashes in ignored trial

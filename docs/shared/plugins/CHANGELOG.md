@@ -2,6 +2,16 @@
 
 Newest first. Versions follow section 7 of the [README](README.md).
 
+## 0.1.6, 2026-11-17
+
+- `tooling.flash_bytes` accepts 8 MiB (8388608) as well as 16 MiB
+  (16777216). The backup, restore and flash helpers read the exact size from
+  the registry instead of a fixed 16 MiB, and `tools/check_idf_target.py`
+  holds one partition layout per capacity. NVS and otadata keep their offsets
+  in both. This prepares a board with 8 MiB flash, no board uses it yet.
+- A widened enum on an optional field is a patch under section 7. No `dict`,
+  `desc`, `shipped.lock` or row moves.
+
 ## 0.1.5, 2026-11-09
 
 - The board schema gains an optional `tooling` object (#141). It carries

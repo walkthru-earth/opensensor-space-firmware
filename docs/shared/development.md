@@ -91,7 +91,8 @@ Board wrappers verify dictionary/vendor hashes and generated ESP32-S3 flash,
 PSRAM and partition configuration. Build output is ephemeral under
 `firmware/<board>/build/<variant>/`; retain reviewable binaries and image hashes
 in `artifacts/` before a real hardware run. The backup-gated flash wrappers
-require the checked character-device port and matching 16,777,216-byte backup,
+require the checked character-device port and a matching backup of exactly the
+board's registered `tooling.flash_bytes`,
 and flash the verified image without an implicit rebuild or full-chip erase. They use
 Pixi's pinned esptool with the validated generated `flash_args` response file;
 ESP-IDF 6.1 has no `idf.py --no-deps` option. Only bootloader, partition table,

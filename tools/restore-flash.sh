@@ -38,8 +38,9 @@ if [[ "${matched}" != 1 ]]; then
     "${board}" "${backup_prefixes}" "${image}" >&2
   exit 2
 fi
-if [[ ! -f "${image}" || "$(wc -c <"${image}" | tr -d " ")" != 16777216 ]]; then
-  printf 'expected a complete 16777216-byte image: %s\n' "${image}" >&2
+# A complete image is exactly the board's registered tooling.flash_bytes.
+if [[ ! -f "${image}" || "$(wc -c <"${image}" | tr -d " ")" != "${flash_bytes}" ]]; then
+  printf 'expected a complete %s-byte image: %s\n' "${flash_bytes}" "${image}" >&2
   exit 2
 fi
 # Keep the transport at esptool's default speed. The checked port and image

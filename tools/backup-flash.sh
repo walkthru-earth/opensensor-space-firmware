@@ -25,7 +25,9 @@ if [[ -z "${port}" ]]; then
   printf 'a checked --port is required\n' >&2
   exit 2
 fi
-# Only use this after flash-id has independently confirmed 16 MB on this port.
+# Only use this after flash-id has independently confirmed, on this port, the
+# capacity the board registers in tooling.flash_bytes. The read covers exactly
+# that capacity.
 backup_dir="${repo_root}/backup"
 image="${backup_dir}/${board}-flash-$(date -u +%Y%m%dT%H%M%SZ).bin"
 umask 077
@@ -36,9 +38,9 @@ mkdir -p "${backup_dir}"
 temporary="$(mktemp "${backup_dir}/.${board}-flash.XXXXXXXX")"
 trap 'rm -f "${temporary}"' EXIT
 # Keep esptool at its default serial speed.
-python -m esptool --chip esp32s3 --port "${port}" read-flash 0 0x1000000 "${temporary}"
+python -m esptool --chip esp32s3 --port "${port}" read-flash 0 "${flash_bytes}" "${temporary}"
 bytes="$(wc -c <"${temporary}" | tr -d " ")"
-if [[ "${bytes}" != 16777216 ]]; then
+if [[ "${bytes}" != "${flash_bytes}" ]]; then
   printf 'backup size mismatch: %s bytes in %s\n' "${bytes}" "${temporary}" >&2
   exit 1
 fi

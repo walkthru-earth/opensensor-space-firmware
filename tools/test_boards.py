@@ -33,6 +33,8 @@ import live_key_fixture
 ROOT = boards.ROOT
 SCHEMA = ROOT / "docs/shared/plugins/v0.1.0/board.json"
 BACKUP_BYTES = 16 * 1024 * 1024
+SMALL_BYTES = 8 * 1024 * 1024
+SMALL_MANIFEST = Path("firmware/esp-idf-example-small-s3/app/board.json")
 
 
 def require(condition: bool, message: str) -> None:
@@ -53,6 +55,18 @@ def scratch(directory: Path) -> Path:
         for variant in board.variants:
             (root / board.project / variant).mkdir(parents=True, exist_ok=True)
     return root
+
+
+def add_small_board(root: Path) -> boards.Board:
+    """Add a synthetic 8 MiB board to a scratch root, the weather example under another name."""
+    manifest = json.loads((ROOT / "docs/shared/plugins/examples/weather.board.json").read_text())
+    manifest["board"] = "example-small-s3"
+    manifest["schema"] = "example-small-s3-telemetry-v1"
+    manifest["tooling"] = {**manifest["tooling"], "alias": "small", "backup_prefixes": ["example-small-s3"],
+                           "flash_bytes": SMALL_BYTES}
+    (root / SMALL_MANIFEST.parent).mkdir(parents=True, exist_ok=True)
+    (root / SMALL_MANIFEST).write_text(json.dumps(manifest, indent=2) + "\n")
+    return boards.find("small", root)
 
 
 def edit_json(path: Path, change: Callable[[dict], None]) -> None:
@@ -160,9 +174,11 @@ def check_failure_modes(directory: Path) -> None:
             [f"{manifest}: tooling.backup_prefixes must be a non empty list"])
     rejects(directory, "a backup prefix with a glob", on_first(tooling("backup_prefixes", ["m5stack-*"])),
             [f"{manifest}: tooling.backup_prefixes entry 'm5stack-*'"])
-    for value in (8 * 1024 * 1024, float(BACKUP_BYTES), True, str(BACKUP_BYTES)):
+    for value in (4 * 1024 * 1024, 32 * 1024 * 1024, float(BACKUP_BYTES), float(SMALL_BYTES), True,
+                  str(BACKUP_BYTES)):
         rejects(directory, f"flash_bytes {value!r}", on_first(tooling("flash_bytes", value)),
-                [f"{manifest}: tooling.flash_bytes {value!r} is not 16777216"])
+                [f"{manifest}: tooling.flash_bytes {value!r} is not one of 8388608, 16777216"])
+    accepts(directory, "an 8 MiB flash", on_first(tooling("flash_bytes", SMALL_BYTES)))
     rejects(directory, "an unknown PSRAM mode", on_first(tooling("psram_mode", "OPI")),
             [f"{manifest}: tooling.psram_mode 'OPI'"])
     rejects(directory, "an sdkconfig line that is not a setting", on_first(tooling("sdkconfig", ["rm -rf /"])),
@@ -251,6 +267,9 @@ def check_resolution() -> None:
                             (["resolve", every[0].alias, "nope"], "board registry: invalid board variant")):
         result = subprocess.run([*tool, *arguments], capture_output=True, text=True)
         require(result.returncode == 2 and text in result.stderr and result.stdout == "", f"CLI {arguments}, {result}")
+    for board in every:
+        require(f"flash_bytes={board.flash_bytes}\n" in boards.shell_assignments(board, board.telemetry_variant),
+                f"{board.slug} assignments carry flash_bytes")
     listed = subprocess.run([*tool, "list"], capture_output=True, text=True, check=True).stdout.splitlines()
     require(listed == [f"{b.slug} {b.alias} {b.project} {','.join(b.variants)}" for b in every], "CLI list")
     print(f"PASS {len(every)} boards resolve by alias, slug and backup prefix, CLI exits 2 on a bad name", flush=True)
@@ -274,14 +293,15 @@ def check_schema() -> None:
     }
     for key, (in_schema, in_tool) in pairs.items():
         require(in_schema == in_tool, f"tooling.{key} pattern differs, schema {in_schema}, boards.py {in_tool}")
-    require(properties["flash_bytes"]["enum"] == [boards.FLASH_BYTES], "flash_bytes enum")
+    require(properties["flash_bytes"]["enum"] == list(boards.FLASH_SIZES) ==
+            sorted(check_idf_target.PARTITION_LAYOUTS), "flash_bytes enum, FLASH_SIZES and the partition layouts")
     require(properties["psram_mode"]["enum"] == list(boards.PSRAM_MODES), "psram_mode enum")
     validator = Draft7Validator(tool)
     for board in boards.boards():
         manifest = json.loads((ROOT / board.manifest).read_text())
         errors = [e.message for e in validator.iter_errors(manifest["tooling"])]
         require(not errors, f"{board.manifest} tooling, {errors}")
-        for key, value in (("alias", "core-s3"), ("flash_bytes", 8388608), ("psram_mode", "OPI"),
+        for key, value in (("alias", "core-s3"), ("flash_bytes", 4194304), ("psram_mode", "OPI"),
                            ("variants", []), ("extra", 1)):
             bad = {**manifest["tooling"], key: value}
             require(any(validator.iter_errors(bad)), f"schema accepts tooling.{key}={value!r}")
@@ -292,6 +312,24 @@ def check_schema() -> None:
     require(flash.is_valid(json.loads("16777216.0")) and not flash.is_valid(True) and
             not flash.is_valid(str(BACKUP_BYTES)), "the Draft 7 flash_bytes rule changed, review boards.py")
     print("PASS the plugin board schema and boards.py agree on tooling", flush=True)
+
+
+def check_small_board(directory: Path) -> None:
+    """An 8 MiB board resolves with its own size, layout and sdkconfig flash size name."""
+    root = scratch(directory)
+    small = add_small_board(root)
+    require(small.flash_bytes == SMALL_BYTES and len(boards.boards(root)) == len(boards.boards()) + 1,
+            f"the 8 MiB board resolves beside the shipped boards, {small}")
+    require(f"flash_bytes={SMALL_BYTES}\n" in boards.shell_assignments(small, "app"), "8 MiB assignments")
+    require(check_idf_target.flash_size_name(small) == "8MB", "8 MiB flash size name")
+    table = check_idf_target.layout(small)
+    require(table[0] == check_idf_target.layout(boards.boards()[0])[0], "both layouts keep the same NVS region")
+    ends = [start + size for _, _, _, start, size, _ in table]
+    require(max(ends) == SMALL_BYTES, f"the 8 MiB layout fills the flash exactly, ends at {max(ends):#x}")
+    for board in boards.boards():
+        ends = [start + size for _, _, _, start, size, _ in check_idf_target.layout(board)]
+        require(max(ends) == board.flash_bytes, f"{board.slug} layout fills its flash exactly")
+    print("PASS an 8 MiB board resolves with its own size, partition layout and flash size name", flush=True)
 
 
 def check_example(directory: Path) -> None:
@@ -312,10 +350,10 @@ def check_example(directory: Path) -> None:
     print("PASS the plugin README weather example joins the registry beside the shipped boards", flush=True)
 
 
-def partition_table() -> bytes:
-    """The owner data partition table check_idf_target expects, then the end marker."""
+def partition_table(board: boards.Board) -> bytes:
+    """The owner data partition table check_idf_target expects for the board, then the end marker."""
     table = b"".join(struct.pack("<HBBII16sI", 0x50AA, kind, subtype, start, size, label.encode(), flags)
-                     for label, kind, subtype, start, size, flags in check_idf_target.PARTITIONS)
+                     for label, kind, subtype, start, size, flags in check_idf_target.layout(board))
     return table + b"\xff" * 32
 
 
@@ -372,28 +410,44 @@ def check_target_rules(directory: Path) -> None:
     backups = directory / "target-backups"
     backups.mkdir()
 
-    def backup(name: str, size: int = BACKUP_BYTES) -> Path:
+    def backup(name: str, board: boards.Board, size: int | None = None) -> Path:
         path = backups / name
         with path.open("wb") as stream:
-            stream.truncate(size)
+            stream.truncate(board.flash_bytes if size is None else size)
             stream.seek(0x8000)
-            stream.write(partition_table())
+            stream.write(partition_table(board))
         return path
 
     stamp = "20261109T000000Z"
     for board in every:
-        check_idf_target.check_backup(backup(f"{board.backup_prefix}-flash-{stamp}.bin"), board)
+        check_idf_target.check_backup(backup(f"{board.backup_prefix}-flash-{stamp}.bin", board), board)
         expected = f"expected {board.backup_prefix}-flash-*.bin"
         names = [f"{prefix}-flash-{stamp}.bin" for prefix in board.backup_prefixes[1:]]
         names += [f"{b.backup_prefix}-flash-{stamp}.bin" for b in every if b != board]
         names += [f"{board.backup_prefix}-flashx-{stamp}.bin", f"{board.backup_prefix}-mini-flash-{stamp}.bin", f"{board.backup_prefix}-flash-{stamp}.img",
                   f"x{board.backup_prefix}-flash-{stamp}.bin"]
         for name in names:
-            refuses(f"{board.alias} backup {name}", lambda: check_idf_target.check_backup(backup(name), board),
+            refuses(f"{board.alias} backup {name}", lambda: check_idf_target.check_backup(backup(name, board), board),
                     expected)
-        short = backup(f"{board.backup_prefix}-flash-short.bin", BACKUP_BYTES - 4096)
-        refuses(f"{board.alias} backup of 16 MiB less 4 KiB", lambda: check_idf_target.check_backup(short, board),
-                "backup must be exactly 16777216 bytes")
+        short = backup(f"{board.backup_prefix}-flash-short.bin", board, board.flash_bytes - 4096)
+        refuses(f"{board.alias} backup of its flash less 4 KiB", lambda: check_idf_target.check_backup(short, board),
+                f"backup must be exactly {board.flash_bytes} bytes")
+        half = backup(f"{board.backup_prefix}-flash-half.bin", board, SMALL_BYTES)
+        refuses(f"{board.alias} backup of 8 MiB", lambda: check_idf_target.check_backup(half, board),
+                f"backup must be exactly {board.flash_bytes} bytes")
+    # An 8 MiB board takes an 8 MiB backup and refuses a 16 MiB one.
+    small = add_small_board(scratch(directory / "small-target"))
+    check_idf_target.check_backup(backup(f"example-small-s3-flash-{stamp}.bin", small), small)
+    large = backup("example-small-s3-flash-large.bin", small, BACKUP_BYTES)
+    refuses("an 8 MiB board with a 16 MiB backup", lambda: check_idf_target.check_backup(large, small),
+            f"backup must be exactly {SMALL_BYTES} bytes")
+    moved = backups / "example-small-s3-flash-moved.bin"
+    with moved.open("wb") as stream:
+        stream.truncate(SMALL_BYTES)
+        stream.seek(0x8000)
+        stream.write(struct.pack("<HBBII16sI", 0x50AA, 1, 2, 0x9000, 0x6000, b"nvs", 0) + b"\xff" * 32)
+    refuses("an 8 MiB backup whose NVS is 0x6000 long", lambda: check_idf_target.check_backup(moved, small),
+            "backup NVS region differs")
     require(any(len(b.backup_prefixes) > 1 for b in every), "some board has a restore only backup prefix")
     print("PASS check_idf_target applies board.json components, sdkconfig, PSRAM mode and the backup prefix",
           flush=True)
@@ -661,14 +715,19 @@ def check_shell(directory: Path) -> None:
     backups = directory / "backups"
     backups.mkdir(exist_ok=True)
 
-    def image(name: str) -> str:
+    def image(name: str, size: int = BACKUP_BYTES) -> str:
         path = backups / name
         with path.open("wb") as stream:
-            stream.truncate(BACKUP_BYTES)
+            stream.truncate(size)
         return str(path)
 
     for board in every:
-        good = image(f"{board.backup_prefix}-flash-20261109T000000Z.bin")
+        good = image(f"{board.backup_prefix}-flash-20261109T000000Z.bin", board.flash_bytes)
+        half = image(f"{board.backup_prefix}-flash-20261109T000001Z.bin", SMALL_BYTES)
+        expect(run(root, env, "flash-idf-board.sh", board.alias, "/dev/null", half), 2,
+               f"backup must be exactly {board.flash_bytes} bytes", f"flash-idf-board.sh {board.alias} 8 MiB backup")
+        expect(run(root, env, "restore-flash.sh", "--board", board.alias, "--port", "/dev/null", half), 2,
+               f"expected a complete {board.flash_bytes}-byte image", f"restore-flash.sh {board.alias} 8 MiB image")
         for name in board.names:
             expect(run(root, env, "flash-idf-board.sh", name, "/dev/null", good), 2,
                    "build and verify the selected native firmware first", f"flash-idf-board.sh {name}")
@@ -731,6 +790,24 @@ def check_shell(directory: Path) -> None:
     print("PASS board scripts resolve every name and variant, refuse unknown ones and a broken registry, "
           "and never reach esptool", flush=True)
 
+    # An 8 MiB board in its own tree. flash-idf-board.sh and restore-flash.sh
+    # take only an 8 MiB image, and backup-flash.sh asks esptool for 8 MiB.
+    small_root, small_env = shell_tree(directory / "small-shell")
+    add_small_board(small_root)
+    small_good = image("example-small-s3-flash-20261109T000000Z.bin", SMALL_BYTES)
+    small_large = image("example-small-s3-flash-20261109T000001Z.bin", BACKUP_BYTES)
+    expect(run(small_root, small_env, "flash-idf-board.sh", "small", "/dev/null", small_good), 2,
+           "build and verify the selected native firmware first", "flash-idf-board.sh small 8 MiB backup")
+    expect(run(small_root, small_env, "flash-idf-board.sh", "small", "/dev/null", small_large), 2,
+           f"backup must be exactly {SMALL_BYTES} bytes", "flash-idf-board.sh small 16 MiB backup")
+    expect(run(small_root, small_env, "restore-flash.sh", "--board", "small", "--port", "/dev/null", small_good), 97,
+           "BLOCKED python -m esptool", "restore-flash.sh small 8 MiB image")
+    expect(run(small_root, small_env, "restore-flash.sh", "--board", "small", "--port", "/dev/null", small_large), 2,
+           f"expected a complete {SMALL_BYTES}-byte image", "restore-flash.sh small 16 MiB image")
+    expect(run(small_root, small_env, "backup-flash.sh", "--board", "small", "--port", "/dev/null"), 97,
+           f"read-flash 0 {SMALL_BYTES} ", "backup-flash.sh small")
+    print("PASS an 8 MiB board flashes, restores and backs up only at 8 MiB", flush=True)
+
 
 def main() -> None:
     """Run every registry check in a scratch directory."""
@@ -740,6 +817,7 @@ def main() -> None:
         check_resolution()
         check_schema()
         check_target_rules(directory)
+        check_small_board(directory)
         check_example(directory)
         check_stall_legs()
         check_clangd()

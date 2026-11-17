@@ -14,15 +14,41 @@ import subprocess
 import boards
 
 ROOT = Path(__file__).resolve().parents[1]
-FLASH_BYTES = 16 * 1024 * 1024
-PARTITIONS = [
-    ("nvs", 1, 2, 0x9000, 0x5000, 0),
-    ("otadata", 1, 0, 0xE000, 0x2000, 0),
-    ("app0", 0, 0x10, 0x10000, 0x600000, 0),
-    ("app1", 0, 0x11, 0x610000, 0x600000, 0),
-    ("coredump", 1, 3, 0xC10000, 0x10000, 0),
-    ("spiffs", 1, 0x82, 0xC20000, 0x3E0000, 0),
-]
+MIB = 1024 * 1024
+# The owner data partition layout for each flash capacity boards.FLASH_SIZES
+# allows. NVS and OTA data keep the same offsets and sizes on every capacity,
+# so the settings region never moves. Only the app slots, the core dump and
+# the SPIFFS partition scale with the flash.
+PARTITION_LAYOUTS = {
+    16 * MIB: [
+        ("nvs", 1, 2, 0x9000, 0x5000, 0),
+        ("otadata", 1, 0, 0xE000, 0x2000, 0),
+        ("app0", 0, 0x10, 0x10000, 0x600000, 0),
+        ("app1", 0, 0x11, 0x610000, 0x600000, 0),
+        ("coredump", 1, 3, 0xC10000, 0x10000, 0),
+        ("spiffs", 1, 0x82, 0xC20000, 0x3E0000, 0),
+    ],
+    8 * MIB: [
+        ("nvs", 1, 2, 0x9000, 0x5000, 0),
+        ("otadata", 1, 0, 0xE000, 0x2000, 0),
+        ("app0", 0, 0x10, 0x10000, 0x300000, 0),
+        ("app1", 0, 0x11, 0x310000, 0x300000, 0),
+        ("coredump", 1, 3, 0x610000, 0x10000, 0),
+        ("spiffs", 1, 0x82, 0x620000, 0x1E0000, 0),
+    ],
+}
+
+
+def layout(board: boards.Board) -> list[tuple]:
+    """The partition layout of the board's registered flash capacity."""
+    require(board.flash_bytes in PARTITION_LAYOUTS,
+            f"{board.alias} flash_bytes {board.flash_bytes} has no partition layout")
+    return PARTITION_LAYOUTS[board.flash_bytes]
+
+
+def flash_size_name(board: boards.Board) -> str:
+    """The ESP-IDF and esptool flash size name, 8MB or 16MB."""
+    return f"{board.flash_bytes // MIB}MB"
 
 
 def require(condition: bool, message: str) -> None:
@@ -275,7 +301,7 @@ def check_target(build: Path, board: boards.Board, variant: str) -> tuple[str, d
     telemetry = variant == board.telemetry_variant
     trial = ROOT / board.project
     lines = set(build_file(build, "sdkconfig").read_text().splitlines())
-    required = ["CONFIG_IDF_TARGET_ESP32S3=y", "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y",
+    required = ["CONFIG_IDF_TARGET_ESP32S3=y", f"CONFIG_ESPTOOLPY_FLASHSIZE_{flash_size_name(board)}=y",
                 "CONFIG_ESPTOOLPY_FLASHMODE_QIO=y", "CONFIG_PARTITION_TABLE_CUSTOM=y",
                 "CONFIG_PARTITION_TABLE_OFFSET=0x8000", "CONFIG_FATFS_LFN_HEAP=y",
                 "CONFIG_FATFS_MAX_LFN=255", "CONFIG_FREERTOS_HZ=1000",
@@ -354,8 +380,9 @@ def check_target(build: Path, board: boards.Board, variant: str) -> tuple[str, d
     require(not any("arduino" in component.lower() for component in components),
             "native target depends on Arduino")
     check_board_components(board, components)
+    table = layout(board)
     require(partitions(build_file(build, "partition_table/partition-table.bin").read_bytes()) ==
-            PARTITIONS, "partition table differs from the existing owner-data layout")
+            table, "partition table differs from the existing owner-data layout")
     plan = json.loads(build_file(build, "flasher_args.json").read_text())
     expected = {0: "bootloader/bootloader.bin", 0x8000: "partition_table/partition-table.bin",
                 0xE000: "ota_data_initial.bin", 0x10000: description["app_bin"]}
@@ -363,10 +390,11 @@ def check_target(build: Path, board: boards.Board, variant: str) -> tuple[str, d
     require(actual == expected, "unexpected flash plan; only bootloader/table/OTA metadata/app0 allowed")
     settings = plan["flash_settings"]
     # IDF deliberately flashes a DIO-readable bootloader even for runtime QIO.
-    require(settings["flash_size"] == "16MB" and settings["flash_mode"] in {"dio", "qio"} and settings["flash_freq"] == "80m",
+    require(settings["flash_size"] == flash_size_name(board) and settings["flash_mode"] in {"dio", "qio"} and settings["flash_freq"] == "80m",
             "unexpected flasher memory settings")
     require(plan["extra_esptool_args"]["chip"] == "esp32s3", "unexpected flasher chip")
-    limits = {0: 0x8000, 0x8000: 0x1000, 0xE000: 0x2000, 0x10000: 0x600000}
+    app0 = next(entry for entry in table if entry[0] == "app0")
+    limits = {0: 0x8000, 0x8000: 0x1000, 0xE000: 0x2000, app0[3]: app0[4]}
     for offset, name in actual.items():
         size = build_file(build, name).stat().st_size
         require(0 < size <= limits[offset], "flash artifact exceeds its permitted region: " + name)
@@ -397,13 +425,14 @@ def check_target(build: Path, board: boards.Board, variant: str) -> tuple[str, d
 def check_backup(backup: Path, board: boards.Board) -> None:
     require(backup.name.startswith(board.backup_prefix + "-flash-") and backup.suffix == ".bin",
             f"backup does not match the selected board, expected {board.backup_prefix}-flash-*.bin")
-    require(backup.stat().st_size == board.flash_bytes == FLASH_BYTES, "backup must be exactly 16777216 bytes")
+    require(board.flash_bytes in boards.FLASH_SIZES and backup.stat().st_size == board.flash_bytes,
+            f"backup must be exactly {board.flash_bytes} bytes")
     with backup.open("rb") as source:
         source.seek(0x8000)
         previous = partitions(source.read(0xC00))
     # The backup may predate the app partition sizes; preserve the persistent
     # namespace region in every supported native firmware transition.
-    require([entry for entry in previous if entry[1:3] == (1, 2)] == [PARTITIONS[0]],
+    require([entry for entry in previous if entry[1:3] == (1, 2)] == [layout(board)[0]],
             "backup NVS region differs; native migration needs explicit layout planning")
 
 
