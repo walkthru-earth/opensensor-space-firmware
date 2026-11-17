@@ -4,13 +4,16 @@
 #include "history.h"
 #include "pages.h"
 #include "sensor_modules.h"
+#include "settings.h"
 #include "telemetry_contract.h"
 #include "ui_model.h"
+#include <algorithm>
 #include <array>
 #include <ble_sync.h>
 #include <cmath>
 #include <cstring>
 #include <debug_log.h>
+#include <device_config.h>
 #include <esp_flash.h>
 #include <esp_heap_caps.h>
 #include <esp_psram.h>
@@ -22,6 +25,7 @@
 #include <limits>
 #include <log_persist.h>
 #include <new>
+#include <nvs.h>
 #include <nvs_flash.h>
 #include <os_console.h>
 #include <os_logger.h>
@@ -70,6 +74,21 @@ constexpr std::int64_t kRetryMaxUs = 60000000;
 // again. The start still honours the 24 s CO2 conditioning rule.
 constexpr std::int64_t kRestartAfterUs = 10000000;
 
+// Sensor settings from the panel. The UI task writes them, the board task
+// applies them. Altitude and CO2 self calibration take idle mode only and the
+// sensor forgets all three on a reset, so they go in before every start.
+struct SensorSettings {
+  std::uint16_t altitude_m = 0;
+  bool co2_asc = true;
+  std::int16_t temp_offset_dc = 0; // tenths of a degree C
+  bool operator==(const SensorSettings &) const = default;
+};
+struct SensorRequests {
+  SensorSettings settings{};
+  std::uint32_t fan_clean_seq = 0; // each new value asks for one cleaning
+};
+SensorRequests sensor_requests; // feed_mutex once it exists
+
 struct SensorControl {
   std::int64_t next_poll_us = 0;
   std::int64_t next_attempt_us = 0;
@@ -81,8 +100,14 @@ struct SensorControl {
   std::uint32_t logged_status = 0;
   std::array<char, 33> serial{};
   std::array<char, 8> version{};
+  SensorSettings wanted{};
+  SensorSettings applied{};
+  bool configured = false; // `applied` is in the sensor since the last stop
+  std::uint32_t fan_clean_seen = 0;
+  std::int64_t cleaning_until_us = 0; // 0 when no fan cleaning runs
 };
 SensorControl control;
+SemaphoreHandle_t feed_mutex = nullptr;
 
 std::uint32_t now_ms(std::int64_t now_us) {
   return static_cast<std::uint32_t>(now_us / 1000);
@@ -103,6 +128,8 @@ void sensor_failed(const char *operation, Sen6xError error, std::int64_t now) {
   snapshot.present = false;
   snapshot.measuring = false;
   snapshot.has_values = false;
+  control.configured = false;
+  control.cleaning_until_us = 0;
   control.failures = 0;
   control.absent_logged = false;
   back_off(now);
@@ -177,13 +204,61 @@ void probe(std::int64_t now) {
                name->c_str(), serial ? serial->c_str() : "unknown",
                version ? control.version.data() : "unknown", match);
   snapshot.present = true;
+  control.configured = false;
   control.failures = 0;
   control.absent_logged = false;
   control.next_attempt_us = now;
   read_status(now);
 }
 
+opensensor::Sen6xTemperatureOffset offset_of(const SensorSettings &s) {
+  // Tenths of a degree to the 1/200 C the sensor takes.
+  return {.offset_x200 = static_cast<std::int16_t>(s.temp_offset_dc * 20),
+          .slope_x10000 = 0,
+          .time_constant_s = 0,
+          .slot = 0};
+}
+
+void log_settings(const char *when) {
+  oslog.printf("OS SEN6X config when=%s altitude_m=%u co2_asc=%u "
+               "temp_offset_dc=%d\n",
+               when, static_cast<unsigned>(control.applied.altitude_m),
+               control.applied.co2_asc,
+               static_cast<int>(control.applied.temp_offset_dc));
+}
+
+// Idle mode only. Writes every panel setting, so a sensor that reset puts
+// them back too.
+bool configure(std::int64_t now) {
+  const auto &s = control.wanted;
+  auto done = sen6x.set_sensor_altitude(s.altitude_m);
+  const char *operation = "set-altitude";
+  if (done) {
+    done = sen6x.set_co2_auto_calibration(s.co2_asc);
+    operation = "set-co2-asc";
+  }
+  if (done) {
+    done = sen6x.set_temperature_offset(offset_of(s));
+    operation = "set-temp-offset";
+  }
+  if (!done) {
+    oslog.printf("OS SEN6X config-failed operation=%s error=%s "
+                 "i2c_error=%d\n",
+                 operation, opensensor::sen6x_error_name(done.error()),
+                 board::sensor_last_error());
+    sensor_failed(operation, done.error(), now);
+    back_off(now);
+    return false;
+  }
+  control.applied = s;
+  control.configured = true;
+  log_settings("start");
+  return true;
+}
+
 void start(std::int64_t now) {
+  if (!control.configured && !configure(now))
+    return;
   const auto started = sen6x.start_continuous_measurement(now_ms(now));
   if (started) {
     snapshot.measuring = true;
@@ -238,14 +313,98 @@ void measure(std::int64_t now) {
     static_cast<void>(sen6x.stop_measurement());
     snapshot.measuring = false;
     snapshot.has_values = false;
+    // No new result can mean the sensor reset and lost the panel settings.
+    control.configured = false;
     control.next_attempt_us = now;
   }
+}
+
+SensorRequests take_requests() {
+  if (!feed_mutex)
+    return sensor_requests;
+  xSemaphoreTake(feed_mutex, portMAX_DELAY);
+  const SensorRequests requests = sensor_requests;
+  xSemaphoreGive(feed_mutex);
+  return requests;
+}
+
+// Stops a running measurement, the idle commands need it.
+void stop(std::int64_t now) {
+  if (!snapshot.measuring)
+    return;
+  const auto stopped = sen6x.stop_measurement();
+  snapshot.measuring = false;
+  snapshot.has_values = false;
+  if (!stopped) {
+    control.configured = false;
+    sensor_failed("stop", stopped.error(), now);
+  }
+}
+
+// Datasheet 4.8.23. Idle mode only, the fan runs at full speed for 10 s and
+// the next start waits for it. Rows stay null while it runs.
+void fan_clean(std::int64_t now) {
+  if (!snapshot.present || control.cleaning_until_us != 0)
+    return;
+  stop(now);
+  if (!snapshot.present)
+    return;
+  const auto cleaning = sen6x.start_fan_cleaning();
+  if (!cleaning) {
+    oslog.printf("OS SEN6X fan-cleaning-failed error=%s i2c_error=%d\n",
+                 opensensor::sen6x_error_name(cleaning.error()),
+                 board::sensor_last_error());
+    sensor_failed("fan-cleaning", cleaning.error(), now);
+    control.next_attempt_us = now;
+    return;
+  }
+  control.cleaning_until_us =
+      esp_timer_get_time() +
+      static_cast<std::int64_t>(Sen6x::kFanCleaningMs) * 1000;
+  control.next_attempt_us = control.cleaning_until_us;
+  oslog.printf("OS SEN6X fan-cleaning started duration_ms=%lu\n",
+               static_cast<unsigned long>(Sen6x::kFanCleaningMs));
+}
+
+// Takes what the panel asked for. A new altitude or CO2 calibration needs
+// idle mode, so the measurement stops and the next start writes them. The
+// temperature offset works while measuring and goes in at once.
+void apply_requests(std::int64_t now) {
+  const auto requests = take_requests();
+  control.wanted = requests.settings;
+  if (requests.fan_clean_seq != control.fan_clean_seen) {
+    control.fan_clean_seen = requests.fan_clean_seq;
+    fan_clean(now);
+  }
+  if (!snapshot.present || !control.configured ||
+      control.wanted == control.applied)
+    return;
+  if (control.wanted.altitude_m != control.applied.altitude_m ||
+      control.wanted.co2_asc != control.applied.co2_asc) {
+    oslog.println("OS SEN6X config-change action=restart");
+    stop(now);
+    control.configured = false;
+    control.next_attempt_us = std::max(control.next_attempt_us, now);
+    return;
+  }
+  const auto set = sen6x.set_temperature_offset(offset_of(control.wanted));
+  if (!set) {
+    sensor_failed("set-temp-offset", set.error(), now);
+    return;
+  }
+  control.applied.temp_offset_dc = control.wanted.temp_offset_dc;
+  log_settings("change");
 }
 
 void poll_sensor(std::int64_t now) {
   if (now < control.next_poll_us)
     return;
   control.next_poll_us = now + kSensorPollUs;
+  apply_requests(now);
+  if (control.cleaning_until_us != 0 && now >= control.cleaning_until_us) {
+    control.cleaning_until_us = 0;
+    oslog.println("OS SEN6X fan-cleaning done");
+  }
   if (!snapshot.present) {
     if (now >= control.next_attempt_us)
       probe(now);
@@ -336,6 +495,9 @@ struct UiFeed {
   std::uint32_t samples = 0;
   std::uint32_t uptime_s = 0;
   std::optional<std::uint32_t> passkey;
+  bool wifi_configured = false;
+  bool wifi_enabled = false;
+  bool fan_cleaning = false;
   Text firmware{};
   Text thing{};
   Text sensor_serial{};
@@ -343,7 +505,6 @@ struct UiFeed {
   Text device_name{};
 };
 UiFeed feed;
-SemaphoreHandle_t feed_mutex = nullptr;
 QueueHandle_t key_queue = nullptr;
 
 // The feed refreshes at least this often without a row, so the clock and the
@@ -404,6 +565,19 @@ std::optional<std::uint32_t> pairing_passkey() {
   return pairing.passkey;
 }
 
+struct WifiSetup {
+  bool configured = false;
+  bool on = false;
+};
+
+// The settings copy holds the Wi-Fi PSK, so only two flags leave here.
+WifiSetup wifi_setup() {
+  if (!links_started)
+    return {};
+  const auto settings = config::get();
+  return {.configured = settings.ssid[0] != '\0', .on = settings.wifi_on};
+}
+
 // Board task only.
 void publish(std::int64_t now, bool sample) {
   UiFeed next;
@@ -417,6 +591,10 @@ void publish(std::int64_t now, bool sample) {
   next.samples = row_count;
   next.uptime_s = static_cast<std::uint32_t>(now / 1000000);
   next.passkey = pairing_passkey();
+  const auto wifi = wifi_setup();
+  next.wifi_configured = wifi.configured;
+  next.wifi_enabled = wifi.on;
+  next.fan_cleaning = control.cleaning_until_us != 0;
   next.reading = sources.last;
   next.sensor_present = snapshot.present;
   copy_text(next.firmware, oslogger::firmware_text_id());
@@ -444,6 +622,8 @@ struct FeedState {
   std::uint32_t ble_generation = 0;
   std::uint32_t lan_generation = 0;
   bool pairing_active = false;
+  bool cleaning = false;
+  bool present = false;
 };
 FeedState feed_state;
 
@@ -476,6 +656,13 @@ void poll_feed(std::int64_t now) {
     feed_state.lan_generation = lan_generation;
     feed_state.pairing_active = pairing_active;
   }
+  // The popup shows the fan cleaning and the sensor row, so both publish at
+  // once.
+  const bool cleaning = control.cleaning_until_us != 0;
+  if (cleaning != feed_state.cleaning || snapshot.present != feed_state.present)
+    due = true;
+  feed_state.cleaning = cleaning;
+  feed_state.present = snapshot.present;
   if (!due)
     return;
   feed_state.last_publish_us = now;
@@ -572,46 +759,191 @@ ui::Model model_of(const UiFeed &f) {
   return m;
 }
 
+// Panel settings live in their own NVS namespace, apart from `oscfg` and
+// `parquet`. The UI task alone reads and writes them after init_board.
+constexpr const char *kPanelNamespace = "ospanel";
+constexpr const char *kPanelKey = "ui";
+// A change is saved once the knob has rested this long, so turning through
+// values costs one flash write. A failed save is tried again later.
+constexpr std::int64_t kSaveAfterUs = 5000000;
+constexpr std::int64_t kSaveRetryUs = 60000000;
+// A data redraw may come this much early, the rows do not land exactly on
+// the 10 s grid.
+constexpr std::int64_t kRedrawSlackUs = 1000000;
+
+ui::Settings panel_settings;
+
+SensorSettings sensor_settings_of(const ui::Settings &s) {
+  return {.altitude_m = s.altitude_m,
+          .co2_asc = s.co2_asc,
+          .temp_offset_dc = s.temp_offset_dc};
+}
+
+void log_panel_settings(const char *operation, esp_err_t error) {
+  const auto sleep_s = ui::sleep_after_seconds(panel_settings);
+  oslog.printf("OS PANEL settings operation=%s error=%d refresh_s=%lu "
+               "start_page=%u sleep_s=%lu altitude_m=%u co2_asc=%u "
+               "temp_offset_dc=%d\n",
+               operation, error,
+               static_cast<unsigned long>(ui::refresh_seconds(panel_settings)),
+               static_cast<unsigned>(ui::start_page(panel_settings)),
+               static_cast<unsigned long>(sleep_s ? *sleep_s : 0),
+               static_cast<unsigned>(panel_settings.altitude_m),
+               panel_settings.co2_asc,
+               static_cast<int>(panel_settings.temp_offset_dc));
+}
+
+// A missing namespace or key is a first boot, so defaults and no error.
+void load_panel_settings() {
+  nvs_handle_t handle = 0;
+  esp_err_t error = nvs_open(kPanelNamespace, NVS_READONLY, &handle);
+  if (error == ESP_OK) {
+    ui::SettingsBlob blob{};
+    std::size_t size = blob.size();
+    error = nvs_get_blob(handle, kPanelKey, blob.data(), &size);
+    nvs_close(handle);
+    if (error == ESP_OK)
+      panel_settings = ui::decode(std::span{blob.data(), size});
+  }
+  if (error == ESP_ERR_NVS_NOT_FOUND)
+    error = ESP_OK;
+  log_panel_settings("load", error);
+}
+
+esp_err_t save_panel_settings() {
+  nvs_handle_t handle = 0;
+  esp_err_t error = nvs_open(kPanelNamespace, NVS_READWRITE, &handle);
+  if (error == ESP_OK) {
+    const auto blob = ui::encode(panel_settings);
+    error = nvs_set_blob(handle, kPanelKey, blob.data(), blob.size());
+    if (error == ESP_OK)
+      error = nvs_commit(handle);
+    nvs_close(handle);
+  }
+  log_panel_settings("save", error);
+  return error;
+}
+
+// Hands the sensor part of a change, or a fan cleaning, to the board task.
+void request_sensor(bool clean_fan) {
+  xSemaphoreTake(feed_mutex, portMAX_DELAY);
+  sensor_requests.settings = sensor_settings_of(panel_settings);
+  if (clean_fan)
+    ++sensor_requests.fan_clean_seq;
+  xSemaphoreGive(feed_mutex);
+}
+
+// What the shown frame was drawn from, for changes that skip the refresh
+// throttle.
+struct DrawnState {
+  bool sensor_present = false;
+  bool fan_cleaning = false;
+  bool has_values = false;
+};
+
+DrawnState drawn_state_of(const UiFeed &f) {
+  const auto values = metrics_of(f.reading);
+  return {.sensor_present = f.sensor_present,
+          .fan_cleaning = f.fan_cleaning,
+          .has_values = std::ranges::any_of(
+              values, [](float v) { return std::isfinite(v); })};
+}
+
+ui::SettingsInfo settings_info_of(const UiFeed &f) {
+  return {.wifi_configured = f.wifi_configured,
+          .wifi_on = f.wifi_enabled,
+          .sensor_present = f.sensor_present,
+          .fan_cleaning = f.fan_cleaning};
+}
+
 void ui_task(void *) {
-  std::uint8_t page = ui::kDashboardPage;
+  ui::UiState state{.page = ui::start_page(panel_settings)};
   ui::RefreshPolicy policy;
   UiFeed local{};
   std::uint32_t seen_version = 0;
   std::uint32_t seen_seq = 0;
   bool shown = false;
+  bool panel_asleep = false;
   bool page_changed = false;
   bool forced = false;
+  std::optional<std::uint32_t> shown_passkey;
+  DrawnState drawn{};
+  std::int64_t last_input_us = esp_timer_get_time();
+  std::int64_t save_due_us = 0; // 0 when nothing waits to be saved
+  std::int64_t next_redraw_us = 0;
   const ui::Frame draw{draw_frame, ui::kFrameBytes};
   for (;;) {
     bool input = false;
     ui::Input key{};
     TickType_t wait = pdMS_TO_TICKS(200);
     while (xQueueReceive(key_queue, &key, wait) == pdTRUE) {
-      const auto nav = ui::navigate(page, key);
-      page_changed = page_changed || nav.page != page;
-      forced = forced || nav.full_refresh;
-      page = nav.page;
+      const auto out =
+          ui::handle(state, panel_settings, settings_info_of(local), key);
+      page_changed = page_changed || out.page_changed;
+      forced = forced || out.full_refresh;
+      const auto now = esp_timer_get_time();
+      if (out.effect == ui::Effect::Changed) {
+        save_due_us = now + kSaveAfterUs;
+        request_sensor(false);
+      } else if (out.effect == ui::Effect::FanClean) {
+        request_sensor(true);
+      }
+      last_input_us = now;
       input = true;
       wait = 0;
     }
+    const auto now = esp_timer_get_time();
+    if (save_due_us != 0 && now >= save_due_us)
+      save_due_us = save_panel_settings() == ESP_OK ? 0 : now + kSaveRetryUs;
     xSemaphoreTake(feed_mutex, portMAX_DELAY);
     const bool changed = feed.version != seen_version;
     if (changed)
       local = feed;
     xSemaphoreGive(feed_mutex);
-    if (!changed && !input && shown)
-      continue;
-    seen_version = local.version;
-    if (local.sample_seq != seen_seq) {
-      seen_seq = local.sample_seq;
-      history->push(local.sample_mono_s, local.sample);
-    } else if (!history->empty() &&
-               local.uptime_s >= local.sample_mono_s + kHistoryGapS) {
-      history->advance(local.uptime_s);
+    if (changed) {
+      seen_version = local.version;
+      // The history keeps every row whatever the screen shows.
+      if (local.sample_seq != seen_seq) {
+        seen_seq = local.sample_seq;
+        history->push(local.sample_mono_s, local.sample);
+      } else if (!history->empty() &&
+                 local.uptime_s >= local.sample_mono_s + kHistoryGapS) {
+        history->advance(local.uptime_s);
+      }
     }
+    // A pairing phone wakes the screen, its passkey must show at once.
+    const bool pairing_changed = local.passkey != shown_passkey;
+    if (local.passkey) {
+      if (state.asleep) {
+        state.asleep = false;
+        forced = true;
+      }
+      last_input_us = now;
+    }
+    bool fell_asleep = false;
+    const auto sleep_s = ui::sleep_after_seconds(panel_settings);
+    if (!state.asleep && sleep_s &&
+        now - last_input_us >= static_cast<std::int64_t>(*sleep_s) * 1000000) {
+      ui::fall_asleep(state);
+      fell_asleep = forced = true;
+    }
+    // The asleep screen holds no data, so only a key or a phone redraws it.
+    // The refresh setting throttles new readings only. The sensor coming or
+    // going, a fan cleaning and the first values after a start show at once,
+    // and so does anything while the popup is open.
+    const auto current = drawn_state_of(local);
+    const bool urgent = current.sensor_present != drawn.sensor_present ||
+                        current.fan_cleaning != drawn.fan_cleaning ||
+                        (current.has_values && !drawn.has_values) ||
+                        state.popup.open;
+    const bool data_due =
+        changed && !state.asleep && (urgent || now >= next_redraw_us);
+    if (shown && !input && !pairing_changed && !fell_asleep && !data_due)
+      continue;
     ui::Canvas canvas{draw};
-    ui::render(canvas, page, model_of(local), *history);
-    if (shown && !input &&
+    ui::render_screen(canvas, state, panel_settings, settings_info_of(local),
+                      model_of(local), *history);
+    if (shown && !input && !fell_asleep &&
         std::memcmp(draw_frame, shown_frame, ui::kFrameBytes) == 0)
       continue;
     const auto mode = policy.next(page_changed, forced) == ui::Refresh::Full
@@ -629,8 +961,23 @@ void ui_task(void *) {
     }
     std::memcpy(shown_frame, draw_frame, ui::kFrameBytes);
     shown = true;
+    shown_passkey = local.passkey;
+    drawn = current;
     page_changed = false;
     forced = false;
+    next_redraw_us =
+        now +
+        static_cast<std::int64_t>(ui::refresh_seconds(panel_settings)) *
+            1000000 -
+        kRedrawSlackUs;
+    // Deep sleep keeps the asleep screen on the glass. The next show()
+    // starts the controller again with a full refresh.
+    if (state.asleep && !panel_asleep) {
+      panel.sleep();
+      panel_asleep = true;
+    } else if (!state.asleep) {
+      panel_asleep = false;
+    }
   }
 }
 
@@ -715,6 +1062,9 @@ bool init_board() {
     oslog.println("OS ERROR operation=psram logging=false");
     return false;
   }
+  load_panel_settings();
+  sensor_requests.settings = sensor_settings_of(panel_settings);
+  control.wanted = sensor_requests.settings;
   const bool display_ok = start_display();
   const bool bus_ok = board::start_sensor_bus(Sen6x::kAddress);
   vTaskDelay(pdMS_TO_TICKS(Sen6x::kPowerUpMs));
