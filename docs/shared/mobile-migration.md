@@ -17,8 +17,9 @@ key or `GET_CONFIG` byte changes. [Decision 0003](decisions/0003-metadata-driven
 
 **What changed.** The LIVE rule in the
 [sync protocol](ble-sync-protocol.md#live-key-stability) drops the reviewed
-dict digest list. A phone may show LIVE for any template whose SHA-256
-matches the footer `template.sha256` or the served `desc`, filtered by
+dict digest list. A phone may show LIVE for any template it has verified,
+the full SHA-256 matching the footer `template.sha256` or the template link
+`file:checksum` and starting with the served 16 hex `desc`, filtered by
 `opensensor:plausible_range` and `opensensor:valid_when`. Display hints in the
 template, the board setup and settings manifest, `thing.setup_ack` and
 `setup_v` on page 1 and a board settings page are planned and marked so.
@@ -80,7 +81,7 @@ ESP32-S3 4.2" E-paper HMI v1.2 with a Sensirion SEN63C on I2C.
 sensor that also measures CO2.
 
 **What the app must do.** Show LIVE for this board once its template
-verifies against `desc`, with no per board LIVE profile
+verifies, as the sync protocol describes, with no per board LIVE profile
 ([decision 0003](decisions/0003-metadata-driven-apps.md), owner decision
 2026-11-17). Read each key's column through `firmware.live_keys`, and its
 label, UCUM unit and scale from the template hints and the stac-opensensor
@@ -89,7 +90,9 @@ in degC, `rh` in % and `co2` in ppm. Filter values by
 `opensensor:plausible_range` and `opensensor:valid_when`, which gates the PM
 and CO2 keys on `sen6x_status`. Until the hints and registry exist, the
 mobile refactor (opensensor-space-mobile #219) derives labels from the
-column `cf:standard_name` and UCUM unit. Read the new columns by name when it
+column `cf:standard_name` and UCUM unit, and from the `opensensor:property`
+URI where a column has no `cf:standard_name`, so `pm4_mass_ug_m3` reads as
+PM4 from `pm4_mass_concentration`. Read the new columns by name when it
 opens a CrowPanel file. Do not expect a STAC sidecar next to a CrowPanel file. Nothing changes for CoreS3 or Waveshare.
 
 ## H3 from the embedded-h3-location library (feat/h3-lib-v2)

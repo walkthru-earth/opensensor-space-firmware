@@ -27,9 +27,12 @@ shows no LIVE for it and its panel settings are reachable only from the knob.
    spirit of STAC Browser's `@radiantearth/stac-fields`. The template value
    wins over the registry. The app profile keyed by `dict` goes away.
 2. **LIVE for any verified template.** A phone may show LIVE for any template
-   whose SHA-256 matches the footer `template.sha256` or the served `desc`.
-   `opensensor:plausible_range` and `opensensor:valid_when` still filter each
-   value. There is no reviewed digest list.
+   it has verified as the sync protocol describes, the full SHA-256 matching
+   the footer `template.sha256` or the template link `file:checksum`, and
+   starting with the 16 hex `desc` the device serves. `desc` alone never
+   verifies. `opensensor:plausible_range` and `opensensor:valid_when` still
+   filter each value, and a value whose gate column has no LIVE key is not
+   shown. There is no reviewed digest list.
 3. **The board declares setup and settings.** The board `board.json` lists
    ordered setup steps, ordered settings sections and typed `config_keys`.
    The generator copies them into the template `firmware` block, so they
@@ -90,6 +93,8 @@ move in lockstep (owner decision 14). Portolan adoption comes later.
    `setup_v` rule.
 4. A CO2 scale, a resolvable property for PM4, and bit definitions for
    `sen6x_device_status` are missing from the registry.
+5. CoreS3 `als` is gated on `light_status`, which has no LIVE key, so a phone
+   cannot show it in LIVE. Add a LIVE key for `light_status`, or accept that.
 
 ## What would reopen it
 
