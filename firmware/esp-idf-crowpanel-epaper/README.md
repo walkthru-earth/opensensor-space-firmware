@@ -56,7 +56,8 @@ pixi run crowpanel-ui-test
 pixi run crowpanel-ui-preview   # PNG pages in artifacts/ui-preview/
 ```
 
-The image is 1,702,288 bytes in a 3 MiB OTA slot, 46% free (2026-11-17).
+The image is 1,710,960 bytes in a 3.75 MiB (0x3C0000) OTA slot, 43.5% of the
+slot, under the 50% CI budget (2026-11-17).
 Flashing follows the root checklist. The first flash of a factory board needs
 the full erase in the [board guide](../../docs/boards/elecrow-crowpanel-epaper-42/README.md#first-flash).
 Later flashes use the backup-gated helper.

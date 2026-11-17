@@ -5,12 +5,14 @@ It uses this trial's pinned ESP-IDF toolchain, sdkconfig and partition file.
 Never borrow a sibling trial's settings.
 
 - Use `pixi run idf-setup`, `pixi run crowpanel-build` and the backup-gated
-  `crowpanel-flash` task. No Arduino APIs or components. No hardware run is
-  recorded yet, see the board bench record before claiming any behaviour.
+  `crowpanel-flash` task. No Arduino APIs or components. The owner unit has
+  flashed and booted (2026-11-17), see the board bench record before claiming
+  any other behaviour.
 - Exact board: ELECROW CrowPanel ESP32-S3 4.2" E-paper HMI **v1.2**, UC8276C
   panel, 400 x 300, 8 MB flash and 8 MB Octal PSRAM. Console is UART0 at
-  115200 through the board USB bridge. The image fits a 3 MiB OTA slot, two
-  slots, the core dump and an unused 1,920 KiB data partition fill the 8 MiB.
+  115200 through the board USB bridge. Two 3.75 MiB (0x3C0000) OTA slots, the
+  core dump and an unused 384 KiB data partition fill the 8 MiB. The image
+  must stay under half a slot, see `tools/ota_slot_check.py`.
 - The board adapter (`board_io.*`) owns I2C_NUM_0 for the SEN63C on GPIO8 SDA
   and GPIO9 SCL at 100 kHz, the SDSPI card on SPI3 (MOSI40, MISO13, CLK39,
   CS10, GPIO42 card power), the red LED on GPIO41 and the five keys (rotary
