@@ -1,0 +1,47 @@
+// SEM(name, ucum, role, cf_standard_name, aggregate, plausible_min,
+//     plausible_max, settle_s, valid_when, property, sensor_vendor,
+//     sensor_model).
+// Written once from firmware/esp-idf-crowpanel-epaper/logger/board.json by `pixi run plugin-new-board`.
+// Hand kept from then on. The plugin gate compares every row with the
+// manifests, and nothing rewrites this file.
+// One row per FIELD row in telemetry_fields.inc, same order, same name.
+// Not part of the dict digest, which hashes telemetry_fields.inc only.
+SEM(schema_version, "1", referenceInformation, "", mode, , , 0, "", "urn:walkthru-earth:property:schema_version", "", "")
+SEM(device_id, "1", referenceInformation, "", mode, , , 0, "", "urn:walkthru-earth:property:device_identifier", "", "")
+SEM(boot_id_hi, "1", referenceInformation, "", mode, , , 0, "", "urn:walkthru-earth:property:boot_identifier_high", "", "")
+SEM(boot_id_lo, "1", referenceInformation, "", mode, , , 0, "", "urn:walkthru-earth:property:boot_identifier_low", "", "")
+SEM(sequence, "{count}", referenceInformation, "", point, , , 0, "", "urn:walkthru-earth:property:sample_sequence_number", "", "")
+SEM(monotonic_us, "us", referenceInformation, "", point, , , 0, "", "urn:walkthru-earth:property:monotonic_time_since_boot", "", "")
+SEM(scheduled_us, "us", referenceInformation, "", point, , , 0, "", "urn:walkthru-earth:property:scheduled_sample_time_since_boot", "", "")
+SEM(sample_jitter_us, "us", auxiliaryInformation, "", mean, , , 0, "", "urn:walkthru-earth:property:sample_jitter", "", "")
+SEM(event_time_utc_us, "us", coordinate, "time", point, , , 0, "", "http://vocab.nerc.ac.uk/collection/P07/current/CFSN0115/", "", "")
+SEM(clock_status, "{code}", qualityInformation, "", mode, , , 0, "", "urn:walkthru-earth:property:clock_status", "", "")
+SEM(sen6x_status, "{code}", qualityInformation, "", mode, , , 0, "", "urn:walkthru-earth:property:environmental_sensor_status", "Sensirion", "SEN63C")
+SEM(sen6x_device_status, "{bitmask}", qualityInformation, "", mode, , , 0, "finite", "urn:walkthru-earth:property:environmental_sensor_device_status_flags", "Sensirion", "SEN63C")
+SEM(pm1_mass_ug_m3, "ug/m3", physicalMeasurement, "mass_concentration_of_pm1_ambient_aerosol_particles_in_air", mean, 0, 1000, 30, "sen6x_status == 4", "http://vocab.nerc.ac.uk/standard_name/mass_concentration_of_pm1_ambient_aerosol_particles_in_air/", "Sensirion", "SEN63C")
+SEM(pm25_mass_ug_m3, "ug/m3", physicalMeasurement, "mass_concentration_of_pm2p5_ambient_aerosol_particles_in_air", mean, 0, 1000, 30, "sen6x_status == 4", "http://vocab.nerc.ac.uk/collection/P07/current/YUDG9DXK/", "Sensirion", "SEN63C")
+SEM(pm4_mass_ug_m3, "ug/m3", physicalMeasurement, "", mean, 0, 1000, 30, "sen6x_status == 4", "urn:walkthru-earth:property:pm4_mass_concentration", "Sensirion", "SEN63C")
+SEM(pm10_mass_ug_m3, "ug/m3", physicalMeasurement, "mass_concentration_of_pm10_ambient_aerosol_particles_in_air", mean, 0, 1000, 30, "sen6x_status == 4", "http://vocab.nerc.ac.uk/standard_name/mass_concentration_of_pm10_ambient_aerosol_particles_in_air/", "Sensirion", "SEN63C")
+SEM(ambient_temperature_c, "Cel", physicalMeasurement, "air_temperature", mean, -40, 80, 0, "finite", "http://vocab.nerc.ac.uk/collection/P07/current/CFSN0023/", "Sensirion", "SEN63C")
+SEM(relative_humidity_percent, "%", physicalMeasurement, "relative_humidity", mean, 0, 100, 0, "finite", "http://vocab.nerc.ac.uk/collection/P07/current/CFSN0413/", "Sensirion", "SEN63C")
+SEM(co2_ppm, "[ppm]", physicalMeasurement, "mole_fraction_of_carbon_dioxide_in_air", mean, 380, 32000, 24, "sen6x_status == 4", "http://vocab.nerc.ac.uk/standard_name/mole_fraction_of_carbon_dioxide_in_air/", "Sensirion", "SEN63C")
+SEM(heap_free_bytes, "By", auxiliaryInformation, "", minimum, , , 0, "", "urn:walkthru-earth:property:free_heap_memory", "Espressif", "ESP32-S3")
+SEM(heap_min_free_bytes, "By", auxiliaryInformation, "", minimum, , , 0, "", "urn:walkthru-earth:property:minimum_free_heap_memory", "Espressif", "ESP32-S3")
+SEM(psram_free_bytes, "By", auxiliaryInformation, "", minimum, , , 0, "", "urn:walkthru-earth:property:free_psram_memory", "Espressif", "ESP32-S3")
+SEM(sd_total_bytes, "By", auxiliaryInformation, "", point, , , 0, "finite", "urn:walkthru-earth:property:storage_capacity", "", "")
+SEM(sd_used_bytes, "By", auxiliaryInformation, "", point, , , 0, "finite", "urn:walkthru-earth:property:storage_used", "", "")
+SEM(rows_dropped, "{count}", auxiliaryInformation, "", point, , , 0, "", "urn:walkthru-earth:property:dropped_row_count", "", "")
+SEM(sample_deadlines_missed, "{count}", auxiliaryInformation, "", point, , , 0, "", "urn:walkthru-earth:property:missed_sample_deadline_count", "", "")
+SEM(storage_errors, "{count}", auxiliaryInformation, "", point, , , 0, "", "urn:walkthru-earth:property:storage_error_count", "", "")
+SEM(files_finalized, "{count}", auxiliaryInformation, "", point, , , 0, "", "urn:walkthru-earth:property:finalized_file_count", "", "")
+SEM(last_write_us, "us", auxiliaryInformation, "", point, , , 0, "", "urn:walkthru-earth:property:last_storage_write_time", "", "")
+SEM(last_sync_us, "us", auxiliaryInformation, "", point, , , 0, "", "urn:walkthru-earth:property:last_storage_sync_time", "", "")
+SEM(queue_high_water, "{count}", auxiliaryInformation, "", maximum, , , 0, "", "urn:walkthru-earth:property:queue_high_water_mark", "", "")
+SEM(clock_epoch, "{count}", referenceInformation, "", point, , , 0, "", "urn:walkthru-earth:property:clock_epoch", "", "")
+SEM(collection_completed_mono_us, "us", referenceInformation, "", point, , , 0, "", "urn:walkthru-earth:property:collection_completed_time_since_boot", "", "")
+SEM(clock_anchor_mono_us, "us", referenceInformation, "", point, , , 0, "finite", "urn:walkthru-earth:property:clock_anchor_time_since_boot", "", "")
+SEM(clock_anchor_utc_us, "us", referenceInformation, "", point, , , 0, "finite", "urn:walkthru-earth:property:clock_anchor_utc_time", "", "")
+SEM(h3_cell_id, "{h3_index}", referenceInformation, "", mode, , , 0, "finite", "urn:walkthru-earth:property:h3_cell_index", "", "")
+SEM(h3_resolution, "1", referenceInformation, "", mode, 0, 15, 0, "finite", "urn:walkthru-earth:property:h3_resolution", "", "")
+SEM(location_source, "{code}", qualityInformation, "", mode, , , 0, "finite", "urn:walkthru-earth:property:location_source", "", "")
+SEM(geometry, "", coordinate, "", mode, , , 0, "", "urn:walkthru-earth:property:h3_cell_center_point", "", "")

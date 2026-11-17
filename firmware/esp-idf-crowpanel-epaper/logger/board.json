@@ -1,0 +1,72 @@
+{
+  "type": "OpenSensorBoard",
+  "board_version": "0.1.0",
+  "board": "elecrow-crowpanel-epaper-42",
+  "schema": "crowpanel-epaper-telemetry-v1",
+  "sample_interval_s": 10,
+  "title": "ELECROW CrowPanel ESP32-S3 4.2 inch E-paper HMI v1.2 with Sensirion SEN63C",
+  "keywords": [
+    "air quality",
+    "particulate matter",
+    "PM2.5",
+    "carbon dioxide",
+    "air temperature",
+    "relative humidity",
+    "low-cost sensor"
+  ],
+  "segments": [
+    {
+      "module": "system",
+      "segment": "head"
+    },
+    {
+      "module": "sen63c",
+      "segment": "core"
+    },
+    {
+      "module": "system",
+      "segment": "runtime"
+    },
+    {
+      "module": "system",
+      "segment": "clock_close"
+    },
+    {
+      "module": "system",
+      "segment": "clock_anchor"
+    },
+    {
+      "module": "system",
+      "segment": "location"
+    }
+  ],
+  "class_subsets": {
+    "clock_status": [
+      "none",
+      "host",
+      "network"
+    ]
+  },
+  "tooling": {
+    "alias": "crowpanel",
+    "variants": [
+      "logger"
+    ],
+    "backup_prefixes": [
+      "crowpanel-epaper-42"
+    ],
+    "flash_bytes": 8388608,
+    "psram_mode": "OCT",
+    "sdkconfig": [
+      "CONFIG_ESP_CONSOLE_UART_DEFAULT=y",
+      "CONFIG_ESP_CONSOLE_UART_NUM=0",
+      "CONFIG_ESP_CONSOLE_UART_BAUDRATE=115200",
+      "CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y"
+    ],
+    "components_required": [],
+    "components_forbidden": [
+      "m5",
+      "led_strip"
+    ]
+  }
+}
