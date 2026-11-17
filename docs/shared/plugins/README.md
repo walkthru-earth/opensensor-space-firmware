@@ -131,10 +131,20 @@ The template already carries a procedure per column, and
 `tools/board_template.py` line 151 checks it per column against FIELD, so the
 mapping stays one to one.
 
-`opensensor:field_id`, `opensensor:scale` and `title` are forbidden in a
-manifest column, matching `template.json`. The board position sets the id. So
-a manifest column maps one to one onto a template `table:columns` entry, and
-the board template stays the place where the profile role rules are checked.
+`opensensor:field_id` is forbidden in a manifest column, because the board
+position sets the id. So a manifest column maps one to one onto a template
+`table:columns` entry, and the board template stays the place where the
+profile role rules are checked.
+
+Display hints move into the template ([decision 0003](../decisions/0003-metadata-driven-apps.md),
+owner decision 2026-11-17). A column may then author `title` with
+translations, `description`, `opensensor:decimals`, `opensensor:group` and a
+default `opensensor:scale`. `opensensor:decimals` defaults to
+`firmware.decimals`. This is planned, not built. Today the v0.1.0 module
+schema and the vendored stac-opensensor `template.json` still refuse `title`
+and `opensensor:scale` in a column. Both open up once stac-opensensor
+publishes the fields. Adding a hint moves `desc` on every board using that
+segment and never moves `dict`.
 
 The schema reuses rather than redefines.
 
@@ -226,6 +236,64 @@ so their manifest lives at `firmware/common/logger/system.module.json`.
 three procedures (`owner_provisioned_identity`,
 `airgradient_20260408_count_candidate_v1`, `batch_candidate_gate`), declared
 in the Waveshare app with per column procedures.
+
+### Planned, setup, settings and config keys
+
+Planned by [decision 0003](../decisions/0003-metadata-driven-apps.md), not
+built. The v0.1.0 board schema refuses these fields until the PR that builds
+them adds them as a patch with a CHANGELOG entry. The generator copies them
+into the template `firmware` block, so they are hashed with the template. A
+change to any of them moves `desc` and never moves `dict`.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| primary | string | The column the app shows first, written to the template `opensensor:primary` |
+| setup | \[Step] | Ordered setup wizard steps, written to `firmware.setup`. Find, Pair, Permission and Done stay app owned and are never listed |
+| settings | \[Step] | Ordered Device settings sections, written to `firmware.settings` |
+| config_keys | Map\<string, Key> | The `SET_CONFIG` keys a generic step or section may show, written to `firmware.config_keys` |
+
+A Step is `{"id", "req", "keys"}`. `id` names a component from the app's
+fixed catalog, `name`, `location`, `mobility`, `site`, `wifi`, `pairing`,
+`lan` or `bonds`, or a board id the app does not know. `req` is true when
+setup cannot finish without the step. `keys`, optional, lists the
+`config_keys` the step shows. The app renders an unknown id as a generic form
+from its typed keys, skips it when it has none, and keeps setup pending when
+such a step is required.
+
+A Key is `{"type", "values", "applies", "page", "label"}`. `type` is one of
+the `SET_CONFIG` value kinds, such as boolean, integer, enum or text.
+`values`, optional, is the enum list or the range. `applies` is `immediately`,
+`next sample`, `next boot` or `action`, as in the
+[sync protocol](../ble-sync-protocol.md#device-configuration-v2) table.
+`page` is the `GET_CONFIG` page that reads the key back. `label` is an i18n
+label. A Key never holds a current or default value. `ble.pin`, `wifi.psk`
+and the LAN token are never declared, and no manifest can lower the app
+safety floors listed in the decision record.
+
+A CrowPanel sketch, trimmed to two declared keys, with names that are not
+final.
+
+```json
+{
+  "primary": "pm25_mass_ug_m3",
+  "setup": [
+    {"id": "name", "req": false},
+    {"id": "location", "req": true},
+    {"id": "wifi", "req": false},
+    {"id": "panel", "req": false, "keys": ["panel.theme", "panel.start_page"]}
+  ],
+  "settings": [
+    {"id": "location"},
+    {"id": "wifi"},
+    {"id": "panel", "keys": ["panel.theme", "panel.refresh_s", "panel.start_page", "panel.sleep_s"]},
+    {"id": "sensor", "keys": ["sen6x.altitude_m", "sen6x.co2_asc", "sen6x.temp_offset_dc", "sen6x.fan_clean"]}
+  ],
+  "config_keys": {
+    "panel.theme": {"type": "enum", "values": ["light", "dark"], "applies": "immediately", "page": 7, "label": {"en": "Theme"}},
+    "sen6x.fan_clean": {"type": "boolean", "applies": "action", "page": 7, "label": {"en": "Clean the fan"}}
+  }
+}
+```
 
 ## 5. Generated or gated artifacts
 
@@ -362,7 +430,7 @@ gate, never ad hoc code.
 | Kind | Manifest | Contract it feeds |
 | --- | --- | --- |
 | Sensor module | `module.json` | FIELD, SEM and CLASS rows, module C++ tables |
-| Board | `board.json` | Segment order, template title, keywords, sample interval |
+| Board | `board.json` | Segment order, template title, keywords, sample interval, and the planned primary column, setup, settings and config keys |
 | Transport, later | `transport.json` | For example a LoRa uplink, as an `ossync` option set |
 | Uploader, later | `uploader.json` | For example source.coop, its prefix and credential source, never the secret |
 
