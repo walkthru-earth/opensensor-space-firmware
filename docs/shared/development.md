@@ -22,12 +22,14 @@ pixi run idf-setup
 pixi run cores3-build
 pixi run waveshare-build
 pixi run waveshare-build diagnostic
+pixi run crowpanel-build
 ```
 
 | Board adapter | Source | Configuration | Hardware scope |
 | --- | --- | --- | --- |
 | [CoreS3](../../firmware/esp-idf-cores3/README.md) | `bringup/main.cpp` and board telemetry adapter | 16 MB flash, Quad PSRAM, USB Serial/JTAG console, native M5 components and SDSPI on existing SPI2 | Short native USB Parquet/SD/network UTC check passed; phone transfers/endurance pending; [image evidence](../boards/m5stack-cores3/bench-verified.md#board-1-first-native-esp-idf-flash-and-readback) |
 | [Waveshare V2](../../firmware/esp-idf-waveshare-sim7670g/README.md) | `logger/main.cpp` or `diagnostic/main.cpp`, board IO adapter | 16 MB flash, OPI PSRAM for logger, no PSRAM for diagnostic, UART0 console and one-bit SDMMC | Short native USB and SD readback of v2.15 on 2026-10-26, see the [bench record](../boards/waveshare-esp32-s3-sim7670g/bench-verified.md#main-689bb61-usb-reflash-thing-id-and-first-geo-footer-2026-10-26). Phone sync, GNSS fix, endurance and power-cut durability remain unqualified |
+| [CrowPanel e-paper](../../firmware/esp-idf-crowpanel-epaper/README.md) | `logger/main.cpp`, board IO adapter and `display/` UI | 8 MB flash, OPI PSRAM, UART0 console through the USB bridge, SDSPI on SPI3, SEN63C on I2C, UC8276C e-paper on SPI2 | Host build and gates only. No hardware run is recorded yet, see the [bench record](../boards/elecrow-crowpanel-epaper-42/bench-verified.md) |
 
 `tools/idf-dependencies.lock` pins ESP-IDF 6.1 and its exact source commit.
 Component manifests pin M5Unified **0.3.0**, M5GFX **0.3.0**, mDNS **1.15.1**
@@ -102,6 +104,7 @@ OTA metadata and app0 regions are written. NVS is outside this plan.
 pixi run cores3-flash <checked-port> backup/m5stack-cores3-flash-<timestamp>.bin
 pixi run waveshare-flash <checked-port> backup/waveshare-sim7670g-v2-flash-<timestamp>.bin
 pixi run waveshare-flash <checked-port> backup/waveshare-sim7670g-v2-flash-<timestamp>.bin diagnostic
+pixi run crowpanel-flash <checked-port> backup/crowpanel-epaper-42-flash-<timestamp>.bin
 ```
 
 Follow [the full identification/backup sequence](../../AGENTS.md#before-any-physical-flash-write)

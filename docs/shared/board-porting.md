@@ -191,5 +191,6 @@ Use the Waveshare V2 files as the example.
    internal RAM and PSRAM cost of the writer on that board. Sidecar transport is future
    work, over the uploader in [#144](https://github.com/walkthru-earth/opensensor-space-firmware/issues/144) and over BLE and LAN in [#143](https://github.com/walkthru-earth/opensensor-space-firmware/issues/143). Today
    both accept only `.parquet` names.
-9. Builds. Build both existing boards and the new one, `pixi run cores3-build`,
-   `pixi run waveshare-build` and the new board task, then run `pixi run gate`.
+9. Builds. Build every existing board and the new one, `pixi run cores3-build`,
+   `pixi run waveshare-build`, `pixi run crowpanel-build` and the new board
+   task, then run `pixi run gate`.

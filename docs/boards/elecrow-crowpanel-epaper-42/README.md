@@ -111,5 +111,5 @@ holds the OpenSensor partition table, so the NVS check passes.
 
 `pixi run stack-budget --image crowpanel/logger --path` prints each task's
 deepest static call path. The UI task `os-ui` has an 8 KiB stack, with a static
-worst case of 3,072 bytes at this writing. CI fails the board leg when a task or
+worst case of 3,280 bytes at this writing. CI fails the board leg when a task or
 section grows past [tools/stack_budget.json](../../../tools/stack_budget.json).
