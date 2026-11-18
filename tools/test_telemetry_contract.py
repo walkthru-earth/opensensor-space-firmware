@@ -196,6 +196,13 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="m5-contract-") as temporary:
         directory = Path(temporary)
         executable = directory / "fixture"
+        # A pure header compiles alone, so it never leans on include order.
+        for header in (firmware / "power_registers.h",):
+            alone = directory / f"{header.stem}_alone.cpp"
+            alone.write_text(f'#include "{header.as_posix()}"\n')
+            subprocess.run(["clang++", CXX_STD, "-Wall", "-Wextra", "-Werror", "-fsyntax-only", str(alone)],
+                           check=True)
+        print("PASS power_registers.h compiles on its own", flush=True)
         command = ["clang++", CXX_STD, "-Wall", "-Wextra", "-Werror"]
         for include in (common, root / "firmware/common/logger/src",
                         root / "firmware/common/connectivity/src",
