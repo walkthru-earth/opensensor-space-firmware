@@ -52,6 +52,15 @@ must be reflashed so `GET_DESCRIPTOR` serves the new template. Part of #184.
   must carry `label`. No board step has one yet.
 - The templates grow to 40075 bytes on CoreS3, 33274 on Waveshare and 21683
   on the CrowPanel.
+- A board config key may not start with `ntp.`, which joins `ble.`, `wifi.`,
+  `lan.`, `location.`, `thing.`, `owner.` and `sensor.` as app owned.
+- `setup_v` is the first four bytes of SHA-256 over the ordered setup step
+  ids joined by `\n`, read big endian with the top bit cleared, and 0 reads
+  as 1. The empty list gives `0x63b0c442`. The step list above gives
+  `1499644209` (`0x5962c131`) on every board, and
+  `pixi run plugin-contract-test` prints it per board.
+- The vendored stac-opensensor schemas move to `07a4f21`, whose template
+  schema carries the setup manifest. No template byte changes from it.
 
 **What the app must do.** Bundle the new templates and their digests.
 Resolve labels, decimals, scales and the primary column from the template

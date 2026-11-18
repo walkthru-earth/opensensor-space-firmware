@@ -126,6 +126,15 @@ def main() -> None:
     for line in examples:
         print(f"PASS example {line}", flush=True)
 
+    # setup_v, as the phone computes it. SHA-256 of the empty string starts
+    # e3 b0 c4 42, so the empty list proves the top bit is cleared.
+    gate.require(gate.setup_v([]) == 0x63B0C442, f"setup_v of no step is {gate.setup_v([]):#x}")
+    for path in sorted(ROOT.glob(gate.BOARD_GLOB)):
+        steps = [s["id"] for s in read(path).get("setup", [])]
+        value = gate.setup_v(steps)
+        gate.require(1 <= value <= 0x7FFFFFFF, f"{path.parent.name} setup_v {value} out of range")
+        print(f"PASS {path.parent.parent.name} setup_v {value} ({value:#010x}) over {steps}", flush=True)
+
     board = CORES3 / "board.json"
     lock = CORES3 / gate.LOCK
     today = read(ROOT / lock)
@@ -270,9 +279,10 @@ def main() -> None:
         mutate(scratch, edit_json(board, lambda d: d.update(config_keys={"panel.pin": dict(panel)},
                                                             settings=[*d["settings"], {"id": "panel", "label": "Display", "keys": ["panel.pin"]}])),
                "looks like a secret", "a secret key name")
-        mutate(scratch, edit_json(board, lambda d: d.update(config_keys={"wifi.theme": panel},
-                                                            settings=[*d["settings"], {"id": "panel", "label": "Display", "keys": ["wifi.theme"]}])),
-               "schema", "a key under a reserved prefix")
+        for prefix in ("ble", "wifi", "lan", "ntp", "location", "thing", "owner", "sensor"):
+            mutate(scratch, edit_json(board, lambda d, k=f"{prefix}.theme": d.update(
+                config_keys={k: panel}, settings=[*d["settings"], {"id": "panel", "label": "Display", "keys": [k]}])),
+                   "schema", f"a key under the reserved prefix {prefix}.")
         mutate(scratch, edit_json(board, lambda d: d.update(config_keys={"panel.theme": {**panel, "page": 6}},
                                                             settings=[*d["settings"], {"id": "panel", "label": "Display", "keys": ["panel.theme"]}])),
                "schema", "a key on another page")
