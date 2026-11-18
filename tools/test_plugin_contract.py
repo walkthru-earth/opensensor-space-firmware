@@ -104,9 +104,11 @@ def older_release(lock: dict) -> dict:
 
 
 def with_history(change=None):
+    """Today's CoreS3 release alone, as an ordinary release, after a made up older one."""
     def apply(root: Path) -> None:
         def edit(lock: dict) -> None:
-            lock["releases"].insert(0, older_release(lock))
+            newest = {k: v for k, v in lock["releases"][-1].items() if k != "baseline"}
+            lock["releases"] = [older_release(lock), newest]
             if change:
                 change(lock)
         edit_json(CORES3 / gate.LOCK, edit)(root)
@@ -305,8 +307,16 @@ def main() -> None:
         mutate(scratch, replace_text(CORES3 / "telemetry_fields.inc", "// FIELD(", "//  FIELD("),
                "telemetry_fields.inc is", "a comment only edit of telemetry_fields.inc")
         mutate(scratch, lambda r: (r / lock).unlink(), "missing shipped.lock", "a missing lock")
-        mutate(scratch, edit_json(lock, lambda d: d["releases"][-1]["segments"][1].update(sha256="0" * 64)),
-               "segments differ from the board manifest", "an edited segment hash")
+        def edit_newest_hash(lock: dict) -> None:
+            # A baseline release may edit only the shipped segments it lists,
+            # so edit one of those to reach the manifest check.
+            newest = lock["releases"][-1]
+            listed = {(s["module"], s["segment"]) for s in newest.get("baseline", {}).get("segments", [])}
+            index = next((i for i, s in enumerate(newest["segments"]) if (s["module"], s["segment"]) in listed), 1)
+            newest["segments"][index].update(sha256="0" * 64)
+
+        mutate(scratch, edit_json(lock, edit_newest_hash), "segments differ from the board manifest",
+               "an edited segment hash")
         mutate(scratch, edit_json(lock, lambda d: d["releases"][-1]["segments"].pop()), "do not add up",
                "a removed lock segment")
         mutate(scratch, edit_json(lock, lambda d: d["releases"][-1]["segments"].insert(
