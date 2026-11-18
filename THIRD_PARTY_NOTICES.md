@@ -148,7 +148,7 @@ the registries [`tools/stac_opensensor/registry`](tools/stac_opensensor/registry
 (`properties.json`, `scales.json`) and the profile text
 [`tools/stac_opensensor/PROFILE.md`](tools/stac_opensensor/PROFILE.md) are
 copies of [stac-opensensor](https://github.com/walkthru-earth/stac-opensensor)
-at commit `e9981360c2229a98d5659ef0038a3b6114953f73`. `footer.json` in the
+at commit `07a4f21f98b9fffcece7055b95c6b9f9c6975bde`. `footer.json` in the
 same folder and the example
 [`tools/stac_opensensor/footers/m5stack-cores3.json`](tools/stac_opensensor/footers/m5stack-cores3.json)
 are copies at commit `83787768cc8451109d48a03d4ef5493ffcd403dd`. The schemas,

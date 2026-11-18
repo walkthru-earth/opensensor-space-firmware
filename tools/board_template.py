@@ -21,9 +21,7 @@ from jsonschema import Draft7Validator, FormatChecker
 from referencing import Registry, Resource
 
 SCHEMAS = Path(__file__).resolve().parent / "stac_opensensor/v0.1.0"
-SPEC = "https://github.com/walkthru-earth/stac-opensensor (e998136)"
-PLUGINS = Path(__file__).resolve().parents[1] / "docs/shared/plugins/v0.1.0"
-BOARD_SCHEMA = "https://walkthru-earth.github.io/opensensor-space-firmware/plugins/v0.1.0/board.json"
+SPEC = "https://github.com/walkthru-earth/stac-opensensor (07a4f21)"
 CHUNK = 74
 
 
@@ -108,19 +106,11 @@ def check(firmware: Path, generated: bytes, embedded: bytes, desc: str, regenera
 
 def validator() -> Draft7Validator:
     resources = []
-    for path in (SCHEMAS / "template.json", SCHEMAS / "profile.json", SCHEMAS / "schema.json",
-                 PLUGINS / "board.json", PLUGINS / "module.json"):
+    for path in (SCHEMAS / "template.json", SCHEMAS / "profile.json", SCHEMAS / "schema.json"):
         contents = json.loads(path.read_text())
         resources.append((contents["$id"].rstrip("#"), Resource.from_contents(contents)))
     registry = Registry().with_resources(resources)
     schema = json.loads((SCHEMAS / "template.json").read_text())
-    # The vendored e998136 template schema has no setup manifest yet. Until
-    # stac-opensensor #18 lands and is vendored, check it with the plugin
-    # board.json definitions, which mirror #18.
-    firmware = schema["properties"]["firmware"]["properties"]
-    require(not {"setup", "settings", "config_keys"} & set(firmware), "the vendored template schema has the setup manifest, remove this patch")
-    for key in ("setup", "settings", "config_keys"):
-        firmware[key] = {"$ref": f"{BOARD_SCHEMA}#/properties/{key}"}
     return Draft7Validator(schema, registry=registry, format_checker=FormatChecker())
 
 
