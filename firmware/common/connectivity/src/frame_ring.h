@@ -25,7 +25,7 @@ public:
   static constexpr std::size_t kMaxFrame = 0xffff;
 
   // Storage is owned by the caller and must outlive the ring.
-  void attach(std::uint8_t *storage, std::size_t capacity);
+  void attach(std::uint8_t *storage, std::size_t bytes);
   std::size_t capacity() const { return capacity_; }
   // True when a frame of `length` body bytes can ever fit an empty ring.
   bool fits(std::size_t length) const;
