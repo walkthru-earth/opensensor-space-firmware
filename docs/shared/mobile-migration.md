@@ -22,10 +22,11 @@ rows keep their columns and codes.
   `relative_humidity_percent` only up to 100.0. Out of range both are null
   and PM stays. A PMSA003 wired on the PMS5003T port sends its counts above
   5 and 10 um in those two words, and the 32-byte frame cannot tell the two
-  models apart. Large counts decode out of range and stay null. Small counts,
-  common in clean air, decode in range and are stored as a temperature and
-  humidity, with PM still valid. The board config names PMS5003T, and only
-  that model gives real values there.
+  models apart. The temperature word is a signed tenth of a degree, so a count
+  up to 600 reads 0.0 to 60.0 and a count from 65436 reads -10.0 to -0.1, and
+  both pass. A humidity count up to 1000 passes. Those are stored as a
+  temperature and humidity with PM still valid, and every other count is null.
+  The board config names PMS5003T, and only that model gives real values there.
 - CoreS3 `MEAS pmsa003` gains `status=<name>`, missing before the first
   frame. `values_valid` is true only when the frame `MEAS` evaluates
   classifies as valid under the row's rule. `MEAS` runs that rule itself at
