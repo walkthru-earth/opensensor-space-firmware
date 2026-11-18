@@ -488,8 +488,8 @@
         },
         "os-ui": {
           "stack_bytes": 8192,
-          "measured": 3072,
-          "budget": 3392
+          "measured": 3280,
+          "budget": 3648
         },
         "esp_timer": {
           "measured": 592,
@@ -504,16 +504,16 @@
         ".iram0.text": 128000,
         ".dram0.data": 35072,
         ".dram0.bss": 58624,
-        ".flash.text": 1171200,
-        ".flash.rodata": 401408,
+        ".flash.text": 1203456,
+        ".flash.rodata": 404224,
         ".noinit": 256
       },
       "sections_measured": {
         ".iram0.text": 125295,
-        ".dram0.data": 34193,
-        ".dram0.bss": 57320,
-        ".flash.text": 1148102,
-        ".flash.rodata": 393480,
+        ".dram0.data": 34241,
+        ".dram0.bss": 57336,
+        ".flash.text": 1179714,
+        ".flash.rodata": 396136,
         ".noinit": 3
       }
     }

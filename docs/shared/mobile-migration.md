@@ -37,6 +37,38 @@ rows keep their columns and codes.
 to a valid PM as a missing reading, never as zero. A log viewer that parses
 `MEAS pmsa003` reads `values_valid` the new way.
 
+## LAN task never waits on BLE, and three log lines (fix/178-lan-scan-row-status, issue #178)
+
+**No wire, image layout, digest, column or LIVE key change.** Frames, opcodes
+and `WIFI_SCAN` replies keep their bytes and order.
+
+**What changed.**
+
+- A `WIFI_SCAN` asked over BLE no longer holds the Wi-Fi task while the BLE
+  phone takes the frames. The reply leaves as the notify queue takes it, so a
+  LAN phone on the same device keeps reading. `WIFI SCAN END found= reported=`
+  is now logged when the last frame is queued. A BLE reply with no frame taken
+  for 15 s is dropped with the new line
+  `WIFI SCAN REPLY STALLED sent=<n> of=<total>`, and a second `WIFI_SCAN`
+  still answers busy until the first reply ends.
+- A row that meets a batch from another window is kept when the write moved
+  the batch to the card and only the finalize or the free space read failed.
+  `rows_dropped` no longer counts that row.
+- `PARQUET STATUS` prints the real `deployment=` and `calibration=`, the
+  same values the next footer writes. The deployment is the open file's
+  snapshot, else the first buffered row's, else the owner's live
+  `thing.deployment_id`, and the board default `unknown` when that is empty.
+  They were literal `unknown` before.
+- A USB provisioning line that refuses an owner value now says
+  `OS CONFIG ok=0 key=owner.title` (or `owner.description`, `owner.provider`,
+  `owner.url`, `thing.deployment_id`) and not `key=invalid-key`.
+- The Plantower parser counts a bad length word found after a resync as a
+  length failure, not a later checksum failure.
+
+**What the app must do.** Nothing is required. An app that parses
+`LOG_TAIL` text for humans may show the new stall line. Do not parse it as an
+API.
+
 ## Metadata-driven apps, decision 0003 (docs/metadata-driven-contract)
 
 **Contract only, no firmware or wire change.** No image, digest, column, LIVE
@@ -94,6 +126,14 @@ ESP32-S3 4.2" E-paper HMI v1.2 with a Sensirion SEN63C on I2C.
   `OS SEN6X absent ...`, `OS SEN6X lost ...`, `OS SEN6X stale ...`,
   `OS SEN6X start-failed ...`, `OS SEN6X status=...`, `OS DISPLAY ready=...`,
   `OS TF mounted=...` and `OS READY ...`.
+- At boot the board seeds its charts from its own finalized files of earlier
+  boots and logs one line before logging starts, `OS HISTORY restored
+  boots=N files=N rows=N span_s=N ms=N skipped=N cut=... ring_boots=N
+  dated_boots=N placed=N fallback=N` or `OS HISTORY restore=none
+  reason=... ms=N ring_boots=N dated_boots=N placed=N fallback=N`. Boots
+  are ordered by the NVS boot ring and dated folder names, and where those
+  prove nothing by the `sd_used_bytes` footer bounds. It only reads the
+  card. Files, columns and the wire do not change.
 - The panel settings popup adds `OS PANEL settings operation=load|save
   error=... refresh_s=... start_page=... sleep_s=... altitude_m=...
   co2_asc=... temp_offset_dc=... theme=light|dark`, with `theme` last.

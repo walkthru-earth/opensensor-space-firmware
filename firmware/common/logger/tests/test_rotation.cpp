@@ -22,6 +22,40 @@ int main() {
   for (std::size_t groups = 0; groups < 8; ++groups)
     assert(!finalize_after_group(false, groups, 8));
 
+  // A row from a new window meets a batch from the old one (#178). The model
+  // keeps what fits_batch reads: the RAM batch and whether a file of the old
+  // window is still open. Each step reports what the commit did.
+  enum class Outcome {
+    NotRun,
+    Written,
+    AppendFailed,
+    FinalizeFailed,
+    FreeFailed
+  };
+  auto intake = [](bool writable, Outcome outcome) {
+    std::size_t count = 5;
+    bool old_file_open = true, called = false;
+    const bool kept = admit_unfitted_row(
+        writable,
+        [&] {
+          called = true;
+          if (outcome == Outcome::AppendFailed)
+            return false;
+          // The group was appended and the file closed, finished or not.
+          count = 0;
+          old_file_open = false;
+          return outcome == Outcome::Written;
+        },
+        [&] { return !old_file_open && count == 0; });
+    assert(called == writable);
+    return kept;
+  };
+  assert(!intake(false, Outcome::NotRun));
+  assert(intake(true, Outcome::Written));
+  assert(!intake(true, Outcome::AppendFailed));
+  assert(intake(true, Outcome::FinalizeFailed));
+  assert(intake(true, Outcome::FreeFailed));
+
   // Repeated small refreshes of an already external clock retain one window
   // even when a two-second backward correction lets a 91st/361st row fit.
   for (const std::int64_t interval : {900, 3600}) {
