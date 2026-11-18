@@ -47,6 +47,12 @@ def check_gate_wiring(source: str) -> None:
     body = gate_body(source, "response_gate")
     assert "may_send_frame(" in body and "subscribed[Response]" in body, body
     assert "BLE REFUSE reason=" in body and "refusal_is_fault(" in body, body
+    # Issue #178. os-lan calls try_send_response, which never waits, so its
+    # refusal line skips the console sink and stays in LOG_TAIL.
+    assert "may_wait ? oslog : oslog.record_only()" in body, body
+    body = gate_body(source, "try_send_response")
+    assert "enqueue_response(frame, length, session, false)" in body, body
+    assert "xSemaphoreTake(response_mutex, 0)" in body, body
     body = gate_body(source, "may_send_frame")
     assert "may_send(authenticated.load()" in body and "secure(handle)" in body, body
 
