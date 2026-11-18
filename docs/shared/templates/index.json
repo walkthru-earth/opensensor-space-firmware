@@ -10,7 +10,7 @@
       "dict": "a8605aafb6f76b794e9e7fb32927be6d203afeeb14527206c0e49c1eb0436809",
       "href": "waveshare-esp32-s3-sim7670g/a8605aafb6f76b794e9e7fb32927be6d203afeeb14527206c0e49c1eb0436809.json"
     },
-    "6b4ecbab4e258f1091cd9048ddfe9260e160ef73166ee0c6b29669501c0c077a": {
+    "7d675033aa932320b91237d1a68de9646cd40f569806202f4e01a885af2d7eeb": {
       "board": "elecrow-crowpanel-epaper-42",
       "dict": "e7279c4edbe87071e4a51889124a43d7ffcd1977c79c8575887ae35bdee10903",
       "href": "elecrow-crowpanel-epaper-42/e7279c4edbe87071e4a51889124a43d7ffcd1977c79c8575887ae35bdee10903.json"
@@ -31,7 +31,7 @@
     },
     "e7279c4edbe87071e4a51889124a43d7ffcd1977c79c8575887ae35bdee10903": {
       "board": "elecrow-crowpanel-epaper-42",
-      "desc": "6b4ecbab4e258f1091cd9048ddfe9260e160ef73166ee0c6b29669501c0c077a",
+      "desc": "7d675033aa932320b91237d1a68de9646cd40f569806202f4e01a885af2d7eeb",
       "href": "elecrow-crowpanel-epaper-42/e7279c4edbe87071e4a51889124a43d7ffcd1977c79c8575887ae35bdee10903.json",
       "schema": "crowpanel-epaper-telemetry-v1"
     }

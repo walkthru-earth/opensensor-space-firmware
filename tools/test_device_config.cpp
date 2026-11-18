@@ -548,7 +548,7 @@ void time_and_location() {
   char json[480];
   assert(config::build_page(json, sizeof(json), 1));
   assert(std::strstr(json, "\"lat\":null"));
-  assert(std::strstr(json, "\"thing\":{\"mobility\":\"fixed\",\"setup\":1}"));
+  assert(std::strstr(json, "\"thing\":{\"mobility\":\"fixed\",\"setup\":1,"));
   reject("thing.mobility=walking", "thing.mobility");
   reject("thing.mobility=", "thing.mobility");
   reject("thing.mobility=Fixed", "thing.mobility");
@@ -766,7 +766,7 @@ void phone_cell() {
   // because its rows ignore the phone cell and stay null (#147).
   accept("location.cell=\nlocation.phone_cell=88283082a3fffff");
   assert(config::setup_needed(config::location_settings()));
-  assert(page_has("\"setup\":1}"));
+  assert(page_has("\"setup\":1,"));
   // On a moving Thing a phone cell change is a location change, still with
   // no NVS write.
   accept("thing.mobility=moving\nlocation.phone_cell=");
@@ -964,7 +964,8 @@ void setup_state() {
     return length;
   };
   page();
-  assert(std::strstr(json, "\"thing\":{\"mobility\":\"fixed\",\"setup\":1}}"));
+  assert(std::strstr(json, "\"thing\":{\"mobility\":\"fixed\",\"setup\":1,"
+                           "\"setup_v\":0,\"setup_ack\":0}}"));
   // A board without a receiver omits the key.
   assert(!std::strstr(json, "gnss_cell"));
   page({.gnss = true});
@@ -978,14 +979,15 @@ void setup_state() {
   accept("location.cell=8828308281fffff");
   assert(!config::setup_needed(config::location_settings()));
   page();
-  assert(std::strstr(json, "\"setup\":0}"));
+  assert(std::strstr(json, "\"setup\":0,"));
   accept("location.cell=");
   page();
-  assert(std::strstr(json, "\"setup\":1}"));
+  assert(std::strstr(json, "\"setup\":1,"));
   // A moving Thing never needs setup, with or without a cell.
   accept("thing.mobility=moving");
   page();
-  assert(std::strstr(json, "\"thing\":{\"mobility\":\"moving\",\"setup\":0}}"));
+  assert(std::strstr(json, "\"thing\":{\"mobility\":\"moving\",\"setup\":0,"
+                           "\"setup_v\":0,\"setup_ack\":0}}"));
   // Worst case. Every field at its widest, the fixed res 8 cap and cell
   // resolution (#139), an 11 and a 12 character centre, a country, "moving",
   // a phone cell (#140) and a GNSS cell. The frame header takes 2 of the 482
@@ -1001,13 +1003,15 @@ void setup_state() {
   std::array<char, opensensor::location::kCellTextBytes> gnss_text{};
   assert(opensensor::location::format_cell(*gnss, gnss_text) &&
          std::strlen(gnss_text.data()) == 15);
-  accept(std::string("location.resolution=8\nlocation.country=EG\n"
+  accept(std::string("thing.setup_v=2147483647\nthing.setup_ack=2147483647\n"
+                     "location.resolution=8\nlocation.country=EG\n"
                      "location.cell=") +
          text.data() + "\nlocation.phone_cell=" + text.data());
   const auto worst = page({.gnss = true, .gnss_cell = *gnss});
   const std::string gnss_key =
       std::string("\"gnss_cell\":\"") + gnss_text.data() + "\"";
   assert(std::strstr(json, gnss_key.c_str()));
+  assert(std::strstr(json, "\"setup_v\":2147483647,\"setup_ack\":2147483647}"));
   assert(std::strstr(json, "\"resolution\":8,\"cell_resolution\":8,"
                            "\"lat\":-45.") &&
          std::strstr(json, ",\"lon\":-170."));
@@ -1563,6 +1567,249 @@ void unavailable() {
   accept("wifi.ssid=ram-only\nwifi.on=true");
   assert(config::get().wifi_on && fake_platform::nvs.writes == 0);
 }
+
+// #184. The setup record. thing.setup_v and thing.setup_ack come together in
+// one request, live in their own NVS record and show on page 1.
+std::vector<std::uint8_t> &setup_blob() {
+  return fake_platform::nvs.blobs.at("setup");
+}
+void reseal_setup() {
+  auto &blob = setup_blob();
+  put_le32(blob.data() + 8, crc32(blob.data() + kHeaderBytes, 8));
+}
+std::string page_one() {
+  char json[480];
+  assert(config::build_page(json, sizeof(json), 1));
+  return json;
+}
+void setup_record() {
+  constexpr const char *kInvalid = "CONFIG SETUP invalid-stored-record=true";
+  constexpr const char *kRollback = "CONFIG ERROR operation=setup-rollback";
+  assert(config::load(false));
+  // Unset until the phone writes it, and no record in flash.
+  assert(config::setup_record() == config::SetupRecord{});
+  assert(page_one().find("\"setup_v\":0,\"setup_ack\":0}") !=
+         std::string::npos);
+  assert(!fake_platform::nvs.blobs.count("setup"));
+  // Either key alone names the missing one and writes nothing.
+  reject("thing.setup_v=7", "thing.setup_ack");
+  reject("thing.setup_ack=3", "thing.setup_v");
+  // Out of range values are refused.
+  reject("thing.setup_v=0\nthing.setup_ack=0", "thing.setup_v");
+  reject("thing.setup_v=2147483648\nthing.setup_ack=0", "thing.setup_v");
+  reject("thing.setup_v=7\nthing.setup_ack=2147483648", "thing.setup_ack");
+  reject("thing.setup_v=7\nthing.setup_ack=x", "thing.setup_ack");
+  reject("thing.setup_v=-1\nthing.setup_ack=0", "thing.setup_v");
+  // A setup only request writes the setup record, never `cfg`.
+  const auto stored_cfg = cfg();
+  const auto writes = fake_platform::nvs.writes;
+  accept("thing.setup_v=123456789\nthing.setup_ack=5");
+  assert(fake_platform::nvs.writes == writes + 1);
+  assert(cfg() == stored_cfg);
+  assert((config::setup_record() ==
+          config::SetupRecord{.version = 123456789, .ack = 5}));
+  assert(page_one().find("\"setup_v\":123456789,\"setup_ack\":5}") !=
+         std::string::npos);
+  const auto &blob = setup_blob();
+  assert(blob.size() == kHeaderBytes + 8);
+  assert(std::memcmp(blob.data(), "OSSU", 4) == 0);
+  assert(fake_platform::nvs.types.at("setup") == 9);
+  // Re-sending the same values writes nothing.
+  accept("thing.setup_v=123456789\nthing.setup_ack=5");
+  assert(fake_platform::nvs.writes == writes + 1);
+  // It survives a reboot.
+  assert(config::load(false));
+  assert((config::setup_record() ==
+          config::SetupRecord{.version = 123456789, .ack = 5}));
+  // It sits beside the step it records. A location step and its bit arrive
+  // together, and both records are saved.
+  accept("location.cell=8828308281fffff\nthing.setup_v=123456789\n"
+         "thing.setup_ack=7");
+  assert(fake_platform::nvs.writes == writes + 3);
+  assert(config::setup_record().ack == 7);
+  // A damaged `cfg` is a first boot but keeps the setup record.
+  cfg()[kHeaderBytes] ^= 1;
+  assert(config::load(false));
+  assert(config::setup_record().ack == 7);
+
+  // A failed setup save changes nothing, live or stored.
+  const auto good = setup_blob();
+  for (const bool on_commit : {false, true}) {
+    (on_commit ? fake_platform::nvs.fail_commit_key
+               : fake_platform::nvs.fail_write_key) = "setup";
+    config::Actions actions;
+    char bad_key[64];
+    assert(!apply("thing.setup_v=9\nthing.setup_ack=1", actions, bad_key));
+    assert(std::strcmp(bad_key, "nvs") == 0);
+    assert(config::setup_record().ack == 7);
+    assert(setup_blob() == good);
+    fake_platform::nvs.fail_write_key.clear();
+    fake_platform::nvs.fail_commit_key.clear();
+  }
+  // A failed `cfg` save after the setup save puts the setup record back.
+  {
+    fake_platform::nvs.fail_write_key = "cfg";
+    config::Actions actions;
+    char bad_key[64];
+    assert(!apply("thing.setup_v=9\nthing.setup_ack=1\nwifi.ssid=other",
+                  actions, bad_key));
+    assert(std::strcmp(bad_key, "nvs") == 0);
+    fake_platform::nvs.fail_write_key.clear();
+    assert(setup_blob() == good);
+    assert(config::setup_record().ack == 7);
+  }
+  // When the write back fails too, one line names it and the next request
+  // writes the record again.
+  {
+    const auto mark = log_text();
+    fake_platform::nvs.corrupt_read_key = "setup";
+    fake_platform::nvs.fail_write_at = fake_platform::nvs.writes + 2;
+    config::Actions actions;
+    char bad_key[64];
+    assert(!apply("thing.setup_v=9\nthing.setup_ack=1", actions, bad_key));
+    fake_platform::nvs.corrupt_read_key.clear();
+    fake_platform::nvs.fail_write_at = 0;
+    assert(count(log_text(), kRollback) == count(mark, kRollback) + 1);
+    assert(config::setup_record().ack == 7);
+    const auto unsure_writes = fake_platform::nvs.writes;
+    accept("location.country=EG");
+    assert(fake_platform::nvs.writes == unsure_writes + 2);
+    assert(setup_blob() == good);
+  }
+
+  // A damaged record reads as unset with one line, and stays in NVS.
+  for (const auto damage : {0, 1, 2, 3, 4, 5}) {
+    setup_blob() = good;
+    if (damage == 0)
+      setup_blob()[kHeaderBytes] ^= 1; // CRC mismatch
+    else if (damage == 1)
+      setup_blob()[0] = 'X'; // magic
+    else if (damage == 2)
+      setup_blob()[4] = 2; // version
+    else if (damage == 3)
+      setup_blob().pop_back(); // size
+    else if (damage == 4) {
+      put_le32(setup_blob().data() + kHeaderBytes, 0); // version 0
+      reseal_setup();
+    } else {
+      put_le32(setup_blob().data() + kHeaderBytes + 4, 0x80000000U);
+      reseal_setup();
+    }
+    const auto lines = count(log_text(), kInvalid);
+    assert(config::load(false));
+    assert(config::setup_record() == config::SetupRecord{});
+    assert(count(log_text(), kInvalid) == lines + 1);
+    assert(fake_platform::nvs.blobs.count("setup"));
+    assert(std::strcmp(config::get().location.country, "EG") == 0);
+  }
+  // A record of another type is damaged too, and never erased.
+  fake_platform::nvs.blobs.erase("setup");
+  fake_platform::nvs.strings["setup"] = "not-a-blob";
+  fake_platform::nvs.types["setup"] = 8;
+  assert(config::load(false));
+  assert(config::setup_record() == config::SetupRecord{});
+  assert(fake_platform::nvs.strings.at("setup") == "not-a-blob");
+}
+
+// Without NVS the record stays in RAM, like the rest of the configuration.
+void setup_unavailable() {
+  fake_platform::nvs.fail_open = true;
+  assert(!config::load(false));
+  assert(config::setup_record() == config::SetupRecord{});
+  accept("thing.setup_v=7\nthing.setup_ack=1");
+  assert(config::setup_record().ack == 1);
+  assert(fake_platform::nvs.writes == 0);
+}
+
+// #184. Board keys on GET_CONFIG page 7, through the hooks the board installs.
+struct FakeBoard {
+  std::vector<std::string> staged;
+  unsigned begins = 0, commits = 0;
+  std::string kept = "{\"panel\":{\"theme\":\"light\"}}";
+};
+FakeBoard board;
+void install_fake_board() {
+  config::set_board_keys(
+      {.begin =
+           [] {
+             ++board.begins;
+             board.staged.clear();
+           },
+       .stage = [](std::string_view key, std::string_view value)
+           -> std::expected<void, config::BoardKeyError> {
+         if (key != "panel.theme")
+           return std::unexpected(config::BoardKeyError::Unknown);
+         if (value != "light" && value != "dark")
+           return std::unexpected(config::BoardKeyError::Value);
+         board.staged.emplace_back(value);
+         return {};
+       },
+       .commit =
+           [] {
+             ++board.commits;
+             board.kept =
+                 "{\"panel\":{\"theme\":\"" + board.staged.back() + "\"}}";
+           },
+       .page = [](char *out, std::size_t size) -> std::size_t {
+         const int written = std::snprintf(out, size, "%s", board.kept.c_str());
+         return written > 0 && std::size_t(written) < size ? written : 0;
+       }});
+}
+void board_keys() {
+  assert(config::load(false));
+  char json[480];
+  // No hooks. Page 7 is an empty object and every board key is refused.
+  assert(config::build_page(json, sizeof(json), config::kBoardKeysPage) == 2);
+  assert(std::strcmp(json, "{}") == 0);
+  reject("panel.theme=dark", "panel.theme");
+  // Part of the hooks counts as none.
+  config::set_board_keys({.begin = [] {}});
+  reject("panel.theme=dark", "panel.theme");
+  assert(std::strcmp(json, "{}") == 0);
+  // The reserved prefixes, ntp. among them, never reach the board.
+  for (const char *key : {"ble.x", "wifi.x", "lan.x", "location.x", "thing.x",
+                          "owner.x", "sensor.x", "ntp.x", "ntp.server1"})
+    assert(config::reserved_key(key));
+  for (const char *key : {"panel.theme", "sen6x.co2_asc", "blex.y"})
+    assert(!config::reserved_key(key));
+  install_fake_board();
+  assert(config::build_page(json, sizeof(json), config::kBoardKeysPage));
+  assert(std::strcmp(json, "{\"panel\":{\"theme\":\"light\"}}") == 0);
+  // A board key the board does not know, or a bad value, is refused.
+  reject("panel.other=1", "panel.other");
+  reject("panel.theme=blue", "panel.theme");
+  assert(board.commits == 0);
+  reject("thing.unknown=1", "thing.unknown");
+  // A request refused for another key never commits the staged board key.
+  reject("panel.theme=dark\nwifi.on=maybe", "wifi.on");
+  assert(board.commits == 0);
+  // An accepted request commits once, after the shared records are saved, and
+  // never writes `cfg` for a board only request.
+  const auto stored_cfg = cfg();
+  const auto writes = fake_platform::nvs.writes;
+  const auto begins = board.begins;
+  accept("panel.theme=dark");
+  assert(board.begins == begins + 1 && board.commits == 1);
+  assert(fake_platform::nvs.writes == writes && cfg() == stored_cfg);
+  assert(config::build_page(json, sizeof(json), config::kBoardKeysPage));
+  assert(std::strcmp(json, "{\"panel\":{\"theme\":\"dark\"}}") == 0);
+  // A failed shared save never commits the board key.
+  fake_platform::nvs.fail_write_key = "cfg";
+  config::Actions actions;
+  char bad_key[64];
+  assert(!apply("panel.theme=light\nlocation.country=US", actions, bad_key));
+  assert(std::strcmp(bad_key, "nvs") == 0);
+  fake_platform::nvs.fail_write_key.clear();
+  assert(board.commits == 1);
+  // A request with no board key never commits.
+  accept("location.country=US");
+  assert(board.commits == 1);
+  // The key never reaches the CONFIG SET line, only its count.
+  const auto logs = log_text();
+  assert(logs.find("board_keys=1") != std::string::npos);
+  assert(logs.find("panel.theme") == std::string::npos);
+  config::set_board_keys({});
+}
 } // namespace
 
 int main(int argc, char **argv) {
@@ -1602,6 +1849,12 @@ int main(int argc, char **argv) {
     owner_configuration();
   else if (test == "owner-unavailable")
     owner_unavailable();
+  else if (test == "setup-record")
+    setup_record();
+  else if (test == "setup-unavailable")
+    setup_unavailable();
+  else if (test == "board-keys")
+    board_keys();
   else
     assert(false);
 }

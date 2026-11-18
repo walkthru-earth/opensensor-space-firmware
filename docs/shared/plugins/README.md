@@ -272,8 +272,9 @@ The generator copies `primary` to the template top level
 `opensensor:primary` and `setup`, `settings` and `config_keys` into the
 template `firmware` block, so they are hashed with the template. A change to
 any of them moves `desc` and never moves `dict`. The device side, the
-`thing.setup_v` and `thing.setup_ack` record and `GET_CONFIG` page 7, is not
-built yet, so no board declares `config_keys` today.
+`thing.setup_v` and `thing.setup_ack` record and `GET_CONFIG` page 7, is in
+the [sync protocol](../ble-sync-protocol.md#setup-record). The CrowPanel
+declares the `panel` and `sen6x` keys, the other boards declare none.
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -319,8 +320,9 @@ A Key never holds a current or default value. `ble.pin`, `wifi.psk` and the
 LAN token are never declared, and no manifest can lower the app safety
 floors listed in the decision record.
 
-A CrowPanel sketch for the page 7 work, trimmed to two declared keys, with
-names that are not final.
+The CrowPanel manifest, trimmed to three keys. Its `board.json` has the full
+list, and `crowpanel-contract-test` checks it against the keys
+`display/settings.cpp` parses.
 
 ```json
 {
@@ -329,17 +331,18 @@ names that are not final.
     {"id": "name", "req": false},
     {"id": "location", "req": true},
     {"id": "wifi", "req": false},
-    {"id": "panel", "req": false, "label": "Display", "label_i18n": {"ar": "الشاشة"}, "keys": ["panel.theme", "panel.start_page"]}
+    {"id": "sen6x", "req": false, "label": "Air sensor", "label_i18n": {"ar": "مستشعر الهواء"}, "keys": ["sen6x.altitude_m"]}
   ],
   "settings": [
     {"id": "location"},
-    {"id": "wifi"},
-    {"id": "panel", "label": "Display", "keys": ["panel.theme", "panel.refresh_s", "panel.start_page", "panel.sleep_s"]},
-    {"id": "sen6x", "label": "Air sensor", "label_i18n": {"ar": "مستشعر الهواء"}, "keys": ["sen6x.altitude_m", "sen6x.co2_asc", "sen6x.temp_offset_dc", "sen6x.fan_clean"]}
+    {"id": "sen6x", "label": "Air sensor", "label_i18n": {"ar": "مستشعر الهواء"}, "keys": ["sen6x.altitude_m", "sen6x.fan_clean"]},
+    {"id": "panel", "label": "Display", "label_i18n": {"ar": "الشاشة"}, "keys": ["panel.theme"]},
+    {"id": "wifi"}
   ],
   "config_keys": {
     "panel.theme": {"type": "enum", "values": ["light", "dark"], "applies": "immediately", "page": 7, "label": "Theme", "label_i18n": {"ar": "المظهر"}},
-    "sen6x.fan_clean": {"type": "boolean", "applies": "action", "page": 7, "label": "Clean the fan"}
+    "sen6x.altitude_m": {"type": "integer", "values": {"min": 0, "max": 3000}, "applies": "immediately", "page": 7, "label": "Altitude, metres", "label_i18n": {"ar": "الارتفاع بالأمتار"}},
+    "sen6x.fan_clean": {"type": "boolean", "applies": "action", "page": 7, "label": "Clean the fan", "label_i18n": {"ar": "تنظيف المروحة"}}
   }
 }
 ```

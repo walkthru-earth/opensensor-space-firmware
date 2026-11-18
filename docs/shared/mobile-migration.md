@@ -9,6 +9,50 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## Setup record and board keys on page 7 (feat/board-settings-page)
+
+**Every board changes `GET_CONFIG`, and the CrowPanel template changes.**
+The CrowPanel `desc` moves and its `dict` does not. No column, row, LIVE key
+or footer key changes. All three boards must be reflashed. Part of #184.
+
+**What changed.**
+
+- `SET_CONFIG` takes `thing.setup_v` (1 to 2147483647) and
+  `thing.setup_ack` (0 to 2147483647), only together. A request with one of
+  them answers `ERROR` 12 with the missing key as detail. The device keeps
+  them in a new NVS record `setup` in `oscfg`. See the
+  [setup record](ble-sync-protocol.md#setup-record).
+- Page 1 `thing` ends with `"setup_v":N,"setup_ack":N`, both 0 while the
+  record is unset. The worst case page grows to 271 bytes.
+- `GET_CONFIG` takes page 7, the board keys nested by key prefix. CoreS3 and
+  Waveshare answer `{}`. The CrowPanel answers
+  `{"panel":{"theme":"light","refresh_s":"10","start_page":"dashboard","sleep_s":"0"},"sen6x":{"co2_asc":true,"altitude_m":0,"temp_offset_dc":0}}`
+  with its current values. Enum values are strings, integers are numbers.
+  See [board keys](ble-sync-protocol.md#board-keys-page-7).
+- The CrowPanel takes the `SET_CONFIG` keys `panel.theme`, `panel.refresh_s`,
+  `panel.start_page`, `panel.sleep_s`, `sen6x.co2_asc`, `sen6x.altitude_m`,
+  `sen6x.temp_offset_dc` and the action `sen6x.fan_clean`. They are the knob
+  settings, so a knob change shows on page 7 and a phone change shows on the
+  panel. An unknown board key or a bad value answers `ERROR` 12 with the key
+  as detail.
+- The CrowPanel template declares the eight keys in `firmware.config_keys`
+  with English and Arabic labels. `firmware.setup` gains a last step
+  `sen6x`, labelled "Air sensor", with `sen6x.altitude_m`, so its `setup_v`
+  changes. `firmware.settings` gains `sen6x` (labelled "Air sensor", all four
+  `sen6x` keys) and `panel` (labelled "Display", the four `panel` keys) after
+  `site`.
+  - `elecrow-crowpanel-epaper-42`, dict `e7279c4edbe87071e4a51889124a43d7ffcd1977c79c8575887ae35bdee10903`,
+    desc `7d675033aa932320b91237d1a68de9646cd40f569806202f4e01a885af2d7eeb`
+    (was `6b4ecbab4e258f1091cd9048ddfe9260e160ef73166ee0c6b29669501c0c077a`),
+    24289 bytes.
+
+**What the app must do.** Bundle the new CrowPanel template. Write
+`thing.setup_v` and `thing.setup_ack` in one `SET_CONFIG` as steps finish and
+read them back from page 1. Read page 7 for the values of the declared
+`config_keys` and render the `panel` and `sen6x` sections as generic forms.
+Send an action key only from an explicit tap. Map a `{"min","max"}` range to
+the integer field bounds.
+
 ## Display hints and the setup manifest in the template (feat/display-hints-setup-manifest)
 
 **Every board template changes, `desc` moves and `dict` does not.** No
@@ -57,8 +101,7 @@ must be reflashed so `GET_DESCRIPTOR` serves the new template. Part of #184.
 Resolve labels, decimals, scales and the primary column from the template
 as [decision 0003](decisions/0003-metadata-driven-apps.md) orders them, and
 build the wizard and Device settings from `firmware.setup` and
-`firmware.settings`, titled by `label` when the app has no title for the id. The firmware does not store `thing.setup_v` or
-`thing.setup_ack` and serves no page 7 yet, a later entry records them.
+`firmware.settings`, titled by `label` when the app has no title for the id. The setup record and page 7 come in the entry above.
 Mirror the three templates into stac-opensensor `templates/`.
 
 ## Metadata-driven apps, decision 0003 (docs/metadata-driven-contract)

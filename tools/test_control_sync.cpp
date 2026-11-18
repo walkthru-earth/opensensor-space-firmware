@@ -129,6 +129,11 @@ void paged_configuration() {
     const auto &frame = peer.successful[0].bytes;
     assert(frame[0] == ble::kFrameConfig && frame.size() < 482);
     const std::string json(frame.begin() + 2, frame.end());
+    // A board without its own keys answers page 7 with an empty object.
+    if (page == config::kBoardKeysPage) {
+      assert(json == "{}");
+      continue;
+    }
     assert(json.find(page == 0   ? "\"ble\""
                      : page == 1 ? "\"location\""
                      : page >= 5 ? "\"owner\""
@@ -153,6 +158,8 @@ void paged_configuration() {
            return 0x8828308281fffffULL;
          }).find("\"gnss_cell\":\"8828308281fffff\"") != std::string::npos);
   assert(page_one(nullptr).find("\"setup\":") != std::string::npos);
+  assert(page_one(nullptr).find("\"setup_v\":0,\"setup_ack\":0}") !=
+         std::string::npos);
   for (const auto &body : {std::string(1, char(config::kLastConfigPage + 1)),
                            std::string(2, char(0))}) {
     Peer peer;

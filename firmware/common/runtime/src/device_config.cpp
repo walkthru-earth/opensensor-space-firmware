@@ -40,6 +40,7 @@ bool persistent = false;
 // clears both, because the live snapshot then matches flash.
 bool cfg_unsure = false;
 bool owner_unsure = false;
+bool setup_unsure = false;
 SensorPolicy sensor_policy; // installed by the board before load()
 
 std::uint32_t random_pin() { return esp_random() % 1000000U; }
@@ -356,24 +357,42 @@ static_assert(sizeof(OwnerPayload) == 421, "owner version 1 payload is pinned");
 static_assert(sizeof(OwnerBlob) == sizeof(BlobHeader) + sizeof(OwnerPayload),
               "owner header and payload are contiguous");
 
+// The setup record (#184), two u32 little endian.
+struct SetupPayload {
+  std::uint8_t version[4];
+  std::uint8_t ack[4];
+};
+struct SetupBlob {
+  BlobHeader header;
+  SetupPayload payload;
+};
+static_assert(alignof(SetupBlob) == 1, "setup layout must not contain padding");
+static_assert(sizeof(SetupPayload) == 8, "setup version 1 payload is pinned");
+static_assert(sizeof(SetupBlob) == sizeof(BlobHeader) + sizeof(SetupPayload),
+              "setup header and payload are contiguous");
+
 // The staged record and its readback can share static storage, because
 // saves never overlap. After startup only the storage worker saves, one
 // command at a time, and no command source exists before `load` returns. The
-// cfg and owner records take turns in the same two buffers, because every
-// save and load finishes one record before it touches the other (#148).
+// cfg, owner and setup records take turns in the same two buffers, because
+// every save and load finishes one record before it touches the next (#148).
 union BlobBuffer {
   Blob cfg;
   OwnerBlob owner;
+  SetupBlob setup;
 };
-// The owner record rides in the cfg buffers, so it must never be the larger.
-static_assert(sizeof(OwnerBlob) <= sizeof(Blob),
-              "owner record fits the shared cfg buffers");
+// The other records ride in the cfg buffers, so they must never be larger.
+static_assert(sizeof(OwnerBlob) <= sizeof(Blob) &&
+                  sizeof(SetupBlob) <= sizeof(Blob),
+              "owner and setup records fit the shared cfg buffers");
 BlobBuffer staged_buffer;
 BlobBuffer readback_buffer;
 Blob &staged_blob = staged_buffer.cfg;
 Blob &readback_blob = readback_buffer.cfg;
 OwnerBlob &owner_staged = staged_buffer.owner;
 OwnerBlob &owner_readback = readback_buffer.owner;
+SetupBlob &setup_staged = staged_buffer.setup;
+SetupBlob &setup_readback = readback_buffer.setup;
 
 std::uint32_t crc32(const std::uint8_t *data, std::size_t size) {
   std::uint32_t crc = 0xffffffffU;
@@ -521,7 +540,7 @@ void load_blob(BlobPayload &payload, Settings &settings) {
 }
 
 // Boot only. Leaves phone_cell_set_us alone, so never publish a non-zero
-// phone cell here, it would carry a stale stamp. Use publish_with_owner.
+// phone cell here, it would carry a stale stamp. Use publish_request.
 void publish(const Settings &settings) {
   portENTER_CRITICAL(&settings_mutex);
   current = settings;
@@ -832,16 +851,120 @@ void publish_owner(const OwnerSettings &owner) {
   portEXIT_CRITICAL(&settings_mutex);
 }
 
-// Settings and owner change together, so a sample never sees one half of a
-// request. A request that carried location.phone_cell restarts its age in the
-// same critical section (#140). One that did not may carry back a cell that
-// expired after the request read it, and the next reader drops it again.
-void publish_with_owner(const Settings &settings, const OwnerSettings &owner,
-                        bool phone_cell_sent) {
+// The setup record (#184). Its own record under `setup`, beside `cfg` and
+// `owner`. A missing record is unset. A damaged one is unset too, with one
+// serial line.
+constexpr const char *kSetupKey = "setup";
+constexpr std::array<std::uint8_t, 4> kSetupMagic = {'O', 'S', 'S', 'U'};
+constexpr std::uint16_t kSetupVersion = 1;
+
+SetupRecord setup_current;
+
+void encode_setup(SetupBlob &blob, const SetupRecord &setup) {
+  std::memset(&blob, 0, sizeof(blob));
+  put_le(blob.payload.version, setup.version, sizeof(blob.payload.version));
+  put_le(blob.payload.ack, setup.ack, sizeof(blob.payload.ack));
+  std::copy(kSetupMagic.begin(), kSetupMagic.end(), blob.header.magic);
+  put_le(blob.header.version, kSetupVersion, sizeof(blob.header.version));
+  put_le(blob.header.length, sizeof(SetupPayload), sizeof(blob.header.length));
+  put_le(blob.header.crc32,
+         crc32(reinterpret_cast<const std::uint8_t *>(&blob.payload),
+               sizeof(blob.payload)),
+         sizeof(blob.header.crc32));
+}
+
+// Why a stored setup record was refused. Every case loads as unset.
+enum class [[nodiscard]] SetupDecodeError : std::uint8_t {
+  Header, // size, magic, version or payload length is wrong
+  Crc,    // the payload does not match its CRC
+  Range,  // a value SET_CONFIG would refuse
+};
+
+[[nodiscard]] std::expected<SetupRecord, SetupDecodeError>
+decode_setup(const SetupBlob &blob, std::size_t size) {
+  if (size != sizeof(SetupBlob) ||
+      !std::equal(kSetupMagic.begin(), kSetupMagic.end(), blob.header.magic) ||
+      get_le(blob.header.version, sizeof(blob.header.version)) !=
+          kSetupVersion ||
+      get_le(blob.header.length, sizeof(blob.header.length)) !=
+          sizeof(SetupPayload))
+    return std::unexpected(SetupDecodeError::Header);
+  if (get_le(blob.header.crc32, sizeof(blob.header.crc32)) !=
+      crc32(reinterpret_cast<const std::uint8_t *>(&blob.payload),
+            sizeof(blob.payload)))
+    return std::unexpected(SetupDecodeError::Crc);
+  const SetupRecord decoded{
+      .version = get_le(blob.payload.version, sizeof(blob.payload.version)),
+      .ack = get_le(blob.payload.ack, sizeof(blob.payload.ack))};
+  if (decoded.version == 0 || decoded.version > kSetupMax ||
+      decoded.ack > kSetupMax)
+    return std::unexpected(SetupDecodeError::Range);
+  return decoded;
+}
+
+// One write and one commit, then a readback, like save_owner.
+[[nodiscard]] bool save_setup(const SetupRecord &setup) {
+  nvs_handle_t store;
+  if (nvs_open(kNamespace, NVS_READWRITE, &store) != ESP_OK)
+    return false;
+  encode_setup(setup_staged, setup);
+  bool ok = committed(store, nvs_set_blob(store, kSetupKey, &setup_staged,
+                                          sizeof(setup_staged)));
+  std::size_t length = sizeof(setup_readback);
+  ok = ok &&
+       nvs_get_blob(store, kSetupKey, &setup_readback, &length) == ESP_OK &&
+       length == sizeof(setup_staged) &&
+       std::memcmp(&setup_readback, &setup_staged, sizeof(setup_staged)) == 0;
+  nvs_close(store);
+  return ok;
+}
+
+// Reads the record through an open handle. Never erases it.
+SetupRecord load_setup(nvs_handle_t store) {
+  std::size_t size = sizeof(setup_readback);
+  const auto result = nvs_get_blob(store, kSetupKey, &setup_readback, &size);
+  if (result == ESP_ERR_NVS_NOT_FOUND)
+    return SetupRecord{};
+  if (result == ESP_OK) {
+    const auto decoded = decode_setup(setup_readback, size);
+    if (decoded)
+      return *decoded;
+  }
+  oslog.println("CONFIG SETUP invalid-stored-record=true");
+  return SetupRecord{};
+}
+
+void publish_setup(const SetupRecord &setup) {
+  portENTER_CRITICAL(&settings_mutex);
+  setup_current = setup;
+  portEXIT_CRITICAL(&settings_mutex);
+}
+
+void restore_setup(const SetupRecord &previous) {
+  setup_unsure = !save_setup(previous);
+  if (setup_unsure)
+    oslog.println("CONFIG ERROR operation=setup-rollback");
+}
+
+// Board keys (#184). Installed once before any command source exists.
+BoardKeys board_keys;
+
+[[nodiscard]] bool board_keys_installed() {
+  return board_keys.begin && board_keys.stage && board_keys.commit &&
+         board_keys.page;
+}
+
+// Settings, owner and setup change together, so a sample never sees one part
+// of a request. A request that carried location.phone_cell restarts its age in
+// the same critical section (#140). One that did not may carry back a cell
+// that expired after the request read it, and the next reader drops it again.
+void publish_request(const Settings &settings, const OwnerSettings &owner,
+                     const SetupRecord &setup, bool phone_cell_sent) {
   const std::int64_t now_us = esp_timer_get_time();
   portENTER_CRITICAL(&settings_mutex);
   current = settings;
   owner_current = owner;
+  setup_current = setup;
   if (phone_cell_sent)
     phone_cell_set_us = now_us;
   portEXIT_CRITICAL(&settings_mutex);
@@ -856,35 +979,54 @@ void restore_owner(const OwnerSettings &previous) {
     oslog.println("CONFIG ERROR operation=owner-rollback");
 }
 
-// Saves the owner record first, then `cfg`. The owner record is written when
-// an owner value changed and `cfg` whenever the request carried any other key,
-// even an unchanged one. Either is also written when it is unsure. The two
-// writes are not atomic
-// across a power cut. When either save fails, every record this request wrote
-// gets its previous value back, so flash never pairs one record from this
-// request with the other from before it. On any failure the caller replies
-// ERROR and publishes nothing, so the live snapshot never holds half a request.
-[[nodiscard]] bool save_request(bool owner_changed,
-                                const OwnerSettings &previous_owner,
-                                const OwnerSettings &next_owner,
-                                bool settings_touched, const Settings &previous,
-                                const Settings &next) {
+// One request's records, before and after it.
+struct RequestRecords {
+  const Settings &previous;
+  const Settings &next;
+  bool settings_touched; // the request carried a `cfg` key
+  const OwnerSettings &previous_owner;
+  const OwnerSettings &next_owner;
+  const SetupRecord &previous_setup;
+  const SetupRecord &next_setup;
+};
+
+// Saves the owner record first, then `setup`, then `cfg`. The owner and setup
+// records are written when one of their values changed and `cfg` whenever the
+// request carried any other key, even an unchanged one. Each is also written
+// when it is unsure. The writes are not atomic across a power cut. When one
+// save fails, every record this request wrote gets its previous value back, so
+// flash never pairs a record from this request with another from before it. On
+// any failure the caller replies ERROR and publishes nothing, so the live
+// snapshot never holds part of a request.
+[[nodiscard]] bool save_request(const RequestRecords &r) {
   if (!persistent)
     return true;
-  const bool write_owner = owner_changed || owner_unsure;
+  const bool write_owner =
+      !same_owner(r.previous_owner, r.next_owner) || owner_unsure;
+  const bool write_setup = r.previous_setup != r.next_setup || setup_unsure;
+  const auto undo = [&](bool owner, bool setup) {
+    if (setup)
+      restore_setup(r.previous_setup);
+    if (owner)
+      restore_owner(r.previous_owner);
+  };
   if (write_owner) {
-    if (!save_owner(next_owner)) {
-      restore_owner(previous_owner);
+    if (!save_owner(r.next_owner)) {
+      undo(true, false);
       return false;
     }
     owner_unsure = false;
   }
-  if (settings_touched || cfg_unsure) {
-    if (!save_cfg(next, previous)) {
-      if (write_owner)
-        restore_owner(previous_owner);
+  if (write_setup) {
+    if (!save_setup(r.next_setup)) {
+      undo(write_owner, true);
       return false;
     }
+    setup_unsure = false;
+  }
+  if ((r.settings_touched || cfg_unsure) && !save_cfg(r.next, r.previous)) {
+    undo(write_owner, write_setup);
+    return false;
   }
   return true;
 }
@@ -986,6 +1128,30 @@ bool same_deployment(const DeploymentId &a, const DeploymentId &b) {
 
 void set_sensor_policy(const SensorPolicy &policy) { sensor_policy = policy; }
 
+SetupRecord setup_record() {
+  SetupRecord copy;
+  portENTER_CRITICAL(&settings_mutex);
+  copy = setup_current;
+  portEXIT_CRITICAL(&settings_mutex);
+  return copy;
+}
+
+void set_board_keys(const BoardKeys &keys) {
+  board_keys = keys;
+  if (!board_keys_installed())
+    board_keys = BoardKeys{};
+}
+
+bool reserved_key(std::string_view key) {
+  // The contract's reserved prefixes, and ntp. for the runtime's own keys.
+  static constexpr std::array<std::string_view, 8> kReserved = {
+      "ble.",   "wifi.",  "lan.",    "location.",
+      "thing.", "owner.", "sensor.", "ntp."};
+  return std::any_of(
+      kReserved.begin(), kReserved.end(),
+      [key](std::string_view prefix) { return key.starts_with(prefix); });
+}
+
 const char *pair_name(PairMode mode) {
   switch (mode) {
   case PairMode::Fixed:
@@ -1002,6 +1168,7 @@ bool load(bool display_detected) {
   persistent = false;
   cfg_unsure = false;
   owner_unsure = false;
+  setup_unsure = false;
   nvs_handle_t store;
   if (nvs_open(kNamespace, NVS_READWRITE, &store) != ESP_OK) {
     oslog.println("CONFIG ERROR operation=nvs-open persistent=false");
@@ -1011,6 +1178,7 @@ bool load(bool display_detected) {
     esp_fill_random(settings.token, kTokenBytes);
     publish(settings);
     publish_owner(OwnerSettings{});
+    publish_setup(SetupRecord{});
     booted = settings;
     return false;
   }
@@ -1036,8 +1204,10 @@ bool load(bool display_detected) {
     migrated_pin = true;
     oslog.println("CONFIG SECURITY legacy_pin_rotated=true");
   }
-  // Owner keys have their own record. A `cfg` first boot keeps them.
+  // Owner keys and the setup record have their own records. A `cfg` first
+  // boot keeps them.
   publish_owner(load_owner(store));
+  publish_setup(load_setup(store));
   nvs_close(store);
   persistent = true;
   // The live snapshot keeps the new values, so a failed seed leaves `cfg`
@@ -1090,6 +1260,13 @@ bool apply_lines(const char *text, std::size_t length, char *bad_key,
   Settings next = previous;
   const OwnerSettings previous_owner = owner_settings();
   OwnerSettings next_owner = previous_owner;
+  const SetupRecord previous_setup = setup_record();
+  SetupRecord next_setup = previous_setup;
+  bool setup_v_sent = false;
+  bool setup_ack_sent = false;
+  unsigned board_sent = 0;
+  if (board_keys_installed())
+    board_keys.begin();
   bool settings_touched = false;
   // The request carried location.phone_cell, so an accepted request restarts
   // its age even when the value is unchanged (#140).
@@ -1159,6 +1336,28 @@ bool apply_lines(const char *text, std::size_t length, char *bad_key,
           return reject();
         next.location.phone_cell = *parsed;
       }
+      continue;
+    }
+    // The setup record (#184). Its own record, never `cfg`. Both keys come in
+    // one request, so the bits always name the step list they belong to.
+    if (std::strcmp(key, "thing.setup_v") == 0) {
+      if (!parse_uint(value, 1, kSetupMax, next_setup.version))
+        return reject();
+      setup_v_sent = true;
+      continue;
+    }
+    if (std::strcmp(key, "thing.setup_ack") == 0) {
+      if (!parse_uint(value, 0, kSetupMax, next_setup.ack))
+        return reject();
+      setup_ack_sent = true;
+      continue;
+    }
+    // A board key (#184). The board checks it into its draft and keeps it once
+    // the rest of the request is saved.
+    if (!reserved_key(key)) {
+      if (!board_keys_installed() || !board_keys.stage(key, value))
+        return reject();
+      ++board_sent;
       continue;
     }
     settings_touched = true;
@@ -1293,6 +1492,11 @@ bool apply_lines(const char *text, std::size_t length, char *bad_key,
     std::snprintf(bad_key, bad_key_size, "empty");
     return false;
   }
+  if (setup_v_sent != setup_ack_sent) {
+    std::snprintf(bad_key, bad_key_size, "%s",
+                  setup_v_sent ? "thing.setup_ack" : "thing.setup_v");
+    return false;
+  }
   if (next.wifi_on && !next.ssid[0]) {
     std::snprintf(bad_key, bad_key_size, "wifi.ssid");
     return false;
@@ -1344,21 +1548,30 @@ bool apply_lines(const char *text, std::size_t length, char *bad_key,
        previous.location.phone_cell != next.location.phone_cell);
   if (pending.rotate_token)
     esp_fill_random(next.token, kTokenBytes);
-  if (!save_request(!same_owner(previous_owner, next_owner), previous_owner,
-                    next_owner, settings_touched, previous, next)) {
+  if (!save_request({.previous = previous,
+                     .next = next,
+                     .settings_touched = settings_touched,
+                     .previous_owner = previous_owner,
+                     .next_owner = next_owner,
+                     .previous_setup = previous_setup,
+                     .next_setup = next_setup})) {
     std::snprintf(bad_key, bad_key_size, "nvs");
     return false;
   }
-  publish_with_owner(next, next_owner, phone_cell_sent);
+  publish_request(next, next_owner, next_setup, phone_cell_sent);
+  if (board_sent)
+    board_keys.commit();
   actions = pending;
   oslog.printf(
       "CONFIG SET pair=%s pin_default=%s wifi_on=%s ssid_set=%s "
-      "lan_on=%s clear_bonds=%s rotate_token=%s reboot_required=%s\n",
+      "lan_on=%s clear_bonds=%s rotate_token=%s reboot_required=%s "
+      "setup_record=%s board_keys=%u\n",
       pair_name(next.pair), next.pin == kFactoryDefaultPin ? "true" : "false",
       next.wifi_on ? "true" : "false", next.ssid[0] ? "true" : "false",
       next.lan_on ? "true" : "false", pending.clear_bonds ? "true" : "false",
       pending.rotate_token ? "true" : "false",
-      reboot_required() ? "true" : "false");
+      reboot_required() ? "true" : "false", setup_v_sent ? "true" : "false",
+      board_sent);
   return true;
 }
 
@@ -1398,6 +1611,7 @@ std::size_t build_page(char *out, std::size_t size, std::uint8_t page,
   const Settings settings = get();
   int written = -1;
   if (page == 1) {
+    const SetupRecord setup = setup_record();
     // Each cell text stays empty when its cell is unset or invalid.
     std::array<char, opensensor::location::kCellTextBytes> cell{};
     char center[128] = "\"cell_resolution\":null,\"lat\":null,\"lon\":null";
@@ -1430,11 +1644,13 @@ std::size_t build_page(char *out, std::size_t size, std::uint8_t page,
         out, size,
         "{\"location\":{\"cell\":\"%s\",\"resolution\":%u,%s,\"country\":"
         "\"%s\",\"phone_cell\":\"%s\"%s},\"thing\":{\"mobility\":\"%s\","
-        "\"setup\":%u}}",
+        "\"setup\":%u,\"setup_v\":%lu,\"setup_ack\":%lu}}",
         cell.data(), unsigned(settings.location.resolution), center,
         settings.location.country, phone.data(), gnss,
         mobility_name(settings.location.mobility),
-        setup_needed(settings.location) ? 1U : 0U);
+        setup_needed(settings.location) ? 1U : 0U,
+        static_cast<unsigned long>(setup.version),
+        static_cast<unsigned long>(setup.ack));
   } else if (page == 2) {
     written = std::snprintf(
         out, size,
@@ -1448,6 +1664,11 @@ std::size_t build_page(char *out, std::size_t size, std::uint8_t page,
                             unsigned(page - 2), settings.ntp.servers[page - 3]);
   } else if (page == 5 || page == 6) {
     written = build_owner_page(out, size, page);
+  } else if (page == kBoardKeysPage) {
+    // A board without keys answers an empty object.
+    written = board_keys_installed()
+                  ? static_cast<int>(board_keys.page(out, size))
+                  : std::snprintf(out, size, "{}");
   }
   if (written <= 0 || static_cast<std::size_t>(written) >= size) {
     if (size)

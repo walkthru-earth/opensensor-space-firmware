@@ -262,7 +262,7 @@ by direction.
 | `0x05` | `SET_TIME` | `epoch_s` i64, optionally `subsecond_us` u32 | `TIME_SET` or `ERROR` 9; `status` notify |
 | `0x06` | `FLUSH` | none | `FLUSHED` or `ERROR` 10; `status` notify |
 | `0x07` | `STATUS` | none | `status` cache/notify only; **no `response` frame**, so the phone must not wait on `response` for it. If the value exceeds MTU − 3 the notification is omitted and the phone reads the cached characteristic. Over LAN this produces a `STATUS` push frame, so it doubles as a keep-alive ping. |
-| `0x08` | `GET_CONFIG` | empty or one page byte `0..6` | `CONFIG` or BLE `CONFIG_CHUNK` sequence |
+| `0x08` | `GET_CONFIG` | empty or one page byte `0..7` | `CONFIG` or BLE `CONFIG_CHUNK` sequence |
 | `0x09` | `SET_CONFIG` | `key=value` lines, utf8, `\n`-separated (see [configuration](#device-configuration-v2)) | `CONFIG` or BLE `CONFIG_CHUNK` sequence; `ERROR` 12 with the offending key as `detail` |
 | `0x0A` | `WIFI_SCAN` | none | `WIFI_AP` × n, then `WIFI_SCAN_END`; `ERROR` 15 if the radio cannot scan |
 | `0x0B` | `REBOOT` | none | `REBOOTING`, then the device finalizes any RAM batch and restarts |
@@ -327,7 +327,7 @@ Rules:
 
 ## Device configuration (v2)
 
-`GET_CONFIG` page 0 (empty body or byte 0) returns the legacy snapshot below. Pages 1 to 4 return additive location and time configuration and pages 5 and 6 the owner site keys, using the same CONFIG or CONFIG_CHUNK envelope. `SET_CONFIG` accepts the keys below and always acknowledges with the legacy page-0 snapshot. `SET_CONFIG` is **partial**: only the keys present change. Values are validated as a whole before anything is stored; one bad key rejects the request with `ERROR` 12 and nothing changes. Keys marked *action* are not stored, they do something once. The firmware persists the configuration as two CRC-checked NVS records. The owner site keys (`owner.*` and `thing.deployment_id`) live in one and every other key in the other. Each record is saved with a single write and commit and then read back. A request writes the owner record only when an owner value changes. It writes the main record whenever it carries any other key, even one equal to the stored value. Either record is also written when an earlier failure left it unsure. A request that writes both writes the owner record first, and the two writes are not atomic across a power cut. The phone therefore sends the owner keys in their own `SET_CONFIG`. On any persistence failure the reply is `ERROR` 12 with detail `nvs` and the live snapshot keeps the whole previous configuration, never half a request. A save can commit and still fail its readback, so after any failed save the board writes the previous value of every record the request wrote back, best effort. If a write back also fails it logs `CONFIG ERROR operation=owner-rollback` or `CONFIG ERROR operation=cfg-rollback`, the live snapshot still shows the previous values, and the record stays unsure. The next `SET_CONFIG`, even one that changes nothing in that record, writes it again from the live snapshot. A first boot whose seed write fails leaves the main record unsure the same way. While the main record is unsure an owner only `SET_CONFIG` writes it too, and if that write fails the owner change is refused with `nvs` and the owner record is written back. A boot before that loads whatever stayed in flash. After an `nvs` error the phone reads pages 0, 1, 5 and 6 again after the next `SET_CONFIG` succeeds or after the next reboot. A damaged or missing main record is a first boot, with a new random PIN and LAN token and Wi-Fi off. A damaged or missing owner record reads as empty. Power-cut behavior is not yet measured on hardware. Secrets are write-only: `wifi.psk` is never echoed, `GET_CONFIG` reports `psk_set` instead; the fixed BLE PIN is also not echoed and is represented by `pin_set`.
+`GET_CONFIG` page 0 (empty body or byte 0) returns the legacy snapshot below. Pages 1 to 4 return additive location and time configuration, pages 5 and 6 the owner site keys and page 7 the board keys, using the same CONFIG or CONFIG_CHUNK envelope. `SET_CONFIG` accepts the keys below and always acknowledges with the legacy page-0 snapshot. `SET_CONFIG` is **partial**: only the keys present change. Values are validated as a whole before anything is stored; one bad key rejects the request with `ERROR` 12 and nothing changes. Keys marked *action* are not stored, they do something once. The firmware persists the configuration as CRC-checked NVS records. The owner site keys (`owner.*` and `thing.deployment_id`) live in one, `thing.setup_v` and `thing.setup_ack` in a second (the setup record below), and every other runtime key in the main record. Board keys are the board's own, see [board keys](#board-keys-page-7). Each record is saved with a single write and commit and then read back. A request writes the owner record only when an owner value changes. It writes the main record whenever it carries any other key, even one equal to the stored value. Either record is also written when an earlier failure left it unsure. A request that writes both writes the owner record first, and the two writes are not atomic across a power cut. The phone therefore sends the owner keys in their own `SET_CONFIG`. On any persistence failure the reply is `ERROR` 12 with detail `nvs` and the live snapshot keeps the whole previous configuration, never half a request. A save can commit and still fail its readback, so after any failed save the board writes the previous value of every record the request wrote back, best effort. If a write back also fails it logs `CONFIG ERROR operation=owner-rollback` or `CONFIG ERROR operation=cfg-rollback`, the live snapshot still shows the previous values, and the record stays unsure. The next `SET_CONFIG`, even one that changes nothing in that record, writes it again from the live snapshot. A first boot whose seed write fails leaves the main record unsure the same way. While the main record is unsure an owner only `SET_CONFIG` writes it too, and if that write fails the owner change is refused with `nvs` and the owner record is written back. A boot before that loads whatever stayed in flash. After an `nvs` error the phone reads pages 0, 1, 5 and 6 again after the next `SET_CONFIG` succeeds or after the next reboot. A damaged or missing main record is a first boot, with a new random PIN and LAN token and Wi-Fi off. A damaged or missing owner record reads as empty. Power-cut behavior is not yet measured on hardware. Secrets are write-only: `wifi.psk` is never echoed, `GET_CONFIG` reports `psk_set` instead; the fixed BLE PIN is also not echoed and is represented by `pin_set`.
 
 | Key | Value | Applied | Meaning |
 | --- | --- | --- | --- |
@@ -354,6 +354,8 @@ Rules:
 | `owner.provider` | UTF-8, ≤ 64 bytes; empty clears | immediately | the organisation that runs the Thing, the STAC producer and licensor provider. Read back on page 5 |
 | `owner.url` | `https://` plus a host that starts with a letter or digit, ≤ 96 bytes, RFC 3986 characters only (no spaces, `"`, `\` or control characters); empty clears. The authority, the part after `https://` up to the first `/`, `?` or `#` or the end, must hold no `@`, so user info such as `https://a@example.org` or `https://a:b@example.org:8443/x` is refused, because page 5 echoes the link and STAC metadata publishes it. `https://@x` and `https://:443` are refused too. An `@` in the path, query or fragment such as `https://medium.com/@name` or `https://example.org?to=a@` is fine | immediately | the provider's link. Read back on page 5 |
 | `thing.deployment_id` | `[a-z0-9-]`, ≤ 32 bytes, a letter or digit at each end, never the literal `unknown`; empty clears | next sample | written to the footer `thing.deployment_id`, `unknown` while unset. Each file keeps the value of its first row and a change splits the file like a location change. Finalized files are never relabelled. Read back on page 5 |
+| `thing.setup_v` | `1..2147483647` | immediately | the setup step list the bits of `thing.setup_ack` refer to, the first 31 bits, big endian, of SHA-256 over the template `firmware.setup` ids joined by `\n`, with 0 read as 1. Sent only together with `thing.setup_ack`. Read back on page 1 |
+| `thing.setup_ack` | `0..2147483647` | immediately | bitmask of the setup steps the phone has finished, bit 0 for the first step of `firmware.setup`. Sent only together with `thing.setup_v`, a request with one of the two answers `ERROR` 12 with the missing key as detail. Read back on page 1 |
 | `sensor.vendor` | `Plantower` on Waveshare V2; empty only when clearing the profile | immediately | owner-identified vendor; must match the board's declared physical sensor |
 | `sensor.model` | `PMS5003T` on Waveshare V2; empty only when clearing the profile | immediately | owner-identified model; does not change the hardcoded UART parser |
 | `sensor.serial` | `PMS5003T-` + valid `YYYYMMDD` + 1–9 unit digits, or empty | immediately | scanned or manually entered module sticker, echoed in CONFIG; an empty value clears it. Impossible calendar dates and mismatched model prefixes are rejected |
@@ -377,25 +379,59 @@ the requested object means unsupported, not an unset location.
 | Page | Response JSON |
 | --- | --- |
 | 0 or empty | Legacy `ble`, `wifi`, `lan`, `sensor` snapshot |
-| 1 | `{"location":{"cell":"","resolution":8,"cell_resolution":null,"lat":null,"lon":null,"country":"","phone_cell":"","gnss_cell":""},"thing":{"mobility":"fixed","setup":1}}`. Populated cells return their actual resolution and derived center in degrees. `thing.setup` is 1 while the advert `setup` bit is set, else 0. `location.gnss_cell` is present only on a board with a GNSS receiver (Waveshare V2, omitted on CoreS3). It holds the newest fix as a res 8 cell, or `""` without a fix from the last 15 s. It is never a coordinate and never stored. `location.phone_cell` is the res 8 phone cell held in RAM, or `""` when unset, after a reboot or 300 s after the last request that sent it (#140). `resolution` is always 8 and `cell_resolution` is 8 or null. The worst case page is 227 bytes, checked by `pixi run config-test` |
+| 1 | `{"location":{"cell":"","resolution":8,"cell_resolution":null,"lat":null,"lon":null,"country":"","phone_cell":"","gnss_cell":""},"thing":{"mobility":"fixed","setup":1,"setup_v":0,"setup_ack":0}}`. Populated cells return their actual resolution and derived center in degrees. `thing.setup` is 1 while the advert `setup` bit is set, else 0. `thing.setup_v` and `thing.setup_ack` are the stored setup record, both 0 while it is unset. `location.gnss_cell` is present only on a board with a GNSS receiver (Waveshare V2, omitted on CoreS3). It holds the newest fix as a res 8 cell, or `""` without a fix from the last 15 s. It is never a coordinate and never stored. `location.phone_cell` is the res 8 phone cell held in RAM, or `""` when unset, after a reboot or 300 s after the last request that sent it (#140). `resolution` is always 8 and `cell_resolution` is 8 or null. The worst case page is 271 bytes, checked by `pixi run config-test` |
 | 2 | `ntp` policy (`on`, `dhcp`, `public_fallback`, `interval_s`) plus `state`, `running`, `anchored`, `age_s` (null before sync), `stale`, `source`, `last_public`, `sync_count`, `error` |
 | 3 | `{"ntp":{"server1":""}}` |
 | 4 | `{"ntp":{"server2":""}}` |
 | 5 | `{"owner":{"title":"","provider":"","url":""},"thing":{"deployment_id":""}}`, 74 bytes empty and 458 at the worst case |
 | 6 | `{"owner":{"description":""}}`, 348 bytes at the worst case |
+| 7 | The board keys, JSON nested by key prefix, such as `{"panel":{"theme":"light"},"sen6x":{"co2_asc":true}}`. `{}` on a board without keys |
 
-**Planned, not built** ([decision 0003](decisions/0003-metadata-driven-apps.md)).
-No firmware sends these yet, and the bytes above are what boards send today.
-Page 1 `thing` gains `setup_ack`, a bitmask of the setup steps the phone has
-finished in the order of the template `firmware.setup`, and `setup_v`, which
-names the step list those bits refer to. A `setup_v` the phone does not
-expect reads as no step done. The device stores both, the phone sets them
-with a planned `SET_CONFIG` key, and the advert `setup` bit stays derived
-from the config for required steps. A new page after page
-6 carries the board specific settings that the template `firmware.config_keys`
-declares, such as the CrowPanel panel and SEN63C options that only the panel
-knob can change today. The keys, page number and limits are fixed in the PR
-that builds them, with a [mobile-migration.md](mobile-migration.md) entry.
+#### Setup record
+
+Built for [decision 0003](decisions/0003-metadata-driven-apps.md) (#184). The
+device keeps `thing.setup_v` and `thing.setup_ack` so a second phone sees the
+same setup progress. A `setup_v` the phone does not compute from the
+template it holds reads as no step done. The phone writes both keys in one
+`SET_CONFIG`. The record is its own NVS blob `setup` in namespace `oscfg`,
+magic `OSSU`, version 1, an 8 byte payload of two little endian u32 with a
+CRC-32. It is saved with one write and commit and read back, after the owner
+record and before the main record, and only when a value changes or an
+earlier failure left it unsure. A failed save writes the previous record back
+and the request answers `ERROR` 12 with detail `nvs`. If that write back fails
+too the board logs `CONFIG ERROR operation=setup-rollback` and the next
+`SET_CONFIG` writes the record again. A missing record is unset. A damaged one
+is unset too, prints one `CONFIG SETUP invalid-stored-record=true` line, and
+is kept, never erased. The advert `setup` bit and page 1 `thing.setup` stay
+derived from the config for required steps, never from this record.
+
+#### Board keys (page 7)
+
+A board may own `SET_CONFIG` keys of its own, which its template declares in
+`firmware.config_keys` with type, values and `applies` (see the
+[plugin contract](plugins/README.md#setup-settings-and-config-keys)). A board
+key never starts with a runtime prefix (`ble.`, `wifi.`, `lan.`, `ntp.`,
+`location.`, `thing.`, `owner.` or `sensor.`). The runtime hands each board
+key of a request to the board, which checks it against its own type. An
+unknown key or a value outside its type answers `ERROR` 12 with the key as
+detail and nothing changes. Once the rest of the request is saved the board
+keeps the values in its own storage, and page 7 reads them back as JSON
+nested by key prefix, booleans as `true` or `false`, enum values as strings
+and integers as numbers. An action key such as `sen6x.fan_clean` does its
+work once and is never on page 7. A request that holds only board keys
+writes no `oscfg` record. The serial `CONFIG SET` line counts board keys as
+`board_keys=N` and never names them.
+
+The CrowPanel keys are `panel.theme` (`light`, `dark`), `panel.refresh_s`
+(`10`, `30`, `60`, `300`), `panel.start_page` (`dashboard`, `last_viewed`,
+applied at the next boot), `panel.sleep_s` (`0` for never, `600`, `1800`,
+`3600`), `sen6x.co2_asc` (boolean), `sen6x.altitude_m` (0 to 3000),
+`sen6x.temp_offset_dc` (-100 to 50, tenths of a degree) and the action
+`sen6x.fan_clean` (`1` or `true` starts a cleaning, `0` or `false` does
+nothing). They are the panel knob settings, so the knob and the phone change
+the same values. The panel saves them in NVS namespace `ospanel` 5 s after
+the last change, like a knob change. CoreS3 and Waveshare V2 declare no
+board keys and answer page 7 with `{}`.
 
 The owner keys (#148) live in their own CRC-checked NVS record, separate from
 the main configuration record, so existing keys and types do not change. The
