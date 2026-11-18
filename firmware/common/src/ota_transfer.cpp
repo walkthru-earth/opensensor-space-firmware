@@ -85,8 +85,8 @@ Error Transfer::fail(Error error) {
   return error;
 }
 
-bool Transfer::drop_owner(Owner owner) {
-  if (phase_ != Phase::Receiving || owner_ != owner)
+bool Transfer::drop_owner(Owner gone) {
+  if (phase_ != Phase::Receiving || owner_ != gone)
     return false;
   static_cast<void>(fail(Error::Busy));
   return true;
@@ -114,10 +114,10 @@ Transfer::check_header(std::span<const std::uint8_t> first) const {
 }
 
 std::expected<Progress, Error>
-Transfer::begin(std::span<const std::uint8_t> body, Owner owner) {
+Transfer::begin(std::span<const std::uint8_t> body, Owner requester) {
   if (phase_ == Phase::Ready)
     return std::unexpected(Error::RebootPending);
-  if (phase_ == Phase::Receiving && owner_ != owner)
+  if (phase_ == Phase::Receiving && owner_ != requester)
     return std::unexpected(Error::Busy);
   // The owner may restart. Close the old handle before the new one opens.
   static_cast<void>(fail(Error::Busy));
@@ -132,7 +132,7 @@ Transfer::begin(std::span<const std::uint8_t> body, Owner owner) {
   if (!sink_.begin(sink_.context, size))
     return std::unexpected(Error::Flash);
   phase_ = Phase::Receiving;
-  owner_ = owner;
+  owner_ = requester;
   size_ = size;
   next_ = 0;
   std::copy_n(body.begin() + 4, kDigestBytes, declared_.begin());
@@ -193,13 +193,13 @@ std::expected<Progress, Error> Transfer::cancel() {
 }
 
 std::expected<Progress, Error>
-Transfer::handle(std::span<const std::uint8_t> request, Owner owner) {
+Transfer::handle(std::span<const std::uint8_t> request, Owner requester) {
   if (request.empty())
     return std::unexpected(Error::Malformed);
   const std::uint8_t op = request[0];
   const auto body = request.subspan(1);
   if (op == kOpBegin)
-    return begin(body, owner);
+    return begin(body, requester);
   if (op != kOpWrite && op != kOpEnd && op != kOpCancel)
     return std::unexpected(Error::UnknownOp);
   // Any authenticated session may cancel a staged image, since the session
@@ -211,7 +211,7 @@ Transfer::handle(std::span<const std::uint8_t> request, Owner owner) {
   if (phase_ == Phase::Ready)
     return op == kOpEnd ? std::expected<Progress, Error>(progress())
                         : std::unexpected(Error::RebootPending);
-  if (owner != owner_)
+  if (requester != owner_)
     return std::unexpected(Error::Busy);
   if (op == kOpWrite)
     return write(body);

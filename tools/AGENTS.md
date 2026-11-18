@@ -28,6 +28,7 @@ C++ contract tests and cannot prove behavior on a physical board.
 | Per-file C++ dialect and source path map of an SDK fixture build, and every fixture entry point calling it without swallowing its exit | `check_idf_target.py --compile-dialect <build>`, `compile-dialect-test` |
 | One board built from two checkout paths gives the same images (SDK, CI job) | `repro-paths-check <board> [variant]`, `repro-paths-test` |
 | Native SDK and affected board builds | `idf-setup`, `cores3-build`, `waveshare-build [logger|diagnostic]`, `crowpanel-build` |
+| ESP-IDF Python venv holds exactly the hashed set in `tools/idf-python`, refresh after an SDK or Python change | `idf-python-check`, `idf-python-lock`, `idf-python-lock-test` |
 | CrowPanel e-paper UI on the host. Pages, charts, history, the settings popup and its NVS blob, sleep and pairing screens, no colons, semicolons or em dashes in panel copy. Previews go to the board's ignored `artifacts/ui-preview/`. Fonts are baked from the vendored Inter and the check fails when `fonts_gen.cpp` is stale | `crowpanel-ui-test`, `crowpanel-ui-preview`, `crowpanel-fonts`, `crowpanel-fonts-test` |
 | SDK compile fixtures for shared connectivity and logger, no board target, C++ dialect check only. They need ESP-IDF, so the gate skips them | `connectivity-build-test`, `logger-build-test` |
 | Bench only `parquet bench-stall` image, parser bounds and default-off guard | `OS_BENCH=stall cores3-build` or `waveshare-build logger`, `logger-bench-stall-test` |

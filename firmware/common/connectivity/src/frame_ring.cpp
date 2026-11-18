@@ -3,9 +3,9 @@
 #include <cstring>
 
 namespace ossync {
-void FrameRing::attach(std::uint8_t *storage, std::size_t capacity) {
+void FrameRing::attach(std::uint8_t *storage, std::size_t bytes) {
   storage_ = storage;
-  capacity_ = storage ? capacity : 0;
+  capacity_ = storage ? bytes : 0;
   reset();
 }
 

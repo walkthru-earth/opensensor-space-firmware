@@ -10,9 +10,9 @@ if [[ ! -f "${IDF_PATH}/tools/idf.py" ]] || [[ "$(git -C "${IDF_PATH}" rev-parse
   exit 2
 fi
 python "${repo_root}/tools/check_idf_target.py" --sdk-only "${IDF_PATH}"
-# SDK Python packages and compiler tools come from the pinned SDK installer.
-# Host validators continue to run in Pixi, outside this subprocess environment.
-export IDF_PYTHON_CHECK_CONSTRAINTS=yes
+# Compiler tools come from the pinned SDK installer, the SDK Python packages
+# from the hashed lock in tools/idf-python (#176). Host validators continue to
+# run in Pixi, outside this subprocess environment.
 # A new worktree, or a moved checkout, gets its venv here with no manual step.
 ensure_idf_python_env
 source "${IDF_PATH}/export.sh" >/dev/null

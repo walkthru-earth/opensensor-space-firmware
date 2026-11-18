@@ -175,6 +175,8 @@ jobs:
       # name. The key carries that name, so a renamed repository installs a
       # fresh venv instead of restoring one that points at the old path. The
       # shared ~/.espressif keeps only compilers and tools, never a venv.
+      # The key also hashes the venv's package lock in tools/idf-python, so a
+      # refreshed lock starts from an empty venv.
       # setup-pixi caches the pixi env itself.
       - name: Restore ESP-IDF SDK and tools
         id: sdk-cache
@@ -186,7 +188,7 @@ jobs:
             ~/.espressif
             !~/.espressif/dist
             !~/.espressif/python_env
-          key: esp-idf-${{ runner.os }}-${{ steps.idf.outputs.commit }}-${{ hashFiles('tools/setup-idf.sh', 'tools/idf-env.sh', 'pixi.lock') }}-${{ github.event.repository.name }}
+          key: esp-idf-${{ runner.os }}-${{ steps.idf.outputs.commit }}-${{ hashFiles('tools/setup-idf.sh', 'tools/idf-env.sh', 'tools/idf-python/*', 'pixi.lock') }}-${{ github.event.repository.name }}
       - name: Install pinned ESP-IDF
         run: pixi run idf-setup
       # Every leg installs the same SDK, so one leg saves it.
@@ -226,6 +228,10 @@ jobs:
           fi
           # A build that rewrites a committed lock means the lock is stale.
           git diff --exit-code -- '*dependencies.lock'
+      # The IDF venv holds exactly the hashed package set in tools/idf-python
+      # (#176). idf-setup installs it, this proves the build changed nothing.
+      - name: Check IDF Python packages against the lock
+        run: pixi run idf-python-check
       - name: ccache statistics
         if: always()
         run: pixi run ccache --show-stats
@@ -401,11 +407,13 @@ jobs:
             ~/.espressif
             !~/.espressif/dist
             !~/.espressif/python_env
-          key: esp-idf-${{ runner.os }}-${{ steps.idf.outputs.commit }}-${{ hashFiles('tools/setup-idf.sh', 'tools/idf-env.sh', 'pixi.lock') }}-${{ github.event.repository.name }}
+          key: esp-idf-${{ runner.os }}-${{ steps.idf.outputs.commit }}-${{ hashFiles('tools/setup-idf.sh', 'tools/idf-env.sh', 'tools/idf-python/*', 'pixi.lock') }}-${{ github.event.repository.name }}
       - name: Install pinned ESP-IDF
         run: pixi run idf-setup
       - name: Build from two paths and compare
         run: pixi run repro-paths-check waveshare logger
+      - name: Check IDF Python packages against the lock
+        run: pixi run idf-python-check
 
   # The one required status check. It fails unless every job above passed,
   # so adding, renaming or splitting a job never needs a ruleset change. A
