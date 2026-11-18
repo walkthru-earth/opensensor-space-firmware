@@ -18,6 +18,7 @@
 #include <os_logger_footer.h>
 #include <os_logger_live.h>
 #include <os_logger_location.h>
+#include <utility>
 #include <vector>
 
 using namespace telemetry;
@@ -80,7 +81,7 @@ void gauge_modules(Sample &row, const BatteryHealth &health) {
 // Status codes are one digit and PMS words are u16.
 constexpr std::int64_t kI64 = std::numeric_limits<std::int64_t>::max();
 constexpr std::int64_t kU16 = 65535;
-// `t` is the PMS5003T signed int16 deci degree, so -3276.8 prints widest.
+// `t` passes the -10.0..60.0 gate, so -10.0 is the widest it prints.
 // `rh` is capped at 100.0. `bat` passes the MAX17048 2500..4500 mV check.
 // `bstate` is opensensor::battery::State (0..5).
 constexpr livewidest::Widest kWidest[] = {
@@ -88,17 +89,17 @@ constexpr livewidest::Widest kWidest[] = {
     {"pms", 9, 0.0F},     {"c1", kU16, 0.0F},   {"c25", kU16, 0.0F},
     {"c10", kU16, 0.0F},  {"pm1", kU16, 0.0F},  {"pm25", kU16, 0.0F},
     {"pm10", kU16, 0.0F}, {"n03", kU16, 0.0F},  {"n05", kU16, 0.0F},
-    {"n1", kU16, 0.0F},   {"n25", kU16, 0.0F},  {"t", 0, -3276.8F},
+    {"n1", kU16, 0.0F},   {"n25", kU16, 0.0F},  {"t", 0, -10.0F},
     {"rh", 0, 100.0F},    {"bat", 4500, 0.0F},  {"pct", 100, 0.0F},
     {"bstate", 5, 0.0F},
 };
-// Measured 2026-10-26 with every declared key present, a one digit code or
+// Measured 2026-11-18 with every declared key present, a one digit code or
 // a 100 percent counted as null since null is wider, and each float at its
-// field's decimals (t and rh print one). The widest object is 270 bytes,
-// 480 - 270 = 210 bytes of headroom. The all-null object sent on overflow is
+// field's decimals (t and rh print one). The widest object is 268 bytes,
+// 480 - 268 = 212 bytes of headroom. The all-null object sent on overflow is
 // 211 bytes. A change here means a LIVE key, its widest value or its decimals
 // changed, update the numbers.
-constexpr std::size_t kWidestLiveBytes = 270;
+constexpr std::size_t kWidestLiveBytes = 268;
 constexpr std::size_t kAllNullLiveBytes = 211;
 void assert_live_keys(const oslogger::Field *table, std::size_t count) {
   const auto bytes = livewidest::measure(table, count, kWidest);
@@ -326,6 +327,8 @@ config::Settings settings_for(const SensorProfile &sensor) {
   settings.sensor_batch_candidate = sensor.batch_candidate;
   return settings;
 }
+// 2^32 ms plus 1 s, in microseconds.
+constexpr std::int64_t kSilentUs = ((std::int64_t{1} << 32) + 1000) * 1000;
 struct PmsCase {
   const char *name;
   PmsSnapshot latest;
@@ -368,6 +371,27 @@ std::vector<PmsCase> pms_cases() {
   full.frame.temperature_deci_c = 32767;
   full.frame.particle_counts = {65535, 0, 1, 2, 0, 0};
   cases.push_back({"rh 1000 and widest words", full, now});
+  // Silent for 2^32 ms plus 1 s. The uint32 age used to wrap to 1000 ms and
+  // the row read valid with a 49.7 day old frame (#169).
+  auto silent = valid;
+  silent.received_mono_us = 5000000;
+  cases.push_back(
+      {"silent 2^32 ms", silent, silent.received_mono_us + kSilentUs});
+  auto cold = valid;
+  cold.frame.temperature_deci_c = -101;
+  cases.push_back({"temperature under range", cold, now});
+  auto hot = valid;
+  hot.frame.temperature_deci_c = 601;
+  cases.push_back({"temperature over range", hot, now});
+  auto edge_hot = valid;
+  edge_hot.frame.temperature_deci_c = 600;
+  cases.push_back({"temperature 60.0", edge_hot, now});
+  auto edge_cold = valid;
+  edge_cold.frame.temperature_deci_c = -100;
+  cases.push_back({"temperature -10.0", edge_cold, now});
+  auto future = valid;
+  future.received_mono_us = now + 2000;
+  cases.push_back({"frame after row time", future, now});
   return cases;
 }
 struct GaugeCase {
@@ -459,6 +483,133 @@ void assert_row_equality() {
   assert(failed.data[gauge_status] == kGaugeNotInstalled &&
          !failed.valid[battery_health_state]);
 }
+// A PMSA003 style frame, 32 bytes like a PMS5003T, with the counts above 5
+// and 10 um where the PMS5003T keeps temperature and RH. The six counts are
+// cumulative, so none rises as the size threshold rises.
+std::array<std::uint8_t, 32> pmsa003_bytes(std::uint16_t gt50,
+                                           std::uint16_t gt100) {
+  assert(gt50 >= gt100 && gt50 <= 0xffff - 3000);
+  auto bytes = sensor_bytes();
+  const std::uint16_t below[] = {
+      static_cast<std::uint16_t>(gt50 + 3000),
+      static_cast<std::uint16_t>(gt50 + 2000),
+      static_cast<std::uint16_t>(gt50 + 1000),
+      static_cast<std::uint16_t>(gt50 + 500)}; // above 0.3, 0.5, 1.0, 2.5 um
+  for (std::size_t i = 0; i < 4; ++i) {
+    bytes[16 + 2 * i] = static_cast<std::uint8_t>(below[i] >> 8);
+    bytes[17 + 2 * i] = static_cast<std::uint8_t>(below[i]);
+  }
+  bytes[24] = static_cast<std::uint8_t>(gt50 >> 8);
+  bytes[25] = static_cast<std::uint8_t>(gt50);
+  bytes[26] = static_cast<std::uint8_t>(gt100 >> 8);
+  bytes[27] = static_cast<std::uint8_t>(gt100);
+  std::uint16_t sum = 0;
+  for (std::size_t i = 0; i < 30; ++i)
+    sum += bytes[i];
+  bytes[30] = static_cast<std::uint8_t>(sum >> 8);
+  bytes[31] = static_cast<std::uint8_t>(sum);
+  return bytes;
+}
+// #169. The age saturates and stays stale, and the PMS5003T tail words are
+// written only inside the declared ranges.
+// The shared rule in pms_status.h, which both boards call (#169, #165).
+void assert_shared_pms_rule() {
+  using plantower::classify;
+  using plantower::Reading;
+  constexpr auto most = std::numeric_limits<std::uint32_t>::max();
+  static_assert(plantower::frame_age_ms(1000, 2000) == 0);
+  static_assert(plantower::frame_age_ms(2000, 2000) == 0);
+  static_assert(plantower::frame_age_ms(2999, 2000) == 0);
+  static_assert(plantower::frame_age_ms(3000, 2000) == 1);
+  static_assert(plantower::frame_age_ms(std::int64_t{most} * 1000, 0) == most);
+  static_assert(plantower::frame_age_ms(kSilentUs, 0) == most);
+  static_assert(plantower::frame_age_ms(
+                    std::numeric_limits<std::int64_t>::max(),
+                    std::numeric_limits<std::int64_t>::min()) == most);
+  // Warm-up runs from the wake. A clock before the wake is still warming.
+  static_assert(plantower::warming(29999999, 0, 30000000));
+  static_assert(!plantower::warming(30000000, 0, 30000000));
+  static_assert(plantower::warming(5, 10, 30000000));
+  static_assert(!plantower::warming(40000010, 10000010, 30000000));
+  // Missing, warming, stale, then the error byte, in that order.
+  static_assert(classify({.present = false,
+                          .warming = true,
+                          .age_ms = most,
+                          .sensor_error = 1},
+                         5000) == Reading::Missing);
+  static_assert(
+      classify(
+          {.present = true, .warming = true, .age_ms = most, .sensor_error = 1},
+          5000) == Reading::Warming);
+  static_assert(classify({.present = true, .age_ms = 5001, .sensor_error = 1},
+                         5000) == Reading::Stale);
+  static_assert(classify({.present = true, .age_ms = 5000, .sensor_error = 1},
+                         5000) == Reading::SensorError);
+  static_assert(classify({.present = true, .age_ms = 5000}, 5000) ==
+                Reading::Valid);
+  static_assert(classify({.present = true, .age_ms = most}, 5000) ==
+                Reading::Stale);
+}
+
+void assert_silent_and_tail_gates() {
+  assert_shared_pms_rule();
+  auto pms = parsed_snapshot();
+  pms.received_mono_us = 5000000;
+  const std::int64_t now = pms.received_mono_us + kSilentUs;
+  const auto silent = board_modules::aged(pms, now);
+  assert(silent.age_ms == std::numeric_limits<std::uint32_t>::max());
+  assert(board_modules::status_of(silent, now) == kPmsStale);
+  Sample row{};
+  pms_modules(row, silent, now);
+  assert(row.data[pms_status] == kPmsStale && !row.valid[pm1_cf1_ug_m3] &&
+         row.valid[pms_age_ms] &&
+         row.data[pms_age_ms] == std::numeric_limits<std::uint32_t>::max());
+  // The old cast wrapped this age to 1000 ms.
+  assert(static_cast<std::uint32_t>(kSilentUs / 1000) == 1000);
+  // A frame stamped after the row time is fresh, not 49.7 days old.
+  assert(board_modules::aged(pms, pms.received_mono_us - 1500).age_ms == 0);
+
+  // A PMSA003 on the PMS5003T parser. Smoke counts above 5 and 10 um would
+  // read as 140.0 Cel and 120.0 % RH. Both stay null, PM stays.
+  PmsSnapshot wired = parsed_snapshot();
+  plantower::Parser parser{plantower::Model::Pms5003t};
+  bool parsed = false;
+  for (const auto byte : pmsa003_bytes(1400, 1200))
+    parsed = parser.push(byte, wired.frame);
+  assert(parsed && wired.frame.temperature_deci_c == 1400 &&
+         wired.frame.humidity_deci_percent == 1200);
+  Sample pmsa{};
+  pms_modules(pmsa, wired, kPmsWarmupUs);
+  assert(pmsa.data[pms_status] == kPmsValid && pmsa.valid[pm25_cf1_ug_m3] &&
+         !pmsa.valid[ambient_temperature_c] &&
+         !pmsa.valid[relative_humidity_percent]);
+  // A negative word is a count above 32767 there, also out of range.
+  for (const auto byte : pmsa003_bytes(40000, 1001))
+    parsed = parser.push(byte, wired.frame);
+  Sample big{};
+  pms_modules(big, wired, kPmsWarmupUs);
+  assert(parsed && !big.valid[ambient_temperature_c] &&
+         !big.valid[relative_humidity_percent]);
+  // Small counts fit both ranges and cannot be told from a climate reading.
+  // pms5003t.md records this limit.
+  for (const auto byte : pmsa003_bytes(23, 4))
+    parsed = parser.push(byte, wired.frame);
+  Sample small{};
+  pms_modules(small, wired, kPmsWarmupUs);
+  assert(parsed && small.valid[ambient_temperature_c] &&
+         small.valid[relative_humidity_percent]);
+
+  for (const auto [deci, written] :
+       {std::pair{-101, false}, std::pair{-100, true}, std::pair{600, true},
+        std::pair{601, false}}) {
+    auto edge = parsed_snapshot();
+    edge.frame.temperature_deci_c = static_cast<std::int16_t>(deci);
+    Sample out{};
+    pms_modules(out, edge, kPmsWarmupUs);
+    assert(out.data[pms_status] == kPmsValid &&
+           out.valid[ambient_temperature_c] == written);
+  }
+}
 void assert_gates() {
   assert_identity_rules();
   assert_warmup_from_wake();
@@ -511,6 +662,7 @@ void assert_gates() {
   pms_modules(bad_model, pms, kPmsWarmupUs);
   assert(bad_model.data[pms_status] == kPmsModelMismatch);
   assert(!bad_model.valid[ambient_temperature_c]);
+  assert_silent_and_tail_gates();
   // Neither word read. The values stay out of the row.
   board_modules::write_gauge(bad_gauge,
                              {.battery_installed = true,

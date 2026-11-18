@@ -7,7 +7,6 @@
 namespace telemetry {
 struct PmsSnapshot {
   std::uint16_t values[12]{};
-  std::uint32_t age_ms = 0;
   std::int64_t received_mono_us = 0;
   std::uint32_t frames = 0;
   std::uint32_t checksum_errors = 0;
@@ -18,8 +17,20 @@ struct PmsSnapshot {
 };
 
 // Called once after M5.begin and SD mount. One worker owns all subsequent SD
-// IO.
-void begin_logger(bool sd_mounted);
+// IO. False when the logger could not start, so no row is ever written.
+[[nodiscard]] bool begin_logger(bool sd_mounted);
+// The row's PMS status (telemetry_contract.h pms_status_of) for the screen and
+// the MEAS line, so neither shows a value the row nulls (#165). `status`
+// follows the pms_status codes, 4 is valid. `age_ms` is the saturated
+// pms_age_ms.
+struct PmsReading {
+  std::int32_t status = 0;
+  const char *name = "missing";
+  std::uint32_t age_ms = 0;
+};
+PmsReading pms_reading(bool present, std::int64_t now_us,
+                       std::int64_t received_mono_us,
+                       std::uint8_t sensor_error);
 // SD volume owned by main.cpp. Storage worker only, with the display lock
 // held. remount unmounts and mounts again, never formats.
 bool remount_sd();
