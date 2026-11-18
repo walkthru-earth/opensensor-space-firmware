@@ -95,7 +95,24 @@ No board was connected to a serial port, flashed or captured for this entry.
 - The owner saw readings on the panel with the Dark theme on. The values were
   not recorded and are not checked against a reference.
 
+## Chart history restore, 2026-11-18
+
+- Same unit and port, SEN63C still on internal pull-ups. Full 8,388,608 byte
+  backups before each flash write.
+- Image `215b445` logged `OS HISTORY restore=none reason=order-unknown
+  ms=89` on a card holding 32 files of this Thing. Some earlier boots took
+  UTC from the bonded phone before their first file, so they wrote only
+  dated folders and never entered the NVS boot ring, and nothing proved
+  their order against bench boots without UTC.
+- Image `945203b` adds the card usage fallback. The 45 second capture
+  `artifacts/history-restore-945203b-20261118.log` shows `OS HISTORY restored
+  boots=10 files=35 rows=2840 span_s=28300 ms=2239 skipped=0 cut=none
+  ring_boots=9 dated_boots=1 placed=10 fallback=3`, then `OS READY
+  logging=1`, with no watchdog line. The board decoded 35 finalized files
+  from the card on device.
+- Not shown yet. The chart on the glass after the restore and a real power
+  cut test, both owner checks.
+
 Not shown yet. The keys and the settings popup on the glass, SEN63C values
-against a reference, the bus with the 10 k pull-ups, a finalized Parquet file
-read back from the card, BLE and LAN sync, endurance and power-cut
-durability.
+against a reference, the bus with the 10 k pull-ups, BLE and LAN sync,
+endurance and power-cut durability.

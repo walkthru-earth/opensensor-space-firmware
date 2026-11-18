@@ -155,6 +155,7 @@ enum class GateRefusal : std::uint8_t {
   Stale,
   Unsubscribed,
   Insecure,
+  Deferred, // os-lan only, see response_refusal_now()
 };
 // `allowed` is may_send_frame() and runs only when nothing cheaper refused.
 template <class Allowed>
@@ -168,6 +169,21 @@ template <class Allowed>
   if (!subscribed)
     return Unsubscribed;
   return std::forward<Allowed>(allowed)() ? None : Insecure;
+}
+// The gate for the os-lan path, which must never wait (#178). NimBLE's live
+// state takes the host lock, so this never asks it. A frame the cached flag
+// or the ERROR 14 rule allows goes out. Where only the live state could allow
+// it, the frame is Deferred, not refused, so a secure link whose flag missed
+// ENC_CHANGE is sent once the host task latches the flag on the next access,
+// subscribe or ENC_CHANGE (#51). The other refusals end the reply at once.
+[[nodiscard]] inline GateRefusal
+response_refusal_now(bool connected, bool current_session, bool subscribed,
+                     bool cached, std::span<const std::uint8_t> frame) {
+  const auto refusal =
+      response_refusal(connected, current_session, subscribed, [&] {
+        return gate_allows(cached, is_auth_refusal(frame), false);
+      });
+  return refusal == GateRefusal::Insecure ? GateRefusal::Deferred : refusal;
 }
 [[nodiscard]] constexpr bool refusal_is_fault(GateRefusal refusal) {
   return refusal == GateRefusal::Unsubscribed ||
@@ -185,6 +201,8 @@ template <class Allowed>
     return "unsubscribed";
   case GateRefusal::Insecure:
     return "insecure";
+  case GateRefusal::Deferred:
+    return "deferred";
   }
   return "unknown";
 }

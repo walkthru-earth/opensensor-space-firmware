@@ -827,6 +827,26 @@ void test_unsubscribed_refusal_is_logged() {
   assert(ble::response_refusal(true, true, true, live) ==
          ble::GateRefusal::Insecure);
   assert(lookups == 1);
+  // The os-lan gate never asks the live state (#178). An unlatched link is
+  // Deferred, which the transport returns as Full, never refused (#51). A
+  // latched link and the ERROR 14 refusal go out, and the session refusals
+  // still end the reply.
+  const auto auth = error_frame(ble::kOpList, ble::kErrAuth);
+  assert(ble::response_refusal_now(true, true, true, false, busy) ==
+         ble::GateRefusal::Deferred);
+  assert(ble::response_refusal_now(true, true, true, true, busy) ==
+         ble::GateRefusal::None);
+  assert(ble::response_refusal_now(true, true, true, false, auth) ==
+         ble::GateRefusal::None);
+  assert(ble::response_refusal_now(false, true, true, false, busy) ==
+         ble::GateRefusal::Disconnected);
+  assert(ble::response_refusal_now(true, false, true, true, busy) ==
+         ble::GateRefusal::Stale);
+  assert(ble::response_refusal_now(true, true, false, true, busy) ==
+         ble::GateRefusal::Unsubscribed);
+  static_assert(!ble::refusal_is_fault(ble::GateRefusal::Deferred));
+  static_assert(std::string_view(ble::refusal_name(
+                    ble::GateRefusal::Deferred)) == "deferred");
 }
 
 void test_pending_cccd() {

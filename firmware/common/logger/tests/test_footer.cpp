@@ -134,7 +134,11 @@ void footer_bytes() {
     const auto key = text.find(R"("deployment_id":")");
     check(key != std::string_view::npos);
     const auto start = key + std::string_view(R"("deployment_id":")").size();
-    return std::string(text.substr(start, text.find('"', start) - start));
+    const auto written =
+        std::string(text.substr(start, text.find('"', start) - start));
+    // parquet status prints the id the next footer writes (#178).
+    check(written == footer::deployment_id(config, deployment));
+    return written;
   };
   check(deployment_of("cairo-07") == "cairo-07");
   check(deployment_of("") == "unknown");
@@ -142,6 +146,24 @@ void footer_bytes() {
   config.deployment_id = "board-default";
   check(deployment_of("") == "board-default");
   check(deployment_of("giza-01") == "giza-01");
+  // parquet status picks the open file's snapshot, then the first buffered
+  // row's, then the live setting, as the next footer does (#178).
+  static_assert(std::string_view(
+                    footer::next_deployment("file", "row", "live")) == "file");
+  static_assert(std::string_view(
+                    footer::next_deployment(nullptr, "row", "live")) == "row");
+  static_assert(std::string_view(footer::next_deployment(nullptr, nullptr,
+                                                         "live")) == "live");
+  // An open file with no owner id keeps it, so the footer falls back to the
+  // board constant even when the live setting changed since.
+  static_assert(std::string_view(footer::next_deployment("", "row", "live")) ==
+                "");
+  check(std::string_view(footer::deployment_id(
+            config, footer::next_deployment("", "giza-01", "cairo-07"))) ==
+        "board-default");
+  check(std::string_view(footer::deployment_id(
+            config, footer::next_deployment(nullptr, "", "cairo-07"))) ==
+        "board-default");
   config = base_config();
 
   // Fails closed, never a partial footer.

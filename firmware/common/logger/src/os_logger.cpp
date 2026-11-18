@@ -2593,10 +2593,14 @@ void storage_worker(void *) {
         ++dropped;
       } else {
         // A batch from another window can only leave RAM through a write.
-        // While the card cannot take it, the new row is the one dropped.
+        // While the card cannot take it, the new row is the one dropped. A
+        // commit that wrote the rows and then failed its finalize or free
+        // space read still left room, so the row is kept.
         if (!fits_batch(row, count) &&
-            (!storage_ready || !governor.writable() ||
-             !governed_commit(count, true))) {
+            !admit_unfitted_row(
+                storage_ready && governor.writable(),
+                [&] { return governed_commit(count, true); },
+                [&] { return fits_batch(row, count); })) {
           ++dropped;
           continue;
         }
@@ -2767,13 +2771,21 @@ void storage_worker(void *) {
         oslog.printf("OS CONFIG ok=0 key=%s\n", result.bad_key);
       std::memset(command.text, 0, sizeof(command.text));
     } else if (std::strcmp(command.text, "parquet status") == 0) {
+      // The deployment id the next footer writes: the open file's snapshot,
+      // else the first buffered row's, else the live owner setting.
+      const auto live = ::config::deployment_id();
+      const OutputFile &current = writer_state->telemetry;
+      const char *deployment = footer::next_deployment(
+          current.open() ? current.deployment.text.data() : nullptr,
+          count ? writer_state->rows[0].deployment.text.data() : nullptr,
+          live.text.data());
       oslog.printf(
           "PARQUET STATUS interval_s=%lu buffered=%u open_rows=%lu "
           "open_groups=%lu finalized=%lu "
           "dropped=%lu errors=%lu queue_peak=%lu failed=%s sd_state=%s "
           "sd_free_kib=%llu thing=%s "
-          "codec=%s schema=%s config=%s deployment=unknown "
-          "calibration=unknown\n",
+          "codec=%s schema=%s config=%s deployment=%s "
+          "calibration=%s\n",
           static_cast<unsigned long>(rotation_seconds.load()), unsigned(count),
           static_cast<unsigned long>(open_rows.load()),
           static_cast<unsigned long>(open_groups.load()),
@@ -2785,7 +2797,8 @@ void storage_worker(void *) {
           storage::state_name(governor.state()),
           static_cast<unsigned long long>(governor.free_bytes() / 1024),
           thing_text, codec_name(selected_codec), config.schema_name,
-          config.configuration_id);
+          config.configuration_id, footer::deployment_id(config, deployment),
+          config.calibration_id);
     } else if (std::strcmp(command.text, "parquet schema") == 0) {
       oslog.printf("PARQUET SCHEMA BEGIN schema=%s columns=%u sha256=%s "
                    "desc=%s desc_bytes=%u\n",
