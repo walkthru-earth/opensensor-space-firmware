@@ -235,11 +235,11 @@ public:
   // owner aborts the upload. A request from another session never disturbs
   // the owner's upload.
   [[nodiscard]] std::expected<Progress, Error>
-  handle(std::span<const std::uint8_t> request, Owner owner);
+  handle(std::span<const std::uint8_t> request, Owner requester);
 
   // Drop an upload whose owner is gone. Returns true when one was aborted.
   // A staged image (Ready) is kept, since its bytes are already verified.
-  bool drop_owner(Owner owner);
+  bool drop_owner(Owner gone);
 
   [[nodiscard]] Progress progress() const;
   [[nodiscard]] bool active() const { return phase_ != Phase::Idle; }
@@ -247,7 +247,7 @@ public:
 
 private:
   std::expected<Progress, Error> begin(std::span<const std::uint8_t> body,
-                                       Owner owner);
+                                       Owner requester);
   std::expected<Progress, Error> write(std::span<const std::uint8_t> body);
   std::expected<Progress, Error> finish();
   std::expected<Progress, Error> cancel();

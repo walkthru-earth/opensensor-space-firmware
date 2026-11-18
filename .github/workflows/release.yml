@@ -79,6 +79,9 @@ jobs:
           pixi run "${task[@]}"
           # A build that rewrites a committed lock means the lock is stale.
           git diff --exit-code -- '*dependencies.lock'
+      # The release installs the same hashed IDF Python set as CI (#176).
+      - name: Check IDF Python packages against the lock
+        run: pixi run idf-python-check
       - name: Check OTA slot share
         env:
           NAME: ${{ matrix.name }}
