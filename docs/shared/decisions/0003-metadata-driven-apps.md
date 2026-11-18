@@ -42,8 +42,9 @@ shows no LIVE for it and its panel settings are reachable only from the knob.
    ordered setup steps, ordered settings sections and typed `config_keys`.
    The generator copies them into the template `firmware` block, so they
    are hashed with it and a change moves `desc`, never `dict`. The app keeps
-   a fixed catalog of step components (name, location, mobility, site, wifi,
-   pairing, lan, bonds, sensor and a generic form). A board's own step or
+   a fixed catalog of setup steps (name, location, mobility, site, wifi,
+   pairing, lan), of settings sections (location, site, wifi, pairing, lan,
+   bonds, sensor) and a generic form. A board's own step or
    section carries a label. Find, Pair, Permission and Done
    stay app owned. The device stores which steps are done. Board specific
    settings that live only on the device today, such as the CrowPanel panel

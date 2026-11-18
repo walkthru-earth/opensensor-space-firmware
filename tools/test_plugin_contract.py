@@ -252,6 +252,8 @@ def main() -> None:
                "a repeated step")
         mutate(scratch, edit_json(board, lambda d: d["settings"].append({"id": "name"})), "not a settings section",
                "a setup only step in settings")
+        mutate(scratch, edit_json(board, lambda d: d["setup"].append({"id": "sensor"})), "not a setup step",
+               "a settings only section in setup")
         mutate(scratch, edit_json(board, lambda d: d["setup"].append({"id": "panel"})), "lists no keys",
                "a board step without keys")
         panel = {"type": "enum", "values": ["light", "dark"], "applies": "immediately", "page": 7, "label": "Theme"}
