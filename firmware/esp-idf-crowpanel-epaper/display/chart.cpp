@@ -205,6 +205,23 @@ void plot_series(Canvas &c, Rect plot, const Series &s, float lo, float hi,
   }
 }
 
+void restart_marks(Canvas &c, Rect plot, const Series &s) {
+  const std::size_t n = s.size();
+  if (n == 0 || plot.w <= 1 || s.restarts.empty())
+    return;
+  const auto w = static_cast<std::size_t>(plot.w);
+  for (std::size_t i = 0; i < n; ++i) {
+    if (!s.restart(i))
+      continue;
+    // The column plot_series() draws point i in. With more points than
+    // columns, column px holds [px*n/w, (px+1)*n/w).
+    const std::size_t px =
+        n <= w ? (n == 1 ? 0 : (i * (w - 1)) / (n - 1)) : ((i + 1) * w - 1) / n;
+    // Longer dashes than the dotted grid, so the two never read alike.
+    c.dotted_vline(plot.x + static_cast<int>(px), plot.y, plot.h, 4, 2);
+  }
+}
+
 void sparkline(Canvas &c, Rect r, const Series &s, bool zero_floor,
                float min_span) {
   const Range range = widen(data_range(s), zero_floor, min_span);
@@ -255,6 +272,7 @@ void line_chart(Canvas &c, Rect plot, const Series &s,
   // edges alike. The passes shift one pixel down and one right inside the
   // frame.
   const Rect inner{plot.x, plot.y, plot.w - 1, plot.h - 1};
+  restart_marks(c, inner, s);
   plot_series(c, inner, s, t.lo, t.hi);
   plot_series(c, {inner.x, inner.y + 1, inner.w, inner.h}, s, t.lo, t.hi);
   plot_series(c, {inner.x + 1, inner.y, inner.w, inner.h}, s, t.lo, t.hi);
