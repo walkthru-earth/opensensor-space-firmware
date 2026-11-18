@@ -456,13 +456,15 @@ def cross_rules(label: str, columns: list[Column], board: Board, cap: int) -> No
     setup_rules(label, board.manifest)
 
 
-# Setup manifest (#184, decision 0003). The app owns these step components, a
-# board orders them. Any other id is a generic form of the keys it lists, and
-# carries a label, since the app has no title of its own for it. `sensor` is
-# the sensor identity and sticker card.
-APP_STEPS = frozenset({"name", "location", "mobility", "site", "wifi", "pairing", "lan", "bonds", "sensor"})
-# Steps that have no Device settings section of their own.
-SETUP_ONLY = frozenset({"name", "mobility"})
+# Setup manifest (#184, decision 0003). The app owns these wizard step and
+# settings section components, a board orders them. Any other id is a generic
+# form of the keys it lists, and carries a label, since the app has no title of
+# its own for it. `sensor` is the sensor identity and sticker card.
+APP_STEPS = frozenset({"name", "location", "mobility", "site", "wifi", "pairing", "lan"})
+APP_SECTIONS = frozenset({"location", "site", "wifi", "pairing", "lan", "bonds", "sensor"})
+# Catalog ids of one list that the other list must not take as a board id.
+SETUP_ONLY = APP_STEPS - APP_SECTIONS
+SETTINGS_ONLY = APP_SECTIONS - APP_STEPS
 # A part a secret key name would hold. PIN, PSK and LAN token are never declared.
 SECRET_PARTS = frozenset({"pin", "psk", "token", "password", "secret"})
 
@@ -474,15 +476,18 @@ def setup_rules(label: str, manifest: dict) -> None:
         steps = manifest.get(part, [])
         ids = [s["id"] for s in steps]
         require(len(ids) == len(set(ids)), f"{label}: a {part} id repeats")
+        catalog = APP_STEPS if part == "setup" else APP_SECTIONS
         for step in steps:
             listed = step.get("keys", [])
-            if step["id"] in APP_STEPS:
+            require(part == "setup" or step["id"] not in SETUP_ONLY,
+                    f"{label}: {step['id']} is a setup step, not a settings section")
+            require(part == "settings" or step["id"] not in SETTINGS_ONLY,
+                    f"{label}: {step['id']} is a settings section, not a setup step")
+            if step["id"] in catalog:
                 require(not listed, f"{label}: app step {step['id']} lists keys, the app owns its form")
             else:
                 require(bool(listed), f"{label}: {part} step {step['id']} is not an app step and lists no keys")
                 require("label" in step, f"{label}: {part} step {step['id']} is not an app step and has no label")
-            require(part == "setup" or step["id"] not in SETUP_ONLY,
-                    f"{label}: {step['id']} is a setup step, not a settings section")
             missing = [k for k in listed if k not in keys]
             require(not missing, f"{label}: {part} step {step['id']} names undeclared keys {missing}")
             used.update(listed)
