@@ -145,9 +145,10 @@ void hero(Canvas &c, const Model &m, const History &h) {
   c.text(fonts::small, plot.x, plot.bottom() + 16, "-2 h");
   // No zero floor here, the labels name the data min and max, so the trace
   // spans exactly that band unless it is narrower than the metric's min_span.
-  if (range.valid)
+  if (range.valid) {
+    restart_marks(c, plot, s);
     sparkline(c, plot, s, false, mi.min_span);
-  else
+  } else
     c.text(fonts::small, plot.x + plot.w / 2, plot.y + plot.h / 2 + 4,
            "collecting", Align::Center);
 }

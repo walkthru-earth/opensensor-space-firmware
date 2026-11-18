@@ -52,6 +52,11 @@ enum class Detail : std::uint8_t { Envelope, Mean };
 void plot_series(Canvas &c, Rect plot, const Series &s, float lo, float hi,
                  Detail detail = Detail::Envelope);
 
+// A dashed vertical line across `plot` at each restart point of the series,
+// at the x plot_series() gives that point. A reboot of unknown length reads
+// apart from a plain gap, which stays blank.
+void restart_marks(Canvas &c, Rect plot, const Series &s);
+
 // A sparkline scaled to its own data, column means. Draws nothing when all
 // points are NaN.
 void sparkline(Canvas &c, Rect r, const Series &s, bool zero_floor,
@@ -64,8 +69,8 @@ struct ChartOptions {
   std::string_view empty_text = "No data yet";
 };
 
-// A full chart, y tick labels left of `plot`, dotted grid lines, a frame and
-// the x labels below it.
+// A full chart, y tick labels left of `plot`, dotted grid lines, dashed
+// restart lines, a frame and the x labels below it.
 void line_chart(Canvas &c, Rect plot, const Series &s, const ChartOptions &opt);
 
 } // namespace opensensor::ui
