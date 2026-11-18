@@ -895,7 +895,7 @@ void log_scan_end() {
 void pump_scan_reply(std::int64_t now) {
   while (scan_job.active) {
     const bool last = scan_job.next + 1 == scan_job.total;
-    ScanFrame frame;
+    ScanFrame frame{};
     const auto length = reply_frame(scan_job.next, frame);
     const auto result =
         ble::try_send_response(frame, length, scan_job.generation);
@@ -926,14 +926,15 @@ void pump_scan_reply(std::int64_t now) {
 }
 
 void send_lan_scan_reply(std::uint32_t link_generation, std::uint8_t peer) {
-  ScanFrame frame;
+  ScanFrame frame{};
   for (; scan_job.next + 1 < scan_job.total; ++scan_job.next) {
-    if (!respond(link_generation, peer, frame,
-                 reply_frame(scan_job.next, frame)))
+    const auto length = reply_frame(scan_job.next, frame);
+    if (!respond(link_generation, peer, frame, length))
       break;
     ++scan_job.sent;
   }
-  respond(link_generation, peer, frame, reply_frame(scan_job.total - 1, frame));
+  const auto end_length = reply_frame(scan_job.total - 1, frame);
+  respond(link_generation, peer, frame, end_length);
   log_scan_end();
   end_scan_reply();
 }
