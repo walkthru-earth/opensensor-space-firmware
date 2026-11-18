@@ -200,6 +200,25 @@ check_config(const Config &config) {
   return {};
 }
 
+// The footer thing.deployment_id for an owner value: the owner's id when
+// set, else Config::deployment_id. `parquet status` prints the same (#178).
+[[nodiscard]] constexpr const char *deployment_id(const Config &config,
+                                                  const char *owner) {
+  return detail::present(owner) ? owner : config.deployment_id;
+}
+
+// The owner value the next footer starts from. An open file keeps its
+// snapshot, else the first buffered row opens the next file, else a new row
+// takes the live setting. Pass nullptr for a source that does not exist. An
+// empty snapshot is still that file's value, so it is not skipped (#178).
+[[nodiscard]] constexpr const char *next_deployment(const char *open_file,
+                                                    const char *first_buffered,
+                                                    const char *live) {
+  if (open_file)
+    return open_file;
+  return first_buffered ? first_buffered : live;
+}
+
 // Writes the footer JSON and a NUL into `out` and returns its length without
 // the NUL. Fails closed, never truncates. check_config() rules apply, and the
 // ids and file.compression must be non empty.
@@ -224,8 +243,7 @@ build(std::span<char> out, const Config &config, const Ids &ids,
   json.text("id", ids.thing);
   json.text("device_id", ids.device);
   json.text("board", config.board);
-  json.text("deployment_id",
-            present(ids.deployment) ? ids.deployment : config.deployment_id);
+  json.text("deployment_id", deployment_id(config, ids.deployment));
   json.text("mobility", ids.mobility);
   json.close();
   json.open("firmware");

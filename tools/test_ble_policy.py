@@ -47,6 +47,22 @@ def check_gate_wiring(source: str) -> None:
     body = gate_body(source, "response_gate")
     assert "may_send_frame(" in body and "subscribed[Response]" in body, body
     assert "BLE REFUSE reason=" in body and "refusal_is_fault(" in body, body
+    # Issue #178. os-lan calls try_send_response, which never waits, so its
+    # refusal line skips the console sink and stays in LOG_TAIL.
+    assert "may_wait ? oslog : oslog.record_only()" in body, body
+    # The no-wait path never reaches secure(), which takes the host lock.
+    flat = " ".join(body.split())
+    assert "may_wait ? response_refusal(" in flat, body
+    assert ": response_refusal_now(" in flat, body
+    # enqueue_response forwards its own may_wait, so the default true never
+    # applies to os-lan, and a Deferred refusal returns Full with no guard.
+    flat = " ".join(gate_body(source, "enqueue_response").split())
+    assert re.search(r"response_gate\(session, handle, data, length, may_wait\)", flat), flat
+    assert re.search(r"if \(refusal == GateRefusal::Deferred\) return "
+                     r"ossync::EnqueueResult::Full;", flat), flat
+    body = gate_body(source, "try_send_response")
+    assert "enqueue_response(frame, length, session, false)" in body, body
+    assert "xSemaphoreTake(response_mutex, 0)" in body, body
     body = gate_body(source, "may_send_frame")
     assert "may_send(authenticated.load()" in body and "secure(handle)" in body, body
 
@@ -167,6 +183,20 @@ def main() -> None:
     connectivity = root / "firmware/common/connectivity/src"
     transport = (connectivity / "ble_sync.cpp").read_text()
     check_gate_wiring(transport)
+    # Each mutant drops one #178 wiring rule and must fail the check.
+    for good, bad in (
+            ("response_gate(session, handle, data, length, may_wait)",
+             "response_gate(session, handle, data, length)"),
+            ("if (refusal == GateRefusal::Deferred)\n    return ossync::EnqueueResult::Full;",
+             "if (refusal == GateRefusal::Deferred)\n    if (may_wait)\n      return ossync::EnqueueResult::Full;"),
+            ("if (refusal == GateRefusal::Deferred)\n    return ossync::EnqueueResult::Full;",
+             "if (refusal == GateRefusal::Deferred)\n    return ossync::EnqueueResult::Closed;")):
+        assert good in transport, good
+        try:
+            check_gate_wiring(transport.replace(good, bad, 1))
+        except AssertionError:
+            continue
+        raise AssertionError(f"wiring mutant passed: {bad}")
     check_early_subscribe_wiring(transport)
     check_link_sequence_wiring(transport)
     check_hci_timeout_wiring(transport)

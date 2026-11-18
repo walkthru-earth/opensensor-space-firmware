@@ -168,8 +168,9 @@ bool same_location(const LocationSettings &, const LocationSettings &);
 // Owner site configuration (#148). Free text the owner sets over SET_CONFIG for
 // the STAC Collection and the footer, kept in its own CRC-checked NVS record
 // `owner` beside `cfg`. Values are bounded UTF-8 without control characters.
-// An empty value clears the key. The board never prints these values, they
-// appear only in GET_CONFIG pages 5 and 6 and in the footer.
+// An empty value clears the key. The board never prints the free text, it
+// appears only in GET_CONFIG pages 5 and 6 and in the footer. The
+// thing.deployment_id slug also shows in `parquet status`.
 constexpr std::size_t kOwnerTitleMax = 64;
 constexpr std::size_t kOwnerDescriptionMax = 160;
 constexpr std::size_t kOwnerProviderMax = 64;
