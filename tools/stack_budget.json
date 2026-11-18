@@ -504,16 +504,16 @@
         ".iram0.text": 128000,
         ".dram0.data": 35072,
         ".dram0.bss": 58624,
-        ".flash.text": 1185536,
-        ".flash.rodata": 413952,
+        ".flash.text": 1211648,
+        ".flash.rodata": 415488,
         ".noinit": 256
       },
       "sections_measured": {
         ".iram0.text": 125295,
         ".dram0.data": 34257,
         ".dram0.bss": 57400,
-        ".flash.text": 1162158,
-        ".flash.rodata": 405720,
+        ".flash.text": 1187702,
+        ".flash.rodata": 407240,
         ".noinit": 3
       }
     }

@@ -81,6 +81,7 @@ common_sources=(
   firmware/common/runtime/src/coredump_report.cpp
   firmware/common/src/parquet_writer.cpp
   firmware/common/src/parquet_reader.cpp
+  firmware/common/src/parquet_columns.cpp
   firmware/common/src/lz4_codec.cpp
   firmware/common/src/sha256_stream.cpp
   firmware/common/sensors/src/pms_frame.cpp

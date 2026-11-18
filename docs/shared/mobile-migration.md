@@ -212,6 +212,14 @@ ESP32-S3 4.2" E-paper HMI v1.2 with a Sensirion SEN63C on I2C.
   `OS SEN6X absent ...`, `OS SEN6X lost ...`, `OS SEN6X stale ...`,
   `OS SEN6X start-failed ...`, `OS SEN6X status=...`, `OS DISPLAY ready=...`,
   `OS TF mounted=...` and `OS READY ...`.
+- At boot the board seeds its charts from its own finalized files of earlier
+  boots and logs one line before logging starts, `OS HISTORY restored
+  boots=N files=N rows=N span_s=N ms=N skipped=N cut=... ring_boots=N
+  dated_boots=N placed=N fallback=N` or `OS HISTORY restore=none
+  reason=... ms=N ring_boots=N dated_boots=N placed=N fallback=N`. Boots
+  are ordered by the NVS boot ring and dated folder names, and where those
+  prove nothing by the `sd_used_bytes` footer bounds. It only reads the
+  card. Files, columns and the wire do not change.
 - The panel settings popup adds `OS PANEL settings operation=load|save
   error=... refresh_s=... start_page=... sleep_s=... altitude_m=...
   co2_asc=... temp_offset_dc=... theme=light|dark`, with `theme` last.
