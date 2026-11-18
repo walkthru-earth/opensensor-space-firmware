@@ -23,6 +23,10 @@ std::vector<ble::ControlRequest> requests;
 bool accept_requests = true;
 std::uint32_t ble_reply_generation = 0;
 std::vector<std::vector<std::uint8_t>> ble_frames;
+// Frames the fake BLE notify queue takes before it reports Full, or -1 for
+// no limit. Closed stands for a peer that left.
+int ble_credits = -1;
+bool ble_closed = false;
 bool enqueue(const ble::ControlRequest &request) {
   if (!accept_requests)
     return false;
@@ -278,11 +282,18 @@ Settings get() { return fixture_settings; }
 namespace ble {
 const char *local_name() { return "OS-fixture"; }
 const char *info_json() { return "{\"thing\":\"fixture\"}"; }
-bool send_response(const std::uint8_t *frame, std::size_t length,
-                   std::uint32_t generation) {
+ossync::EnqueueResult try_send_response(const std::uint8_t *frame,
+                                        std::size_t length,
+                                        std::uint32_t generation) {
+  if (ble_closed)
+    return ossync::EnqueueResult::Closed;
+  if (ble_credits == 0)
+    return ossync::EnqueueResult::Full;
+  if (ble_credits > 0)
+    --ble_credits;
   ble_frames.emplace_back(frame, frame + length);
   ble_reply_generation = generation;
-  return true;
+  return ossync::EnqueueResult::Ok;
 }
 } // namespace ble
 
@@ -522,9 +533,6 @@ int main() {
   // Reconnecting slot 1 received its cached initial snapshots on poll.
   assert(read_frame(phones[1])[0] == ble::kFrameStatus);
   assert(read_frame(phones[1])[0] == ble::kFrameLive);
-
-  assert(lan::respond(ble::Link::Ble, 99, 0, response, sizeof(response)));
-  assert(ble_reply_generation == 99);
 
   // A send failure marks only its own slot, then poll closes it.
   linger reset{1, 0};
@@ -971,6 +979,89 @@ int main() {
   authenticate(second, 1);
   lan::update_power();
   assert(fake_power_save_changes == power_changes && fake_pm_lock.held == 1);
+
+  // A BLE scan reply never waits on the LAN task (#178). While the BLE
+  // notify queue or the worker's response lock is busy the reply waits in its
+  // outbox, a second scan is refused, and a LAN peer's requests and replies
+  // keep flowing. The frames then leave in order on later steps.
+  {
+    fake_scan_records = {ap("fixture-ble", -45, WIFI_AUTH_WPA2_PSK, 9),
+                         ap("fixture-two", -70, WIFI_AUTH_OPEN, 2)};
+    ble_frames.clear();
+    ble_credits = 0;
+    assert(lan::request_scan(ble::Link::Ble, 31));
+    lan::lan_step();
+    assert(lan::scan_running);
+    fake_scan_done();
+    lan::lan_step();
+    assert(!lan::scan_running && lan::scan_job.active &&
+           lan::scan_pending.load() && ble_frames.empty());
+    assert(!lan::request_scan(ble::Link::Ble, 32));
+    for (int round = 0; round < 3; ++round) {
+      const auto before = requests.size();
+      const std::uint8_t bytes[] = {1, 0, ble::kOpStatus};
+      write_bytes(second, bytes, sizeof(bytes));
+      for (int step = 0; step < 50 && requests.size() == before; ++step)
+        lan::lan_step();
+      assert(requests.size() == before + 1 && requests.back().peer == 1);
+      const std::uint8_t reply[] = {ble::kFrameChunk,
+                                    static_cast<std::uint8_t>(round)};
+      assert(lan::enqueue_response(reply, sizeof(reply), 1,
+                                   requests.back().link_generation) ==
+             ossync::EnqueueResult::Ok);
+      auto frame = read_frame(second);
+      while (frame[0] == ble::kFrameStatus || frame[0] == ble::kFrameLive)
+        frame = read_frame(second);
+      assert(frame == std::vector<std::uint8_t>(reply, reply + 2));
+      assert(lan::scan_job.active && ble_frames.empty());
+    }
+    ble_credits = 1;
+    lan::lan_step();
+    assert(lan::scan_job.active && ble_frames.size() == 1);
+    ble_credits = -1;
+    lan::lan_step();
+    assert(!lan::scan_job.active && !lan::scan_pending.load());
+    assert(ble_reply_generation == 31 && ble_frames.size() == 3);
+    assert(ble_frames[0][0] == ble::kFrameWifiAp && ble_frames[0][3] == 9 &&
+           std::memcmp(ble_frames[0].data() + 4, "fixture-ble", 11) == 0);
+    assert(ble_frames[1][0] == ble::kFrameWifiAp && ble_frames[1][3] == 2);
+    assert(ble_frames[2] ==
+           (std::vector<std::uint8_t>{ble::kFrameWifiScanEnd, 2, 0, 0}));
+
+    // A reply with no frame taken for kScanReplyStallUs is dropped, and the
+    // next scan may start.
+    fake_scan_records = {ap("fixture-ble", -45, WIFI_AUTH_WPA2_PSK, 9)};
+    ble_frames.clear();
+    ble_credits = 0;
+    assert(lan::request_scan(ble::Link::Ble, 33));
+    lan::lan_step();
+    fake_scan_done();
+    lan::lan_step();
+    assert(lan::scan_job.active && ble_frames.empty());
+    lan::pump_scan_reply(lan::scan_job.progress_us + lan::kScanReplyStallUs -
+                         1);
+    assert(lan::scan_job.active);
+    lan::pump_scan_reply(lan::scan_job.progress_us + lan::kScanReplyStallUs);
+    assert(!lan::scan_job.active && !lan::scan_pending.load());
+    char log[DebugLog::kFallbackRingBytes];
+    std::uint32_t logged;
+    const auto length = oslog.tail(log, sizeof(log), logged);
+    assert(
+        std::string(log, length).find("WIFI SCAN REPLY STALLED sent=0 of=2") !=
+        std::string::npos);
+
+    // A BLE peer that left ends the reply at once, with nothing sent.
+    fake_scan_records = {ap("fixture-ble", -45, WIFI_AUTH_WPA2_PSK, 9)};
+    ble_credits = -1;
+    ble_closed = true;
+    assert(lan::request_scan(ble::Link::Ble, 34));
+    lan::lan_step();
+    fake_scan_done();
+    lan::lan_step();
+    assert(!lan::scan_job.active && !lan::scan_pending.load() &&
+           ble_frames.empty());
+    ble_closed = false;
+  }
 
   // A scan runs while peers are served. The driver scan is non-blocking,
   // settings wait for it, and requests and replies keep flowing on slot 1

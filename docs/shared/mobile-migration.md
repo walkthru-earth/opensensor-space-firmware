@@ -113,6 +113,38 @@ build the wizard and Device settings from `firmware.setup` and
 `firmware.settings`, titled by `label` when the app has no title for the id. The setup record and page 7 come in the entry above.
 Mirror the three templates into stac-opensensor `templates/`.
 
+## LAN task never waits on BLE, and three log lines (fix/178-lan-scan-row-status, issue #178)
+
+**No wire, image layout, digest, column or LIVE key change.** Frames, opcodes
+and `WIFI_SCAN` replies keep their bytes and order.
+
+**What changed.**
+
+- A `WIFI_SCAN` asked over BLE no longer holds the Wi-Fi task while the BLE
+  phone takes the frames. The reply leaves as the notify queue takes it, so a
+  LAN phone on the same device keeps reading. `WIFI SCAN END found= reported=`
+  is now logged when the last frame is queued. A BLE reply with no frame taken
+  for 15 s is dropped with the new line
+  `WIFI SCAN REPLY STALLED sent=<n> of=<total>`, and a second `WIFI_SCAN`
+  still answers busy until the first reply ends.
+- A row that meets a batch from another window is kept when the write moved
+  the batch to the card and only the finalize or the free space read failed.
+  `rows_dropped` no longer counts that row.
+- `PARQUET STATUS` prints the real `deployment=` and `calibration=`, the
+  same values the next footer writes. The deployment is the open file's
+  snapshot, else the first buffered row's, else the owner's live
+  `thing.deployment_id`, and the board default `unknown` when that is empty.
+  They were literal `unknown` before.
+- A USB provisioning line that refuses an owner value now says
+  `OS CONFIG ok=0 key=owner.title` (or `owner.description`, `owner.provider`,
+  `owner.url`, `thing.deployment_id`) and not `key=invalid-key`.
+- The Plantower parser counts a bad length word found after a resync as a
+  length failure, not a later checksum failure.
+
+**What the app must do.** Nothing is required. An app that parses
+`LOG_TAIL` text for humans may show the new stall line. Do not parse it as an
+API.
+
 ## Metadata-driven apps, decision 0003 (docs/metadata-driven-contract)
 
 **Contract only, no firmware or wire change.** No image, digest, column, LIVE
