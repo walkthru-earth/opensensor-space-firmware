@@ -175,18 +175,25 @@ bool may_send_frame(std::uint16_t handle, const std::uint8_t *data,
 // refusal (not subscribed, not secure) logs BLE REFUSE once per session, so
 // the bench sees why before the worker's ERROR and LIST ABORT lines.
 // `may_wait` false is the os-lan path through try_send_response, which must
-// never wait. Its refusal goes to LOG_TAIL only, because a console write can
-// wait for the USB serial TX buffer (#178).
+// never wait (#178). It never takes the host lock (response_refusal_now), and
+// its refusal goes to LOG_TAIL only, because a console write can wait for the
+// USB serial TX buffer.
 [[nodiscard]] GateRefusal response_gate(std::uint32_t session,
                                         std::uint16_t handle,
                                         const std::uint8_t *data,
                                         std::size_t length,
                                         bool may_wait = true) {
-  const auto refusal = response_refusal(
-      connected.load(),
-      generation.load() == session && conn_handle.load() == handle,
-      subscribed[Response].load(),
-      [&] { return may_send_frame(handle, data, length); });
+  const bool current =
+      generation.load() == session && conn_handle.load() == handle;
+  const auto refusal =
+      may_wait
+          ? response_refusal(
+                connected.load(), current, subscribed[Response].load(),
+                [&] { return may_send_frame(handle, data, length); })
+          : response_refusal_now(connected.load(), current,
+                                 subscribed[Response].load(),
+                                 authenticated.load(),
+                                 std::span<const std::uint8_t>(data, length));
   if (refusal_is_fault(refusal) &&
       refusal_logged.exchange(session) != session) {
     LogOutput &out = may_wait ? oslog : oslog.record_only();
@@ -439,8 +446,10 @@ ossync::EnqueueResult enqueue_response(const std::uint8_t *data,
   if (!data || !length || length > kMaxFrame || length > payload_max())
     return ossync::EnqueueResult::Closed;
   const auto handle = conn_handle.load();
-  if (response_gate(session, handle, data, length, may_wait) !=
-      GateRefusal::None)
+  const auto refusal = response_gate(session, handle, data, length, may_wait);
+  if (refusal == GateRefusal::Deferred)
+    return ossync::EnqueueResult::Full; // os-lan retries, see the gate
+  if (refusal != GateRefusal::None)
     return ossync::EnqueueResult::Closed;
   portENTER_CRITICAL(&tx_lock);
   const auto reservation = responses.reserve(session, esp_timer_get_time());

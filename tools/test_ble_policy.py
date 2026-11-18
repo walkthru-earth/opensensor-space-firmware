@@ -50,6 +50,13 @@ def check_gate_wiring(source: str) -> None:
     # Issue #178. os-lan calls try_send_response, which never waits, so its
     # refusal line skips the console sink and stays in LOG_TAIL.
     assert "may_wait ? oslog : oslog.record_only()" in body, body
+    # The no-wait path never reaches secure(), which takes the host lock.
+    flat = " ".join(body.split())
+    assert "may_wait ? response_refusal(" in flat, body
+    assert ": response_refusal_now(" in flat, body
+    body = gate_body(source, "enqueue_response")
+    assert "refusal == GateRefusal::Deferred" in body, body
+    assert "return ossync::EnqueueResult::Full;" in body, body
     body = gate_body(source, "try_send_response")
     assert "enqueue_response(frame, length, session, false)" in body, body
     assert "xSemaphoreTake(response_mutex, 0)" in body, body

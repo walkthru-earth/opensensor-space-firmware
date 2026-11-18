@@ -267,10 +267,11 @@ bool send_response(const std::uint8_t *frame, std::size_t length,
                    std::uint32_t expected_generation = 0);
 bool send_error(Op op, Error code, const char *detail,
                 std::uint32_t expected_generation = 0);
-// From a task that must never wait (os-lan). One attempt: Full when the
-// response lock is busy or no notify credit is free now, so the caller retries
-// later. Closed when BLE is off, the peer left, the generation moved on or the
-// frame does not fit the link.
+// From a task that must never wait (os-lan). One attempt, never taking the
+// NimBLE host lock: Full when the response lock is busy, no notify credit is
+// free now, or the link is not yet latched as authenticated, so the caller
+// retries later. Closed when BLE is off, the peer left, the generation moved on
+// or the frame does not fit the link.
 [[nodiscard]] ossync::EnqueueResult
 try_send_response(const std::uint8_t *frame, std::size_t length,
                   std::uint32_t expected_generation);
