@@ -1,6 +1,7 @@
 #include "telemetry_logger.h"
 #include "debug_log.h"
 #include "ltr553.h"
+#include "power_registers.h"
 #include "telemetry_contract.h"
 #include <M5Unified.h>
 #include <array>
@@ -16,6 +17,41 @@ using namespace contract;
 Ltr553 light_sensor;
 PmsSnapshot latest;
 std::array<oslogger::Field, field_count> fields;
+
+// Each power register through the status returning read, so a bus fault
+// leaves its column null instead of M5Unified's folded 0 (#166).
+power::Byte read_axp_byte(std::uint8_t reg) {
+  power::Byte byte;
+  byte.ok = M5.Power.Axp2101.readRegister(reg, &byte.value, 1);
+  return byte;
+}
+
+power::Word14 read_axp_word(std::uint8_t reg) {
+  std::uint8_t bytes[2] = {};
+  const bool ok = M5.Power.Axp2101.readRegister(reg, bytes, sizeof bytes);
+  return {.ok = ok, .high = bytes[0], .low = bytes[1]};
+}
+
+power::Reading read_power() {
+  constexpr std::uint32_t kAw9523Frequency = 100000;
+  power::Registers registers{
+      .status = read_axp_byte(power::kAxpStatus),
+      .vbus = {},
+      .battery = {},
+      .level = {},
+      .port0 = {},
+  };
+  // The VBUS status and its ADC are read back to back, as M5Unified does.
+  if (registers.status.ok && (registers.status.value & power::kVbusGood))
+    registers.vbus = read_axp_word(power::kAxpVbus);
+  registers.battery = read_axp_word(power::kAxpBattery);
+  registers.level = read_axp_byte(power::kAxpLevel);
+  registers.port0.ok =
+      M5.In_I2C.readRegister(power::kAw9523Address, power::kAwPort0,
+                             &registers.port0.value, 1, kAw9523Frequency);
+  return power::decode(registers);
+}
+
 // charging_status maps M5Unified charge_state_t through the library's own
 // state sets, so a model that learns a finer state keeps its code. States that
 // were not read (not initialized, I2C error, undetermined, unsupported) are
@@ -103,15 +139,19 @@ void collect(oslogger::Row &row, std::int64_t now, std::int64_t, void *) {
   }
   if (light.proximity_valid)
     row.integer(proximity_raw, light.proximity);
-  row.integer(vbus_mv, M5.Power.getVBUSVoltage());
-  row.integer(battery_mv, M5.Power.getBatteryVoltage());
-  const int battery = M5.Power.getBatteryLevel();
-  if (battery >= 0 && battery <= 100)
-    row.integer(battery_percent, battery);
+  const auto supply = read_power();
+  if (supply.vbus_mv)
+    row.integer(vbus_mv, *supply.vbus_mv);
+  if (supply.battery_mv)
+    row.integer(battery_mv, *supply.battery_mv);
+  if (supply.battery_percent)
+    row.integer(battery_percent, *supply.battery_percent);
   row.integer(charging_status, charging_status_of(M5.Power.getChargeState()));
   // CoreS3 getBatteryCurrent() is an unsupported constant zero. Leave null.
-  row.integer(external_5v_enabled, M5.Power.getExtOutput());
-  row.integer(usb_output_enabled, M5.Power.getUsbOutput());
+  if (supply.external_5v)
+    row.integer(external_5v_enabled, *supply.external_5v);
+  if (supply.usb_output)
+    row.integer(usb_output_enabled, *supply.usb_output);
   m5::rtc_datetime_t rtc{};
   const bool rtc_ok = M5.Rtc.isEnabled() && M5.Rtc.getDateTime(&rtc);
   row.integer(rtc_read_ok, rtc_ok);
