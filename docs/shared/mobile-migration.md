@@ -16,10 +16,12 @@ owner wipes them and starts again.
 fails. Before, a board that booted without a card freed it, and a card inserted
 after radios started could fail to mount with no clear reason.
 
-**What the app can observe.** A card inserted after boot now moves the storage
-state from retry to ready on the next probe, as a reinserted card already did.
-Logs gain `dma_buffer=0|1` on `OS TF` and a once only
-`reason=dma_buffer_unavailable` line when a remount fails without the buffer.
+**What the app can observe.** A card inserted after boot is meant to move the
+storage state from retry to ready on the next probe, as a reinserted card
+already does. That still needs a CoreS3 bench run. Logs gain `dma_buffer=0|1`
+on `OS TF` and a once only `reason=dma_buffer_unavailable` line when a remount
+fails without the buffer. CrowPanel also logs a once only
+`reason=spi_bus_unavailable` line when its SD SPI bus could not start.
 
 **What the app must do.** Nothing.
 

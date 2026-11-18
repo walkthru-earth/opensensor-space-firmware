@@ -76,7 +76,7 @@ bool start_sd_bus() {
 }
 
 // The DMA buffer stays reserved after a failed mount, so a card inserted
-// later still mounts once radios have fragmented internal DMA memory (#168).
+// later can still mount once radios have fragmented internal DMA memory (#168).
 bool mount() {
   if (card)
     return true;
