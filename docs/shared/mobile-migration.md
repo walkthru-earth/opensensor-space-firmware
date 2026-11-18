@@ -9,11 +9,12 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
-## LIVE `utc` in microseconds and Arabic titles on every column (feat/live-utc-column-titles)
+## LIVE `utc` in microseconds, CoreS3 LIVE `lst` and Arabic titles on every column (feat/live-utc-column-titles)
 
 **Every board changes its LIVE `utc` value and its template.** Every `desc`
-moves and no `dict` does. No column, row, footer key, LIVE key name or
-`GET_CONFIG` byte changes. All three boards must be reflashed. Part of #184.
+moves. The CoreS3 `dict` moves for its new LIVE key `lst`, and the other
+boards keep theirs. No column, row, footer key or `GET_CONFIG` byte changes.
+All three boards must be reflashed. Part of #184.
 
 **What changed.**
 
@@ -21,6 +22,13 @@ moves and no `dict` does. No column, row, footer key, LIVE key name or
   file column `event_time_utc_us` it maps to through `firmware.live_keys`.
   It was nanoseconds. An unsynchronized row still sends `null`. The widest
   LIVE object keeps its size, so the 480 byte checks are unchanged.
+- CoreS3 LIVE adds `lst`, the `light_status` code, right after `als`. It is
+  sent on every row. `als` is gated on `light_status` equals 3, so the app
+  can now check that gate in LIVE and show `als`. The CoreS3
+  dictionary is `cores3-telemetry-v8`, dict
+  `f4f81218dc80d1a8e6db043197a2f7180c4f075f9e8348df30eaceef44d68370`
+  (was `3b4d8500a19f42c6743b0f7d725276c96ca14a0c249f613048603afbc3cfaff9`).
+  Its `shipped.lock` gains a baseline release for the `ltr553` core segment.
 - Every template column carries an Arabic `opensensor:title_i18n` beside its
   English `title`. Every template names `opensensor:primary`. The plugin
   contract test fails a board that lacks either, and a unit that is not plain

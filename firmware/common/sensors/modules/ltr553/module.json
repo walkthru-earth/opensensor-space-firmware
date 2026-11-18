@@ -141,7 +141,7 @@
           "type": "Int32",
           "unit": "code",
           "validity": "always",
-          "live_key": "",
+          "live_key": "lst",
           "decimals": 0
         }
       },

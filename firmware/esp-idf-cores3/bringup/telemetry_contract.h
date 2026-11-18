@@ -32,9 +32,11 @@ namespace contract {
 // ids 80 and 81. Still 81 leaves. This is the Thing field table baseline,
 // field ids are plain 1-based positions and append only from here (owner
 // answer to bridge question 36, 2026-10-26).
+// Dictionary v8 (#184) gives light_status the LIVE key lst. Columns are
+// unchanged from schema v6.
 constexpr std::int32_t kSchemaVersion = 6;
 constexpr const char *kSchemaName = "cores3-telemetry-v6";
-constexpr const char *kDictionaryVersion = "cores3-telemetry-v7";
+constexpr const char *kDictionaryVersion = "cores3-telemetry-v8";
 constexpr const char *kFirmware = "idf-cores3-parquet-v6.33";
 constexpr const char *kCreatedBy = "opensensor-space-firmware version 0.3";
 // Raw telemetry_fields.inc at a pinned commit on main (#89), so the bytes at

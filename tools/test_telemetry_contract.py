@@ -118,8 +118,8 @@ def check_file(path: Path, dictionary: dict, anchored: bool, compressed: bool, l
     footer_contract.check_document(footer, dictionary, "m5stack-cores3", compressed=compressed,
                                    rotation=900, row_groups=1)
     require(dictionary["schema"] == "cores3-telemetry-v6", "schema version")
-    require(dictionary["dictionary"] == "cores3-telemetry-v7",
-            "dictionary version tracks the field table bytes, now with location_source and geometry")
+    require(dictionary["dictionary"] == "cores3-telemetry-v8",
+            "dictionary version tracks the field table bytes, now with the light_status LIVE key")
     require(parquet.metadata.created_by == f"opensensor-space-firmware version 0.3 (build {dictionary['firmware']})",
             "firmware identity in created_by")
     group = parquet.metadata.row_group(0)
