@@ -283,10 +283,12 @@ built yet, so no board declares `config_keys` today.
 | config_keys | Map\<string, Key> | The `SET_CONFIG` keys a board step or section shows |
 
 A Step is `{"id", "req", "label", "label_i18n", "keys"}`, and a settings section has no `req`.
-`id` names a component from the app's fixed catalog, `name`, `location`,
-`mobility`, `site`, `wifi`, `pairing`, `lan`, `bonds` or `sensor` (the sensor
-identity and sticker card), or a board id the app does not know. A catalog
-step never lists `keys`, and `name` and `mobility` appear only in `setup`. A
+`id` names a component from the app's fixed catalog, or a board id the app
+does not know. The setup catalog is `name`, `location`, `mobility`, `site`,
+`wifi`, `pairing` and `lan`. The settings catalog is `location`, `site`,
+`wifi`, `pairing`, `lan`, `bonds` and `sensor` (the sensor identity and
+sticker card). So `name` and `mobility` appear only in `setup`, and `bonds`
+and `sensor` only in `settings`. A catalog step never lists `keys`. A
 board step must list `keys` and carry `label`, the wizard page or card title,
 with the optional `label_i18n` in the shape of a key's. A catalog step may
 omit both, since the app has its own title. A board lists every section that

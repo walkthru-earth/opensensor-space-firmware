@@ -20,8 +20,10 @@ Newest first. Versions follow section 7 of the [README](README.md).
   template `opensensor:primary`, and `setup`, `settings` and `config_keys`,
   written to the template `firmware` block. Catalog steps carry no keys, board
   steps must, and every declared key is used. A step or section may carry
-  `label` and `label_i18n`, and a board step must carry `label`. `sensor`
-  joins the catalog for the sensor identity card. Key names refuse the reserved
+  `label` and `label_i18n`, and a board step must carry `label`. The setup
+  catalog is name, location, mobility, site, wifi, pairing and lan. The
+  settings catalog is location, site, wifi, pairing, lan, bonds and `sensor`,
+  the sensor identity card. Key names refuse the reserved
   prefixes and secret parts. All three boards set `primary`, `setup` and
   `settings`, Waveshare lists `sensor`, and none declares `config_keys` yet.
 - `desc` moves on every board. `dict`, `telemetry_fields.inc` and
