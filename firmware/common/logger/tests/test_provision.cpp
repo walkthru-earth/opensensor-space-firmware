@@ -73,6 +73,16 @@ int main() {
   assert(std::strcmp(config::get().ssid, ssid.c_str()) == 0);
   result = apply(psk); // malformed key content must not become an error log
   assert(!result.ok && std::strcmp(result.bad_key, "invalid-key") == 0);
+  // A refused owner value names its key, an unknown owner.* key does not
+  // (#178).
+  result = apply("owner.url=http://plain.example");
+  assert(!result.ok && std::strcmp(result.bad_key, "owner.url") == 0);
+  result = apply("thing.deployment_id=Not_Allowed");
+  assert(!result.ok && std::strcmp(result.bad_key, "thing.deployment_id") == 0);
+  result = apply("owner.title=" + std::string(config::kOwnerTitleMax + 1, 't'));
+  assert(!result.ok && std::strcmp(result.bad_key, "owner.title") == 0);
+  result = apply("owner.secret=1");
+  assert(!result.ok && std::strcmp(result.bad_key, "invalid-key") == 0);
   for (const auto *value : {"", "1", "0x", "gg"})
     assert(!oslogger::apply_config_hex(value).ok);
   assert(!oslogger::apply_config_hex(

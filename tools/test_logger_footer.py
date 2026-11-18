@@ -162,8 +162,14 @@ FILE_LABELS = re.compile(
     r"\[\[nodiscard\]\] bool same_file_labels\(const A &a, const B &b\) \{\s*"
     r"return config::same_location\(a\.location, b\.location\) &&\s*"
     r"config::same_deployment\(a\.deployment, b\.deployment\);\s*\}")
-FOOTER_DEPLOYMENT = ('json.text("deployment_id",\n'
-                     '            present(ids.deployment) ? ids.deployment : config.deployment_id);')
+FOOTER_DEPLOYMENT = 'json.text("deployment_id", deployment_id(config, ids.deployment));'
+# `parquet status` prints what the next footer writes (#178): the open file's
+# snapshot, else the first buffered row's, else the live setting.
+STATUS_DEPLOYMENT = (
+    "current.open() ? current.deployment.text.data() : nullptr,",
+    "count ? writer_state->rows[0].deployment.text.data() : nullptr,",
+    "footer::deployment_id(config, deployment),",
+)
 
 
 def check_deployment(logger: str, labels: str, footer: str) -> None:
@@ -186,6 +192,9 @@ def check_deployment(logger: str, labels: str, footer: str) -> None:
         "same_file_labels() must compare the location and the deployment id"
     assert footer.count(FOOTER_DEPLOYMENT) == 1, \
         "the footer writes the file's deployment id, else Config::deployment_id"
+    for text in STATUS_DEPLOYMENT:
+        assert logger.count(text) == 1, \
+            f"parquet status must print the next footer's deployment id: {text!r}"
 
 
 def prove_deployment(logger: str, labels: str, footer: str) -> None:
@@ -213,6 +222,10 @@ def prove_deployment(logger: str, labels: str, footer: str) -> None:
             "  target.deployment = first_row.deployment;\n", ""), labels, footer),
         "footer reads live value": (logger.replace(
             ".deployment = target.deployment.text.data()}", "}"), labels, footer),
+        "status ignores open file": (logger.replace(
+            STATUS_DEPLOYMENT[0], "nullptr,"), labels, footer),
+        "status ignores batch": (logger.replace(
+            STATUS_DEPLOYMENT[1], "nullptr,"), labels, footer),
         "footer ignores snapshot": (logger, labels, footer.replace(
             FOOTER_DEPLOYMENT, 'json.text("deployment_id", config.deployment_id);')),
     }
