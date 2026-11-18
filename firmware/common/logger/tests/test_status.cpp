@@ -109,12 +109,25 @@ int main() {
           {.started = true, .storage_ok = false, .sd_state = State::Ready}) ==
       "no card");
   // An erase parks the writer with the card mounted. Reinserting the card
-  // cannot resume, so the line asks for a reboot, not a card.
+  // cannot resume, so the line asks for a reboot, not a card, and it names a
+  // failed erase as failed.
+  using oslogger::ArchiveErase;
   static_assert(logging_stopped_reason({.started = true,
-                                        .archive_reset = true,
+                                        .archive_erase = ArchiveErase::Running,
+                                        .storage_ok = false,
+                                        .sd_state = State::Ready}) ==
+                "erasing");
+  static_assert(logging_stopped_reason({.started = true,
+                                        .archive_erase = ArchiveErase::Erased,
                                         .storage_ok = false,
                                         .sd_state = State::Ready}) ==
                 "erased, reboot");
+  static_assert(logging_stopped_reason({.started = true,
+                                        .archive_erase = ArchiveErase::Failed,
+                                        .storage_ok = false,
+                                        .failed = true,
+                                        .sd_state = State::Ready}) ==
+                "erase failed, reboot");
   static_assert(logging_stopped_reason({.started = true,
                                         .storage_ok = true,
                                         .failed = true,

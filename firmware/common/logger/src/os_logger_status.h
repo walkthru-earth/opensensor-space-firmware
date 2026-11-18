@@ -50,26 +50,31 @@ struct StatusSnapshot {
 // Returns zero on insufficient capacity, never reports truncated JSON as valid.
 std::size_t format_status(const StatusSnapshot &, char *, std::size_t capacity);
 
+// A UART erase-archive parks the writer with the card still mounted until a
+// reboot, whether the erase succeeds or not.
+enum class ArchiveErase : std::uint8_t { None, Running, Erased, Failed };
+
 // Whether rows reach the card, for a board screen (#165). The inputs are the
 // same state as STATUS "ok", "fail" and "sd". `started` is a successful
-// begin(). `archive_reset` is a UART erase-archive, which parks the writer
-// with the card still mounted until a reboot. The result is empty while rows
-// are written, else why they are not.
+// begin(). `archive_erase` is the outcome of a UART erase-archive. The result
+// is empty while rows are written, else why they are not.
 struct LoggingState {
   bool started = false;
-  bool archive_reset = false;
+  ArchiveErase archive_erase = ArchiveErase::None;
   bool storage_ok = false;
   bool failed = false;
   storage::State sd_state = storage::State::Retry;
 };
 [[nodiscard]] constexpr std::string_view
 logging_stopped_reason(const LoggingState &state) {
-  return !state.started                            ? "not started"
-         : state.archive_reset                     ? "erased, reboot"
-         : !state.storage_ok                       ? "no card"
-         : state.sd_state == storage::State::Full  ? "card full"
-         : state.sd_state == storage::State::Retry ? "card retry"
-         : state.failed                            ? "writer stopped"
-                                                   : "";
+  return !state.started                                 ? "not started"
+         : state.archive_erase == ArchiveErase::Running ? "erasing"
+         : state.archive_erase == ArchiveErase::Erased  ? "erased, reboot"
+         : state.archive_erase == ArchiveErase::Failed  ? "erase failed, reboot"
+         : !state.storage_ok                            ? "no card"
+         : state.sd_state == storage::State::Full       ? "card full"
+         : state.sd_state == storage::State::Retry      ? "card retry"
+         : state.failed                                 ? "writer stopped"
+                                                        : "";
 }
 } // namespace oslogger
