@@ -93,8 +93,10 @@ and lends it to ESP-IDF through `sdmmc_host_t::dma_aligned_buffer`. It stays
 allocated for the mount, avoiding per-transfer DMA allocations when FatFs
 buffers live in PSRAM. Eight-sector chunks retain bounded multi-block reads
 and writes. A failed mount keeps the reservation, so a card inserted after
-radios start still mounts. A boot that could not reserve it logs
-`DIAG sd remount=false status=dma_buffer_unavailable` once when a remount fails.
+radios start is meant to mount with it. That late insertion still needs a
+CoreS3 bench run (#168). If no buffer could be reserved, the first failed
+remount logs `DIAG sd remount=false status=dma_buffer_unavailable`, and only
+that one. Once a reservation succeeds, it lasts for the rest of the boot.
 This follows the pinned
 [ESP-IDF 6.1 SD transfer guidance](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32s3/api-reference/storage/sdmmc.html#unaligned-buffer-performance);
 the automatic allocation flag applies to non-SPI initialization, so this

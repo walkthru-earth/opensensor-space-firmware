@@ -1,4 +1,4 @@
-"""Check SD DMA reservation ownership, that a failed mount keeps it, and reuse under pressure."""
+"""Check SD DMA buffer ownership, reuse under simulated DMA heap pressure and the one unavailable report."""
 from __future__ import annotations
 
 import argparse
@@ -23,7 +23,7 @@ def main() -> None:
             command += ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
         subprocess.run(command, check=True)
         subprocess.run([str(executable)], check=True)
-    print("SD DMA buffer: reservation, kept after a failed mount, pressure reuse and one unavailable report passed")
+    print("SD DMA buffer: ownership, reuse under simulated DMA heap pressure and the one unavailable report passed (no mount ran)")
 
 
 if __name__ == "__main__":

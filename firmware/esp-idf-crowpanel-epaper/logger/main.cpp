@@ -501,7 +501,9 @@ const oslogger::Hooks kHooks{
     .storage_remount =
         [](void *) {
           const bool ok = board::remount_card();
-          if (!ok && board::sd_buffer_unavailable_once())
+          if (!ok && board::sd_bus_unavailable_once())
+            oslog.println("OS TF remount=false reason=spi_bus_unavailable");
+          else if (!ok && board::sd_buffer_unavailable_once())
             oslog.println("OS TF remount=false reason=dma_buffer_unavailable");
           return ok;
         },

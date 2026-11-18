@@ -174,6 +174,13 @@ bool sd_buffer_reserved() { return sd_transfer_buffer.data() != nullptr; }
 bool sd_buffer_unavailable_once() {
   return sd_transfer_buffer.report_unavailable();
 }
+bool sd_bus_unavailable_once() {
+  static bool reported = false;
+  if (sd_bus_ready || reported)
+    return false;
+  reported = true;
+  return true;
+}
 bool remount_card() {
   if (card && esp_vfs_fat_sdcard_unmount("/sd", card) != ESP_OK)
     return false;

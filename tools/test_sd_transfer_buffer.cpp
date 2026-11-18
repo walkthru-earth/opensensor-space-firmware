@@ -39,9 +39,12 @@ int main() {
   static_assert(Buffer::kBytes == Buffer::kSectors * 512);
   // No board can drop the reservation, so a failed mount keeps it (#168).
   static_assert(!Releasable<Buffer>);
+  // A buffer reuse test under simulated DMA heap pressure. It does not mount
+  // anything. That a card inserted after radios start mounts with the kept
+  // buffer is board qualification (#168).
   {
-    // Boot without a card. The mount fails but the buffer stays, so a card
-    // inserted after radios fragment DMA memory still gets it.
+    // Once reserved, the buffer is reused when the heap refuses new DMA
+    // memory, as after radios start.
     Buffer buffer;
     assert(buffer.reserve());
     void *reserved = buffer.data();
@@ -68,6 +71,18 @@ int main() {
     assert(allocations == 4 && releases == 1);
   }
   assert(!active && allocations == 4 && releases == 2);
+  {
+    // A mount that failed before it tried to reserve, such as a bus setup
+    // failure, does not use up the one unavailable report.
+    Buffer buffer;
+    assert(!buffer.report_unavailable());
+    reject_allocations = true;
+    assert(!buffer.reserve());
+    assert(buffer.report_unavailable());
+    assert(!buffer.report_unavailable());
+    reject_allocations = false;
+  }
+  assert(allocations == 5 && releases == 2);
   {
     Buffer never_reserved; // ends without freeing anything
   }

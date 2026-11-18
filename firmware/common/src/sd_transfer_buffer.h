@@ -27,16 +27,19 @@ public:
   bool reserve() {
     if (!data_)
       data_ = heap_caps_malloc(kBytes, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+    if (!data_)
+      reserve_failed_ = true;
     return data_ != nullptr;
   }
 
   void *data() const { return data_; }
 
-  // True only the first time it is asked while nothing is reserved. A board
-  // calls it when a remount fails, so the log names reason
-  // dma_buffer_unavailable once and not on every storage retry.
+  // True only the first time it is asked after reserve() failed and while
+  // nothing is reserved. A board calls it when a remount fails, so the log
+  // names reason dma_buffer_unavailable once and not on every storage retry.
+  // A mount that failed before it tried to reserve does not use up the report.
   bool report_unavailable() {
-    if (data_ || reported_)
+    if (data_ || !reserve_failed_ || reported_)
       return false;
     reported_ = true;
     return true;
@@ -44,6 +47,7 @@ public:
 
 private:
   void *data_ = nullptr;
+  bool reserve_failed_ = false;
   bool reported_ = false;
 };
 

@@ -50,8 +50,12 @@ bool remount_card();
 // True while the SD DMA buffer is reserved. Once reserved it stays, also with
 // no card, so a card inserted later can mount after radios start (#168).
 bool sd_buffer_reserved();
-// True once, the first time no buffer is reserved when a remount fails.
+// True once, the first time a remount fails after the buffer reservation
+// failed. A mount that stopped before reserving does not count.
 bool sd_buffer_unavailable_once();
+// Storage worker only. True once, the first time a remount fails because the
+// SPI3 card bus could not be set up.
+bool sd_bus_unavailable_once();
 // Any task. True while a card is mounted.
 bool card_mounted();
 std::uint32_t cluster_bytes(); // 0 when unknown
