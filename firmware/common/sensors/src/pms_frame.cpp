@@ -11,6 +11,18 @@ std::uint16_t Parser::word_at(std::size_t offset) const {
 }
 
 void Parser::resynchronize() {
+  // A header moved to the front already holds its length word when four or
+  // more bytes follow it, and push() checks that word only as the fourth byte
+  // arrives. Check it here and move on again while it is wrong (#178). Each
+  // pass shortens the buffer, so the loop ends.
+  shift_to_next_header();
+  while (used_ >= 4 && word_at(2) != 28) {
+    ++length_failures_;
+    shift_to_next_header();
+  }
+}
+
+void Parser::shift_to_next_header() {
   std::size_t next = used_;
   for (std::size_t index = 1; index + 1 < used_; ++index) {
     if (buffer_[index] == 0x42 && buffer_[index + 1] == 0x4d) {
