@@ -94,4 +94,62 @@ int main() {
     assert(oslogger::format_status(view, buffer.data(), buffer.size()));
     assert(std::strstr(buffer.data(), wire[i]));
   }
+
+  // The board screen line (#165). A failed begin, an erased archive, no card,
+  // a full card, a retrying card and a stopped writer each name why rows are
+  // not written.
+  using oslogger::logging_stopped_reason;
+  static_assert(logging_stopped_reason({}) == "not started");
+  static_assert(
+      logging_stopped_reason(
+          {.started = false, .storage_ok = true, .sd_state = State::Ready}) ==
+      "not started");
+  static_assert(
+      logging_stopped_reason(
+          {.started = true, .storage_ok = false, .sd_state = State::Ready}) ==
+      "no card");
+  // An erase parks the writer with the card mounted. Reinserting the card
+  // cannot resume, so the line asks for a reboot, not a card, and it names a
+  // failed erase as failed.
+  using oslogger::ArchiveErase;
+  static_assert(logging_stopped_reason({.started = true,
+                                        .archive_erase = ArchiveErase::Running,
+                                        .storage_ok = false,
+                                        .sd_state = State::Ready}) ==
+                "erasing");
+  static_assert(logging_stopped_reason({.started = true,
+                                        .archive_erase = ArchiveErase::Erased,
+                                        .storage_ok = false,
+                                        .sd_state = State::Ready}) ==
+                "erased, reboot");
+  static_assert(logging_stopped_reason({.started = true,
+                                        .archive_erase = ArchiveErase::Failed,
+                                        .storage_ok = false,
+                                        .failed = true,
+                                        .sd_state = State::Ready}) ==
+                "erase failed, reboot");
+  static_assert(logging_stopped_reason({.started = true,
+                                        .storage_ok = true,
+                                        .failed = true,
+                                        .sd_state = State::Full}) ==
+                "card full");
+  static_assert(logging_stopped_reason({.started = true,
+                                        .storage_ok = true,
+                                        .failed = true,
+                                        .sd_state = State::Retry}) ==
+                "card retry");
+  static_assert(logging_stopped_reason({.started = true,
+                                        .storage_ok = true,
+                                        .failed = true,
+                                        .sd_state = State::Ready}) ==
+                "writer stopped");
+  // Degraded still writes rows.
+  static_assert(
+      logging_stopped_reason(
+          {.started = true, .storage_ok = true, .sd_state = State::Degraded})
+          .empty());
+  static_assert(
+      logging_stopped_reason(
+          {.started = true, .storage_ok = true, .sd_state = State::Ready})
+          .empty());
 }

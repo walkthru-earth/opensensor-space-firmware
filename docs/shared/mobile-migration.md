@@ -9,6 +9,91 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## CoreS3 power columns are null on a failed read (fix/166-cores3-power-null, issue #166)
+
+**No wire, image layout, digest or column change.** Column names, types and
+LIVE keys are the same.
+
+**What changed.**
+
+- CoreS3 reads the AXP2101 and AW9523 registers with their read status. A
+  failed read now leaves `vbus_mv`, `battery_mv`, `battery_percent`,
+  `external_5v_enabled` or `usb_output_enabled` null. Before, M5Unified
+  folded a bus fault to 0, which read as "USB unplugged, battery empty,
+  outputs off".
+- `battery_mv` is null outside 2500 to 4500 mV, the plausible range the
+  template already declares. A CoreS3 with no cell fitted no longer logs
+  values such as 9 or 16,381 mV.
+- A good read gives the same value as before, except `battery_mv`, which is
+  now the exact ADC count and can read 1 mV higher than the old float round
+  trip. `vbus_mv` is still 0 when the PMIC reports no USB input.
+- `charging_status` is unchanged. It still comes from the M5Unified charge
+  state, so a failed read gives 2 unknown, not null.
+
+**What the app must do.** Treat a null LIVE `vbus`, `bat` or `pct` from a
+CoreS3 as "not read", not as 0. Show no number for it.
+
+## One PMS status rule and range gates (fix/169-165-pms-status)
+
+**No schema, dictionary, LIVE key or wire change.** CoreS3 and Waveshare
+rows keep their columns and codes.
+
+**What changed.**
+
+- `pms_age_ms` saturates at 4294967295 on both boards. Before, a sensor
+  silent for 2^32 ms wrapped to a small age and read valid again (#169).
+- Waveshare writes `ambient_temperature_c` only from -10.0 to 60.0 and
+  `relative_humidity_percent` only up to 100.0. Out of range both are null
+  and PM stays. A PMSA003 wired on the PMS5003T port sends its counts above
+  5 and 10 um in those two words, and the 32-byte frame cannot tell the two
+  models apart. The temperature word is a signed tenth of a degree, so a count
+  up to 600 reads 0.0 to 60.0 and a count from 65436 reads -10.0 to -0.1, and
+  both pass. A humidity count up to 1000 passes. Those are stored as a
+  temperature and humidity with PM still valid, and every other count is null.
+  The board config names PMS5003T, and only that model gives real values there.
+- CoreS3 `MEAS pmsa003` gains `status=<name>`, missing before the first
+  frame. `values_valid` is true only when the frame `MEAS` evaluates
+  classifies as valid under the row's rule. `MEAS` runs that rule itself at
+  its own time, so it can disagree with a stored row about the same frame,
+  for example stale at 5,001 ms where the row stored valid at 5,000 ms. Before, it followed the sensor
+  error byte alone and called warming and stale frames valid (#165).
+
+**What the app must do.** Nothing. Treat a null temperature or humidity next
+to a valid PM as a missing reading, never as zero. A log viewer that parses
+`MEAS pmsa003` reads `values_valid` the new way.
+
+## LAN task never waits on BLE, and three log lines (fix/178-lan-scan-row-status, issue #178)
+
+**No wire, image layout, digest, column or LIVE key change.** Frames, opcodes
+and `WIFI_SCAN` replies keep their bytes and order.
+
+**What changed.**
+
+- A `WIFI_SCAN` asked over BLE no longer holds the Wi-Fi task while the BLE
+  phone takes the frames. The reply leaves as the notify queue takes it, so a
+  LAN phone on the same device keeps reading. `WIFI SCAN END found= reported=`
+  is now logged when the last frame is queued. A BLE reply with no frame taken
+  for 15 s is dropped with the new line
+  `WIFI SCAN REPLY STALLED sent=<n> of=<total>`, and a second `WIFI_SCAN`
+  still answers busy until the first reply ends.
+- A row that meets a batch from another window is kept when the write moved
+  the batch to the card and only the finalize or the free space read failed.
+  `rows_dropped` no longer counts that row.
+- `PARQUET STATUS` prints the real `deployment=` and `calibration=`, the
+  same values the next footer writes. The deployment is the open file's
+  snapshot, else the first buffered row's, else the owner's live
+  `thing.deployment_id`, and the board default `unknown` when that is empty.
+  They were literal `unknown` before.
+- A USB provisioning line that refuses an owner value now says
+  `OS CONFIG ok=0 key=owner.title` (or `owner.description`, `owner.provider`,
+  `owner.url`, `thing.deployment_id`) and not `key=invalid-key`.
+- The Plantower parser counts a bad length word found after a resync as a
+  length failure, not a later checksum failure.
+
+**What the app must do.** Nothing is required. An app that parses
+`LOG_TAIL` text for humans may show the new stall line. Do not parse it as an
+API.
+
 ## Metadata-driven apps, decision 0003 (docs/metadata-driven-contract)
 
 **Contract only, no firmware or wire change.** No image, digest, column, LIVE

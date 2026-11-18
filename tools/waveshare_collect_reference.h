@@ -6,6 +6,8 @@
 // Change it only to follow a contract change the modules make on purpose.
 
 #include "../firmware/esp-idf-waveshare-sim7670g/logger/telemetry_contract.h"
+#include <algorithm>
+#include <cstdint>
 #include <device_config.h>
 
 namespace reference {
@@ -55,7 +57,8 @@ inline void apply_pms(Sample &row, const PmsSnapshot &pms, std::int64_t now,
   if (candidate_status == kBatchCandidate)
     row.number(pm25_batch_candidate_ug_m3,
                0.003964F * frame.particle_counts[0]);
-  row.number(ambient_temperature_c, frame.temperature_deci_c / 10.0F);
+  if (frame.temperature_deci_c >= -100 && frame.temperature_deci_c <= 600)
+    row.number(ambient_temperature_c, frame.temperature_deci_c / 10.0F);
   if (frame.humidity_deci_percent <= 1000)
     row.number(relative_humidity_percent, frame.humidity_deci_percent / 10.0F);
 }
@@ -118,9 +121,14 @@ inline void collect(Sample &row, std::int64_t now, const PmsSnapshot &latest,
                     const config::Settings &settings,
                     const BatteryHealth &health) {
   PmsSnapshot snapshot = latest;
-  if (snapshot.present)
-    snapshot.age_ms =
-        static_cast<std::uint32_t>((now - snapshot.received_mono_us) / 1000);
+  // Saturated, never wrapped (#169).
+  if (snapshot.present) {
+    const auto age = now <= snapshot.received_mono_us
+                         ? std::int64_t{0}
+                         : (now - snapshot.received_mono_us) / 1000;
+    snapshot.age_ms = static_cast<std::uint32_t>(
+        std::min<std::int64_t>(age, std::int64_t{UINT32_MAX}));
+  }
   apply_pms(row, snapshot, now,
             {settings.sensor_vendor, settings.sensor_model,
              settings.sensor_serial, settings.sensor_batch_candidate});

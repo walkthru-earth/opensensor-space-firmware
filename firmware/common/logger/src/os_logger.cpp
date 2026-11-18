@@ -269,6 +269,9 @@ char boot_text[33]{};
 char device_text[13]{};
 char thing_text[37]{};
 portMUX_TYPE clock_mutex = portMUX_INITIALIZER_UNLOCKED;
+// Guards the pair sd_state and worker_failed, so logging_view() never pairs a
+// new storage state with the failure flag of the previous one.
+portMUX_TYPE storage_mutex = portMUX_INITIALIZER_UNLOCKED;
 std::int64_t anchor_mono_us = 0, anchor_utc_ns = 0;
 std::int32_t clock_generation = 0;
 std::int32_t clock_source = kClockNone;
@@ -280,6 +283,8 @@ std::atomic<std::int32_t> rtc_state{0}; // 0 unread, 1 seeded, 2 unusable
 bool mounted = false;
 bool accepting = false;
 std::atomic<bool> archive_reset{false};
+// The outcome of that erase for the board screen, set by the storage worker.
+std::atomic<ArchiveErase> archive_erase{ArchiveErase::None};
 // begin() replaces this with the stored codec, or the default when nothing
 // usable is stored, before the worker starts.
 std::atomic<Codec> selected_codec{codec_store::kDefault};
@@ -2095,8 +2100,10 @@ void publish_storage(storage::State previous) {
     governor.write_failed(uptime_seconds());
     current = governor.state();
   }
+  portENTER_CRITICAL(&storage_mutex);
   sd_state = static_cast<std::uint8_t>(current);
   worker_failed = storage::alarm(current); // fail means "not writing"
+  portEXIT_CRITICAL(&storage_mutex);
   if (current == previous)
     return;
   const auto free_kib =
@@ -2567,8 +2574,11 @@ void storage_worker(void *) {
                  hooks.storage_remount ? "retry" : "none");
     if (hooks.storage_remount)
       governor.write_failed(uptime_seconds());
-    sd_state = static_cast<std::uint8_t>(governor.state());
+    const auto state = static_cast<std::uint8_t>(governor.state());
+    portENTER_CRITICAL(&storage_mutex);
+    sd_state = state;
     worker_failed = true; // fail means "not writing"
+    portEXIT_CRITICAL(&storage_mutex);
     publish_status();
   }
   std::size_t count = 0;
@@ -2584,10 +2594,14 @@ void storage_worker(void *) {
         ++dropped;
       } else {
         // A batch from another window can only leave RAM through a write.
-        // While the card cannot take it, the new row is the one dropped.
+        // While the card cannot take it, the new row is the one dropped. A
+        // commit that wrote the rows and then failed its finalize or free
+        // space read still left room, so the row is kept.
         if (!fits_batch(row, count) &&
-            (!storage_ready || !governor.writable() ||
-             !governed_commit(count, true))) {
+            !admit_unfitted_row(
+                storage_ready && governor.writable(),
+                [&] { return governed_commit(count, true); },
+                [&] { return fits_batch(row, count); })) {
           ++dropped;
           continue;
         }
@@ -2674,6 +2688,7 @@ void storage_worker(void *) {
         continue;
       }
       archive_reset = true;
+      archive_erase = ArchiveErase::Running;
       archive_session.close();
       writer_state->crc_cache.clear();
       std::uint32_t files_removed = 0, directories_removed = 0;
@@ -2707,6 +2722,7 @@ void storage_worker(void *) {
       buffered = open_rows = open_groups = 0;
       storage_ok = false;
       worker_failed = !erased;
+      archive_erase = erased ? ArchiveErase::Erased : ArchiveErase::Failed;
       xQueueReset(samples);
       xQueueReset(commands);
       parked.waiting = false;
@@ -2758,13 +2774,21 @@ void storage_worker(void *) {
         oslog.printf("OS CONFIG ok=0 key=%s\n", result.bad_key);
       std::memset(command.text, 0, sizeof(command.text));
     } else if (std::strcmp(command.text, "parquet status") == 0) {
+      // The deployment id the next footer writes: the open file's snapshot,
+      // else the first buffered row's, else the live owner setting.
+      const auto live = ::config::deployment_id();
+      const OutputFile &current = writer_state->telemetry;
+      const char *deployment = footer::next_deployment(
+          current.open() ? current.deployment.text.data() : nullptr,
+          count ? writer_state->rows[0].deployment.text.data() : nullptr,
+          live.text.data());
       oslog.printf(
           "PARQUET STATUS interval_s=%lu buffered=%u open_rows=%lu "
           "open_groups=%lu finalized=%lu "
           "dropped=%lu errors=%lu queue_peak=%lu failed=%s sd_state=%s "
           "sd_free_kib=%llu thing=%s "
-          "codec=%s schema=%s config=%s deployment=unknown "
-          "calibration=unknown\n",
+          "codec=%s schema=%s config=%s deployment=%s "
+          "calibration=%s\n",
           static_cast<unsigned long>(rotation_seconds.load()), unsigned(count),
           static_cast<unsigned long>(open_rows.load()),
           static_cast<unsigned long>(open_groups.load()),
@@ -2776,7 +2800,8 @@ void storage_worker(void *) {
           storage::state_name(governor.state()),
           static_cast<unsigned long long>(governor.free_bytes() / 1024),
           thing_text, codec_name(selected_codec), config.schema_name,
-          config.configuration_id);
+          config.configuration_id, footer::deployment_id(config, deployment),
+          config.calibration_id);
     } else if (std::strcmp(command.text, "parquet schema") == 0) {
       oslog.printf("PARQUET SCHEMA BEGIN schema=%s columns=%u sha256=%s "
                    "desc=%s desc_bytes=%u\n",
@@ -3642,5 +3667,20 @@ ClockView clock_view() {
   if (generation)
     view.utc_ns = utc_anchor + (esp_timer_get_time() - mono_anchor) * 1000;
   return view;
+}
+
+LoggingView logging_view() {
+  portENTER_CRITICAL(&storage_mutex);
+  const auto state = static_cast<storage::State>(sd_state.load());
+  const bool failed = worker_failed.load();
+  portEXIT_CRITICAL(&storage_mutex);
+  return {.stopped =
+              logging_stopped_reason({.started = accepting,
+                                      .archive_erase = archive_erase.load(),
+                                      .storage_ok = storage_ok.load(),
+                                      .failed = failed,
+                                      .sd_state = state}),
+          .sd_state = storage::state_name(state),
+          .dropped = dropped.load()};
 }
 } // namespace oslogger

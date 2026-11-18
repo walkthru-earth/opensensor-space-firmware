@@ -37,6 +37,7 @@ public:
 private:
   std::uint16_t word_at(std::size_t offset) const;
   void resynchronize();
+  void shift_to_next_header();
   Model model_;
   std::array<std::uint8_t, 32> buffer_{};
   std::size_t used_ = 0;
