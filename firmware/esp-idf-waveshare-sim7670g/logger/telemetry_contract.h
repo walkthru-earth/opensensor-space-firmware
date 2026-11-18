@@ -60,9 +60,11 @@ constexpr opensensor::battery::Thresholds kBatteryThresholds{};
 constexpr std::int64_t kPmsWarmupUs = 30000000;
 constexpr std::uint32_t kPmsStaleAfterMs = 5000;
 // The PMS5003T tail gates, the -10 to 60 Cel and 0 to 100 % ranges of
-// telemetry_semantics.inc (#169). Outside them the column stays null. A
-// PMSA003 or PMS5003 wired by mistake sends the counts above 5 and 10 um in
-// these two words, so a large count never reads as a temperature or RH.
+// telemetry_semantics.inc (#169). They reject decoded values outside those
+// ranges, nothing more, and a real negative temperature stays valid. A PMSA003
+// or PMS5003 wired by mistake sends the counts above 5 and 10 um in these two
+// words. A count that decodes out of range stays null. A small count, or 65535
+// that decodes as -0.1 Cel, passes as a reading (pms5003t.md).
 constexpr std::int16_t kPmsTemperatureMinDeciC = -100;
 constexpr std::int16_t kPmsTemperatureMaxDeciC = 600;
 constexpr std::uint16_t kPmsHumidityMaxDeciPercent = 1000;

@@ -95,8 +95,9 @@ int main() {
     assert(std::strstr(buffer.data(), wire[i]));
   }
 
-  // The board screen line (#165). A failed begin, no card, a full card, a
-  // retrying card and a stopped writer each name why rows are not written.
+  // The board screen line (#165). A failed begin, an erased archive, no card,
+  // a full card, a retrying card and a stopped writer each name why rows are
+  // not written.
   using oslogger::logging_stopped_reason;
   static_assert(logging_stopped_reason({}) == "not started");
   static_assert(
@@ -107,6 +108,13 @@ int main() {
       logging_stopped_reason(
           {.started = true, .storage_ok = false, .sd_state = State::Ready}) ==
       "no card");
+  // An erase parks the writer with the card mounted. Reinserting the card
+  // cannot resume, so the line asks for a reboot, not a card.
+  static_assert(logging_stopped_reason({.started = true,
+                                        .archive_reset = true,
+                                        .storage_ok = false,
+                                        .sd_state = State::Ready}) ==
+                "erased, reboot");
   static_assert(logging_stopped_reason({.started = true,
                                         .storage_ok = true,
                                         .failed = true,

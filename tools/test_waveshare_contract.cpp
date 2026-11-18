@@ -485,10 +485,21 @@ void assert_row_equality() {
          !failed.valid[battery_health_state]);
 }
 // A PMSA003 style frame, 32 bytes like a PMS5003T, with the counts above 5
-// and 10 um where the PMS5003T keeps temperature and RH.
+// and 10 um where the PMS5003T keeps temperature and RH. The six counts are
+// cumulative, so none rises as the size threshold rises.
 std::array<std::uint8_t, 32> pmsa003_bytes(std::uint16_t gt50,
                                            std::uint16_t gt100) {
+  assert(gt50 >= gt100 && gt50 <= 0xffff - 3000);
   auto bytes = sensor_bytes();
+  const std::uint16_t below[] = {
+      static_cast<std::uint16_t>(gt50 + 3000),
+      static_cast<std::uint16_t>(gt50 + 2000),
+      static_cast<std::uint16_t>(gt50 + 1000),
+      static_cast<std::uint16_t>(gt50 + 500)}; // above 0.3, 0.5, 1.0, 2.5 um
+  for (std::size_t i = 0; i < 4; ++i) {
+    bytes[16 + 2 * i] = static_cast<std::uint8_t>(below[i] >> 8);
+    bytes[17 + 2 * i] = static_cast<std::uint8_t>(below[i]);
+  }
   bytes[24] = static_cast<std::uint8_t>(gt50 >> 8);
   bytes[25] = static_cast<std::uint8_t>(gt50);
   bytes[26] = static_cast<std::uint8_t>(gt100 >> 8);
@@ -560,13 +571,13 @@ void assert_silent_and_tail_gates() {
   assert(board_modules::aged(pms, pms.received_mono_us - 1500).age_ms == 0);
 
   // A PMSA003 on the PMS5003T parser. Smoke counts above 5 and 10 um would
-  // read as 70.0 Cel and 120.0 % RH. Both stay null, PM stays.
+  // read as 140.0 Cel and 120.0 % RH. Both stay null, PM stays.
   PmsSnapshot wired = parsed_snapshot();
   plantower::Parser parser{plantower::Model::Pms5003t};
   bool parsed = false;
-  for (const auto byte : pmsa003_bytes(700, 1200))
+  for (const auto byte : pmsa003_bytes(1400, 1200))
     parsed = parser.push(byte, wired.frame);
-  assert(parsed && wired.frame.temperature_deci_c == 700 &&
+  assert(parsed && wired.frame.temperature_deci_c == 1400 &&
          wired.frame.humidity_deci_percent == 1200);
   Sample pmsa{};
   pms_modules(pmsa, wired, kPmsWarmupUs);

@@ -20,9 +20,17 @@ rows keep their columns and codes.
   silent for 2^32 ms wrapped to a small age and read valid again (#169).
 - Waveshare writes `ambient_temperature_c` only from -10.0 to 60.0 and
   `relative_humidity_percent` only up to 100.0. Out of range both are null
-  and PM stays, which is what a PMSA003 on the PMS5003T port produces.
-- CoreS3 `MEAS pmsa003` gains `status=<name>`, and `values_valid` is true
-  only when the row's `pms_status` is 4. Before, it followed the sensor
+  and PM stays. A PMSA003 wired on the PMS5003T port sends its counts above
+  5 and 10 um in those two words, and the 32-byte frame cannot tell the two
+  models apart. Large counts decode out of range and stay null. Small counts,
+  common in clean air, decode in range and are stored as a temperature and
+  humidity, with PM still valid. The board config names PMS5003T, and only
+  that model gives real values there.
+- CoreS3 `MEAS pmsa003` gains `status=<name>`, missing before the first
+  frame. `values_valid` is true only when the frame `MEAS` evaluates
+  classifies as valid under the row's rule. `MEAS` runs that rule itself at
+  its own time, so it can disagree with a stored row about the same frame,
+  for example stale at 5,001 ms where the row stored valid at 5,000 ms. Before, it followed the sensor
   error byte alone and called warming and stale frames valid (#165).
 
 **What the app must do.** Nothing. Treat a null temperature or humidity next

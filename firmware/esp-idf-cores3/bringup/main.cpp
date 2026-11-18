@@ -478,17 +478,18 @@ telemetry::PmsReading pms_reading() {
 }
 
 void print_periodic_pms() {
+  // Before the first frame the status is missing. Frame age and values stay
+  // out of the line until a frame arrives.
+  const auto reading = pms_reading();
   if (!has_pms_frame) {
-    oslog.printf(
-        "MEAS pmsa003 values_valid=false interval_ms=%lu checksum_failures=%lu "
-        "length_failures=%lu\n",
-        static_cast<unsigned long>(kDisplayIntervalMs),
-        static_cast<unsigned long>(pms_parser.checksum_failures()),
-        static_cast<unsigned long>(pms_parser.length_failures()));
+    oslog.printf("MEAS pmsa003 values_valid=false status=%s interval_ms=%lu "
+                 "checksum_failures=%lu length_failures=%lu\n",
+                 reading.name, static_cast<unsigned long>(kDisplayIntervalMs),
+                 static_cast<unsigned long>(pms_parser.checksum_failures()),
+                 static_cast<unsigned long>(pms_parser.length_failures()));
     return;
   }
 
-  const auto reading = pms_reading();
   oslog.printf(
       "MEAS pmsa003 values_valid=%s status=%s sensor_error=%u "
       "frame_age_ms=%lu "

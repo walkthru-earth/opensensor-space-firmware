@@ -3646,10 +3646,12 @@ ClockView clock_view() {
 
 LoggingView logging_view() {
   const auto state = static_cast<storage::State>(sd_state.load());
-  return {.stopped = logging_stopped_reason({.started = accepting,
-                                             .storage_ok = storage_ok.load(),
-                                             .failed = worker_failed.load(),
-                                             .sd_state = state}),
+  return {.stopped =
+              logging_stopped_reason({.started = accepting,
+                                      .archive_reset = archive_reset.load(),
+                                      .storage_ok = storage_ok.load(),
+                                      .failed = worker_failed.load(),
+                                      .sd_state = state}),
           .sd_state = storage::state_name(state),
           .dropped = dropped.load()};
 }
