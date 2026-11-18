@@ -109,9 +109,279 @@
           "additionalProperties": {
             "type": "string"
           }
+        },
+        "setup": {
+          "$comment": "Ordered setup wizard steps. The bits of GET_CONFIG thing.setup_ack follow this order, so 31 at most.",
+          "type": "array",
+          "maxItems": 31,
+          "items": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/definitions/stepId"
+              },
+              "req": {
+                "type": "boolean"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "label_i18n": {
+                "$ref": "schema.json#/definitions/i18n"
+              },
+              "keys": {
+                "$ref": "#/definitions/stepKeys"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "settings": {
+          "$comment": "Ordered Device settings sections, with the same ids as setup.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/definitions/stepId"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "label_i18n": {
+                "$ref": "schema.json#/definitions/i18n"
+              },
+              "keys": {
+                "$ref": "#/definitions/stepKeys"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "config_keys": {
+          "$comment": "SET_CONFIG keys a generic step or section shows. Names and types only, never a value or a secret.",
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/definitions/configKey"
+          },
+          "additionalProperties": {
+            "$ref": "#/definitions/configKeySpec"
+          }
         }
       },
       "additionalProperties": false
+    }
+  },
+  "definitions": {
+    "stepId": {
+      "$comment": "A step from the app catalog or a board's own id. Find, Pair, Permission and Done are app owned.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "not": {
+        "enum": [
+          "find",
+          "pair",
+          "permission",
+          "done"
+        ]
+      }
+    },
+    "stepKeys": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/configKey"
+      },
+      "uniqueItems": true
+    },
+    "configKey": {
+      "$comment": "A board key, two or more dot separated parts. The app owns every key under the reserved prefixes.",
+      "type": "string",
+      "maxLength": 48,
+      "pattern": "^(?!(ble|wifi|lan|location|thing|owner|sensor)\\.)[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
+    },
+    "range": {
+      "type": "object",
+      "required": [
+        "min",
+        "max"
+      ],
+      "properties": {
+        "min": {
+          "type": "integer"
+        },
+        "max": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false
+    },
+    "configKeySpec": {
+      "type": "object",
+      "required": [
+        "type",
+        "applies",
+        "page",
+        "label"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "boolean",
+            "integer",
+            "enum",
+            "text"
+          ]
+        },
+        "values": {
+          "oneOf": [
+            {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": [
+                  "string",
+                  "number"
+                ],
+                "minLength": 1
+              }
+            },
+            {
+              "$ref": "#/definitions/range"
+            }
+          ]
+        },
+        "applies": {
+          "enum": [
+            "immediately",
+            "next sample",
+            "next boot",
+            "action"
+          ]
+        },
+        "page": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label_i18n": {
+          "$ref": "schema.json#/definitions/i18n"
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "boolean"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": [
+                "values"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "integer"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "values"
+            ],
+            "properties": {
+              "values": {
+                "$ref": "#/definitions/range"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "enum"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "values"
+            ],
+            "properties": {
+              "values": {
+                "type": "array"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "text"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "values": {
+                "allOf": [
+                  {
+                    "$ref": "#/definitions/range"
+                  },
+                  {
+                    "properties": {
+                      "min": {
+                        "minimum": 0
+                      },
+                      "max": {
+                        "maximum": 64
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "applies": {
+                "const": "action"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "type": {
+                "const": "boolean"
+              }
+            }
+          }
+        }
+      ]
     }
   }
 }

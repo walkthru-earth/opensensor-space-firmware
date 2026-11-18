@@ -6,7 +6,8 @@ Newest first. Versions follow section 7 of the [README](README.md).
 
 - Display hints and the setup manifest of
   [decision 0003](../decisions/0003-metadata-driven-apps.md) (#184). The
-  vendored stac-opensensor schemas and registry move to `e998136`.
+  vendored stac-opensensor schemas and registry move to `07a4f21`, whose
+  template schema carries the setup manifest.
 - A module column may author `title`, `opensensor:title_i18n`,
   `description`, `opensensor:description_i18n`, `opensensor:decimals`,
   `opensensor:group`, a default `opensensor:scale` and

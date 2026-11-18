@@ -92,7 +92,7 @@
     "stepId": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "not": {"enum": ["find", "pair", "permission", "done"]}},
     "stepLabel": {"description": "The wizard page or Device settings card title. A catalog id may omit it, a board step or section carries it.", "type": "string", "minLength": 1},
     "stepKeys": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/definitions/configKey"}},
-    "configKey": {"type": "string", "maxLength": 48, "pattern": "^(?!(ble|wifi|lan|location|thing|owner|sensor)\\.)[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"},
+    "configKey": {"type": "string", "maxLength": 48, "pattern": "^(?!(ble|wifi|lan|ntp|location|thing|owner|sensor)\\.)[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"},
     "range": {"type": "object", "required": ["min", "max"], "properties": {"min": {"type": "integer"}, "max": {"type": "integer"}}, "additionalProperties": false},
     "configKeySpec": {
       "type": "object",

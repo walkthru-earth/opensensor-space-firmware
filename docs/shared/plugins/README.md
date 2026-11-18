@@ -299,15 +299,16 @@ every listed key is declared and every declared key is listed. The app
 renders an unknown id as a generic form from its typed keys and keeps setup
 pending when such a step is required.
 
-`setup_v` is the first 31 bits, big endian, of SHA-256 over the setup step
-ids joined by `\n`, with 0 read as 1. The device keeps `thing.setup_v` and
+`setup_v` is the first four bytes of SHA-256 over the ordered setup step
+ids joined by `\n`, read big endian with the top bit cleared. A result of 0
+reads as 1. The empty list gives `0x63b0c442`. The device keeps `thing.setup_v` and
 `thing.setup_ack`, a bitmask over the setup steps in order, and the phone
 writes both in one `SET_CONFIG`. A stale `setup_v` reads as nothing done.
 
 A Key is `{"type", "values", "applies", "page", "label", "label_i18n"}`.
 The name matches `[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+`, is at most 48 bytes,
-does not start with a reserved prefix (`ble.`, `wifi.`, `lan.`, `location.`,
-`thing.`, `owner.` or `sensor.`) and has no `pin`, `psk`, `token`,
+does not start with a reserved prefix (`ble.`, `wifi.`, `lan.`, `ntp.`,
+`location.`, `thing.`, `owner.` or `sensor.`) and has no `pin`, `psk`, `token`,
 `password` or `secret` part. `type` is `boolean`, `integer`, `enum` or
 `text`. An integer needs `values` as a range `{"min", "max"}` of whole
 numbers, so a decimal is a scaled integer such as `temp_offset_dc` in tenths

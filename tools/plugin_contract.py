@@ -469,6 +469,14 @@ SETTINGS_ONLY = APP_SECTIONS - APP_STEPS
 SECRET_PARTS = frozenset({"pin", "psk", "token", "password", "secret"})
 
 
+
+def setup_v(step_ids: list[str]) -> int:
+    """The setup step list version the phone writes with thing.setup_ack. The
+    first four bytes of SHA-256 over the ordered ids joined by a newline, read
+    big endian with the top bit cleared, and 0 read as 1."""
+    head = hashlib.sha256("\n".join(step_ids).encode()).digest()[:4]
+    return int.from_bytes(head, "big") & 0x7FFFFFFF or 1
+
 def setup_rules(label: str, manifest: dict) -> None:
     keys = manifest.get("config_keys", {})
     used: set[str] = set()
