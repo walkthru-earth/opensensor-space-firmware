@@ -83,14 +83,11 @@ static_assert(
 
 void collect(oslogger::Row &row, std::int64_t now, std::int64_t, void *) {
   const auto &pms = latest;
-  const PmsStatus status = !pms.present                    ? kPmsMissing
-                           : now < kPmsWarmupUs            ? kPmsWarming
-                           : pms.age_ms > kPmsStaleAfterMs ? kPmsStale
-                           : pms.error                     ? kPmsSensorError
-                                                           : kPmsValid;
+  const PmsStatus status = contract::pms_status_of(
+      pms.present, now, pms.received_mono_us, pms.error);
   row.integer(pms_status, status);
   if (pms.present) {
-    row.counter(pms_age_ms, pms.age_ms);
+    row.counter(pms_age_ms, plantower::frame_age_ms(now, pms.received_mono_us));
     row.counter(pms_received_mono_us, pms.received_mono_us);
     row.integer(pms_firmware, pms.firmware);
     row.integer(pms_error, pms.error);
@@ -238,7 +235,7 @@ void refresh_capacity() {
 }
 } // namespace
 
-void begin_logger(bool sd_mounted) {
+bool begin_logger(bool sd_mounted) {
   for (std::size_t i = 0; i < field_count; ++i) {
     const auto &field = kFields[i];
     fields[i] = {field.name,     field.type,     field.procedure,
@@ -293,7 +290,17 @@ void begin_logger(bool sd_mounted) {
   const bool light = light_sensor.begin();
   oslog.printf("PARQUET HARDWARE board=cores3 light_available=%s\n",
                light ? "true" : "false");
-  oslogger::begin(logger_config, hooks, sd_mounted);
+  return oslogger::begin(logger_config, hooks, sd_mounted);
+}
+PmsReading pms_reading(bool present, std::int64_t now_us,
+                       std::int64_t received_mono_us,
+                       std::uint8_t sensor_error) {
+  const auto status =
+      contract::pms_status_of(present, now_us, received_mono_us, sensor_error);
+  // Class names are string literals, so data() is terminated.
+  return {.status = status,
+          .name = contract::pms_status_name(status).data(),
+          .age_ms = plantower::frame_age_ms(now_us, received_mono_us)};
 }
 void poll_logger(const PmsSnapshot &pms) {
   latest = pms;

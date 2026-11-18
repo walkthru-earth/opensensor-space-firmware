@@ -208,7 +208,8 @@ def main() -> None:
                         root / "firmware/common/connectivity/src",
                         root / "firmware/common/runtime/src",
                         root / "firmware/common/gnss/src",
-                        root / "firmware/common/power/src"):
+                        root / "firmware/common/power/src",
+                        root / "firmware/common/sensors/src"):
             command += ["-I", str(include)]
         if args.sanitize:
             command += ["-fsanitize=address,undefined", "-fno-sanitize-recover=all"]
