@@ -38,14 +38,18 @@ void store(const std::optional<Fix> &fix) {
 
 uart_port_t port() { return static_cast<uart_port_t>(settings.uart_port); }
 
-// A receiver reply line and a parsed Reading hold the raw position. Zeroes
-// one on every exit path of its scope, so a later core dump of this task's
-// stack does not find them there. Copies left in the frames of called
-// functions are not wiped, so this narrows exposure and does not remove it
-// (#172). The stores go through a volatile pointer so they are
-// not dropped, as opensensor::upload::text::secure_zero does for secrets.
-// Declare it right after the object it wipes. For a parse result it wipes
-// the contained Reading, an error result holds no position.
+// Keeps raw receiver positions out of a panic core dump (#172). The image
+// dumps task stacks, TCBs and the coredump sections, never .bss or the heap,
+// because CONFIG_ESP_COREDUMP_CAPTURE_DRAM stays off (check_idf_target.py
+// fails a build that turns it on). So the reply line lives in `line_buffer`
+// in .bss and the UART driver keeps its ring buffer on the heap. What a
+// stack can still hold is the parse, the Reading and the H3 conversion,
+// which run in frames below the caller. wipe_bytes zeroes a Reading on every
+// exit, and scrub_stack then overwrites the dead frames under the caller
+// before the task blocks again. The stores go through a volatile pointer so
+// they are not dropped, as opensensor::upload::text::secure_zero does for
+// secrets. Declare a WipeOnExit right after the object it wipes. For a parse
+// result it wipes the contained Reading, an error result holds no position.
 template <typename T> void wipe_bytes(T &object) {
   static_assert(std::is_trivially_copyable_v<T>);
   volatile auto *bytes = reinterpret_cast<volatile unsigned char *>(&object);
@@ -68,6 +72,26 @@ public:
 private:
   T &object_;
 };
+
+// Bytes scrub_stack zeroes below its caller. The parse and the H3
+// conversion use about 1.5 KiB of stack under the caller, and the
+// os-gnss scrub entry in tools/stack_budget.json fails CI when the scrub
+// frame stops covering them with margin. The extra stack this adds stays
+// under the task's deepest logging path.
+constexpr std::size_t kScrubBytes = 2048;
+
+// Overwrites the stack below the caller, where the parse and the cell
+// conversion just ran. It is its own frame, never a write below the stack
+// pointer, which an interrupt may use at any time.
+[[gnu::noinline]] void scrub_stack() {
+  std::array<unsigned char, kScrubBytes> frame;
+  wipe_bytes(frame);
+  // Keeps the array, and so the frame, from being optimised away.
+  asm volatile("" : : "r"(frame.data()) : "memory");
+}
+
+// One reader task owns the line. .bss is not in the core dump.
+std::array<char, kLineBytes> line_buffer{};
 
 void send(std::string_view command) {
   uart_flush_input(port());
@@ -117,16 +141,17 @@ Reply exchange(std::string_view command, std::uint32_t timeout_ms,
   send(command);
   const auto deadline =
       esp_timer_get_time() + static_cast<std::int64_t>(timeout_ms) * 1000;
-  std::array<char, kLineBytes> buffer{};
-  const WipeOnExit wipe_buffer(buffer);
+  const WipeOnExit wipe_buffer(line_buffer);
   std::size_t length = 0;
-  while (read_line(buffer, length, deadline) == Line::Text) {
-    const std::string_view line(buffer.data(), length);
+  while (read_line(line_buffer, length, deadline) == Line::Text) {
+    const std::string_view line(line_buffer.data(), length);
     if (line == "OK")
       return Reply::Ok;
     if (line == "ERROR" || line.starts_with("+CME ERROR"))
       return Reply::Error;
     on_line(line);
+    wipe_bytes(line_buffer);
+    scrub_stack();
   }
   return Reply::Timeout;
 }
@@ -177,25 +202,38 @@ bool poll_fix(const Dialect &dialect, State &shown) {
   return true;
 }
 
+// Parses one streamed line. Nullopt when it is not a position line, else
+// the cell or no fix. Its frame and the parse below it are dead, and so
+// scrubbed, before the next read blocks.
+[[gnu::noinline]] std::optional<std::optional<Fix>>
+stream_line(const Dialect &dialect, std::size_t length) {
+  auto reading =
+      dialect.parse_fix(std::string_view(line_buffer.data(), length));
+  const WipeOnExit wipe_reading(reading);
+  if (!reading && reading.error() == ParseError::NotThisLine)
+    return std::nullopt;
+  std::optional<Fix> fix;
+  if (reading)
+    if (auto converted = to_fix(*reading, esp_timer_get_time()))
+      fix = *converted;
+  return fix;
+}
+
 // Streaming dialects send sentences unasked. Parse for one poll period.
 void stream_fix(const Dialect &dialect, State &shown) {
   const auto deadline =
       esp_timer_get_time() +
       static_cast<std::int64_t>(settings.poll_period_ms) * 1000;
-  std::array<char, kLineBytes> buffer{};
-  const WipeOnExit wipe_buffer(buffer);
+  const WipeOnExit wipe_buffer(line_buffer);
   std::size_t length = 0;
-  while (read_line(buffer, length, deadline) == Line::Text) {
-    auto reading = dialect.parse_fix(std::string_view(buffer.data(), length));
-    const WipeOnExit wipe_reading(reading);
-    if (!reading && reading.error() == ParseError::NotThisLine)
+  while (read_line(line_buffer, length, deadline) == Line::Text) {
+    const auto fix = stream_line(dialect, length);
+    wipe_bytes(line_buffer);
+    scrub_stack();
+    if (!fix)
       continue;
-    std::optional<Fix> fix;
-    if (reading)
-      if (auto converted = to_fix(*reading, esp_timer_get_time()))
-        fix = *converted;
-    store(fix);
-    report(shown, fix ? State::Fix : State::NoFix);
+    store(*fix);
+    report(shown, *fix ? State::Fix : State::NoFix);
   }
 }
 

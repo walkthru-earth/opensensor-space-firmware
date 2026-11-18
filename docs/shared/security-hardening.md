@@ -102,9 +102,19 @@ what that does and does not protect.
   `opensensor_waveshare`. A diagnostic image pushed to a logger is accepted.
   The diagnostic has no LAN, so that board needs USB to get back.
 - There is no LAN or BLE core dump endpoint. A core dump holds task stacks,
-  which can hold the Wi-Fi PSK, the LAN token or the device PIN. On a board
-  running the GNSS reader it can also hold the raw receiver reply line with
-  coordinates, because the reader keeps that line on its task stack (#172).
+  which can hold the Wi-Fi PSK, the LAN token or the device PIN. It does not
+  hold .bss or the heap, because `CONFIG_ESP_COREDUMP_CAPTURE_DRAM` stays off
+  and `tools/check_idf_target.py` fails a board build that turns it on.
+- The GNSS reader keeps raw coordinates out of the dump (#172). The reply
+  line lives in a .bss buffer, and the UART driver ring buffer is on the
+  heap. Each parsed position is zeroed when its scope ends, and a scrub
+  zeroes the dead parse and H3 frames under the caller before the task
+  blocks again. `pixi run stack-budget --check` fails a board build whose
+  scrub frame no longer covers the parse with margin, and
+  `tools/test_gnss.py` checks the source with mutants. A dump can still hold
+  a position when the panic hits the reader task itself during a parse, or
+  in the microseconds between a parse and its scrub. No board run has
+  decoded a dump to confirm this yet.
   `pixi run coredump-read` reads it over USB serial only and prints the backtraces
   without memory. esp_coredump writes the flash read to a temporary file and
   leaves it behind when decoding fails, so the tool points TMPDIR at a private

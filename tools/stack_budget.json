@@ -246,7 +246,18 @@
             "firmware/esp-idf-*/logger/*modem_power_on(*"
           ]
         }
-      ]
+      ],
+      "scrub": {
+        "about": "scrub_stack zeroes its own frame after each receiver line, so the dead parse and H3 frames under the caller hold no raw position when a core dump saves the stack (#172).",
+        "function": "*opensensor::gnss::{anonymous}::scrub_stack()",
+        "margin_bytes": 256,
+        "covers": [
+          "*opensensor::gnss::{anonymous}::poll_fix(*)::<lambda(std::string_view)>",
+          "*opensensor::gnss::{anonymous}::stream_line(*",
+          "*opensensor::gnss::*Dialect::parse_fix(*",
+          "*opensensor::gnss::to_fix(*"
+        ]
+      }
     },
     "board": {
       "about": "Board task. Acquisition, logger poll, console input and the runtime DIAG lines.",
