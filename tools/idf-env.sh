@@ -26,23 +26,58 @@ IFS=. read -r idf_major idf_minor _ <<<"${ESP_IDF_VERSION}"
 idf_py_version="$(python -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
 export IDF_PYTHON_ENV_PATH="${OS_IDF_PYTHON_ENV_PATH:-${PIXI_WORKSPACE_ROOT:-${repo_root}}/.pixi/idf-python-env/idf${idf_major}.${idf_minor}_py${idf_py_version}_env}"
 
-# Create the IDF venv with the pinned SDK's own installer when it is missing,
-# when its python is a dangling link (the checkout or its Pixi env moved), or
-# when the pyvenv.cfg home is not the bin folder of the python on PATH (a
-# copied checkout, or a venv still bound to another checkout's live Pixi env).
-# tools/idf.sh never runs the installer, so the repair lives here. Needs
-# IDF_PATH exported.
+# The committed hashed lock of the venv's packages (#176), one per ESP-IDF and
+# Python minor version. tools/idf_python_lock.py writes and checks it.
+export IDF_PYTHON_LOCK="${repo_root}/tools/idf-python/idf${idf_major}.${idf_minor}_py${idf_py_version}.txt"
+# The SDK checks the venv against its downloaded constraints file on every
+# idf.py run and CMake configure. That file moves and is no longer fetched,
+# the lock above replaces it. The SDK still checks that every package its
+# requirements name is installed with its dependencies.
+export IDF_PYTHON_CHECK_CONSTRAINTS=no
+
+# Exit 0 when the venv holds exactly the locked set, 1 on drift, 2 when the
+# check cannot run. Runs the venv's own python, so it sees the venv packages.
+idf_python_env_check() {
+  "${IDF_PYTHON_ENV_PATH}/bin/python" -I "${repo_root}/tools/idf_python_lock.py" \
+    check --lock "${IDF_PYTHON_LOCK}" "$@"
+}
+
+# Create the IDF venv from the committed lock when it is missing, when its
+# python is a dangling link (the checkout or its Pixi env moved), when the
+# pyvenv.cfg home is not the bin folder of the python on PATH (a copied
+# checkout, or a venv still bound to another checkout's live Pixi env), or when
+# its packages differ from the lock (the lock changed, or a package moved).
+# tools/idf.sh never runs the installer, so the repair lives here. pip installs
+# only the locked files, each checked against its SHA-256, and resolves
+# nothing. The SDK installer and its constraints download are not used. A
+# check that cannot run keeps the venv and fails.
 ensure_idf_python_env() {
   local venv_python="${IDF_PYTHON_ENV_PATH}/bin/python"
   local cfg="${IDF_PYTHON_ENV_PATH}/pyvenv.cfg"
-  local want_home venv_home=""
+  local want_home venv_home="" reason="is broken" status=0
+  if [[ ! -f "${IDF_PYTHON_LOCK}" ]]; then
+    printf 'No IDF Python lock for ESP-IDF %s.%s on Python %s, %s is missing.\n' \
+      "${idf_major}" "${idf_minor}" "${idf_py_version}" "${IDF_PYTHON_LOCK}" >&2
+    printf 'Run pixi run idf-python-lock, see docs/shared/development.md.\n' >&2
+    return 2
+  fi
   want_home="$(dirname "$(command -v python)")"
   if [[ -f "${cfg}" ]]; then
     venv_home="$(sed -n 's/^home[[:space:]]*=[[:space:]]*//p' "${cfg}" | head -n 1)"
   fi
   if [[ -x "${venv_python}" ]] && [[ "${venv_home}" == "${want_home}" ]] \
     && "${venv_python}" -c '' >/dev/null 2>&1; then
-    return 0
+    idf_python_env_check --quiet || status=$?
+    if ((status == 0)); then
+      return 0
+    fi
+    # 2 is a lock the check cannot read. A rebuild would refuse the same
+    # lock, so keep the working venv and fail.
+    if ((status != 1)); then
+      printf 'IDF Python lock check failed, keeping %s\n' "${IDF_PYTHON_ENV_PATH}" >&2
+      return 2
+    fi
+    reason="differs from the lock"
   fi
   if [[ -L "${IDF_PYTHON_ENV_PATH}" ]] || [[ -n "$(ls -A "${IDF_PYTHON_ENV_PATH}" 2>/dev/null)" ]]; then
     # Remove only what is recognisably a venv, never an arbitrary override.
@@ -50,13 +85,13 @@ ensure_idf_python_env() {
       printf 'Refusing to replace %s, it is not a Python venv\n' "${IDF_PYTHON_ENV_PATH}" >&2
       return 2
     fi
-    printf 'IDF Python venv is broken, rebuilding it: %s\n' "${IDF_PYTHON_ENV_PATH}" >&2
+    printf 'IDF Python venv %s, rebuilding it: %s\n' "${reason}" "${IDF_PYTHON_ENV_PATH}" >&2
     rm -rf "${IDF_PYTHON_ENV_PATH}"
   else
     printf 'Creating the IDF Python venv: %s\n' "${IDF_PYTHON_ENV_PATH}" >&2
   fi
-  # idf_tools.py lists an IDF_PYTHON_ENV_PATH it does not recognise by name,
-  # which fails when the folder does not exist yet. An empty folder is fine.
-  mkdir -p "${IDF_PYTHON_ENV_PATH}"
-  python "${IDF_PATH}/tools/idf_tools.py" install-python-env --features=core
+  python -m venv "${IDF_PYTHON_ENV_PATH}"
+  # idf_tools.py reads this file to match the venv to the SDK version.
+  printf '%s.%s' "${idf_major}" "${idf_minor}" >"${IDF_PYTHON_ENV_PATH}/idf_version.txt"
+  "${venv_python}" -I "${repo_root}/tools/idf_python_lock.py" install --lock "${IDF_PYTHON_LOCK}"
 }
