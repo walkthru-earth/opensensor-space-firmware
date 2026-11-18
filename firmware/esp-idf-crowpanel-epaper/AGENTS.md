@@ -18,6 +18,9 @@ Never borrow a sibling trial's settings.
   CS10, GPIO42 card power), the red LED on GPIO41 and the five keys (rotary
   Up6, Down4, Press5, side Exit1 and Menu2, active low). The SEN63C needs
   external 10 k pull-ups to 3V3 on SDA and SCL.
+- `board_io` reserves the 4 KiB internal DMA SD transfer buffer before radios
+  and keeps it for the whole boot, also after a failed mount (#168). `OS TF`
+  reports `dma_buffer=0|1`.
 - The UI task (`os-ui`, core 1) alone owns SPI2 and the panel (`display/`).
   Panel pins are in `opensensor::epd::Pins`, GPIO7 panel power stays high.
   It reads a copy of the latest row and the pairing passkey through the UI

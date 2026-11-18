@@ -75,9 +75,9 @@ bool start_sd_bus() {
   return sd_bus_ready;
 }
 
-// A remount keeps the DMA buffer reserved: once radios run, internal DMA
-// memory may be too fragmented to reserve it again.
-bool mount(bool keep_buffer) {
+// The DMA buffer stays reserved after a failed mount, so a card inserted
+// later still mounts once radios have fragmented internal DMA memory (#168).
+bool mount() {
   if (card)
     return true;
   if (!start_sd_bus())
@@ -105,8 +105,6 @@ bool mount(bool keep_buffer) {
       esp_vfs_fat_sdspi_mount("/sd", &host, &device, &config, &created);
   // The IDF mount helper releases its device and FAT resources on failure.
   if (result != ESP_OK) {
-    if (!keep_buffer)
-      sd_transfer_buffer.release();
     return false;
   }
   card = created;
@@ -171,13 +169,17 @@ void sensor_delay_ms(void *, std::uint32_t milliseconds) {
 }
 int sensor_last_error() { return sensor_error; }
 
-bool mount_card() { return mount(false); }
+bool mount_card() { return mount(); }
+bool sd_buffer_reserved() { return sd_transfer_buffer.data() != nullptr; }
+bool sd_buffer_unavailable_once() {
+  return sd_transfer_buffer.report_unavailable();
+}
 bool remount_card() {
   if (card && esp_vfs_fat_sdcard_unmount("/sd", card) != ESP_OK)
     return false;
   card = nullptr;
   mounted.store(false, std::memory_order_release);
-  return mount(true);
+  return mount();
 }
 bool card_mounted() { return mounted.load(std::memory_order_acquire); }
 std::uint32_t cluster_bytes() {

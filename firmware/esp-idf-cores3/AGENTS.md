@@ -36,7 +36,8 @@ in `../../docs/boards/m5stack-cores3/` (start at its `README.md`).
   their expansion. `shipped.lock` is append only. Never hand edit a generated
   `*_module.h`, and run `plugin-contract-test` after any manifest or field change.
 - Reserve the heap-owned 4 KiB internal DMA SD transfer buffer before starting
-  radios; keep it alive for the mount and reuse it for eight-sector chunks.
+  radios; keep it for the whole boot, also after a failed mount (#168), and
+  reuse it for eight-sector chunks.
   Shared connectivity prefers PSRAM for packet/TCP memory and bounds static
   Wi-Fi DMA buffers. Preserve that policy and measure free/largest/minimum DMA
   heap under actual LAN load before claiming memory or throughput headroom.

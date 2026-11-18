@@ -9,6 +9,20 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## SD DMA buffer kept after a failed mount (fix/168-sd-buffer-kept, issue #168)
+
+**No wire, column, LIVE key or `GET_CONFIG` change.** Every board now keeps its
+4 KiB internal DMA SD buffer for the whole boot, also when the boot mount
+fails. Before, a board that booted without a card freed it, and a card inserted
+after radios started could fail to mount with no clear reason.
+
+**What the app can observe.** A card inserted after boot now moves the storage
+state from retry to ready on the next probe, as a reinserted card already did.
+Logs gain `dma_buffer=0|1` on `OS TF` and a once only
+`reason=dma_buffer_unavailable` line when a remount fails without the buffer.
+
+**What the app must do.** Nothing.
+
 ## Metadata-driven apps, decision 0003 (docs/metadata-driven-contract)
 
 **Contract only, no firmware or wire change.** No image, digest, column, LIVE

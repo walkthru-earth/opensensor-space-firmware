@@ -444,7 +444,8 @@ archive, transport, settings, logger and geometry host fixtures compile actual
 implementation code against platform fakes. `logger-directory-test` includes
 FatFs mount-root handling through `stat`, since `mkdir` at the mounted root can
 return `EINVAL`. `sd-transfer-buffer-test` covers the 4 KiB internal DMA buffer
-reservation, failed-mount release/retry and lifetime, rather than SD timing.
+reservation, that a failed mount keeps it, the once only unavailable report and
+its lifetime, rather than SD timing.
 
 The LAN task owns non-blocking socket IO. The storage worker services samples
 between bounded ring/credit waits and consumes copied requests serially.
