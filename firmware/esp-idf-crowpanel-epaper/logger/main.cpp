@@ -2,6 +2,7 @@
 #include "canvas.h"
 #include "epd_uc8276c.h"
 #include "history.h"
+#include "history_restore.h"
 #include "pages.h"
 #include "sensor_modules.h"
 #include "settings.h"
@@ -1011,8 +1012,10 @@ void ui_task(void *) {
       if (local.sample_seq != seen_seq) {
         seen_seq = local.sample_seq;
         history->push(local.sample_mono_s, local.sample);
-      } else if (!history->empty() &&
+      } else if (seen_seq != 0 && !history->empty() &&
                  local.uptime_s >= local.sample_mono_s + kHistoryGapS) {
+        // Seeded rows make the history non-empty before this boot's first
+        // row, so wait for that row. An earlier advance could pass its slot.
         history->advance(local.uptime_s);
       }
     }
@@ -1194,6 +1197,11 @@ bool init_board() {
                mounted, static_cast<unsigned long long>(board::card_bytes()),
                board::kSdMosi, board::kSdMiso, board::kSdClk, board::kSdCs,
                board::kSdPower);
+  // Earlier boots' rows seed the charts. Before the storage worker exists,
+  // so nothing else touches the card, and before the UI task owns history.
+  if (mounted && history)
+    opensensor::crowpanel::restore_history(*history,
+                                           kLoggerConfig.output_directory);
   logging = oslogger::begin(kLoggerConfig, kHooks, mounted);
   if (logging) {
     links_started = oslogger::start_links(display_ok);

@@ -90,6 +90,56 @@ column, not just the screen. Every change logs
 The sensor forgets all three at a reset, so the board writes them before
 every start.
 
+## Chart history after a reset
+
+The 2 hour and 24 hour charts live in RAM. At boot, after the card mounts
+and before logging starts, the board reads this Thing's own finalized
+Parquet files back and seeds the charts with up to 24 hours of earlier rows,
+newest boot first. It reads the unsynced folders of the boots in the NVS boot
+ring and the two newest dated day folders. It only reads the card and NVS,
+it writes, renames and deletes nothing, and it stops after about 8 seconds
+with what it has. It logs one line, either `OS HISTORY restored boots=N
+files=N rows=N span_s=N ms=N skipped=N cut=none|budget|rows|order|deadline
+ring_boots=N dated_boots=N placed=N fallback=N` or `OS HISTORY restore=none
+reason=no-thing|memory|path|no-boots|order-unknown|deadline|no-rows ms=N
+ring_boots=N dated_boots=N placed=N fallback=N`. `ring_boots` counts the
+boots of the NVS boot ring, `dated_boots` the boots seen only in the dated
+folders, `placed` the boots the order could place (a ring boot with no
+finalized file is left out) and `fallback` the placements the used bytes
+decided. A failure only leaves the charts empty, logging starts the same way.
+
+Limits.
+
+- Rows still in RAM at a power cut are lost, and an unfinished `.partial`
+  file is skipped, so the chart before a reset ends at the last finalized
+  file, up to one file window early (15 minutes by default).
+- Each boot is a separate segment. A restart mark sits between two boots
+  and between the last one and this boot, and it never claims a length,
+  because the time the board was off is unknown.
+- The board has no RTC. Rows are placed by each boot's own monotonic time,
+  never by UTC, so a restored row is never placed at an exact clock time.
+- Boot order is proven by the NVS boot ring and the UTC in dated folder and
+  file names. A boot that got UTC from a phone before its first file never
+  enters the ring, so a ring boot that never had UTC and a dated only boot
+  can have no proven order. Only there the card used bytes decide. Every row
+  stores `sd_used_bytes`, and the firmware never deletes archive files, so
+  card usage only grows from boot to boot. The board reads the footer bounds
+  of each boot's oldest and newest file, and a boot whose largest value is
+  at or below another boot's smallest is the older one. Overlapping or
+  missing ranges stay unknown, and a used bytes answer never overrides a
+  proven order. Deleting files from a computer between boots breaks this
+  assumption, and the worst result is a misordered chart, the files stay as
+  they are. These footers are read only when the proofs alone stop early,
+  for at most about 4 of the 8 seconds.
+- When a boot still cannot be placed, the restore stops at that boot and
+  older boots stay out (`cut=order`, or `reason=order-unknown` when not even
+  the newest boot can be placed). A boot whose ring entry could not be saved
+  (a `ringless=` marker) and dated files older than the two newest day
+  folders are not read.
+- At most 160 files per boot and 64 boots are considered. Files of another
+  shape, a damaged footer or a page the bounded decoder refuses count as
+  `skipped` and add nothing.
+
 ## First flash
 
 The image the owner unit carries before OpenSensor has a 0x6000 byte NVS
