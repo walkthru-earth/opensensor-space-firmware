@@ -1,6 +1,8 @@
 #include "boot_self_test.h"
 
+#include <algorithm>
 #include <cstdio>
+#include <iterator>
 
 namespace opensensor::selftest {
 namespace {
@@ -17,15 +19,17 @@ Outcome decide(const Inputs &inputs) {
       {.check = inputs.sensor, .fail = "sensor", .timeout = "sensor-timeout"},
       {.check = inputs.radio, .fail = "radio", .timeout = "radio-timeout"},
   };
-  for (const auto &item : checks)
-    if (item.check == Check::Fail)
-      return {.verdict = Verdict::Unhealthy, .reason = item.fail};
-  for (const auto &item : checks)
-    if (item.check == Check::Pending)
-      return inputs.elapsed_ms >= inputs.deadline_ms
-                 ? Outcome{.verdict = Verdict::Unhealthy,
-                           .reason = item.timeout}
-                 : Outcome{.verdict = Verdict::Pending, .reason = "pending"};
+  const auto first = [&](Check state) {
+    return std::ranges::find_if(
+        checks, [state](const Named &item) { return item.check == state; });
+  };
+  if (const auto *failed = first(Check::Fail); failed != std::end(checks))
+    return {.verdict = Verdict::Unhealthy, .reason = failed->fail};
+  if (const auto *pending = first(Check::Pending); pending != std::end(checks))
+    return inputs.elapsed_ms >= inputs.deadline_ms
+               ? Outcome{.verdict = Verdict::Unhealthy,
+                         .reason = pending->timeout}
+               : Outcome{.verdict = Verdict::Pending, .reason = "pending"};
   return {.verdict = Verdict::Healthy, .reason = "ok"};
 }
 
