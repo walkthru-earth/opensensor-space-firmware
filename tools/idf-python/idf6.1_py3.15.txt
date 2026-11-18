@@ -1,0 +1,158 @@
+# ESP-IDF Python build tools, pinned and hashed (#176). Generated, do not edit.
+# Refresh with `pixi run idf-python-lock`, see docs/shared/development.md.
+# tools/idf-env.sh installs exactly this set with --require-hashes --no-deps.
+# A from-source package has no wheel for every platform on this Python. The
+# lock pins its sdist, and pip builds it with the locked setuptools.
+# `pixi run idf-python-check` fails when the venv differs from this list.
+# esp-idf-version: 6.1
+# esp-idf-commit: fff9895c82d744c7237be8847347bdd1b07c6643
+# python: 3.15
+# platforms: osx-arm64 linux-64
+# requirements: tools/requirements/requirements.core.txt sha256=af4edb1866f022dcffdb8ee4aa3ccc8ed58a107e1e4648483dfd501616dd78c6
+# constraints: https://dl.espressif.com/dl/esp-idf/espidf.constraints.v6.1.txt sha256=fa2846f1e93ec3e604553a0b8a576a61c47737055360871b7be08523e1e47325
+# from-source: esptool pyyaml tree-sitter
+# generated: 2026-11-18
+annotated-types==0.8.0 \
+    --hash=sha256:f072f4d804ea359e4eaf198b1af7a8b0943881a87f31bb764f8bf219bb9419e0
+boolean-py==5.0 \
+    --hash=sha256:ef28a70bd43115208441b53a045d1549e2f0ec6e3d08a9d142cbc41c1938e8d9
+certifi==2026.10.23 \
+    --hash=sha256:e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1
+cffi==2.1.1 \
+    --hash=sha256:2ae64be792b8966f2c69538199728b290e34726562896df1e5dc8ffd8d8188e8 \
+    --hash=sha256:aeae0e330c9f6acd681f647d46cefd30c29f93e3392882e792e82080c9691399
+charset-normalizer==3.5.2 \
+    --hash=sha256:1c50fe28bbc2ced33386f298650d91218076c05420e6cbd790b913adc41659e7 \
+    --hash=sha256:3df041de8887954562c9b261cba85ca0e9ded74048daf125f45edcfaa4832229 \
+    --hash=sha256:4275811936e2f06feff5e598fb42a1b7ae852da8e39605211892b56b81a34efd \
+    --hash=sha256:87475fabc8d9996fd9c27debb395e642e8c838d78a00b6e932227a0e06b81e26 \
+    --hash=sha256:b6b751274acb69d77b3323d6b7dbaa3c7fdfc1eb829b7eb61d262f32e1af9685
+click==8.4.2 \
+    --hash=sha256:e6f9f66136c816745b9d65817da91d61d957fb16e02e4dcd0552553c5a197b76
+construct==2.10.70 \
+    --hash=sha256:c80be81ef595a1a821ec69dc16099550ed22197615f4320b57cc9ce2a672cb30
+cryptography==48.0.1 \
+    --hash=sha256:0ee6ea481db1ab889cba043ec1eda17bb9c1ea79db6722f779c3667f9f70322f \
+    --hash=sha256:3752f2dbc8f07a30aad2932c986cea495b03bb554887828225da104f732852b6 \
+    --hash=sha256:3e4a1a3232eef2e6c732827d5722db29a0cc8b27af2a4d865b094cf954be9ca1 \
+    --hash=sha256:4fdc69f8e4316bcf0c8c8ec1f26f285d12e8142d88d96c876a59a03be3f6ae67 \
+    --hash=sha256:86be3b1b0b6bf09482fb50a979c508d2950ed95f5621ec77f4e385962006b83a \
+    --hash=sha256:88c852a0ae366e262e5a1744b685e6a433dc8788dd2a277e418bf4904203609d \
+    --hash=sha256:b74ca3b8e5ecdd833bf6a002ca41b4793bb27fb8f1c06ffaf2643c9e9140e31b \
+    --hash=sha256:f0d27a5696721ef7a672b8c810f6aded391058e0b9486e63e6d93baf765da691
+esp-coredump==1.18.1 \
+    --hash=sha256:a8a0a2a0feacc89f495e5ee0a95b9178008719bdff86d9db27c818ed0c86dd33
+esp-idf-diag==0.2.0 \
+    --hash=sha256:0a23b8ebf263231e9323fc6098c01ec4a51d6dd4ce8af7a1f766e78a91284642
+esp-idf-kconfig==3.14.0 \
+    --hash=sha256:1613adf806f2ab63c778eeb0aba7a1b248b507cb11dff99983deb248b2b12a74
+esp-idf-monitor==1.11.0 \
+    --hash=sha256:119840d5c515c1de8c4b13c40595aef0ee87967da441b15c65a7a224c70a9a3d
+esp-idf-nvs-partition-gen==0.1.9 \
+    --hash=sha256:9655b81dcfac034372bc00ac301f26830619abdd622949efb70cb7f78c80ba12
+esp-idf-panic-decoder==1.5.0 \
+    --hash=sha256:c711abafb99efdc343e19c45b6416b14a863fbe29115fafa8264cefaab85b8ea
+esp-idf-sbom==1.5.0 \
+    --hash=sha256:1b0ab72d610cfd649e89ca60139b1e59464688c454bff9d29a03f77ac086c6ff
+esp-idf-size==2.3.2 \
+    --hash=sha256:dd395d7baa2693bc0b6092a50bf4dadf31a0a8a8f0920c6da3dcde6c75b2a9ef
+esp-pylib==1.2.1 \
+    --hash=sha256:fb05017676200e38dc182013c994e62d9088d377081c88562e14a2f5aaae6456
+esptool==5.6.0 \
+    --hash=sha256:86c7249e9cc3a824e032ede9ba20abad057a2c49e231418cc4f02b177bb36f42
+freertos-gdb==1.0.4 \
+    --hash=sha256:f924aa5c51318d9978afffca57bb07b979569a2c0adddacfcd931ac8d58ee53b
+idf-component-manager==3.1.2 \
+    --hash=sha256:424494493b47b61ea0f7666d3018a71deecb77f21186bc8b6761b0b6f98e8f90
+idf-drivers-gdb==0.1.1 \
+    --hash=sha256:aab3fbc57bfcef44332b9510c4bc16efe40d4b5db1f69f736ae397690f53f273
+idna==3.20 \
+    --hash=sha256:ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c
+intelhex==2.3.0 \
+    --hash=sha256:87cc5225657524ec6361354be928adfd56bcf2a3dcc646c40f8f094c39c07db4
+jsonref==1.1.0 \
+    --hash=sha256:590dc7773df6c21cbf948b5dac07a72a251db28b0238ceecce0a2abfa8ec30a9
+license-expression==30.4.4 \
+    --hash=sha256:421788fdcadb41f049d2dc934ce666626265aeccefddd25e162a26f23bcbf8a4
+linkify-it-py==2.2.0 \
+    --hash=sha256:3adc40eb5af300b2605fcfdb968c24e1d780a90f1f2221af7c15e5111e94d443
+markdown-it-py==4.2.0 \
+    --hash=sha256:9f7ebbcd14fe59494226453aed97c1070d83f8d24b6fc3a3bcf9a38092641c4a
+mdit-py-plugins==0.6.1 \
+    --hash=sha256:214c82fb2ac524472ab6a5bcab1de80f73b50443e187f401bfd77efbc7c6481d
+mdurl==0.1.2 \
+    --hash=sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8
+packaging==26.3 \
+    --hash=sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c
+pathvalidate==3.3.1 \
+    --hash=sha256:5263baab691f8e1af96092fa5137ee17df5bdfbd6cff1fcac4d6ef4bc2e1735f
+pip==26.3 \
+    --hash=sha256:f3b60b20ffaadd4415ed7957212a38ac63fa4c5fa375bd0f4a797777940fad13
+platformdirs==4.14.5 \
+    --hash=sha256:8e778c6fa421516f4d3369449f8df3b0e1b72c0e0005fe88e3ec772d0a14e750
+psutil==7.2.2 \
+    --hash=sha256:076a2d2f923fd4821644f5ba89f059523da90dc9014e85f8e45a5774ca5bc6f9 \
+    --hash=sha256:1a7b04c10f32cc88ab39cbf606e117fd74721c831c98a27dc04578deb0c16979
+pyclang==0.7.0 \
+    --hash=sha256:a19d333ab02ab0df486e29fabf961b8e3748d8b5343d8170764e49f114bb8393
+pycparser==3.12 \
+    --hash=sha256:a076f3f489b39b43ed13563a1dafe42447445bec2e294154ec5c57fcdda4c85e
+pydantic==2.14.3 \
+    --hash=sha256:3f7b347782ab7e4cf4c798496ae3a82787d9f21ec12676a9c564355eeef8daa8
+pydantic-core==2.50.4 \
+    --hash=sha256:26cb012c4b8ca9f847bd0ac15978bd3d0f55b050bfbe6c47355edfc7e945029b \
+    --hash=sha256:930ad463d3fb7a340d323bcc496ec32dae469ec9974c29ff569f19806b6b03b4
+pydantic-settings==2.16.2 \
+    --hash=sha256:8d523e5c129b097686bde019bd6109bff53f4c8c3f63f1ddf9933ffa42e5ab4f
+pyelftools==0.33 \
+    --hash=sha256:f215ad5f47d3f1373a21496a6c9e0707c622840d0622f23ff7ce08678b020036
+pygdbmi==0.11.0.0 \
+    --hash=sha256:f7cac28e1d558927444c880ed1e65da1a5d8686121a3aac16f42fb84d3ceb60d
+pygments==2.21.0 \
+    --hash=sha256:2363c69b61c4a97c838da3b130dcd6468f4848992b21a82f2a63ec34377137d9
+pyparsing==3.3.3 \
+    --hash=sha256:ece8c00a69cf01b45d0b1dedabb469c90d8caf996d4fda40f147627a122849a4
+pyserial==3.5 \
+    --hash=sha256:c4451db6ba391ca6ca299fb3ec7bae67a5c55dde170964c7a14ceefec02f2cf0
+python-dotenv==1.2.4 \
+    --hash=sha256:42269a8a5b3fd54ffa6f3d84b18abed50064717576b4ecf03dc4a55d8aa04fdc
+pyyaml==6.0.3 \
+    --hash=sha256:d76623373421df22fb4cf8817020cbb7ef15c725b9d5e45f17e189bfc384190f
+reedsolo==1.7.0 \
+    --hash=sha256:2b6a3e402a1ee3e1eea3f932f81e6c0b7bbc615588074dca1dbbcdeb055002bd
+requests==2.34.2 \
+    --hash=sha256:2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0
+requests-file==3.0.1 \
+    --hash=sha256:d0f5eb94353986d998f80ac63c7f146a307728be051d4d1cd390dbdb59c10fa2
+requests-toolbelt==1.0.0 \
+    --hash=sha256:cccfdd665f0a24fcf4726e690f65639d272bb0637b9b92dfd91a5568ccf6bd06
+rich==15.0.0 \
+    --hash=sha256:33bd4ef74232fb73fe9279a257718407f169c09b78a87ad3d296f548e27de0bb
+rich-click==1.9.9 \
+    --hash=sha256:365e7a9d0adb42e41ea832a0a12e02c44c079a26536dee688125eb9814f97274
+ruamel-yaml==0.19.1 \
+    --hash=sha256:27592957fedf6e0b62f281e96effd28043345e0e66001f97683aa9a40c667c93
+schema==0.7.8 \
+    --hash=sha256:00bd977fadc7d9521bf289850cd8a8aa5f4948f575476b8daaa5c1b57af2dce1
+setuptools==84.2.1 \
+    --hash=sha256:ca140b45d5325a9478f880e351484f62fef15f336462e449ca0c03c873d589c2
+textual==8.2.8 \
+    --hash=sha256:267375fd402dc8d981457212efa71f0e3365fd17bba144ba9bb3ed7563cb374a
+tree-sitter==0.26.1 \
+    --hash=sha256:9919cbaf02d17fa9a4cd0e6da496aecf901b758e6eacf122eee393e3ef08aacd
+tree-sitter-c==0.24.2 \
+    --hash=sha256:5041ef67eb68ce6bc8bb0b1f8ef3a5585ce523dae0c7eec109ab0627dd75aede \
+    --hash=sha256:97bc80a224d48215d4e6e6376bf30d114f4c317b8145ff1b02afe785d4ba7bdd
+truststore==0.10.5 \
+    --hash=sha256:9aaaedaefaf06d8b206278cf8b5012bc897f485a874503501e12d776df78951c
+typing-extensions==4.16.0 \
+    --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8
+typing-inspection==0.4.5 \
+    --hash=sha256:bc210535442b39e1bf2805e0c7a17dfd6a4ace760c84c7f7d16245d23a6b1c39
+urllib3==2.8.0 \
+    --hash=sha256:0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3
+websockets==17.4 \
+    --hash=sha256:3acc45494c08a4d27375a2c28474537f68910219f42624a08011221b04623d04 \
+    --hash=sha256:6fd8cac4907fec8302726d49e6969acfffaf720bc39b1cee23f473b81f4dce01 \
+    --hash=sha256:8c51ac7b31578a7275650f580aac985940985b6d2e57247ac6d5e07f2c936cd6 \
+    --hash=sha256:c6bd2c9781915592b209160d0f017d4c7c82ad53075e6b0c24d2a89299e7f9e9

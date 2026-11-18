@@ -17,9 +17,11 @@ python "${repo_root}/tools/check_idf_target.py" --sdk-only "${idf_path}" --allow
 git -C "${idf_path}" submodule update --init --recursive --depth 1
 python "${repo_root}/tools/check_idf_target.py" --sdk-only "${idf_path}"
 export IDF_PATH="${idf_path}"
-# install.sh already recreates a venv whose python link dangles (it passes
-# --clear). The shared check also replaces a venv bound to another interpreter
-# and keeps this script and tools/idf.sh, which never runs it, on one rule.
+# The steps of the SDK install.sh, except its Python step. That one resolves
+# the packages against a constraints file downloaded at install time, so the
+# venv comes from the committed hashed lock instead (#176). The compilers and
+# tools are checked against the SDK tools.json checksums.
+python "${idf_path}/tools/python_version_checker.py"
+python "${idf_path}/tools/idf_tools.py" install --targets=esp32s3
 ensure_idf_python_env
-"${idf_path}/install.sh" esp32s3
 printf 'ESP-IDF v%s ready at %s, Python venv at %s\n' "${ESP_IDF_VERSION}" "${idf_path}" "${IDF_PYTHON_ENV_PATH}"
