@@ -12,6 +12,7 @@
     "core": [
       {
         "name": "battery_health_state",
+        "title": "Battery health",
         "unit": "{code}",
         "roles": [
           "auxiliaryInformation"
@@ -49,6 +50,7 @@
           "finite": true
         },
         "opensensor:aggregate": "mode",
+        "opensensor:group": "power",
         "firmware": {
           "type": "Int32",
           "unit": "code",
@@ -59,6 +61,7 @@
       },
       {
         "name": "battery_minutes_to_empty",
+        "title": "Battery time to empty",
         "unit": "min",
         "roles": [
           "auxiliaryInformation"
@@ -73,6 +76,7 @@
           0,
           10080
         ],
+        "opensensor:group": "power",
         "firmware": {
           "type": "Int32",
           "unit": "min",

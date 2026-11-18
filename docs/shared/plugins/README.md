@@ -136,29 +136,43 @@ position sets the id. So a manifest column maps one to one onto a template
 `table:columns` entry, and the board template stays the place where the
 profile role rules are checked.
 
-Display hints move into the template ([decision 0003](../decisions/0003-metadata-driven-apps.md),
-owner decision 2026-11-17). A column may then author `title` with
-`opensensor:title_i18n`, `description` with `opensensor:description_i18n`,
-`opensensor:decimals`, `opensensor:group` and a default `opensensor:scale`,
-names as in stac-opensensor
-[#16](https://github.com/walkthru-earth/stac-opensensor/pull/16). `title` and
-`description` stay plain strings in the default language, and the i18n maps
-are keyed by BCP 47 tag. `opensensor:group` is one of `particulate`, `gas`,
-`climate`, `light`, `motion`, `location`, `power`, `time` or `device`. The
-app resolves a label from the column i18n for its language, then the column
-`title` (owner config over template), then the registry label, then the
-column name with `_` read as spaces. Decimals come from the column, then the
-registry, then 0 for an integer column and 2 otherwise. A scale comes from
-the column, then the registry, then none. The primary metric comes from the
-Collection, then the template, then the first `physicalMeasurement` column
-with a scale, then the first `physicalMeasurement` column. The decision
-record has the same order. The generator fills the column
-`opensensor:decimals` from `firmware.decimals` only when the column does not
-author one. This is planned, not built.
-Today the v0.1.0 module schema and the vendored stac-opensensor
-`template.json` still refuse `title` and `opensensor:scale` in a column. Both open up once stac-opensensor
-publishes the fields. Adding a hint moves `desc` on every board using that
-segment and never moves `dict`.
+Display hints live in the template ([decision 0003](../decisions/0003-metadata-driven-apps.md),
+owner decision 2026-11-17, built in plugin contract 0.1.7). A manifest column
+may author `title` with `opensensor:title_i18n`, `description` with
+`opensensor:description_i18n`, `opensensor:decimals`, `opensensor:group`, a
+default `opensensor:scale` and `classification:bitfields`, names as in
+stac-opensensor [#16](https://github.com/walkthru-earth/stac-opensensor/pull/16)
+and [#18](https://github.com/walkthru-earth/stac-opensensor/pull/18). A class
+may author `title`, `description` and `color_hint`. `title` and `description`
+stay plain strings in the default language, and the i18n maps are keyed by
+BCP 47 tag. `opensensor:group` is one of `particulate`, `gas`, `climate`,
+`light`, `motion`, `location`, `power`, `time` or `device`. A bitfield is
+allowed only on a `bitmask` column, its bits never overlap and stay inside
+the column width.
+
+The generator copies the hints into the template column after `name`
+(`title`, `opensensor:title_i18n`, `description`,
+`opensensor:description_i18n`) and at its end (`opensensor:decimals`,
+`opensensor:group`, `opensensor:scale`, `classification:bitfields`). Every
+column carries `opensensor:decimals`. It is the authored value, else
+`firmware.decimals` from the module, so the template never leaves it to the
+registry. Each named scale is copied from the vendored registry
+`tools/stac_opensensor/registry/scales.json` into the template
+`opensensor:scales`, and its unit must equal the column unit. Today the
+seeded hints are the registry labels as titles, the registry groups, the WHO
+scales on the PM2.5 and PM10 columns, class titles on `pms_status` and
+`sen6x_status` and the bitfields of `sen6x_device_status`, `imu_fresh_mask`
+and `gauge_status_flags`.
+
+The app resolves a label from the column i18n for its language, then the
+column `title` (owner config over template), then the registry label, then
+the column name with `_` read as spaces. Decimals come from the column, then
+the registry, then 0 for an integer column and 2 otherwise. A scale comes
+from the column, then the registry, then none. The primary metric comes from
+the Collection, then the template, then the first `physicalMeasurement`
+column with a scale, then the first `physicalMeasurement` column. The
+decision record has the same order. Adding a hint moves `desc` on every
+board using that segment and never moves `dict`.
 
 The schema reuses rather than redefines.
 
@@ -251,42 +265,62 @@ three procedures (`owner_provisioned_identity`,
 `airgradient_20260408_count_candidate_v1`, `batch_candidate_gate`), declared
 in the Waveshare app with per column procedures.
 
-### Planned, setup, settings and config keys
+### Setup, settings and config keys
 
-Planned by [decision 0003](../decisions/0003-metadata-driven-apps.md), not
-built. The v0.1.0 board schema refuses these fields until the PR that builds
-them adds them as a patch with a CHANGELOG entry. The generator copies them
-into the template `firmware` block, so they are hashed with the template. A
-change to any of them moves `desc` and never moves `dict`.
+Built in plugin contract 0.1.7 for [decision 0003](../decisions/0003-metadata-driven-apps.md).
+The generator copies `primary` to the template top level
+`opensensor:primary` and `setup`, `settings` and `config_keys` into the
+template `firmware` block, so they are hashed with the template. A change to
+any of them moves `desc` and never moves `dict`. The device side, the
+`thing.setup_v` and `thing.setup_ack` record and `GET_CONFIG` page 7, is not
+built yet, so no board declares `config_keys` today.
 
 | Field | Type | Description |
 | --- | --- | --- |
-| primary | string | The column the app shows first, written to the template `opensensor:primary` |
-| setup | \[Step] | Ordered setup wizard steps, written to `firmware.setup`. Find, Pair, Permission and Done stay app owned and are never listed |
-| settings | \[Step] | Ordered Device settings sections, written to `firmware.settings` |
-| config_keys | Map\<string, Key> | The `SET_CONFIG` keys a generic step or section may show, written to `firmware.config_keys` |
+| primary | string | The column the app shows first. It must be a `physicalMeasurement` column of the board |
+| setup | \[Step] | Ordered setup wizard steps, 1 to 31. Find, Pair, Permission and Done stay app owned and are never listed |
+| settings | \[Step] | Ordered Device settings sections |
+| config_keys | Map\<string, Key> | The `SET_CONFIG` keys a board step or section shows |
 
-A Step is `{"id", "req", "keys"}`. `id` names a component from the app's
-fixed catalog, `name`, `location`, `mobility`, `site`, `wifi`, `pairing`,
-`lan` or `bonds`, or a board id the app does not know. `req` is true when
-setup cannot finish without the step. `keys`, optional, lists the
-`config_keys` the step shows. The app renders an unknown id as a generic form
-from its typed keys, skips it when it has none, and keeps setup pending when
-such a step is required.
+A Step is `{"id", "req", "label", "label_i18n", "keys"}`, and a settings section has no `req`.
+`id` names a component from the app's fixed catalog, `name`, `location`,
+`mobility`, `site`, `wifi`, `pairing`, `lan`, `bonds` or `sensor` (the sensor
+identity and sticker card), or a board id the app does not know. A catalog
+step never lists `keys`, and `name` and `mobility` appear only in `setup`. A
+board step must list `keys` and carry `label`, the wizard page or card title,
+with the optional `label_i18n` in the shape of a key's. A catalog step may
+omit both, since the app has its own title. A board lists every section that
+applies to it, because the app shows no other. `req` is
+true when setup cannot finish without the step. Ids are unique in each list,
+every listed key is declared and every declared key is listed. The app
+renders an unknown id as a generic form from its typed keys and keeps setup
+pending when such a step is required.
 
-A Key is `{"type", "values", "applies", "page", "label", "label_i18n"}`. `type` is one of
-the `SET_CONFIG` value kinds, such as boolean, integer, enum or text.
-`values`, optional, is the enum list or the range. `applies` is `immediately`,
-`next sample`, `next boot` or `action`, as in the
+`setup_v` is the first 31 bits, big endian, of SHA-256 over the setup step
+ids joined by `\n`, with 0 read as 1. The device keeps `thing.setup_v` and
+`thing.setup_ack`, a bitmask over the setup steps in order, and the phone
+writes both in one `SET_CONFIG`. A stale `setup_v` reads as nothing done.
+
+A Key is `{"type", "values", "applies", "page", "label", "label_i18n"}`.
+The name matches `[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+`, is at most 48 bytes,
+does not start with a reserved prefix (`ble.`, `wifi.`, `lan.`, `location.`,
+`thing.`, `owner.` or `sensor.`) and has no `pin`, `psk`, `token`,
+`password` or `secret` part. `type` is `boolean`, `integer`, `enum` or
+`text`. An integer needs `values` as a range `{"min", "max"}` of whole
+numbers, so a decimal is a scaled integer such as `temp_offset_dc` in tenths
+of a degree. An enum needs `values` as a list of strings of at most 64 bytes.
+Text may take a byte range in `values` up to 64, and is 0 to 64 bytes
+without one. A boolean has no `values`. An action is a boolean with `applies` `action`. `applies` is
+`immediately`, `next sample`, `next boot` or `action`, as in the
 [sync protocol](../ble-sync-protocol.md#device-configuration-v2) table.
-`page` is the `GET_CONFIG` page that reads the key back. `label` is a plain
-string in the default language, and the optional `label_i18n` is a map keyed
-by BCP 47 tag, the same shape as a column `opensensor:title_i18n`. A Key never holds a current or default value. `ble.pin`, `wifi.psk`
-and the LAN token are never declared, and no manifest can lower the app
-safety floors listed in the decision record.
+`page` is 7, the board page of `GET_CONFIG`. `label` is a plain string in the
+default language, and the optional `label_i18n` is a map keyed by BCP 47 tag.
+A Key never holds a current or default value. `ble.pin`, `wifi.psk` and the
+LAN token are never declared, and no manifest can lower the app safety
+floors listed in the decision record.
 
-A CrowPanel sketch, trimmed to two declared keys, with names that are not
-final.
+A CrowPanel sketch for the page 7 work, trimmed to two declared keys, with
+names that are not final.
 
 ```json
 {
@@ -295,13 +329,13 @@ final.
     {"id": "name", "req": false},
     {"id": "location", "req": true},
     {"id": "wifi", "req": false},
-    {"id": "panel", "req": false, "keys": ["panel.theme", "panel.start_page"]}
+    {"id": "panel", "req": false, "label": "Display", "label_i18n": {"ar": "الشاشة"}, "keys": ["panel.theme", "panel.start_page"]}
   ],
   "settings": [
     {"id": "location"},
     {"id": "wifi"},
-    {"id": "panel", "keys": ["panel.theme", "panel.refresh_s", "panel.start_page", "panel.sleep_s"]},
-    {"id": "sensor", "keys": ["sen6x.altitude_m", "sen6x.co2_asc", "sen6x.temp_offset_dc", "sen6x.fan_clean"]}
+    {"id": "panel", "label": "Display", "keys": ["panel.theme", "panel.refresh_s", "panel.start_page", "panel.sleep_s"]},
+    {"id": "sen6x", "label": "Air sensor", "label_i18n": {"ar": "مستشعر الهواء"}, "keys": ["sen6x.altitude_m", "sen6x.co2_asc", "sen6x.temp_offset_dc", "sen6x.fan_clean"]}
   ],
   "config_keys": {
     "panel.theme": {"type": "enum", "values": ["light", "dark"], "applies": "immediately", "page": 7, "label": "Theme", "label_i18n": {"ar": "المظهر"}},
@@ -445,7 +479,7 @@ gate, never ad hoc code.
 | Kind | Manifest | Contract it feeds |
 | --- | --- | --- |
 | Sensor module | `module.json` | FIELD, SEM and CLASS rows, module C++ tables |
-| Board | `board.json` | Segment order, template title, keywords, sample interval, and the planned primary column, setup, settings and config keys |
+| Board | `board.json` | Segment order, template title, keywords, sample interval, primary column, setup, settings and config keys |
 | Transport, later | `transport.json` | For example a LoRa uplink, as an `ossync` option set |
 | Uploader, later | `uploader.json` | For example source.coop, its prefix and credential source, never the secret |
 

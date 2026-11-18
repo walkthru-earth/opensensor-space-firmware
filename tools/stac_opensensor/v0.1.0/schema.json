@@ -83,6 +83,10 @@
       "$comment": "Fields allowed at the top of a Collection and in Item properties.",
       "type": "object",
       "properties": {
+        "opensensor:primary": {
+          "type": "string",
+          "minLength": 1
+        },
         "opensensor:scales": {
           "type": "object",
           "propertyNames": {
@@ -165,6 +169,20 @@
         "opensensor:scale": {
           "$ref": "#/definitions/id"
         },
+        "opensensor:title_i18n": {
+          "$ref": "#/definitions/i18n"
+        },
+        "opensensor:description_i18n": {
+          "$ref": "#/definitions/i18n"
+        },
+        "opensensor:decimals": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9
+        },
+        "opensensor:group": {
+          "$ref": "#/definitions/group"
+        },
         "opensensor:derived": {
           "type": "object",
           "required": [
@@ -221,6 +239,32 @@
         }
       ]
     },
+    "i18n": {
+      "$comment": "A map from language code to text, the map form of label.",
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]+)*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "group": {
+      "$comment": "Display group of a column. The vocabulary grows only with a new version.",
+      "enum": [
+        "particulate",
+        "gas",
+        "climate",
+        "light",
+        "motion",
+        "location",
+        "power",
+        "time",
+        "device"
+      ]
+    },
     "gate": {
       "oneOf": [
         {
@@ -267,6 +311,7 @@
       "type": "object",
       "required": [
         "source",
+        "period",
         "steps"
       ],
       "properties": {
@@ -276,6 +321,10 @@
         },
         "unit": {
           "type": "string"
+        },
+        "period": {
+          "type": "string",
+          "pattern": "^P(?!$)([0-9]+Y)?([0-9]+M)?([0-9]+W)?([0-9]+D)?(T(?=[0-9])([0-9]+H)?([0-9]+M)?([0-9]+S)?)?$"
         },
         "guideline": {
           "type": "number"

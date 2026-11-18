@@ -52,6 +52,7 @@ PLUGINS = Path("docs/shared/plugins")
 SCHEMAS = PLUGINS / "v0.1.0"
 EXAMPLES = PLUGINS / "examples"
 STAC = Path("tools/stac_opensensor/v0.1.0")
+SCALES = Path("tools/stac_opensensor/registry/scales.json")
 TEMPLATES = Path("docs/shared/templates")
 MIGRATION = Path("docs/shared/mobile-migration.md")
 WRITER = Path("firmware/common/src/parquet_writer.h")
@@ -201,12 +202,31 @@ def classes(column: Column, subsets: dict) -> list[dict]:
     return [c for c in listed if c["name"] in keep]
 
 
+# Display hints (#184). They come from the module manifests and never from a
+# board table row, so tools/board_template.h does not build them. hinted()
+# adds them to the built template, and check_board() reads them back.
+HINT_HEAD = ("title", "opensensor:title_i18n", "description", "opensensor:description_i18n")
+HINT_TAIL = ("opensensor:group", "opensensor:scale", "classification:bitfields")
+CLASS_HINTS = ("title", "description", "color_hint")
+
+
+def without_hints(column: dict) -> dict:
+    """A template column as tools/board_template.h builds it, with no display hint."""
+    out = {k: v for k, v in column.items() if k not in HINT_HEAD + HINT_TAIL + ("opensensor:decimals",)}
+    if "classification:classes" in out:
+        out["classification:classes"] = [{k: v for k, v in c.items() if k not in CLASS_HINTS}
+                                         for c in out["classification:classes"]]
+    return out
+
+
 def template_column(column: Column, field_id: int, subsets: dict) -> dict:
     spec = column.spec
     fw = column.firmware
     kind = LOGICAL_TYPES.get(fw["unit"]) or PHYSICAL_TYPES.get(fw["type"])
     require(kind is not None, f"{column.name}: {fw['type']} needs a logical unit")
-    out = {"name": column.name, "type": kind}
+    out = {"name": column.name}
+    out.update({key: spec[key] for key in HINT_HEAD if key in spec})
+    out["type"] = kind
     for key in ("unit", "roles", "cf:standard_name"):
         if key in spec:
             out[key] = spec[key]
@@ -220,7 +240,72 @@ def template_column(column: Column, field_id: int, subsets: dict) -> dict:
                 "opensensor:plausible_range"):
         if key in spec and not (key == "opensensor:settle_s" and spec[key] == 0):
             out[key] = spec[key]
+    out["opensensor:decimals"] = spec.get("opensensor:decimals", fw["decimals"])
+    out.update({key: spec[key] for key in HINT_TAIL if key in spec})
     return out
+
+
+def template_scales(root: Path, columns: list[Column]) -> dict:
+    """The opensensor:scales a template carries, each scale its columns name, from the vendored registry."""
+    registry = load_json(root / SCALES)["scales"]
+    out = {}
+    for c in columns:
+        name = c.spec.get("opensensor:scale")
+        if name is not None:
+            require(name in registry, f"{c.name}: scale {name} is not in {SCALES}")
+            require(registry[name].get("unit", c.spec.get("unit")) == c.spec.get("unit"),
+                    f"{c.name}: scale {name} unit differs from the column unit")
+            out.setdefault(name, registry[name])
+    return out
+
+
+def template_firmware_extras(board: Board) -> dict:
+    """setup, settings and config_keys for the template firmware block, as board.json declares them."""
+    return {key: board.manifest[key] for key in ("setup", "settings", "config_keys") if key in board.manifest}
+
+
+def hinted(root: Path, board: Board, columns: list[Column], built: bytes) -> bytes:
+    """The template tools/board_template.h built, with the display hints and the setup manifest added.
+
+    Each built column must equal its manifest column without hints, so the
+    manifest and the board tables still agree. The bytes stay minified
+    printable ASCII, so non ASCII text is escaped.
+    """
+    template = json.loads(built)
+    subsets = board.manifest.get("class_subsets", {})
+    built_columns = template["item_assets"]["data"]["table:columns"]
+    require(len(built_columns) == len(columns), f"{board.manifest['board']}: built template column count differs")
+    full = []
+    for index, (column, got) in enumerate(zip(columns, built_columns, strict=True)):
+        expected = template_column(column, index + 1, subsets)
+        require(without_hints(expected) == got,
+                f"{board.manifest['board']} built column {index + 1} {column.name} differs, "
+                f"{diff(without_hints(expected), got)}")
+        full.append(expected)
+    template["item_assets"]["data"]["table:columns"] = full
+    out = {}
+    for key, value in template.items():
+        out[key] = value
+        if key == "opensensor:sample_interval_s":
+            if "primary" in board.manifest:
+                out["opensensor:primary"] = board.manifest["primary"]
+            scales = template_scales(root, columns)
+            if scales:
+                out["opensensor:scales"] = scales
+    out["firmware"] = {**template["firmware"], **template_firmware_extras(board)}
+    return json.dumps(out, separators=(",", ":"), ensure_ascii=True).encode("ascii")
+
+
+def board_for_app(root: Path, app: Path) -> tuple[Board, list[Column]]:
+    """The board whose board.json sits in app, and its expanded columns."""
+    checks = validators(root)
+    common = common_modules(root, checks)
+    path = app / "board.json"
+    require(path.is_file(), f"{app}: no board.json")
+    board = load_board(root, path, checks, common)
+    columns = expand(board, common)
+    cross_rules(board.manifest["board"], columns, board, max_columns(root))
+    return board, columns
 
 
 def instrument(column: Column) -> bool:
@@ -351,6 +436,66 @@ def cross_rules(label: str, columns: list[Column], board: Board, cap: int) -> No
         require(c.firmware["type"] == "Float" or c.firmware["decimals"] == 0, f"{c.name}: decimals on a non Float")
     for name in board.manifest.get("class_subsets", {}):
         require(name in known, f"{label}: class_subsets names unknown column {name}")
+    for c in columns:
+        bitfields = c.spec.get("classification:bitfields", [])
+        require(not bitfields or c.spec.get("unit") == "{bitmask}", f"{c.name}: bit fields on a non {{bitmask}} column")
+        width = {"Int32": 32, "Int64": 64}.get(c.firmware["type"], 0)
+        used: set[int] = set()
+        for b in bitfields:
+            bits = set(range(b["offset"], b["offset"] + b["length"]))
+            require(max(bits) < width, f"{c.name}: bit field {b.get('name', b['offset'])} is outside {c.firmware['type']}")
+            require(not bits & used, f"{c.name}: bit fields overlap")
+            used |= bits
+            require(all(0 <= k["value"] < 2 ** b["length"] for k in b["classes"]),
+                    f"{c.name}: a bit field class value does not fit its length")
+    primary = board.manifest.get("primary")
+    if primary is not None:
+        found = [c for c in columns if c.name == primary]
+        require(len(found) == 1 and found[0].spec["roles"] == ["physicalMeasurement"],
+                f"{label}: primary {primary} is not a physicalMeasurement column of the board")
+    setup_rules(label, board.manifest)
+
+
+# Setup manifest (#184, decision 0003). The app owns these step components, a
+# board orders them. Any other id is a generic form of the keys it lists, and
+# carries a label, since the app has no title of its own for it. `sensor` is
+# the sensor identity and sticker card.
+APP_STEPS = frozenset({"name", "location", "mobility", "site", "wifi", "pairing", "lan", "bonds", "sensor"})
+# Steps that have no Device settings section of their own.
+SETUP_ONLY = frozenset({"name", "mobility"})
+# A part a secret key name would hold. PIN, PSK and LAN token are never declared.
+SECRET_PARTS = frozenset({"pin", "psk", "token", "password", "secret"})
+
+
+def setup_rules(label: str, manifest: dict) -> None:
+    keys = manifest.get("config_keys", {})
+    used: set[str] = set()
+    for part in ("setup", "settings"):
+        steps = manifest.get(part, [])
+        ids = [s["id"] for s in steps]
+        require(len(ids) == len(set(ids)), f"{label}: a {part} id repeats")
+        for step in steps:
+            listed = step.get("keys", [])
+            if step["id"] in APP_STEPS:
+                require(not listed, f"{label}: app step {step['id']} lists keys, the app owns its form")
+            else:
+                require(bool(listed), f"{label}: {part} step {step['id']} is not an app step and lists no keys")
+                require("label" in step, f"{label}: {part} step {step['id']} is not an app step and has no label")
+            require(part == "setup" or step["id"] not in SETUP_ONLY,
+                    f"{label}: {step['id']} is a setup step, not a settings section")
+            missing = [k for k in listed if k not in keys]
+            require(not missing, f"{label}: {part} step {step['id']} names undeclared keys {missing}")
+            used.update(listed)
+    unused = sorted(set(keys) - used)
+    require(not unused, f"{label}: config_keys {unused} are in no setup step or settings section")
+    for key, spec in keys.items():
+        require(len(key.encode()) <= 48, f"{label}: {key} is over 48 bytes")
+        require(not set(key.split(".")) & SECRET_PARTS, f"{label}: {key} looks like a secret, never declared")
+        values = spec.get("values")
+        if isinstance(values, dict):
+            require(values["min"] <= values["max"], f"{label}: {key} range min is over max")
+        if isinstance(values, list):
+            require(all(len(v.encode()) <= 64 for v in values), f"{label}: {key} has a value over 64 bytes")
 
 
 def live_keys_across(boards: dict[str, list[Column]]) -> None:
@@ -561,6 +706,12 @@ def check_board(root: Path, board: Board, columns: list[Column], checks: dict, b
             f"{label}: LIVE keys differ from the template")
     labels = {c.name: c.firmware["unit"] for c in columns if c.firmware["unit"] != c.spec.get("unit", "")}
     require(firmware["unit_labels"] == labels, f"{label}: unit labels differ from the template")
+    require(template.get("opensensor:primary") == manifest.get("primary"), f"{label}: primary differs from the template")
+    require(template.get("opensensor:scales", {}) == template_scales(root, columns),
+            f"{label}: scales differ from the template")
+    extras = template_firmware_extras(board)
+    for key in ("setup", "settings", "config_keys"):
+        require(firmware.get(key) == extras.get(key), f"{label}: firmware {key} differs from the template")
     published_columns = template["item_assets"]["data"]["table:columns"]
     require(len(published_columns) == len(columns), f"{label}: template column count differs")
     for index, (column, got) in enumerate(zip(columns, published_columns, strict=True)):

@@ -500,6 +500,21 @@
               "modelResult"
             ]
           }
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "classification:bitfields": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/bitfield"
+          }
         }
       },
       "allOf": [
@@ -564,6 +579,52 @@
           }
         }
       ]
+    },
+    "bitfield": {
+      "$comment": "A Classification v2.0.0 Bit Field Object, for a column whose unit is {bitmask}.",
+      "type": "object",
+      "required": [
+        "offset",
+        "length",
+        "classes"
+      ],
+      "properties": {
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "length": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "name": {
+          "type": "string",
+          "pattern": "^[0-9A-Za-z-_]+$"
+        },
+        "description": {
+          "type": "string"
+        },
+        "classes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "value",
+              "name"
+            ],
+            "properties": {
+              "value": {
+                "type": "integer"
+              },
+              "name": {
+                "type": "string",
+                "pattern": "^[0-9A-Za-z-_]+$"
+              }
+            }
+          }
+        }
+      }
     },
     "checksum": {
       "type": "string",

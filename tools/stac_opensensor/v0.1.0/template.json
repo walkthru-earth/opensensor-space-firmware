@@ -46,6 +46,12 @@
       "type": "number",
       "exclusiveMinimum": 0
     },
+    "opensensor:primary": {
+      "$ref": "schema.json#/definitions/fields/properties/opensensor:primary"
+    },
+    "opensensor:scales": {
+      "$ref": "schema.json#/definitions/fields/properties/opensensor:scales"
+    },
     "item_assets": {
       "type": "object",
       "required": [
@@ -59,28 +65,6 @@
             },
             {
               "$ref": "schema.json#/definitions/tableHolder"
-            },
-            {
-              "properties": {
-                "table:columns": {
-                  "items": {
-                    "not": {
-                      "anyOf": [
-                        {
-                          "required": [
-                            "opensensor:scale"
-                          ]
-                        },
-                        {
-                          "required": [
-                            "title"
-                          ]
-                        }
-                      ]
-                    }
-                  }
-                }
-              }
             }
           ]
         }

@@ -165,10 +165,11 @@ Use the Waveshare V2 files as the example.
    `desc` must equal the board headers. `pixi run published-templates-test`
    and `pixi run pinned-uris-test` check the published copy and the pins.
 6. Mobile. Add a newest-first entry to [mobile-migration.md](mobile-migration.md)
-   with the new board, `dict` and `desc`. Today the app shows LIVE only through
-   a reviewed profile for the board `dict`. Reading LIVE meaning from the
-   verified template is planned, see
-   [decision 0003](decisions/0003-metadata-driven-apps.md).
+   with the new board, `dict` and `desc`. The app shows LIVE for any template it
+   has verified and reads labels, decimals, scales, the primary column and
+   the setup steps from it, see
+   [decision 0003](decisions/0003-metadata-driven-apps.md). Set `primary`,
+   `setup` and `settings` in `board.json`.
 7. Uploader prefix. A dev upload goes to
    `<product>/dev/opensensor-space-firmware/<board>/<archive name>`. The
    `<board>` segment is whatever slug the board passes, and no code checks it

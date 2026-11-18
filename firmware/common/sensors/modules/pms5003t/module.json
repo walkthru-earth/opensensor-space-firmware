@@ -16,6 +16,7 @@
     "core": [
       {
         "name": "pms_status",
+        "title": "Particle sensor status",
         "unit": "{code}",
         "roles": [
           "qualityInformation"
@@ -24,35 +25,43 @@
           {
             "value": 0,
             "name": "missing",
-            "nodata": true
+            "nodata": true,
+            "title": "Sensor missing"
           },
           {
             "value": 1,
-            "name": "warming"
+            "name": "warming",
+            "title": "Warming up"
           },
           {
             "value": 2,
-            "name": "stale"
+            "name": "stale",
+            "title": "No fresh reading"
           },
           {
             "value": 3,
-            "name": "sensor-error"
+            "name": "sensor-error",
+            "title": "Sensor error"
           },
           {
             "value": 4,
-            "name": "valid"
+            "name": "valid",
+            "title": "Valid"
           },
           {
             "value": 5,
-            "name": "model-mismatch"
+            "name": "model-mismatch",
+            "title": "Wrong sensor model"
           },
           {
             "value": 6,
-            "name": "sleeping"
+            "name": "sleeping",
+            "title": "Sleeping"
           }
         ],
         "opensensor:property": "urn:walkthru-earth:property:particle_sensor_status",
         "opensensor:aggregate": "mode",
+        "opensensor:group": "particulate",
         "firmware": {
           "type": "Int32",
           "unit": "code",
@@ -63,6 +72,7 @@
       },
       {
         "name": "pms_age_ms",
+        "title": "Particle sensor frame age",
         "unit": "ms",
         "roles": [
           "qualityInformation"
@@ -73,6 +83,7 @@
           "finite": true
         },
         "opensensor:aggregate": "point",
+        "opensensor:group": "particulate",
         "firmware": {
           "type": "Int64",
           "unit": "ms",
@@ -83,6 +94,7 @@
       },
       {
         "name": "pm1_cf1_ug_m3",
+        "title": "PM1 mass concentration, CF=1",
         "unit": "ug/m3",
         "roles": [
           "physicalMeasurement"
@@ -98,6 +110,7 @@
           0,
           1000
         ],
+        "opensensor:group": "particulate",
         "firmware": {
           "type": "Int32",
           "unit": "ug/m3",
@@ -108,6 +121,7 @@
       },
       {
         "name": "pm25_cf1_ug_m3",
+        "title": "PM2.5 mass concentration, CF=1",
         "unit": "ug/m3",
         "roles": [
           "physicalMeasurement"
@@ -123,6 +137,7 @@
           0,
           1000
         ],
+        "opensensor:group": "particulate",
         "firmware": {
           "type": "Int32",
           "unit": "ug/m3",
@@ -133,6 +148,7 @@
       },
       {
         "name": "pm10_cf1_ug_m3",
+        "title": "PM10 mass concentration, CF=1",
         "unit": "ug/m3",
         "roles": [
           "physicalMeasurement"
@@ -148,6 +164,7 @@
           0,
           1000
         ],
+        "opensensor:group": "particulate",
         "firmware": {
           "type": "Int32",
           "unit": "ug/m3",
@@ -158,6 +175,10 @@
       },
       {
         "name": "pm1_atmospheric_ug_m3",
+        "title": "PM1 mass concentration",
+        "opensensor:title_i18n": {
+          "ar": "تركيز كتلة الجسيمات PM1"
+        },
         "unit": "ug/m3",
         "roles": [
           "physicalMeasurement"
@@ -174,6 +195,7 @@
           0,
           1000
         ],
+        "opensensor:group": "particulate",
         "firmware": {
           "type": "Int32",
           "unit": "ug/m3",
@@ -184,6 +206,10 @@
       },
       {
         "name": "pm25_atmospheric_ug_m3",
+        "title": "PM2.5 mass concentration",
+        "opensensor:title_i18n": {
+          "ar": "تركيز كتلة الجسيمات PM2.5"
+        },
         "unit": "ug/m3",
         "roles": [
           "physicalMeasurement"
@@ -200,6 +226,8 @@
           0,
           1000
         ],
+        "opensensor:group": "particulate",
+        "opensensor:scale": "who-2021-pm25",
         "firmware": {
           "type": "Int32",
           "unit": "ug/m3",
@@ -210,6 +238,10 @@
       },
       {
         "name": "pm10_atmospheric_ug_m3",
+        "title": "PM10 mass concentration",
+        "opensensor:title_i18n": {
+          "ar": "تركيز كتلة الجسيمات PM10"
+        },
         "unit": "ug/m3",
         "roles": [
           "physicalMeasurement"
@@ -226,6 +258,8 @@
           0,
           1000
         ],
+        "opensensor:group": "particulate",
+        "opensensor:scale": "who-2021-pm10",
         "firmware": {
           "type": "Int32",
           "unit": "ug/m3",
@@ -236,6 +270,7 @@
       },
       {
         "name": "particles_gt03_per_01l",
+        "title": "Particles larger than 0.3 µm",
         "unit": "{particles}/dL",
         "roles": [
           "physicalMeasurement"
@@ -251,6 +286,7 @@
           0,
           65535
         ],
+        "opensensor:group": "particulate",
         "firmware": {
           "type": "Int32",
           "unit": "count/0.1L",
@@ -261,6 +297,7 @@
       },
       {
         "name": "particles_gt05_per_01l",
+        "title": "Particles larger than 0.5 µm",
         "unit": "{particles}/dL",
         "roles": [
           "physicalMeasurement"
@@ -276,6 +313,7 @@
           0,
           65535
         ],
+        "opensensor:group": "particulate",
         "firmware": {
           "type": "Int32",
           "unit": "count/0.1L",
@@ -286,6 +324,7 @@
       },
       {
         "name": "particles_gt10_per_01l",
+        "title": "Particles larger than 1 µm",
         "unit": "{particles}/dL",
         "roles": [
           "physicalMeasurement"
@@ -301,6 +340,7 @@
           0,
           65535
         ],
+        "opensensor:group": "particulate",
         "firmware": {
           "type": "Int32",
           "unit": "count/0.1L",
@@ -311,6 +351,7 @@
       },
       {
         "name": "particles_gt25_per_01l",
+        "title": "Particles larger than 2.5 µm",
         "unit": "{particles}/dL",
         "roles": [
           "physicalMeasurement"
@@ -326,6 +367,7 @@
           0,
           65535
         ],
+        "opensensor:group": "particulate",
         "firmware": {
           "type": "Int32",
           "unit": "count/0.1L",
@@ -338,6 +380,10 @@
     "tail": [
       {
         "name": "ambient_temperature_c",
+        "title": "Air temperature",
+        "opensensor:title_i18n": {
+          "ar": "درجة حرارة الهواء"
+        },
         "unit": "Cel",
         "roles": [
           "physicalMeasurement"
@@ -353,6 +399,7 @@
           -10,
           60
         ],
+        "opensensor:group": "climate",
         "firmware": {
           "type": "Float",
           "unit": "degC",
@@ -363,6 +410,10 @@
       },
       {
         "name": "relative_humidity_percent",
+        "title": "Relative humidity",
+        "opensensor:title_i18n": {
+          "ar": "الرطوبة النسبية"
+        },
         "unit": "%",
         "roles": [
           "physicalMeasurement"
@@ -378,6 +429,7 @@
           0,
           100
         ],
+        "opensensor:group": "climate",
         "firmware": {
           "type": "Float",
           "unit": "%",
@@ -388,6 +440,7 @@
       },
       {
         "name": "pms_firmware",
+        "title": "Particle sensor firmware version",
         "unit": "{code}",
         "roles": [
           "referenceInformation"
@@ -398,6 +451,7 @@
           "finite": true
         },
         "opensensor:aggregate": "mode",
+        "opensensor:group": "particulate",
         "firmware": {
           "type": "Int32",
           "unit": "code",
@@ -408,6 +462,7 @@
       },
       {
         "name": "pms_error",
+        "title": "Particle sensor error code",
         "unit": "{code}",
         "roles": [
           "qualityInformation"
@@ -418,6 +473,7 @@
           "finite": true
         },
         "opensensor:aggregate": "mode",
+        "opensensor:group": "particulate",
         "firmware": {
           "type": "Int32",
           "unit": "code",
@@ -428,12 +484,14 @@
       },
       {
         "name": "pms_frames",
+        "title": "Particle sensor frames",
         "unit": "{count}",
         "roles": [
           "qualityInformation"
         ],
         "opensensor:property": "urn:walkthru-earth:property:particle_sensor_frame_count",
         "opensensor:aggregate": "point",
+        "opensensor:group": "particulate",
         "firmware": {
           "type": "Int64",
           "unit": "count",
@@ -444,12 +502,14 @@
       },
       {
         "name": "pms_checksum_errors",
+        "title": "Particle sensor checksum errors",
         "unit": "{count}",
         "roles": [
           "qualityInformation"
         ],
         "opensensor:property": "urn:walkthru-earth:property:particle_sensor_checksum_error_count",
         "opensensor:aggregate": "point",
+        "opensensor:group": "particulate",
         "firmware": {
           "type": "Int64",
           "unit": "count",
@@ -460,12 +520,14 @@
       },
       {
         "name": "pms_length_errors",
+        "title": "Particle sensor length errors",
         "unit": "{count}",
         "roles": [
           "qualityInformation"
         ],
         "opensensor:property": "urn:walkthru-earth:property:particle_sensor_length_error_count",
         "opensensor:aggregate": "point",
+        "opensensor:group": "particulate",
         "firmware": {
           "type": "Int64",
           "unit": "count",
@@ -478,6 +540,7 @@
     "received": [
       {
         "name": "pms_received_mono_us",
+        "title": "Particle sensor frame time since boot",
         "unit": "us",
         "roles": [
           "referenceInformation"
@@ -488,6 +551,7 @@
           "finite": true
         },
         "opensensor:aggregate": "point",
+        "opensensor:group": "particulate",
         "firmware": {
           "type": "Int64",
           "unit": "us",

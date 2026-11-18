@@ -1,37 +1,37 @@
 {
   "by_desc": {
-    "40544faf12a82d7895a5231758a2901cd4be851b918e839258f4c764879e0a98": {
-      "board": "elecrow-crowpanel-epaper-42",
-      "dict": "e7279c4edbe87071e4a51889124a43d7ffcd1977c79c8575887ae35bdee10903",
-      "href": "elecrow-crowpanel-epaper-42/e7279c4edbe87071e4a51889124a43d7ffcd1977c79c8575887ae35bdee10903.json"
-    },
-    "4dd6c4b1ef19187ed2c011ab86018e43be0f28edc3af63a0f6a27b70ff203ef3": {
+    "04d8b42831fc8256dff52f403e57c5b00fccf724d08e7c6d2d4cd5cd82ee0966": {
       "board": "m5stack-cores3",
       "dict": "3b4d8500a19f42c6743b0f7d725276c96ca14a0c249f613048603afbc3cfaff9",
       "href": "m5stack-cores3/3b4d8500a19f42c6743b0f7d725276c96ca14a0c249f613048603afbc3cfaff9.json"
     },
-    "d4e4fa499e20c414b3b1fd61343982e5735687d67cfb8b4591efaa5ed5f96bd4": {
+    "4bff03290ab46e554db2389a28a3da41574745fffea0bb4e187355dd5b97967d": {
       "board": "waveshare-esp32-s3-sim7670g",
       "dict": "a8605aafb6f76b794e9e7fb32927be6d203afeeb14527206c0e49c1eb0436809",
       "href": "waveshare-esp32-s3-sim7670g/a8605aafb6f76b794e9e7fb32927be6d203afeeb14527206c0e49c1eb0436809.json"
+    },
+    "6b4ecbab4e258f1091cd9048ddfe9260e160ef73166ee0c6b29669501c0c077a": {
+      "board": "elecrow-crowpanel-epaper-42",
+      "dict": "e7279c4edbe87071e4a51889124a43d7ffcd1977c79c8575887ae35bdee10903",
+      "href": "elecrow-crowpanel-epaper-42/e7279c4edbe87071e4a51889124a43d7ffcd1977c79c8575887ae35bdee10903.json"
     }
   },
   "templates": {
     "3b4d8500a19f42c6743b0f7d725276c96ca14a0c249f613048603afbc3cfaff9": {
       "board": "m5stack-cores3",
-      "desc": "4dd6c4b1ef19187ed2c011ab86018e43be0f28edc3af63a0f6a27b70ff203ef3",
+      "desc": "04d8b42831fc8256dff52f403e57c5b00fccf724d08e7c6d2d4cd5cd82ee0966",
       "href": "m5stack-cores3/3b4d8500a19f42c6743b0f7d725276c96ca14a0c249f613048603afbc3cfaff9.json",
       "schema": "cores3-telemetry-v6"
     },
     "a8605aafb6f76b794e9e7fb32927be6d203afeeb14527206c0e49c1eb0436809": {
       "board": "waveshare-esp32-s3-sim7670g",
-      "desc": "d4e4fa499e20c414b3b1fd61343982e5735687d67cfb8b4591efaa5ed5f96bd4",
+      "desc": "4bff03290ab46e554db2389a28a3da41574745fffea0bb4e187355dd5b97967d",
       "href": "waveshare-esp32-s3-sim7670g/a8605aafb6f76b794e9e7fb32927be6d203afeeb14527206c0e49c1eb0436809.json",
       "schema": "waveshare-sim7670g-telemetry-v6"
     },
     "e7279c4edbe87071e4a51889124a43d7ffcd1977c79c8575887ae35bdee10903": {
       "board": "elecrow-crowpanel-epaper-42",
-      "desc": "40544faf12a82d7895a5231758a2901cd4be851b918e839258f4c764879e0a98",
+      "desc": "6b4ecbab4e258f1091cd9048ddfe9260e160ef73166ee0c6b29669501c0c077a",
       "href": "elecrow-crowpanel-epaper-42/e7279c4edbe87071e4a51889124a43d7ffcd1977c79c8575887ae35bdee10903.json",
       "schema": "crowpanel-epaper-telemetry-v1"
     }

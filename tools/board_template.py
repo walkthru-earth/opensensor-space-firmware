@@ -3,8 +3,9 @@
 The host fixture prints the template that tools/board_template.h builds from
 the board tables, and the bytes the firmware embeds from telemetry_template.h.
 check() fails when the checked-in headers are stale, and write() regenerates
-them. run() also writes or checks the published copy in docs/shared/templates
-(#86). desc is the SHA-256 of the exact embedded bytes, never a re-serialized
+them. run() adds the display hints and the setup manifest (#184) to what the
+host fixture prints, and also writes or checks the published copy in
+docs/shared/templates (#86). desc is the SHA-256 of the exact embedded bytes, never a re-serialized
 copy. validate() runs the pinned stac-opensensor v0.1.0 schemas and the
 profile rules a schema cannot express.
 """
@@ -20,7 +21,9 @@ from jsonschema import Draft7Validator, FormatChecker
 from referencing import Registry, Resource
 
 SCHEMAS = Path(__file__).resolve().parent / "stac_opensensor/v0.1.0"
-SPEC = "https://github.com/walkthru-earth/stac-opensensor (a017edf)"
+SPEC = "https://github.com/walkthru-earth/stac-opensensor (e998136)"
+PLUGINS = Path(__file__).resolve().parents[1] / "docs/shared/plugins/v0.1.0"
+BOARD_SCHEMA = "https://walkthru-earth.github.io/opensensor-space-firmware/plugins/v0.1.0/board.json"
 CHUNK = 74
 
 
@@ -52,7 +55,9 @@ def template_header(raw: bytes, regenerate: str) -> str:
 // {regenerate}
 // The stac-opensensor v0.1.0 board template (#85), built by
 // tools/board_template.h from telemetry_fields.inc, telemetry_semantics.inc,
-// telemetry_classes.inc and the board constants in telemetry_contract.h.
+// telemetry_classes.inc and the board constants in telemetry_contract.h, with
+// the display hints and setup manifest of the module and board manifests
+// added by tools/plugin_contract.py hinted() (#184).
 // Minified printable ASCII. telemetry_descriptor_digest.h holds the SHA-256
 // of exactly these bytes, without the terminating NUL.
 
@@ -103,11 +108,19 @@ def check(firmware: Path, generated: bytes, embedded: bytes, desc: str, regenera
 
 def validator() -> Draft7Validator:
     resources = []
-    for name in ("template.json", "profile.json", "schema.json"):
-        contents = json.loads((SCHEMAS / name).read_text())
+    for path in (SCHEMAS / "template.json", SCHEMAS / "profile.json", SCHEMAS / "schema.json",
+                 PLUGINS / "board.json", PLUGINS / "module.json"):
+        contents = json.loads(path.read_text())
         resources.append((contents["$id"].rstrip("#"), Resource.from_contents(contents)))
     registry = Registry().with_resources(resources)
     schema = json.loads((SCHEMAS / "template.json").read_text())
+    # The vendored e998136 template schema has no setup manifest yet. Until
+    # stac-opensensor #18 lands and is vendored, check it with the plugin
+    # board.json definitions, which mirror #18.
+    firmware = schema["properties"]["firmware"]["properties"]
+    require(not {"setup", "settings", "config_keys"} & set(firmware), "the vendored template schema has the setup manifest, remove this patch")
+    for key in ("setup", "settings", "config_keys"):
+        firmware[key] = {"$ref": f"{BOARD_SCHEMA}#/properties/{key}"}
     return Draft7Validator(schema, registry=registry, format_checker=FormatChecker())
 
 
@@ -221,7 +234,11 @@ def run(executable: Path, firmware: Path, dictionary: dict, board_sources: list[
     for source in board_sources:
         require(not sets_sample_interval(source.read_text()),
                 f"{source.name} overrides the sample interval the template assumes")
-    generated = subprocess.check_output([str(executable), "template"])
+    import plugin_contract
+
+    board, columns = plugin_contract.board_for_app(plugin_contract.ROOT, firmware)
+    generated = plugin_contract.hinted(plugin_contract.ROOT, board, columns,
+                                       subprocess.check_output([str(executable), "template"]))
     if write_out:
         write(firmware, generated, regenerate)
         published_templates.write()
