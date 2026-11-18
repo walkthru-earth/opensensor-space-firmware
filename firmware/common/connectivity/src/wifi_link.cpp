@@ -39,6 +39,10 @@ constexpr std::size_t kHandshakeBytes = 4 + config::kTokenBytes;
 constexpr std::size_t kMaxScanEntries = 48;
 // A scan normally ends within about 3 s. Past this the LAN task stops it.
 constexpr std::int64_t kScanTimeoutUs = 15LL * 1000000LL;
+// A BLE scan reply that has no frame accepted for this long is dropped. It
+// matches the BLE progress timeout, so the host normally closes a stalled link
+// first and the reply ends on Closed.
+constexpr std::int64_t kScanReplyStallUs = 15LL * 1000000LL;
 
 char host_label[24]{};
 ble::Identity device_identity{};
@@ -783,11 +787,10 @@ std::uint8_t auth_code(wifi_auth_mode_t mode) {
 // scan reply waits. Reserve the ring, flush the peer once and retry, else
 // close it as tx-overflow so the scan never stalls the LAN task. The reserve
 // keeps the worker from refilling the flushed space before the retry, so a
-// peer that drained is never dropped.
-bool respond(ble::Link link, std::uint32_t link_generation, std::uint8_t peer,
+// peer that drained is never dropped. LAN peers only. A BLE reply goes
+// through the scan outbox below and never waits.
+bool respond(std::uint32_t link_generation, std::uint8_t peer,
              const std::uint8_t *frame, std::size_t length) {
-  if (link != ble::Link::Lan)
-    return ble::send_response(frame, length, link_generation);
   auto result = enqueue_response(frame, length, peer, link_generation);
   if (result != ossync::EnqueueResult::Full)
     return result == ossync::EnqueueResult::Ok;
@@ -827,27 +830,136 @@ bool respond(ble::Link link, std::uint32_t link_generation, std::uint8_t peer,
 bool scan_running = false, scan_temporary = false;
 std::int64_t scan_deadline_us = 0;
 
+// The scan list. Task-owned static storage keeps it off the LAN stack. It
+// stays valid until the reply is done, because a second scan waits for that.
+wifi_ap_record_t records[kMaxScanEntries];
+
+// The reply of one scan: the WIFI_AP frames, then WIFI_SCAN_END. LAN task
+// only. It keeps the index of each reported record and builds a frame when it
+// is sent, so the reply adds no frame copies to internal RAM. A LAN reply
+// leaves at once. A BLE reply leaves through ble::try_send_response, as many
+// frames per LAN step as the notify queue takes, because waiting for a BLE
+// credit or for the storage worker's response lock would stop every LAN peer
+// (#178). The scan stays pending until its reply is done, so a second scan
+// waits.
+struct ScanReply {
+  std::uint8_t picks[kMaxScanEntries]{};
+  std::uint16_t total = 0, next = 0, sent = 0, found = 0;
+  std::uint32_t generation = 0;
+  std::int64_t progress_us = 0;
+  std::uint8_t end_error = 0;
+  bool active = false, failed = false;
+};
+ScanReply scan_job;
+using ScanFrame = std::uint8_t[4 + config::kSsidMax];
+static_assert(kMaxScanEntries <= 255, "picks hold a record index in one byte");
+
+// Builds frame `index` of the reply. The last one is WIFI_SCAN_END, which
+// carries the count of AP frames actually queued, so a reply cut short still
+// counts true.
+std::size_t reply_frame(std::uint16_t index, ScanFrame &frame) {
+  if (index + 1 >= scan_job.total) {
+    frame[0] = ble::kFrameWifiScanEnd;
+    frame[1] = static_cast<std::uint8_t>(scan_job.sent & 0xff);
+    frame[2] = static_cast<std::uint8_t>((scan_job.sent >> 8) & 0xff);
+    frame[3] = scan_job.end_error;
+    return 4;
+  }
+  const auto &record = records[scan_job.picks[index]];
+  const char *ssid = reinterpret_cast<const char *>(record.ssid);
+  const auto length = strnlen(ssid, sizeof(record.ssid));
+  frame[0] = ble::kFrameWifiAp;
+  frame[1] =
+      static_cast<std::uint8_t>(std::max<std::int8_t>(-127, record.rssi));
+  frame[2] = auth_code(record.authmode);
+  frame[3] = record.primary;
+  std::memcpy(frame + 4, ssid, length);
+  return 4 + length;
+}
+
+void end_scan_reply() {
+  scan_job.active = false;
+  scan_pending = false;
+}
+
+void log_scan_end() {
+  if (scan_job.failed)
+    return;
+  oslog.record_only().printf("WIFI SCAN END found=%u reported=%u\n",
+                             unsigned(scan_job.found), unsigned(scan_job.sent));
+}
+
+// Queues what the BLE notify queue takes now and returns. Full keeps the rest
+// for the next LAN step. Closed (the peer left or the link moved on) skips to
+// the end frame, which then fails too and ends the reply.
+void pump_scan_reply(std::int64_t now) {
+  while (scan_job.active) {
+    const bool last = scan_job.next + 1 == scan_job.total;
+    ScanFrame frame{};
+    const auto length = reply_frame(scan_job.next, frame);
+    const auto result =
+        ble::try_send_response(frame, length, scan_job.generation);
+    if (result == ossync::EnqueueResult::Full) {
+      if (now - scan_job.progress_us < kScanReplyStallUs)
+        return;
+      oslog.record_only().printf("WIFI SCAN REPLY STALLED sent=%u of=%u\n",
+                                 unsigned(scan_job.next),
+                                 unsigned(scan_job.total));
+      end_scan_reply();
+      return;
+    }
+    const bool ok = result == ossync::EnqueueResult::Ok;
+    if (ok)
+      scan_job.progress_us = now;
+    if (last) {
+      log_scan_end();
+      end_scan_reply();
+      return;
+    }
+    if (ok) {
+      ++scan_job.sent;
+      ++scan_job.next;
+    } else {
+      scan_job.next = scan_job.total - 1;
+    }
+  }
+}
+
+void send_lan_scan_reply(std::uint32_t link_generation, std::uint8_t peer) {
+  ScanFrame frame{};
+  for (; scan_job.next + 1 < scan_job.total; ++scan_job.next) {
+    const auto length = reply_frame(scan_job.next, frame);
+    if (!respond(link_generation, peer, frame, length))
+      break;
+    ++scan_job.sent;
+  }
+  const auto end_length = reply_frame(scan_job.total - 1, frame);
+  respond(link_generation, peer, frame, end_length);
+  log_scan_end();
+  end_scan_reply();
+}
+
 void finish_scan(esp_err_t result) {
   const auto link = static_cast<ble::Link>(scan_link.load());
   const auto link_generation = scan_generation.load();
   const auto peer = scan_peer.load();
   std::uint16_t found = kMaxScanEntries;
-  // Task-owned static storage keeps the scan list off the LAN stack.
-  static wifi_ap_record_t records[kMaxScanEntries];
   std::memset(records, 0, sizeof(records));
   if (result == ESP_OK)
     result = esp_wifi_scan_get_ap_records(&found, records);
+  scan_job.total = scan_job.next = scan_job.sent = 0;
+  scan_job.found = 0;
+  scan_job.failed = result != ESP_OK;
+  scan_job.end_error = 0;
   // get_ap_records releases the driver's full list. Release it on errors too.
   if (result != ESP_OK) {
     esp_wifi_clear_ap_list();
     oslog.record_only().printf("WIFI SCAN FAILED code=%d\n", result);
-    const std::uint8_t frame[] = {ble::kFrameWifiScanEnd, 0, 0,
-                                  ble::kErrWifiUnavailable};
-    respond(link, link_generation, peer, frame, sizeof(frame));
+    scan_job.end_error = ble::kErrWifiUnavailable;
   } else {
+    scan_job.found = found;
     // Report each SSID once with its strongest access point; skip hidden.
     bool reported[kMaxScanEntries]{};
-    std::uint16_t count = 0;
     for (std::uint16_t i = 0; i < found; ++i) {
       if (reported[i])
         continue;
@@ -864,31 +976,24 @@ void finish_scan(esp_err_t result) {
             best = j;
         }
       }
-      std::uint8_t frame[4 + config::kSsidMax];
-      frame[0] = ble::kFrameWifiAp;
-      frame[1] = static_cast<std::uint8_t>(
-          std::max<std::int8_t>(-127, records[best].rssi));
-      frame[2] = auth_code(records[best].authmode);
-      frame[3] = records[best].primary;
-      std::memcpy(frame + 4, ssid, length);
-      if (!respond(link, link_generation, peer, frame, 4 + length))
-        break;
-      ++count;
+      scan_job.picks[scan_job.total++] = static_cast<std::uint8_t>(best);
     }
-    const std::uint8_t end[] = {
-        ble::kFrameWifiScanEnd, static_cast<std::uint8_t>(count & 0xff),
-        static_cast<std::uint8_t>((count >> 8) & 0xff), 0};
-    respond(link, link_generation, peer, end, sizeof(end));
-    oslog.record_only().printf("WIFI SCAN END found=%u reported=%u\n",
-                               unsigned(found), unsigned(count));
   }
+  ++scan_job.total; // the end frame
   if (scan_temporary) {
     esp_wifi_stop();
     station_has_ip = false;
   }
   scan_armed = false;
   scan_running = scan_temporary = false;
-  scan_pending = false;
+  if (link != ble::Link::Lan) {
+    scan_job.generation = link_generation;
+    scan_job.progress_us = esp_timer_get_time();
+    scan_job.active = true;
+    pump_scan_reply(scan_job.progress_us);
+    return;
+  }
+  send_lan_scan_reply(link_generation, peer);
 }
 
 void start_scan() {
@@ -1288,7 +1393,9 @@ void lan_step() {
     poll_scan();
   } else {
     poll_radio();
-    if (scan_pending.load())
+    if (scan_job.active)
+      pump_scan_reply(esp_timer_get_time());
+    else if (scan_pending.load())
       start_scan();
   }
   if (listen_fd >= 0)
