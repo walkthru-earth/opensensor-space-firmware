@@ -8,7 +8,9 @@
 // bus fault from "no USB, empty battery". The board reads each register
 // through the status returning readRegister and passes the bytes here. A
 // failed read leaves its column null. Decoding follows the pinned M5Unified
-// AXP2101 and CoreS3 paths, so a good read gives the same value as before.
+// AXP2101 and CoreS3 paths. A good read gives the same value as before, except
+// battery_mv, which is now the exact ADC count. The M5Unified getter went
+// through float volts and truncated, so it could read 1 mV lower.
 
 #include <cstdint>
 #include <optional>

@@ -37,12 +37,15 @@ power::Reading read_power() {
   power::Registers registers{
       .status = read_axp_byte(power::kAxpStatus),
       .vbus = {},
-      .battery = read_axp_word(power::kAxpBattery),
-      .level = read_axp_byte(power::kAxpLevel),
+      .battery = {},
+      .level = {},
       .port0 = {},
   };
+  // The VBUS status and its ADC are read back to back, as M5Unified does.
   if (registers.status.ok && (registers.status.value & power::kVbusGood))
     registers.vbus = read_axp_word(power::kAxpVbus);
+  registers.battery = read_axp_word(power::kAxpBattery);
+  registers.level = read_axp_byte(power::kAxpLevel);
   registers.port0.ok =
       M5.In_I2C.readRegister(power::kAw9523Address, power::kAwPort0,
                              &registers.port0.value, 1, kAw9523Frequency);

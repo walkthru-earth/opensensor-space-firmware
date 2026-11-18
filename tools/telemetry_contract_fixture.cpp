@@ -44,6 +44,19 @@ constexpr Reading normal =
 static_assert(normal.vbus_mv == 5012 && normal.battery_mv == 4105 &&
               normal.battery_percent == 87 && normal.external_5v == true &&
               normal.usb_output == true);
+// Each expander bit drives only its own output.
+constexpr Reading only_5v = decode({.status = {},
+                                    .vbus = {},
+                                    .battery = {},
+                                    .level = {},
+                                    .port0 = ok(kExternal5vBit)});
+constexpr Reading only_usb = decode({.status = {},
+                                     .vbus = {},
+                                     .battery = {},
+                                     .level = {},
+                                     .port0 = ok(kUsbOutputBit)});
+static_assert(only_5v.external_5v == true && only_5v.usb_output == false &&
+              only_usb.external_5v == false && only_usb.usb_output == true);
 // Real off states stay real values, not null.
 constexpr Reading off = decode({.status = ok(0),
                                 .vbus = {},
@@ -73,9 +86,12 @@ static_assert(raw14({.ok = true, .high = 0xFF, .low = 0xFF}) == kAdcFullScale);
 // The battery gate is the plausible range telemetry_semantics.inc declares.
 constexpr const opensensor::semantics::Column *battery_semantics =
     opensensor::semantics::find_column(kSemantics, "battery_mv");
-static_assert(battery_semantics != nullptr &&
-              battery_semantics->plausible_min == "2500" &&
-              battery_semantics->plausible_max == "4500");
+static_assert(
+    battery_semantics != nullptr &&
+    opensensor::semantics::decimal_value(battery_semantics->plausible_min) ==
+        kBatteryMinMv &&
+    opensensor::semantics::decimal_value(battery_semantics->plausible_max) ==
+        kBatteryMaxMv);
 } // namespace power_rows
 
 namespace {

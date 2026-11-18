@@ -24,8 +24,11 @@ LIVE keys are the same.
 - `battery_mv` is null outside 2500 to 4500 mV, the plausible range the
   template already declares. A CoreS3 with no cell fitted no longer logs
   values such as 9 or 16,381 mV.
-- A good read gives the same value as before. `vbus_mv` is still 0 when the
-  PMIC reports no USB input.
+- A good read gives the same value as before, except `battery_mv`, which is
+  now the exact ADC count and can read 1 mV higher than the old float round
+  trip. `vbus_mv` is still 0 when the PMIC reports no USB input.
+- `charging_status` is unchanged. It still comes from the M5Unified charge
+  state, so a failed read gives 2 unknown, not null.
 
 **What the app must do.** Treat a null LIVE `vbus`, `bat` or `pct` from a
 CoreS3 as "not read", not as 0. Show no number for it.
