@@ -48,6 +48,10 @@ void safe_error(ProvisionResult &result, const char *key) {
   for (const auto *candidate : keys)
     if (key && std::strcmp(key, candidate) == 0)
       safe = candidate;
+  // The owner keys and thing.deployment_id come from the owner key table, so
+  // a refused owner value names its key too (#178).
+  if (key && config::owner_key(key))
+    safe = key;
   std::snprintf(result.bad_key, sizeof(result.bad_key), "%s", safe);
 }
 } // namespace
