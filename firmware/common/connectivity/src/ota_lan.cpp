@@ -131,9 +131,10 @@ const rules::Sink kSink{
 };
 
 rules::Transfer &transfer() {
-  static char project[sizeof(esp_app_desc_t::project_name)]{};
   static std::optional<rules::Transfer> instance;
   if (!instance) {
+    // Static, since the Transfer keeps a view of the name for its lifetime.
+    static char project[sizeof(esp_app_desc_t::project_name)]{};
     const esp_app_desc_t *app = esp_app_get_description();
     std::size_t length = 0;
     if (app) {
