@@ -50,6 +50,8 @@ tasks=(
   "coredump-read-test"
   "compile-dialect-test"
   "repro-paths-test"
+  # ESP-IDF Python build tools lock (#176)
+  "idf-python-lock-test"
   "stack-budget-test"
   "board-conditionals-test"
   "retired-names-test"

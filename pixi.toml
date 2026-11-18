@@ -95,6 +95,12 @@ telemetry-contract-test = "python tools/test_telemetry_contract.py"
 # --- native ESP-IDF: one pinned SDK, independent board applications ---
 idf-setup = "tools/setup-idf.sh"
 idf = "tools/idf.sh"
+# ESP-IDF Python build tools, installed from the hashed lock in tools/idf-python
+# (#176). idf-python-check fails when the venv differs from the lock,
+# idf-python-lock rewrites the lock (network), see docs/shared/development.md.
+idf-python-check = "tools/idf-python.sh check"
+idf-python-lock = "tools/idf-python.sh lock"
+idf-python-lock-test = "python tools/test_idf_python_lock.py"
 cores3-setup = "firmware/esp-idf-cores3/setup.sh"
 cores3-build = "firmware/esp-idf-cores3/build.sh"
 # Destructive: requires checked port and exact 16 MiB board backup.

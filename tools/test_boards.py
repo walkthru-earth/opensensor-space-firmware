@@ -598,7 +598,11 @@ def check_drift() -> None:
         if leg["task"] not in tasks_ok:
             findings.append(f"ci.yml leg {leg['name']} task {leg['task']!r}, expected one of {sorted(tasks_ok)}")
     findings += stall_findings(legs, every)
-    repro = ci["jobs"]["repro-paths"]["steps"][-1]["run"].split()
+    # The one step that runs the check. Other steps, such as the IDF Python
+    # lock check (#176), may follow it.
+    repro_runs = [step["run"].split() for step in ci["jobs"]["repro-paths"]["steps"]
+                  if "repro-paths-check" in step.get("run", "")]
+    repro = repro_runs[0] if len(repro_runs) == 1 else repro_runs
     if repro[:3] != ["pixi", "run", "repro-paths-check"] or len(repro) not in (4, 5):
         findings.append(f"ci.yml repro-paths runs {repro}, expected repro-paths-check <board> [variant]")
     else:
