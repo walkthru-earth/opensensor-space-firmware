@@ -59,6 +59,12 @@ inline constexpr auto kHealthSlots =
 // The board status enums name the same codes as the generated constants,
 // because telemetry_classes.inc spells its CLASS rows with the enums.
 static_assert(contract::kPmsMissing == pms5003t::kStatusMissing &&
+              int(plantower::Reading::Missing) == pms5003t::kStatusMissing &&
+              int(plantower::Reading::Warming) == pms5003t::kStatusWarming &&
+              int(plantower::Reading::Stale) == pms5003t::kStatusStale &&
+              int(plantower::Reading::SensorError) ==
+                  pms5003t::kStatusSensorError &&
+              int(plantower::Reading::Valid) == pms5003t::kStatusValid &&
               contract::kPmsWarming == pms5003t::kStatusWarming &&
               contract::kPmsStale == pms5003t::kStatusStale &&
               contract::kPmsSensorError == pms5003t::kStatusSensorError &&
@@ -71,25 +77,32 @@ static_assert(contract::kGaugeNotInstalled ==
                   max17048::kStatusReadErrorOrImplausible &&
               contract::kGaugeValid == max17048::kStatusValid);
 
-// The latest frame with its age at `now`.
+// The latest frame with its age at `now`, saturated so a sensor that went
+// silent 49.7 days ago stays stale (#169).
 [[nodiscard]] inline contract::PmsSnapshot
 aged(const contract::PmsSnapshot &latest, std::int64_t now) {
   contract::PmsSnapshot snapshot = latest;
   if (snapshot.present)
-    snapshot.age_ms =
-        static_cast<std::uint32_t>((now - snapshot.received_mono_us) / 1000);
+    snapshot.age_ms = plantower::frame_age_ms(now, snapshot.received_mono_us);
   return snapshot;
 }
-// Warm-up runs from the last PMS wake (pms_warming). Today that is boot.
+// The shared Plantower rule (pms_status.h), then the model check. Warm-up runs
+// from the last PMS wake (pms_warming). Today that is boot. Status 5 means the
+// parser was built for a model without the PMS5003T tail. The frame itself
+// cannot tell a PMS5003T from a PMSA003, so a wired PMSA003 is not status 5.
+// Its tail words only fail the range gates in write_pms (#169).
 [[nodiscard]] inline std::int32_t status_of(const contract::PmsSnapshot &pms,
                                             std::int64_t now) {
   const auto &frame = pms.frame;
-  return !pms.present ? pms5003t::kStatusMissing
-         : contract::pms_warming(now, pms.last_wake_mono_us)
-             ? pms5003t::kStatusWarming
-         : pms.age_ms > contract::kPmsStaleAfterMs ? pms5003t::kStatusStale
-         : frame.sensor_error ? pms5003t::kStatusSensorError
-         : !frame.has_temperature_humidity || frame.particle_count_fields != 4
+  const auto reading = plantower::classify(
+      {.present = pms.present,
+       .warming = contract::pms_warming(now, pms.last_wake_mono_us),
+       .age_ms = pms.age_ms,
+       .sensor_error = frame.sensor_error},
+      contract::kPmsStaleAfterMs);
+  if (reading != plantower::Reading::Valid)
+    return static_cast<std::int32_t>(reading);
+  return !frame.has_temperature_humidity || frame.particle_count_fields != 4
              ? pms5003t::kStatusModelMismatch
              : pms5003t::kStatusValid;
 }
@@ -125,8 +138,10 @@ inline void write_pms(oslogger::Row &row, const contract::PmsSnapshot &pms,
   out.integer<particles_gt05_per_01l>(frame.particle_counts[1]);
   out.integer<particles_gt10_per_01l>(frame.particle_counts[2]);
   out.integer<particles_gt25_per_01l>(frame.particle_counts[3]);
-  out.number<ambient_temperature_c>(frame.temperature_deci_c / 10.0F);
-  if (frame.humidity_deci_percent <= 1000)
+  if (frame.temperature_deci_c >= contract::kPmsTemperatureMinDeciC &&
+      frame.temperature_deci_c <= contract::kPmsTemperatureMaxDeciC)
+    out.number<ambient_temperature_c>(frame.temperature_deci_c / 10.0F);
+  if (frame.humidity_deci_percent <= contract::kPmsHumidityMaxDeciPercent)
     out.number<relative_humidity_percent>(frame.humidity_deci_percent / 10.0F);
 }
 

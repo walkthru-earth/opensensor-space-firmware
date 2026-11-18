@@ -9,6 +9,26 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## One PMS status rule and range gates (fix/169-165-pms-status)
+
+**No schema, dictionary, LIVE key or wire change.** CoreS3 and Waveshare
+rows keep their columns and codes.
+
+**What changed.**
+
+- `pms_age_ms` saturates at 4294967295 on both boards. Before, a sensor
+  silent for 2^32 ms wrapped to a small age and read valid again (#169).
+- Waveshare writes `ambient_temperature_c` only from -10.0 to 60.0 and
+  `relative_humidity_percent` only up to 100.0. Out of range both are null
+  and PM stays, which is what a PMSA003 on the PMS5003T port produces.
+- CoreS3 `MEAS pmsa003` gains `status=<name>`, and `values_valid` is true
+  only when the row's `pms_status` is 4. Before, it followed the sensor
+  error byte alone and called warming and stale frames valid (#165).
+
+**What the app must do.** Nothing. Treat a null temperature or humidity next
+to a valid PM as a missing reading, never as zero. A log viewer that parses
+`MEAS pmsa003` reads `values_valid` the new way.
+
 ## Metadata-driven apps, decision 0003 (docs/metadata-driven-contract)
 
 **Contract only, no firmware or wire change.** No image, digest, column, LIVE

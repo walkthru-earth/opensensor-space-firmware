@@ -3643,4 +3643,14 @@ ClockView clock_view() {
     view.utc_ns = utc_anchor + (esp_timer_get_time() - mono_anchor) * 1000;
   return view;
 }
+
+LoggingView logging_view() {
+  const auto state = static_cast<storage::State>(sd_state.load());
+  return {.stopped = logging_stopped_reason({.started = accepting,
+                                             .storage_ok = storage_ok.load(),
+                                             .failed = worker_failed.load(),
+                                             .sd_state = state}),
+          .sd_state = storage::state_name(state),
+          .dropped = dropped.load()};
+}
 } // namespace oslogger

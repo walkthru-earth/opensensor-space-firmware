@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <parquet_writer.h>
 #include <storage_governor.h>
+#include <string_view>
 
 namespace oslogger {
 // Pure snapshot/formatter shared by the runtime and host boundary tests.
@@ -48,4 +49,23 @@ struct StatusSnapshot {
 };
 // Returns zero on insufficient capacity, never reports truncated JSON as valid.
 std::size_t format_status(const StatusSnapshot &, char *, std::size_t capacity);
+
+// Whether rows reach the card, for a board screen (#165). The inputs are the
+// same state as STATUS "ok", "fail" and "sd". `started` is a successful
+// begin(). The result is empty while rows are written, else why they are not.
+struct LoggingState {
+  bool started = false;
+  bool storage_ok = false;
+  bool failed = false;
+  storage::State sd_state = storage::State::Retry;
+};
+[[nodiscard]] constexpr std::string_view
+logging_stopped_reason(const LoggingState &state) {
+  return !state.started                            ? "not started"
+         : !state.storage_ok                       ? "no card"
+         : state.sd_state == storage::State::Full  ? "card full"
+         : state.sd_state == storage::State::Retry ? "card retry"
+         : state.failed                            ? "writer stopped"
+                                                   : "";
+}
 } // namespace oslogger

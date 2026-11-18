@@ -13,6 +13,7 @@
 #include <numeric_sample.h>
 #include <os_logger_live.h>
 #include <pinned_uri.h>
+#include <pms_status.h>
 #include <span>
 #include <string_view>
 #include <utc_clock.h>
@@ -195,6 +196,25 @@ enum PmsStatus : std::int32_t {
   kPmsSensorError = 3,
   kPmsValid = 4,
 };
+static_assert(kPmsMissing == int(plantower::Reading::Missing) &&
+              kPmsWarming == int(plantower::Reading::Warming) &&
+              kPmsStale == int(plantower::Reading::Stale) &&
+              kPmsSensorError == int(plantower::Reading::SensorError) &&
+              kPmsValid == int(plantower::Reading::Valid));
+// The one PMS status rule of this board (#165, #169). collect() writes it to
+// the row, and the screen and the MEAS line show it, so neither calls a value
+// valid that the row nulls. Warm-up runs from boot, the sensor is powered from
+// boot. `received_mono_us` is the last checksum-valid frame.
+[[nodiscard]] constexpr PmsStatus pms_status_of(bool present, std::int64_t now,
+                                                std::int64_t received_mono_us,
+                                                std::uint8_t sensor_error) {
+  return static_cast<PmsStatus>(plantower::classify(
+      {.present = present,
+       .warming = plantower::warming(now, 0, kPmsWarmupUs),
+       .age_ms = plantower::frame_age_ms(now, received_mono_us),
+       .sensor_error = sensor_error},
+      kPmsStaleAfterMs));
+}
 enum LightStatus : std::int32_t {
   kLightUnavailable = 0,
   kLightNotFresh = 1,
@@ -253,6 +273,18 @@ static_assert(
         opensensor::semantics::matches_legend(kClasses, "charging_status",
                                               kChargingStatusLegend),
     "telemetry_classes.inc and the status legends differ");
+// The pms_status class name, for the screen and the MEAS line.
+[[nodiscard]] constexpr std::string_view pms_status_name(PmsStatus status) {
+  const auto *entry =
+      std::find_if(std::begin(kClasses), std::end(kClasses),
+                   [status](const opensensor::semantics::Class &item) {
+                     return item.column == "pms_status" && item.value == status;
+                   });
+  return entry == std::end(kClasses) ? std::string_view{"unknown"}
+                                     : entry->name;
+}
+static_assert(pms_status_name(kPmsSensorError) == "sensor-error" &&
+              pms_status_name(kPmsValid) == "valid");
 // The clock sources this board writes, in code order. clock_status rows
 // must be exactly these, each named by opensensor::utc::source_name.
 static constexpr std::int64_t kClockSources[] = {kClockNone, kClockHost,
