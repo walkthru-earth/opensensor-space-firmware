@@ -105,6 +105,29 @@ bool template_mode(const char *mode) {
   }
   return false;
 }
+
+// One PMS status rule for the row, the screen and the MEAS line (#165, #169).
+// Warm-up runs from boot. A frame silent for 2^32 ms plus 1 s is stale. The
+// old uint32 ms clock in main.cpp wrapped that age to 1 s, a fresh frame.
+constexpr std::int64_t kSilentUs = ((std::int64_t{1} << 32) + 1000) * 1000;
+static_assert(pms_status_of(false, 60000000, 0, 0) == kPmsMissing);
+static_assert(pms_status_of(true, kPmsWarmupUs - 1, kPmsWarmupUs - 2, 0) ==
+              kPmsWarming);
+static_assert(pms_status_of(true, kPmsWarmupUs - 1, 0, 3) == kPmsWarming);
+static_assert(pms_status_of(true, kPmsWarmupUs, kPmsWarmupUs - 100, 0) ==
+              kPmsValid);
+static_assert(pms_status_of(true, 60000000, 55000000, 0) == kPmsValid);
+static_assert(pms_status_of(true, 60000000, 54999000, 0) == kPmsStale);
+static_assert(pms_status_of(true, 60000000, 59000000, 3) == kPmsSensorError);
+static_assert(pms_status_of(true, 5000000 + kSilentUs, 5000000, 0) ==
+              kPmsStale);
+static_assert(static_cast<std::uint32_t>(kSilentUs / 1000) == 1000);
+static_assert(pms_status_name(kPmsMissing) == "missing" &&
+              pms_status_name(kPmsWarming) == "warming" &&
+              pms_status_name(kPmsStale) == "stale" &&
+              pms_status_name(kPmsSensorError) == "sensor-error" &&
+              pms_status_name(kPmsValid) == "valid" &&
+              pms_status_name(static_cast<PmsStatus>(9)) == "unknown");
 } // namespace
 
 int main(int argc, char **argv) {
