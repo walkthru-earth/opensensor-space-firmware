@@ -45,7 +45,7 @@ constexpr const char *kCreatedBy = "opensensor-space-firmware version 0.3";
 constexpr const char *kDictionaryUri =
     "https://raw.githubusercontent.com/walkthru-earth/"
     "opensensor-space-firmware/"
-    "093f2b8e45cd2b9e24e1324ad9fa2e6e20ad1d47/"
+    "73a7147ea4ee10ba4678b7f45fbd2bbcec2ade00/"
     "firmware/esp-idf-cores3/bringup/telemetry_fields.inc";
 static_assert(opensensor::pinned::names(kDictionaryUri,
                                         "firmware/esp-idf-cores3/bringup/"
@@ -291,7 +291,7 @@ constexpr const char *kTemplateHref =
     "opensensor-space-firmware/"
     "d3689cc01ddf5b324390f889bd54e5c595afabbc/"
     "docs/shared/templates/m5stack-cores3/"
-    "3b4d8500a19f42c6743b0f7d725276c96ca14a0c249f613048603afbc3cfaff9.json";
+    "f4f81218dc80d1a8e6db043197a2f7180c4f075f9e8348df30eaceef44d68370.json";
 static_assert(opensensor::pinned::names_template(kTemplateHref,
                                                  "m5stack-cores3",
                                                  kDictionarySha256),

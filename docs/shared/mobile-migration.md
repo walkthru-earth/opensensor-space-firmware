@@ -29,13 +29,16 @@ All three boards must be reflashed. Part of #184.
   `f4f81218dc80d1a8e6db043197a2f7180c4f075f9e8348df30eaceef44d68370`
   (was `3b4d8500a19f42c6743b0f7d725276c96ca14a0c249f613048603afbc3cfaff9`).
   Its `shipped.lock` gains a baseline release for the `ltr553` core segment.
+  The widest CoreS3 LIVE object grows to 344 bytes and the all-null object
+  to 276, both under 480.
 - Every template column carries an Arabic `opensensor:title_i18n` beside its
   English `title`. Every template names `opensensor:primary`. The plugin
   contract test fails a board that lacks either, and a unit that is not plain
   ASCII UCUM, so a ratio is `m3/m3` and never a superscript.
-- The templates grow to 50007 bytes on CoreS3, 41178 on Waveshare and 28311
+- The templates grow to 50028 bytes on CoreS3, 41178 on Waveshare and 28311
   on the CrowPanel.
-  - `m5stack-cores3`, desc `29909b12476ae960513c5ae0a6d16acd9f3bfe9585585689d00317559c3094e4`
+  - `m5stack-cores3`, dict `f4f81218dc80d1a8e6db043197a2f7180c4f075f9e8348df30eaceef44d68370`,
+    desc `f5f0f850ea678dd7fdc08fc295ed01107ae395bb54ba731b8c8e2d64934b483c`
     (was `04d8b42831fc8256dff52f403e57c5b00fccf724d08e7c6d2d4cd5cd82ee0966`).
   - `waveshare-esp32-s3-sim7670g`, desc `f46b72d6f93e1f2077693c32eb03036935d73026d4ee64a149a6c9c347e0af74`
     (was `4bff03290ab46e554db2389a28a3da41574745fffea0bb4e187355dd5b97967d`).
@@ -44,7 +47,8 @@ All three boards must be reflashed. Part of #184.
 
 **What the app must do.** Bundle the three new templates. Map LIVE `utc`
 through `firmware.live_keys` like any other key, as microseconds, and drop
-any nanosecond scaling. Read Arabic labels from the template.
+any nanosecond scaling. Gate CoreS3 `als` on `lst` like any other
+`valid_when` column. Read Arabic labels from the template.
 
 ## Setup record and board keys on page 7 (feat/board-settings-page)
 

@@ -121,8 +121,9 @@ move in lockstep (owner decision 14). Portolan adoption comes later.
 4. A CO2 scale is missing. The registry has a PM4 label. Bitfields are
    resolved, the generator emits them for `sen6x_device_status`,
    `imu_fresh_mask` and `gauge_status_flags`.
-5. CoreS3 `als` is gated on `light_status`, which has no LIVE key, so a phone
-   cannot show it in LIVE. Add a LIVE key for `light_status`, or accept that.
+5. CoreS3 `als` is gated on `light_status`. Resolved, `light_status` is LIVE
+   as `lst` from dictionary `cores3-telemetry-v8`, so a phone can check the
+   gate and show `als`.
 
 ## What would reopen it
 

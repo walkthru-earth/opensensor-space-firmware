@@ -38,24 +38,26 @@ constexpr std::int64_t kU16 = 65535;
 // from M5Unified getChargeState() in telemetry_logger.cpp. `t` and `rh`
 // have no producer yet (sht20_unresolved). They take a signed int16 deci
 // degree and 100.0 so a future sensor cannot push the row over silently.
+// `lst` is the LTR-553 status code, 0..4, so null is its widest.
 constexpr livewidest::Widest kWidest[] = {
-    {"seq", kI64, 0.0F},    {"mono", kI64, 0.0F},  {"utc", kI64, 0.0F},
-    {"pms", 9, 0.0F},       {"c1", kU16, 0.0F},    {"c25", kU16, 0.0F},
-    {"c10", kU16, 0.0F},    {"pm1", kU16, 0.0F},   {"pm25", kU16, 0.0F},
-    {"pm10", kU16, 0.0F},   {"n03", kU16, 0.0F},   {"n05", kU16, 0.0F},
-    {"n1", kU16, 0.0F},     {"n25", kU16, 0.0F},   {"n5", kU16, 0.0F},
-    {"n10", kU16, 0.0F},    {"imu_t", 0, -41.0F},  {"als", kU16, 0.0F},
-    {"vbus", -32768, 0.0F}, {"bat", -32768, 0.0F}, {"pct", 100, 0.0F},
-    {"chg", 2, 0.0F},       {"t", 0, -3276.8F},    {"rh", 0, 100.0F},
+    {"seq", kI64, 0.0F},  {"mono", kI64, 0.0F},   {"utc", kI64, 0.0F},
+    {"pms", 9, 0.0F},     {"c1", kU16, 0.0F},     {"c25", kU16, 0.0F},
+    {"c10", kU16, 0.0F},  {"pm1", kU16, 0.0F},    {"pm25", kU16, 0.0F},
+    {"pm10", kU16, 0.0F}, {"n03", kU16, 0.0F},    {"n05", kU16, 0.0F},
+    {"n1", kU16, 0.0F},   {"n25", kU16, 0.0F},    {"n5", kU16, 0.0F},
+    {"n10", kU16, 0.0F},  {"imu_t", 0, -41.0F},   {"als", kU16, 0.0F},
+    {"lst", 4, 0.0F},     {"vbus", -32768, 0.0F}, {"bat", -32768, 0.0F},
+    {"pct", 100, 0.0F},   {"chg", 2, 0.0F},       {"t", 0, -3276.8F},
+    {"rh", 0, 100.0F},
 };
-// Measured 2026-10-26 with every declared key present, a one digit code or
+// Measured 2026-11-18 with every declared key present, a one digit code or
 // a 100 percent counted as null since null is wider, and each float at its
-// field's decimals (t prints two). The widest object is 333 bytes, 480 - 333 =
-// 147 bytes of headroom. The all-null object sent on overflow is 265 bytes. A
+// field's decimals (t prints two). The widest object is 344 bytes, 480 - 344 =
+// 136 bytes of headroom. The all-null object sent on overflow is 276 bytes. A
 // change here means a LIVE key, its widest value or its decimals changed,
 // update the numbers.
-constexpr std::size_t kWidestLiveBytes = 333;
-constexpr std::size_t kAllNullLiveBytes = 265;
+constexpr std::size_t kWidestLiveBytes = 344;
+constexpr std::size_t kAllNullLiveBytes = 276;
 void assert_live_keys(const oslogger::Field *table, std::size_t count) {
   const auto bytes = livewidest::measure(table, count, kWidest);
   const auto nulls = livewidest::all_null(table, count);
