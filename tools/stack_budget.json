@@ -505,7 +505,7 @@
         ".dram0.data": 35072,
         ".dram0.bss": 58624,
         ".flash.text": 1211392,
-        ".flash.rodata": 419584,
+        ".flash.rodata": 419840,
         ".noinit": 256
       },
       "sections_measured": {
@@ -513,7 +513,7 @@
         ".dram0.data": 34257,
         ".dram0.bss": 57400,
         ".flash.text": 1187554,
-        ".flash.rodata": 411240,
+        ".flash.rodata": 411480,
         ".noinit": 3
       }
     }
