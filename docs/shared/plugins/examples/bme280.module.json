@@ -15,6 +15,8 @@
     "core": [
       {
         "name": "bme280_status",
+        "title": "Weather sensor status",
+        "opensensor:title_i18n": {"ar": "حالة مستشعر الطقس"},
         "unit": "{code}",
         "roles": ["qualityInformation"],
         "classification:classes": [
@@ -28,6 +30,8 @@
       },
       {
         "name": "air_temperature_c",
+        "title": "Air temperature",
+        "opensensor:title_i18n": {"ar": "درجة حرارة الهواء"},
         "unit": "Cel",
         "roles": ["physicalMeasurement"],
         "cf:standard_name": "air_temperature",
@@ -39,6 +43,8 @@
       },
       {
         "name": "air_pressure_hpa",
+        "title": "Air pressure",
+        "opensensor:title_i18n": {"ar": "ضغط الهواء"},
         "unit": "hPa",
         "roles": ["physicalMeasurement"],
         "cf:standard_name": "air_pressure",

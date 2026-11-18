@@ -14,6 +14,9 @@
       {
         "name": "imu_fresh_mask",
         "title": "Motion sensor fresh mask",
+        "opensensor:title_i18n": {
+          "ar": "قناع حداثة مستشعر الحركة"
+        },
         "unit": "{bitmask}",
         "roles": [
           "qualityInformation"
@@ -82,6 +85,9 @@
       {
         "name": "accel_x_g",
         "title": "Acceleration X",
+        "opensensor:title_i18n": {
+          "ar": "التسارع X"
+        },
         "unit": "[g]",
         "roles": [
           "auxiliaryInformation"
@@ -104,6 +110,9 @@
       {
         "name": "accel_y_g",
         "title": "Acceleration Y",
+        "opensensor:title_i18n": {
+          "ar": "التسارع Y"
+        },
         "unit": "[g]",
         "roles": [
           "auxiliaryInformation"
@@ -126,6 +135,9 @@
       {
         "name": "accel_z_g",
         "title": "Acceleration Z",
+        "opensensor:title_i18n": {
+          "ar": "التسارع Z"
+        },
         "unit": "[g]",
         "roles": [
           "auxiliaryInformation"
@@ -148,6 +160,9 @@
       {
         "name": "gyro_x_dps",
         "title": "Rotation rate X",
+        "opensensor:title_i18n": {
+          "ar": "معدل الدوران X"
+        },
         "unit": "deg/s",
         "roles": [
           "auxiliaryInformation"
@@ -170,6 +185,9 @@
       {
         "name": "gyro_y_dps",
         "title": "Rotation rate Y",
+        "opensensor:title_i18n": {
+          "ar": "معدل الدوران Y"
+        },
         "unit": "deg/s",
         "roles": [
           "auxiliaryInformation"
@@ -192,6 +210,9 @@
       {
         "name": "gyro_z_dps",
         "title": "Rotation rate Z",
+        "opensensor:title_i18n": {
+          "ar": "معدل الدوران Z"
+        },
         "unit": "deg/s",
         "roles": [
           "auxiliaryInformation"
@@ -214,6 +235,9 @@
       {
         "name": "mag_x_raw",
         "title": "Magnetic field X, raw",
+        "opensensor:title_i18n": {
+          "ar": "المجال المغناطيسي X، خام"
+        },
         "unit": "{raw_count}",
         "roles": [
           "auxiliaryInformation"
@@ -238,6 +262,9 @@
       {
         "name": "mag_y_raw",
         "title": "Magnetic field Y, raw",
+        "opensensor:title_i18n": {
+          "ar": "المجال المغناطيسي Y، خام"
+        },
         "unit": "{raw_count}",
         "roles": [
           "auxiliaryInformation"
@@ -262,6 +289,9 @@
       {
         "name": "mag_z_raw",
         "title": "Magnetic field Z, raw",
+        "opensensor:title_i18n": {
+          "ar": "المجال المغناطيسي Z، خام"
+        },
         "unit": "{raw_count}",
         "roles": [
           "auxiliaryInformation"
@@ -286,6 +316,9 @@
       {
         "name": "imu_temperature_c",
         "title": "Board temperature",
+        "opensensor:title_i18n": {
+          "ar": "حرارة اللوحة"
+        },
         "unit": "Cel",
         "roles": [
           "auxiliaryInformation"

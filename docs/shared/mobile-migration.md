@@ -9,6 +9,35 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## LIVE `utc` in microseconds and Arabic titles on every column (feat/live-utc-column-titles)
+
+**Every board changes its LIVE `utc` value and its template.** Every `desc`
+moves and no `dict` does. No column, row, footer key, LIVE key name or
+`GET_CONFIG` byte changes. All three boards must be reflashed. Part of #184.
+
+**What changed.**
+
+- LIVE `utc` is now microseconds since the Unix epoch, the same value as the
+  file column `event_time_utc_us` it maps to through `firmware.live_keys`.
+  It was nanoseconds. An unsynchronized row still sends `null`. The widest
+  LIVE object keeps its size, so the 480 byte checks are unchanged.
+- Every template column carries an Arabic `opensensor:title_i18n` beside its
+  English `title`. Every template names `opensensor:primary`. The plugin
+  contract test fails a board that lacks either, and a unit that is not plain
+  ASCII UCUM, so a ratio is `m3/m3` and never a superscript.
+- The templates grow to 50007 bytes on CoreS3, 41178 on Waveshare and 28311
+  on the CrowPanel.
+  - `m5stack-cores3`, desc `29909b12476ae960513c5ae0a6d16acd9f3bfe9585585689d00317559c3094e4`
+    (was `04d8b42831fc8256dff52f403e57c5b00fccf724d08e7c6d2d4cd5cd82ee0966`).
+  - `waveshare-esp32-s3-sim7670g`, desc `f46b72d6f93e1f2077693c32eb03036935d73026d4ee64a149a6c9c347e0af74`
+    (was `4bff03290ab46e554db2389a28a3da41574745fffea0bb4e187355dd5b97967d`).
+  - `elecrow-crowpanel-epaper-42`, desc `39da5da001dd662c6c05eddf08bbfdd1400d077dd5a9b7cdf2efaac939d08eb8`
+    (was `7d675033aa932320b91237d1a68de9646cd40f569806202f4e01a885af2d7eeb`).
+
+**What the app must do.** Bundle the three new templates. Map LIVE `utc`
+through `firmware.live_keys` like any other key, as microseconds, and drop
+any nanosecond scaling. Read Arabic labels from the template.
+
 ## Setup record and board keys on page 7 (feat/board-settings-page)
 
 **Every board changes `GET_CONFIG`, and the CrowPanel template changes.**

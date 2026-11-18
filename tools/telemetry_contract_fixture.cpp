@@ -28,11 +28,10 @@ namespace {
 // Every board LIVE key must be accepted by begin(), and a row with every LIVE
 // key valid at its widest real value must still fit one BLE JSON value.
 // Widest values a real producer writes while each key is valid. INT64
-// counters take INT64_MAX so no uptime horizon is assumed. `utc` is the
-// largest microsecond count whose nanosecond form fits INT64, 19 digits.
+// counters and the microsecond `utc` take INT64_MAX so no uptime or date
+// horizon is assumed, 19 digits.
 // Status codes are one digit and PMS words are u16.
 constexpr std::int64_t kI64 = std::numeric_limits<std::int64_t>::max();
-constexpr std::int64_t kUtcUs = kI64 / 1000; // 9223372036854775000 ns
 constexpr std::int64_t kU16 = 65535;
 // `imu_t` is BMI270 int16/512 + 23, so -41.0 is its widest. `vbus` and
 // `bat` are M5Unified int16_t mV. `chg` is ChargingStatus (0..2), mapped
@@ -40,7 +39,7 @@ constexpr std::int64_t kU16 = 65535;
 // have no producer yet (sht20_unresolved). They take a signed int16 deci
 // degree and 100.0 so a future sensor cannot push the row over silently.
 constexpr livewidest::Widest kWidest[] = {
-    {"seq", kI64, 0.0F},    {"mono", kI64, 0.0F},  {"utc", kUtcUs, 0.0F},
+    {"seq", kI64, 0.0F},    {"mono", kI64, 0.0F},  {"utc", kI64, 0.0F},
     {"pms", 9, 0.0F},       {"c1", kU16, 0.0F},    {"c25", kU16, 0.0F},
     {"c10", kU16, 0.0F},    {"pm1", kU16, 0.0F},   {"pm25", kU16, 0.0F},
     {"pm10", kU16, 0.0F},   {"n03", kU16, 0.0F},   {"n05", kU16, 0.0F},

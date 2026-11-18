@@ -1,6 +1,6 @@
 {
   "board": "cores3",
-  "convention": "Every field valid with integers 1 and floats 1.0, rendered by the shared emitter through tools/live_sample.h. utc is the stored microseconds times 1000 on the wire.",
+  "convention": "Every field valid with integers 1 and floats 1.0, rendered by the shared emitter through tools/live_sample.h. utc is the stored microseconds, sent as is.",
   "digests": {
     "3b4d8500a19f42c6743b0f7d725276c96ca14a0c249f613048603afbc3cfaff9": {
       "note": "Dictionary cores3-telemetry-v7 (#83). The two H3 centre columns become location_source and geometry, neither has a LIVE key, so the LIVE keys and decimals are those of cores3-telemetry-v6. Older digests are retired and no longer listed.",
@@ -34,7 +34,7 @@
             "t": "ambient_temperature_c",
             "rh": "relative_humidity_percent"
           },
-          "payload": "{\"seq\":1,\"mono\":1,\"utc\":1000,\"pms\":1,\"c1\":1,\"c25\":1,\"c10\":1,\"pm1\":1,\"pm25\":1,\"pm10\":1,\"n03\":1,\"n05\":1,\"n1\":1,\"n25\":1,\"n5\":1,\"n10\":1,\"imu_t\":1.0,\"als\":1,\"vbus\":1,\"bat\":1,\"pct\":1,\"chg\":1,\"t\":1.00,\"rh\":1.0}"
+          "payload": "{\"seq\":1,\"mono\":1,\"utc\":1,\"pms\":1,\"c1\":1,\"c25\":1,\"c10\":1,\"pm1\":1,\"pm25\":1,\"pm10\":1,\"n03\":1,\"n05\":1,\"n1\":1,\"n25\":1,\"n5\":1,\"n10\":1,\"imu_t\":1.0,\"als\":1,\"vbus\":1,\"bat\":1,\"pct\":1,\"chg\":1,\"t\":1.00,\"rh\":1.0}"
         }
       ]
     }

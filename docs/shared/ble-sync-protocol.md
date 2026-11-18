@@ -203,14 +203,14 @@ BM8563 value as `clk=2`; a fresh host sync is still welcome.
 
 Notified once per sample. Each board declares a short `live_key` next to the fields it publishes, and the shared logger emits those keys in the board's field-table order.
 
-**LIVE rule.** Every LIVE key the board declares is present in every LIVE object. Its value is a number, or JSON `null` when the sample has no usable reading for it. That covers a value that is invalid or unavailable, a non-finite float (NaN or Inf), a value whose printed text is 32 characters or longer (at the decimals the boards use today, only a float of magnitude 1e27 or more gets there), and a UTC instant whose nanosecond form overflows INT64. Null is never sent as zero. An absent key means only that the board has no such field. The set of keys a board can send comes from its dictionary, the `live_key` in its `telemetry_fields.inc` (later the template `firmware.live_keys`). Clients parse the object by key name and ignore keys they do not know. Breaking changes are listed in [mobile-migration.md](mobile-migration.md).
+**LIVE rule.** Every LIVE key the board declares is present in every LIVE object. Its value is a number, or JSON `null` when the sample has no usable reading for it. That covers a value that is invalid or unavailable, a non-finite float (NaN or Inf), a value whose printed text is 32 characters or longer (at the decimals the boards use today, only a float of magnitude 1e27 or more gets there). Null is never sent as zero. An absent key means only that the board has no such field. The set of keys a board can send comes from its dictionary, the `live_key` in its `telemetry_fields.inc` (later the template `firmware.live_keys`). Clients parse the object by key name and ignore keys they do not know. Breaking changes are listed in [mobile-migration.md](mobile-migration.md).
 
 Each field's `live_key` and `decimals` are part of the board's `telemetry_fields.inc`, so the `info.dict` digest covers the LIVE key map and how each float prints. The current digests are CoreS3 `3b4d8500…`, Waveshare `a8605aaf…` and CrowPanel `e7279c4e…`. The full values are in [`templates/index.json`](templates/index.json). The digest hashes raw bytes, so a comment, whitespace or line ending edit to `telemetry_fields.inc` moves it. A client reads what each key means from the board template, `firmware.live_keys` and the column it names, and may show LIVE for any template whose SHA-256 it has verified, see [LIVE key stability](#live-key-stability).
 
 **Float precision.** Integers print with no point. A float prints rounded to the `decimals` its field declares, chosen from the sensor resolution, so `1.00` and `1.0` are both possible and both mean the number one. Today CoreS3 prints `t` with two decimals (SHT20 steps 0.01 degC) and `imu_t` and `rh` with one. Waveshare prints `t` and `rh` with one (PMS5003T steps 0.1). Clients parse the value as a number and keep their own display rounding.
 
 ```json
-{"seq":15021,"mono":150210000000,"utc":1757990410000000000,"pms":4,
+{"seq":15021,"mono":150210000000,"utc":1757990410000000,"pms":4,
  "c1":5,"c25":7,"c10":9,"pm1":5,"pm25":7,"pm10":9,
  "n03":900,"n05":250,"n1":30,"n25":2,"n5":0,"n10":0,
  "imu_t":31.4,"als":120,"vbus":5000,"bat":4100,"pct":80,"chg":0,"t":null,"rh":null}
@@ -218,7 +218,7 @@ Each field's `live_key` and `decimals` are part of the board's `telemetry_fields
 
 | Key | Dictionary field |
 | --- | --- |
-| `seq`, `mono`, `utc` | `sequence`, `monotonic_us`, `event_time_utc_us` (null when unsynchronized). `utc` stays in nanoseconds, the file column `event_time_utc_us` × 1000 |
+| `seq`, `mono`, `utc` | `sequence`, `monotonic_us`, `event_time_utc_us` (null when unsynchronized). `utc` is in microseconds, the same value as the file column |
 | `pms` | `pms_status` code: 0 absent, 1 warming, 2 stale, 3 sensor error, 4 valid. Waveshare adds 5 model mismatch and 6 sleeping. Code 6 is reserved for the PMS duty cycle (#39) and no image writes it yet |
 | `pm1`,`pm25`,`pm10` | `pm*_atmospheric_ug_m3`, the values to display |
 | `c1`,`c25`,`c10` | `pm*_cf1_ug_m3` |
@@ -235,7 +235,7 @@ Each field's `live_key` and `decimals` are part of the board's `telemetry_fields
 
 PM keys hold values only when `pms == 4` (CrowPanel `sen == 4`) and are null otherwise. The snapshot is the same row that was queued for storage; it is a display convenience, not a substitute for the stored file.
 
-The whole object must fit 480 bytes. The firmware never sends a truncated object. When a row would need more, the device publishes the object with every declared key set to `null` for that sample over BLE and LAN, instead of keeping the previous snapshot. A phone gets that all-null object as its LIVE notification and as the cached value, so it never shows an old sample as current. The next row that fits restores the full object. The device logs `PARQUET LIVE overflow bytes=<n> max=480` to serial and `LOG_TAIL`, where `n` is the exact size the full object needed without the terminating NUL. The line repeats at most once an hour while overflows continue. The host contract tests build each board's widest real row, every declared key at the widest value its producer can write or at `null` where null is wider, with a 19 digit `utc`. Measured 2026-10-26 with per field decimals it is 333 bytes on CoreS3 and 270 bytes on Waveshare, and the all-null object is 265 and 211 bytes. Measured 2026-11-17 the CrowPanel widest object is 175 bytes and its all-null object 118 bytes. The tests fail if any of them passes 480.
+The whole object must fit 480 bytes. The firmware never sends a truncated object. When a row would need more, the device publishes the object with every declared key set to `null` for that sample over BLE and LAN, instead of keeping the previous snapshot. A phone gets that all-null object as its LIVE notification and as the cached value, so it never shows an old sample as current. The next row that fits restores the full object. The device logs `PARQUET LIVE overflow bytes=<n> max=480` to serial and `LOG_TAIL`, where `n` is the exact size the full object needed without the terminating NUL. The line repeats at most once an hour while overflows continue. The host contract tests build each board's widest real row, every declared key at the widest value its producer can write or at `null` where null is wider, with `seq`, `mono` and `utc` at INT64_MAX, 19 digits. Measured 2026-10-26 with per field decimals it is 333 bytes on CoreS3 and 270 bytes on Waveshare, and the all-null object is 265 and 211 bytes. Measured 2026-11-17 the CrowPanel widest object is 175 bytes and its all-null object 118 bytes. The tests fail if any of them passes 480.
 
 #### LIVE key stability
 

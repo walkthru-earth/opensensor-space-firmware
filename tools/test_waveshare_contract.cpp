@@ -75,17 +75,16 @@ void gauge_modules(Sample &row, const BatteryHealth &health) {
 // Every board LIVE key must be accepted by begin(), and a row with every LIVE
 // key valid at its widest real value must still fit one BLE JSON value.
 // Widest values a real producer writes while each key is valid. INT64
-// counters take INT64_MAX so no uptime horizon is assumed. `utc` is the
-// largest microsecond count whose nanosecond form fits INT64, 19 digits.
+// counters and the microsecond `utc` take INT64_MAX so no uptime or date
+// horizon is assumed, 19 digits.
 // Status codes are one digit and PMS words are u16.
 constexpr std::int64_t kI64 = std::numeric_limits<std::int64_t>::max();
-constexpr std::int64_t kUtcUs = kI64 / 1000; // 9223372036854775000 ns
 constexpr std::int64_t kU16 = 65535;
 // `t` is the PMS5003T signed int16 deci degree, so -3276.8 prints widest.
 // `rh` is capped at 100.0. `bat` passes the MAX17048 2500..4500 mV check.
 // `bstate` is opensensor::battery::State (0..5).
 constexpr livewidest::Widest kWidest[] = {
-    {"seq", kI64, 0.0F},  {"mono", kI64, 0.0F}, {"utc", kUtcUs, 0.0F},
+    {"seq", kI64, 0.0F},  {"mono", kI64, 0.0F}, {"utc", kI64, 0.0F},
     {"pms", 9, 0.0F},     {"c1", kU16, 0.0F},   {"c25", kU16, 0.0F},
     {"c10", kU16, 0.0F},  {"pm1", kU16, 0.0F},  {"pm25", kU16, 0.0F},
     {"pm10", kU16, 0.0F}, {"n03", kU16, 0.0F},  {"n05", kU16, 0.0F},

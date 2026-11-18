@@ -237,6 +237,11 @@ def main() -> None:
                "a primary that is not a measurement")
         mutate(scratch, edit_json(board, lambda d: d.update(primary="pm10_atmospheric_ug_m3")), "primary differs",
                "a primary change")
+        mutate(scratch, edit_json(board, lambda d: d.pop("primary")), "no primary metric", "a board without a primary")
+        mutate(scratch, edit_json(IMU, lambda d: column(d, "core", "accel_x_g").pop("opensensor:title_i18n")),
+               "no Arabic title", "a column without an Arabic title")
+        mutate(scratch, edit_json(PMSA003, lambda d: column(d, "core", "pm1_cf1_ug_m3").update(unit="ug/m\u00b3")),
+               "not a plain ASCII UCUM code", "a superscript in a unit")
         mutate(scratch, edit_json(board, lambda d: d["setup"].reverse()), "firmware setup differs",
                "a setup reorder")
         mutate(scratch, edit_json(board, lambda d: d["settings"].pop()), "firmware settings differs",
