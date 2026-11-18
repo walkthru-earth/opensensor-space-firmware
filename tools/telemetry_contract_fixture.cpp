@@ -1,4 +1,5 @@
 #include "../firmware/common/src/lz4_codec.h"
+#include "../firmware/esp-idf-cores3/bringup/power_registers.h"
 #include "../firmware/esp-idf-cores3/bringup/telemetry_contract.h"
 
 #include "board_template.h"
@@ -17,6 +18,65 @@
 
 using namespace telemetry;
 using namespace telemetry::contract;
+
+// CoreS3 power columns (#166). A failed register read leaves its column null,
+// never a fabricated 0, and a good read decodes as M5Unified did.
+namespace power_rows {
+using namespace telemetry::power;
+constexpr Byte ok(std::uint8_t value) { return {.ok = true, .value = value}; }
+constexpr Word14 ok14(std::int32_t mv) {
+  return {.ok = true,
+          .high = static_cast<std::uint8_t>(mv >> 8),
+          .low = static_cast<std::uint8_t>(mv & 0xFF)};
+}
+// Every read fails, as with a stuck bus. All five columns are null.
+constexpr Reading failed = decode(Registers{});
+static_assert(!failed.vbus_mv && !failed.battery_mv &&
+              !failed.battery_percent && !failed.external_5v &&
+              !failed.usb_output);
+// A normal row on USB with a charged cell and both outputs on.
+constexpr Reading normal =
+    decode({.status = ok(kVbusGood),
+            .vbus = ok14(5012),
+            .battery = ok14(4105),
+            .level = ok(87),
+            .port0 = ok(kExternal5vBit | kUsbOutputBit)});
+static_assert(normal.vbus_mv == 5012 && normal.battery_mv == 4105 &&
+              normal.battery_percent == 87 && normal.external_5v == true &&
+              normal.usb_output == true);
+// Real off states stay real values, not null.
+constexpr Reading off = decode({.status = ok(0),
+                                .vbus = {},
+                                .battery = ok14(3700),
+                                .level = ok(0),
+                                .port0 = ok(0)});
+static_assert(off.vbus_mv == 0 && off.battery_percent == 0 &&
+              off.external_5v == false && off.usb_output == false);
+// VBUS good but its ADC read failed, and an ADC near full scale.
+static_assert(!vbus_mv_of(ok(kVbusGood), {}));
+static_assert(vbus_mv_of(ok(kVbusGood), ok14(kAdcInvalidMin)) == 0 &&
+              vbus_mv_of(ok(kVbusGood), ok14(kAdcInvalidMin - 1)) ==
+                  kAdcInvalidMin - 1);
+// The status read failed, so VBUS is unknown even with a good ADC word.
+static_assert(!vbus_mv_of({}, ok14(5000)));
+// battery_mv outside its plausible range is null, the edges are kept.
+static_assert(!battery_mv_of(ok14(0)) &&
+              !battery_mv_of(ok14(kBatteryMinMv - 1)) &&
+              !battery_mv_of(ok14(kBatteryMaxMv + 1)) &&
+              battery_mv_of(ok14(kBatteryMinMv)) == kBatteryMinMv &&
+              battery_mv_of(ok14(kBatteryMaxMv)) == kBatteryMaxMv);
+// The fuel gauge byte above 100 (a negative int8) is null.
+static_assert(battery_percent_of(ok(100)) == 100 &&
+              !battery_percent_of(ok(101)) && !battery_percent_of(ok(0xFF)));
+// Only the 14 ADC bits count.
+static_assert(raw14({.ok = true, .high = 0xFF, .low = 0xFF}) == kAdcFullScale);
+// The battery gate is the plausible range telemetry_semantics.inc declares.
+constexpr const opensensor::semantics::Column *battery_semantics =
+    opensensor::semantics::find_column(kSemantics, "battery_mv");
+static_assert(battery_semantics != nullptr &&
+              battery_semantics->plausible_min == "2500" &&
+              battery_semantics->plausible_max == "4500");
+} // namespace power_rows
 
 namespace {
 bool sink(void *context, const std::uint8_t *bytes, std::size_t count) {

@@ -9,6 +9,27 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## CoreS3 power columns are null on a failed read (fix/166-cores3-power-null, issue #166)
+
+**No wire, image layout, digest or column change.** Column names, types and
+LIVE keys are the same.
+
+**What changed.**
+
+- CoreS3 reads the AXP2101 and AW9523 registers with their read status. A
+  failed read now leaves `vbus_mv`, `battery_mv`, `battery_percent`,
+  `external_5v_enabled` or `usb_output_enabled` null. Before, M5Unified
+  folded a bus fault to 0, which read as "USB unplugged, battery empty,
+  outputs off".
+- `battery_mv` is null outside 2500 to 4500 mV, the plausible range the
+  template already declares. A CoreS3 with no cell fitted no longer logs
+  values such as 9 or 16,381 mV.
+- A good read gives the same value as before. `vbus_mv` is still 0 when the
+  PMIC reports no USB input.
+
+**What the app must do.** Treat a null LIVE `vbus`, `bat` or `pct` from a
+CoreS3 as "not read", not as 0. Show no number for it.
+
 ## Metadata-driven apps, decision 0003 (docs/metadata-driven-contract)
 
 **Contract only, no firmware or wire change.** No image, digest, column, LIVE
