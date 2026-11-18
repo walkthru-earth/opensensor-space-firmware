@@ -49,11 +49,12 @@ idf_python_env_check() {
 # its packages differ from the lock (the lock changed, or a package moved).
 # tools/idf.sh never runs the installer, so the repair lives here. pip installs
 # only the locked files, each checked against its SHA-256, and resolves
-# nothing. The SDK installer and its constraints download are not used.
+# nothing. The SDK installer and its constraints download are not used. A
+# check that cannot run keeps the venv and fails.
 ensure_idf_python_env() {
   local venv_python="${IDF_PYTHON_ENV_PATH}/bin/python"
   local cfg="${IDF_PYTHON_ENV_PATH}/pyvenv.cfg"
-  local want_home venv_home="" reason="is broken"
+  local want_home venv_home="" reason="is broken" status=0
   if [[ ! -f "${IDF_PYTHON_LOCK}" ]]; then
     printf 'No IDF Python lock for ESP-IDF %s.%s on Python %s, %s is missing.\n' \
       "${idf_major}" "${idf_minor}" "${idf_py_version}" "${IDF_PYTHON_LOCK}" >&2
@@ -66,8 +67,15 @@ ensure_idf_python_env() {
   fi
   if [[ -x "${venv_python}" ]] && [[ "${venv_home}" == "${want_home}" ]] \
     && "${venv_python}" -c '' >/dev/null 2>&1; then
-    if idf_python_env_check --quiet; then
+    idf_python_env_check --quiet || status=$?
+    if ((status == 0)); then
       return 0
+    fi
+    # 2 is a lock the check cannot read. A rebuild would refuse the same
+    # lock, so keep the working venv and fail.
+    if ((status != 1)); then
+      printf 'IDF Python lock check failed, keeping %s\n' "${IDF_PYTHON_ENV_PATH}" >&2
+      return 2
     fi
     reason="differs from the lock"
   fi

@@ -334,8 +334,9 @@ def install(args: argparse.Namespace) -> int:
         steps = [(wheels, [])]
         if built:
             # Without isolation pip builds with what is installed, the locked
-            # setuptools, and does not fetch unhashed build requirements.
-            steps.append((built, ["--no-build-isolation", f"--no-binary={','.join(sources)}"]))
+            # setuptools, and does not fetch unhashed build requirements. With
+            # no cache it never reuses a wheel another backend built.
+            steps.append((built, ["--no-build-isolation", "--no-cache-dir", f"--no-binary={','.join(sources)}"]))
         for index, (text, extra) in enumerate(steps):
             requirements = Path(scratch) / f"step{index}.txt"
             requirements.write_text(text)
