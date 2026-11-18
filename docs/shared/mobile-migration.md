@@ -113,6 +113,35 @@ build the wizard and Device settings from `firmware.setup` and
 `firmware.settings`, titled by `label` when the app has no title for the id. The setup record and page 7 come in the entry above.
 Mirror the three templates into stac-opensensor `templates/`.
 
+## One PMS status rule and range gates (fix/169-165-pms-status)
+
+**No schema, dictionary, LIVE key or wire change.** CoreS3 and Waveshare
+rows keep their columns and codes.
+
+**What changed.**
+
+- `pms_age_ms` saturates at 4294967295 on both boards. Before, a sensor
+  silent for 2^32 ms wrapped to a small age and read valid again (#169).
+- Waveshare writes `ambient_temperature_c` only from -10.0 to 60.0 and
+  `relative_humidity_percent` only up to 100.0. Out of range both are null
+  and PM stays. A PMSA003 wired on the PMS5003T port sends its counts above
+  5 and 10 um in those two words, and the 32-byte frame cannot tell the two
+  models apart. The temperature word is a signed tenth of a degree, so a count
+  up to 600 reads 0.0 to 60.0 and a count from 65436 reads -10.0 to -0.1, and
+  both pass. A humidity count up to 1000 passes. Those are stored as a
+  temperature and humidity with PM still valid, and every other count is null.
+  The board config names PMS5003T, and only that model gives real values there.
+- CoreS3 `MEAS pmsa003` gains `status=<name>`, missing before the first
+  frame. `values_valid` is true only when the frame `MEAS` evaluates
+  classifies as valid under the row's rule. `MEAS` runs that rule itself at
+  its own time, so it can disagree with a stored row about the same frame,
+  for example stale at 5,001 ms where the row stored valid at 5,000 ms. Before, it followed the sensor
+  error byte alone and called warming and stale frames valid (#165).
+
+**What the app must do.** Nothing. Treat a null temperature or humidity next
+to a valid PM as a missing reading, never as zero. A log viewer that parses
+`MEAS pmsa003` reads `values_valid` the new way.
+
 ## LAN task never waits on BLE, and three log lines (fix/178-lan-scan-row-status, issue #178)
 
 **No wire, image layout, digest, column or LIVE key change.** Frames, opcodes
