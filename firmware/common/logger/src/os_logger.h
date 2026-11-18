@@ -7,6 +7,7 @@
 #include <numeric_sample.h>
 #include <os_battery_health.h>
 #include <parquet_writer.h>
+#include <string_view>
 #include <sync_service.h>
 
 namespace opensensor::gnss {
@@ -182,4 +183,13 @@ struct ClockView {
   const char *source_name = "none";
 };
 ClockView clock_view();
+// Logging state for a board screen (#165). `stopped` is empty while rows reach
+// the card, else the reason from logging_stopped_reason. `dropped` counts rows
+// lost since boot, as STATUS "d". Call from the task that called begin().
+struct LoggingView {
+  std::string_view stopped = "not started";
+  const char *sd_state = "retry";
+  std::uint32_t dropped = 0;
+};
+LoggingView logging_view();
 } // namespace oslogger

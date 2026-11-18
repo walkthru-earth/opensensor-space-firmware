@@ -76,7 +76,6 @@ plantower::Parser pms_parser{plantower::Model::Pmsa003};
 PmsFrame latest_pms_frame{};
 bool has_pms_frame = false;
 bool sd_mounted = false;
-std::uint32_t latest_pms_ms = 0;
 std::int64_t latest_pms_mono_us = 0;
 std::uint32_t pms_frame_count = 0;
 std::uint32_t last_display_ms = 0;
@@ -418,7 +417,6 @@ bool start_pms() {
         break;
       if (pms_parser.push(static_cast<std::uint8_t>(value), latest_pms_frame)) {
         has_pms_frame = true;
-        latest_pms_ms = monotonic_ms();
         latest_pms_mono_us = esp_timer_get_time();
         ++pms_frame_count;
         received = true;
@@ -465,32 +463,42 @@ void poll_pms() {
       continue;
     }
     has_pms_frame = true;
-    latest_pms_ms = monotonic_ms();
     latest_pms_mono_us = esp_timer_get_time();
     ++pms_frame_count;
   }
 }
 
+// The row's status rule, so the screen and MEAS never show as valid a value
+// the row nulls (#165).
+constexpr std::int32_t kPmsValid = 4;
+telemetry::PmsReading pms_reading() {
+  return telemetry::pms_reading(has_pms_frame, esp_timer_get_time(),
+                                latest_pms_mono_us,
+                                latest_pms_frame.sensor_error);
+}
+
 void print_periodic_pms() {
+  // Before the first frame the status is missing. Frame age and values stay
+  // out of the line until a frame arrives.
+  const auto reading = pms_reading();
   if (!has_pms_frame) {
-    oslog.printf(
-        "MEAS pmsa003 values_valid=false interval_ms=%lu checksum_failures=%lu "
-        "length_failures=%lu\n",
-        static_cast<unsigned long>(kDisplayIntervalMs),
-        static_cast<unsigned long>(pms_parser.checksum_failures()),
-        static_cast<unsigned long>(pms_parser.length_failures()));
+    oslog.printf("MEAS pmsa003 values_valid=false status=%s interval_ms=%lu "
+                 "checksum_failures=%lu length_failures=%lu\n",
+                 reading.name, static_cast<unsigned long>(kDisplayIntervalMs),
+                 static_cast<unsigned long>(pms_parser.checksum_failures()),
+                 static_cast<unsigned long>(pms_parser.length_failures()));
     return;
   }
 
   oslog.printf(
-      "MEAS pmsa003 values_valid=%s sensor_error=%u frame_age_ms=%lu "
+      "MEAS pmsa003 values_valid=%s status=%s sensor_error=%u "
+      "frame_age_ms=%lu "
       "atmospheric_pm1_ug_m3=%u atmospheric_pm25_ug_m3=%u "
       "atmospheric_pm10_ug_m3=%u cf1_pm1_ug_m3=%u cf1_pm25_ug_m3=%u "
       "cf1_pm10_ug_m3=%u counts_per_0_1l=%u,%u,%u,%u,%u,%u frames=%lu "
       "checksum_failures=%lu length_failures=%lu\n",
-      latest_pms_frame.sensor_error == 0 ? "true" : "false",
-      latest_pms_frame.sensor_error,
-      static_cast<unsigned long>(monotonic_ms() - latest_pms_ms),
+      reading.status == kPmsValid ? "true" : "false", reading.name,
+      latest_pms_frame.sensor_error, static_cast<unsigned long>(reading.age_ms),
       latest_pms_frame.atmospheric_pm1, latest_pms_frame.atmospheric_pm25,
       latest_pms_frame.atmospheric_pm10, latest_pms_frame.cf1_pm1,
       latest_pms_frame.cf1_pm25, latest_pms_frame.cf1_pm10,
@@ -569,18 +577,28 @@ void draw_screen_footer() {
   M5.Display.print("Swipe up/down or tap for pages");
 }
 
-void draw_waiting_for_pms() {
+// The PM pages show no number unless the row would store it (#165).
+void draw_pms_not_valid(const telemetry::PmsReading &reading) {
   M5.Display.setTextSize(2);
   M5.Display.setCursor(8, 48);
-  M5.Display.print("Waiting for a valid frame");
+  M5.Display.print(reading.status == 1   ? "Sensor warming up"
+                   : reading.status == 2 ? "No recent frame"
+                   : reading.status == 3 ? "Sensor reports an error"
+                                         : "Waiting for a valid frame");
   M5.Display.setTextSize(1);
-  M5.Display.setCursor(8, 78);
+  if (has_pms_frame) {
+    M5.Display.setCursor(8, 78);
+    M5.Display.printf("Status %s, frame %lu s ago, error %u", reading.name,
+                      static_cast<unsigned long>(reading.age_ms / 1000),
+                      latest_pms_frame.sensor_error);
+  }
+  M5.Display.setCursor(8, 94);
   M5.Display.printf("CRC failures: %lu  length failures: %lu",
                     static_cast<unsigned long>(pms_parser.checksum_failures()),
                     static_cast<unsigned long>(pms_parser.length_failures()));
 }
 
-void draw_mass_page() {
+void draw_mass_page(const telemetry::PmsReading &reading) {
   M5.Display.setTextSize(1);
   M5.Display.setCursor(8, 31);
   M5.Display.print("Mass concentration in ug/m3");
@@ -597,12 +615,11 @@ void draw_mass_page() {
 
   M5.Display.setTextSize(1);
   M5.Display.setCursor(8, 171);
-  M5.Display.printf("Status: %s  sensor error=%u",
-                    latest_pms_frame.sensor_error == 0 ? "valid" : "sensor",
+  M5.Display.printf("Status: %s  sensor error=%u", reading.name,
                     latest_pms_frame.sensor_error);
   M5.Display.setCursor(8, 187);
   M5.Display.printf("Latest frame: %lu ms ago  sensor FW: %u",
-                    static_cast<unsigned long>(monotonic_ms() - latest_pms_ms),
+                    static_cast<unsigned long>(reading.age_ms),
                     latest_pms_frame.firmware_version);
   M5.Display.setCursor(8, 203);
   M5.Display.printf("Display and serial refresh every %lu s",
@@ -625,7 +642,7 @@ void draw_count_pair(const char *left_label, std::uint16_t left_value,
   M5.Display.printf("%u", right_value);
 }
 
-void draw_counts_page() {
+void draw_counts_page(const telemetry::PmsReading &reading) {
   M5.Display.setTextSize(1);
   M5.Display.setCursor(8, 31);
   M5.Display.print("Cumulative particle counts per 0.1 L");
@@ -646,13 +663,25 @@ void draw_counts_page() {
   M5.Display.printf("Sensor FW=%u  error=%u  age=%lu ms",
                     latest_pms_frame.firmware_version,
                     latest_pms_frame.sensor_error,
-                    static_cast<unsigned long>(monotonic_ms() - latest_pms_ms));
+                    static_cast<unsigned long>(reading.age_ms));
 }
 
 void draw_device_page() {
   M5.Display.setTextSize(1);
   M5.Display.setCursor(8, 35);
-  M5.Display.printf("SD card: %s", sd_mounted ? "mounted" : "not mounted");
+  // Live from the logger, not the boot mount result (#165).
+  const auto logging = oslogger::logging_view();
+  if (logging.stopped.empty()) {
+    M5.Display.printf("Logging on, rows dropped %lu",
+                      static_cast<unsigned long>(logging.dropped));
+  } else {
+    M5.Display.setTextColor(TFT_RED, TFT_BLACK);
+    M5.Display.printf("Logging off, %.*s, dropped %lu",
+                      static_cast<int>(logging.stopped.size()),
+                      logging.stopped.data(),
+                      static_cast<unsigned long>(logging.dropped));
+    M5.Display.setTextColor(TFT_WHITE, TFT_BLACK);
+  }
   M5.Display.setCursor(8, 55);
   M5.Display.printf("VBUS: %d mV", static_cast<int>(M5.Power.getVBUSVoltage()));
   M5.Display.setCursor(168, 55);
@@ -799,12 +828,13 @@ void show_pms_screen() {
       "PM mass", "Particle counts", "Device health", "Bluetooth"};
   draw_screen_header(titles[screen_page]);
 
-  if (!has_pms_frame && screen_page < 2) {
-    draw_waiting_for_pms();
+  const auto reading = pms_reading();
+  if (reading.status != kPmsValid && screen_page < 2) {
+    draw_pms_not_valid(reading);
   } else if (screen_page == 0) {
-    draw_mass_page();
+    draw_mass_page(reading);
   } else if (screen_page == 1) {
-    draw_counts_page();
+    draw_counts_page(reading);
   } else if (screen_page == 2) {
     draw_device_page();
   } else {
@@ -903,7 +933,9 @@ static void board_begin() {
   sd_mounted = report_sd();
   report_dma_memory("sd-mounted");
   start_pms();
-  telemetry::begin_logger(sd_mounted);
+  // os_logger prints the cause. The device page shows "not started".
+  if (!telemetry::begin_logger(sd_mounted))
+    oslog.println("DIAG logger status=start_failed logging=false");
   if (kEnableBle) {
     ble_started = telemetry::start_links(M5.getDisplayCount() > 0);
     last_ble_ui_generation = ble::ui_generation() + lan::ui_generation();
@@ -919,7 +951,6 @@ static void board_poll() {
   poll_pms();
   telemetry::PmsSnapshot sample;
   sample.present = has_pms_frame;
-  sample.age_ms = monotonic_ms() - latest_pms_ms;
   sample.received_mono_us = latest_pms_mono_us;
   sample.frames = pms_frame_count;
   sample.checksum_errors = pms_parser.checksum_failures();
