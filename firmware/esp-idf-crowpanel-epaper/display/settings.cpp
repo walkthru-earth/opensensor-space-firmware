@@ -76,10 +76,10 @@ template <typename E, std::size_t N>
 [[nodiscard]] std::optional<E>
 choice_of(const std::array<std::string_view, N> &names,
           std::string_view value) {
-  for (std::size_t i = 0; i < N; ++i)
-    if (names[i] == value)
-      return static_cast<E>(i);
-  return std::nullopt;
+  const auto it = std::ranges::find(names, value);
+  if (it == names.end())
+    return std::nullopt;
+  return static_cast<E>(it - names.begin());
 }
 
 template <typename E, std::size_t N>

@@ -983,7 +983,7 @@ void restore_owner(const OwnerSettings &previous) {
 struct RequestRecords {
   const Settings &previous;
   const Settings &next;
-  bool settings_touched; // the request carried a `cfg` key
+  bool settings_touched = false; // the request carried a `cfg` key
   const OwnerSettings &previous_owner;
   const OwnerSettings &next_owner;
   const SetupRecord &previous_setup;
