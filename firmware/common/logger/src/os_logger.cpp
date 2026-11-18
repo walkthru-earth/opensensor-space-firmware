@@ -1653,18 +1653,20 @@ const char *clock_source_name(std::int32_t source) {
   return opensensor::utc::source_name(source);
 }
 
-// Shared by `parquet time`, the BLE/LAN SET_TIME op and the boot-time RTC
-// seed. False for a bad epoch (before 2020 or after 2100, which also rejects
-// an RTC that was never written). Initial UTC, RTC upgrades and corrections
-// larger than two seconds start a new epoch; small refreshes keep the current
-// file. Captured rows keep their timestamps and exact anchors. `skew_ns`
-// receives new minus old estimate of the same monotonic instant, i.e. how far
-// the previous clock (RTC or earlier host) had drifted from this host.
+// Shared by `parquet time`, the BLE/LAN SET_TIME op, the network anchor and
+// the boot-time RTC seed. False for a bad epoch (before the source floor of
+// utc_clock.h or after 2100, which also rejects an RTC that was never
+// written). A move of more than a day against the current anchor is taken
+// but logged and kept out of the RTC (#173). Initial UTC, RTC upgrades and
+// corrections larger than two seconds start a new epoch; small refreshes keep
+// the current file. Captured rows keep their timestamps and exact anchors.
+// `skew_ns` receives new minus old estimate of the same monotonic instant, i.e.
+// how far the previous clock (RTC or earlier host) had drifted from this host.
 bool set_clock(std::int64_t seconds, std::int64_t mono, std::int32_t source,
                std::int64_t *skew_ns = nullptr,
                std::int32_t *previous = nullptr,
                std::uint32_t subsecond_us = 0) {
-  if (!opensensor::utc::supported_anchor(seconds, subsecond_us))
+  if (!opensensor::utc::accepted_anchor(seconds, subsecond_us))
     return false;
   const std::int64_t utc_ns = opensensor::utc::anchor_ns(seconds, subsecond_us);
   portENTER_CRITICAL(&clock_mutex);
@@ -1683,7 +1685,14 @@ bool set_clock(std::int64_t seconds, std::int64_t mono, std::int32_t source,
   if (opensensor::utc::starts_new_epoch(previous_source, source, skew))
     ++clock_generation;
   portEXIT_CRITICAL(&clock_mutex);
-  if (source == kClockHost || source == opensensor::utc::Network) {
+  if (opensensor::utc::clock_jump(previous_source, skew)) {
+    // A write still pending would copy this anchor, so drop it too.
+    rtc_write_pending = false;
+    oslog.printf("PARQUET CLOCK jump=true previous=%s source=%s skew_s=%lld "
+                 "rtc=kept\n",
+                 clock_source_name(previous_source), clock_source_name(source),
+                 static_cast<long long>(skew / 1000000000));
+  } else if (opensensor::utc::saves_to_rtc(previous_source, source, skew)) {
     rtc_write_requested_us = mono;
     rtc_write_pending = true;
   }
