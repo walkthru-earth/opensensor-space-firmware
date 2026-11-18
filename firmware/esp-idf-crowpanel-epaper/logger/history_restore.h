@@ -10,11 +10,14 @@
 // before finalize) and every other non ".parquet" entry are skipped.
 //
 // Boot order. Monotonic time restarts at 0 each boot and the board has no
-// RTC, so the only cross boot order on the card is the ring (append order of
-// boots whose first file was unsynced) and the UTC in dated folder and file
-// names. Ring boots keep ring order, dated boots keep UTC order, and a boot
-// that is in both bridges the two. A boot whose place between the two
-// families cannot be proven ends the restore there, older boots stay out.
+// RTC, so the proven cross boot order on the card is the ring (append order
+// of boots whose first file was unsynced) and the UTC in dated folder and
+// file names. Ring boots keep ring order, dated boots keep UTC order, and a
+// boot that is in both bridges the two. Where that proves nothing, the
+// sd_used_bytes footer bounds decide, since card usage only grows while the
+// firmware never deletes files. A boot that still cannot be placed ends the
+// restore there, older boots stay out. A ring boot with no finalized file
+// is left out. The pure ordering is in restore_order.h.
 //
 // Budget. At most 24 h of rows in total, newest boot first, each boot's
 // newest rows first, a restart point between boots. About 8 s at most, the

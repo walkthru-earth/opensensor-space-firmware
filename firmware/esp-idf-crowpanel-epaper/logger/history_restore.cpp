@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -28,6 +29,8 @@
 #include <parquet_columns.h>
 #include <parquet_reader.h>
 
+#include "restore_order.h"
+
 namespace opensensor::crowpanel {
 namespace {
 
@@ -38,13 +41,16 @@ using ui::kMetricCount;
 
 constexpr std::uint32_t kBudgetS = 24 * 60 * 60;
 constexpr std::int64_t kDeadlineUs = 8'000'000;
+// The used bytes fallback reads footers for at most half the deadline, so
+// rows can still be read after it.
+constexpr std::int64_t kStatsUs = kDeadlineUs / 2;
 // 24 h at the board's 10 s cadence.
 constexpr std::size_t kMaxRows = kBudgetS / 10;
 // The largest file the writer makes, kMaxRowGroups groups of at most
 // kMaxBatchRows rows.
 constexpr std::size_t kFileRows =
     telemetry::kMaxRowGroups * oslogger::cadence::kMaxBatchRows;
-constexpr std::size_t kMaxBoots = 64;
+constexpr std::size_t kMaxBoots = restore_order::kMaxBoots;
 constexpr std::size_t kMaxSeeded = 32;
 // 24 h at the shortest 600 s rotation is 144 files.
 constexpr std::size_t kMaxBootFiles = 160;
@@ -121,19 +127,26 @@ enum class [[nodiscard]] FileError : std::uint8_t {
   Open,
   Footer,
   Shape,
-  Column
-};
-
-struct Boot {
-  BootId id{};
-  int ring_age = -1;         // Higher is newer, -1 when not in the ring.
-  std::uint64_t utc_key = 0; // YYYYMMDDHHMM of its newest dated file, or 0.
+  Column,
+  Stats
 };
 
 struct FileRef {
   std::int64_t first = 0;
   std::uint8_t dir = 0; // 0 unsynced folder, 1 + i day folder i.
   std::array<char, kNameBytes> name{};
+};
+
+struct Boot {
+  BootId id{};
+  int ring_age = -1;         // Higher is newer, -1 when not in the ring.
+  std::uint64_t utc_key = 0; // YYYYMMDDHHMM of its newest dated file, or 0.
+  // Its oldest and newest finalized file seen, for the used bytes fallback.
+  unsigned files = 0;
+  bool complete = true; // false when a listing of its files was cut short
+  FileRef oldest{};
+  FileRef newest{};
+  std::optional<restore_order::UsedRange> used;
 };
 
 struct Row {
@@ -155,16 +168,24 @@ struct Workspace {
   std::array<Row, kMaxRows> rows{};
   std::array<Boot, kMaxBoots> boots{};
   std::size_t boot_count = 0;
-  std::array<std::uint8_t, kMaxBoots> ring_order{};  // newest first
-  std::array<std::uint8_t, kMaxBoots> dated_order{}; // newest first
-  std::array<std::uint64_t, kMaxBoots> older_max{};
-  std::array<std::uint64_t, kMaxBoots> newer_min{};
+  std::array<restore_order::BootKey, kMaxBoots> keys{};
+  // keys[i] is boots[key_boot[i]], boots with no finalized file have no key.
+  std::array<std::uint8_t, kMaxBoots> key_boot{};
+  restore_order::Scratch scratch{};
   std::array<std::uint8_t, kMaxSeeded> order{}; // newest first
   std::array<std::size_t, kMaxSeeded> starts{}; // first row of each boot
   std::array<FileRef, kMaxBootFiles> files{};
   std::array<std::uint32_t, kDays> days{}; // YYYYMMDD, newest first, 0 none
   std::array<char, kPathBytes> root{};
   std::array<char, kPathBytes> path{};
+};
+
+// What the card held, logged on both OS HISTORY lines.
+struct Seen {
+  unsigned ring_boots = 0;  // boots of the NVS ring
+  unsigned dated_boots = 0; // boots with only dated files
+  unsigned placed = 0;      // boots the order placed
+  unsigned fallback = 0;    // placements decided by used bytes
 };
 
 struct Summary {
@@ -178,8 +199,14 @@ struct Summary {
 
 class Deadline {
 public:
-  explicit Deadline(std::int64_t start) : end_(start + kDeadlineUs) {}
+  Deadline(std::int64_t start, std::int64_t length) : end_(start + length) {}
   [[nodiscard]] bool expired() const { return esp_timer_get_time() >= end_; }
+  // This deadline or `length` from now, whichever comes first.
+  [[nodiscard]] Deadline within(std::int64_t length) const {
+    Deadline out = *this;
+    out.end_ = std::min(end_, esp_timer_get_time() + length);
+    return out;
+  }
 
 private:
   std::int64_t end_;
@@ -333,6 +360,17 @@ bool unsynced_path(const Workspace &ws, const BootId &boot,
   return format_path(out, "%s/unsynced/boot=%s", ws.root.data(), hex.data());
 }
 
+Boot new_boot(const BootId &id, int ring_age, std::uint64_t utc_key) {
+  return {.id = id,
+          .ring_age = ring_age,
+          .utc_key = utc_key,
+          .files = 0,
+          .complete = true,
+          .oldest = {},
+          .newest = {},
+          .used = std::nullopt};
+}
+
 Boot *find_boot(Workspace &ws, const BootId &id) {
   for (std::size_t i = 0; i < ws.boot_count; ++i)
     if (ws.boots[i].id == id)
@@ -340,82 +378,77 @@ Boot *find_boot(Workspace &ws, const BootId &id) {
   return nullptr;
 }
 
+// Keeps the oldest and newest file of `boot` seen so far.
+void note_file(Boot &boot, std::string_view name, std::int64_t first,
+               std::uint8_t dir) {
+  if (name.size() >= kNameBytes)
+    return;
+  const auto set = [&](FileRef &ref) {
+    ref = {.first = first, .dir = dir, .name = {}};
+    std::copy(name.begin(), name.end(), ref.name.begin());
+  };
+  if (boot.files == 0 || first < boot.oldest.first)
+    set(boot.oldest);
+  if (boot.files == 0 || first > boot.newest.first)
+    set(boot.newest);
+  ++boot.files;
+}
+
 // A dated file of `id` that starts at `key`. When the table is full the
 // dated only boot with the oldest key gives way to a newer one.
-void note_dated(Workspace &ws, const BootId &id, std::uint64_t key) {
-  if (Boot *boot = find_boot(ws, id)) {
-    boot->utc_key = std::max(boot->utc_key, key);
-    return;
+void note_dated(Workspace &ws, const BootId &id, std::uint64_t key,
+                std::string_view name, std::int64_t first, std::uint8_t dir) {
+  Boot *boot = find_boot(ws, id);
+  if (!boot && ws.boot_count < ws.boots.size()) {
+    boot = &ws.boots[ws.boot_count++];
+    *boot = new_boot(id, -1, key);
   }
-  if (ws.boot_count < ws.boots.size()) {
-    ws.boots[ws.boot_count++] = {.id = id, .ring_age = -1, .utc_key = key};
-    return;
+  if (!boot) {
+    Boot *oldest = nullptr;
+    for (std::size_t i = 0; i < ws.boot_count; ++i)
+      if (ws.boots[i].ring_age < 0 &&
+          (!oldest || ws.boots[i].utc_key < oldest->utc_key))
+        oldest = &ws.boots[i];
+    if (!oldest || oldest->utc_key >= key)
+      return;
+    boot = oldest;
+    *boot = new_boot(id, -1, key);
   }
-  Boot *oldest = nullptr;
-  for (std::size_t i = 0; i < ws.boot_count; ++i)
-    if (ws.boots[i].ring_age < 0 &&
-        (!oldest || ws.boots[i].utc_key < oldest->utc_key))
-      oldest = &ws.boots[i];
-  if (oldest && oldest->utc_key < key)
-    *oldest = {.id = id, .ring_age = -1, .utc_key = key};
+  boot->utc_key = std::max(boot->utc_key, key);
+  note_file(*boot, name, first, dir);
 }
 
 void scan_dated(Workspace &ws, const Deadline &deadline) {
-  for (const std::uint32_t day : ws.days) {
+  for (std::size_t i = 0; i < kDays; ++i) {
+    const std::uint32_t day = ws.days[i];
     if (!day || !day_path(ws, day, ws.path))
       continue;
     list_directory(ws.path.data(), [&](std::string_view name) {
       if (const auto file = parse_file_name(name); file && file->hhmm)
-        note_dated(ws, file->boot, std::uint64_t{day} * 10000 + *file->hhmm);
+        note_dated(ws, file->boot, std::uint64_t{day} * 10000 + *file->hhmm,
+                   name, file->first, static_cast<std::uint8_t>(1 + i));
       return !deadline.expired();
     });
   }
 }
 
-// Orders the boots newest first into ws.order. Ring boots keep ring order
-// and dated only boots keep UTC order. Between the two families a boot is
-// placed only when a ring boot with a dated file proves the order, the first
-// boot that cannot be placed ends the list. Returns the count and whether an
-// unplaced boot ended it.
-std::pair<std::size_t, bool> order_boots(Workspace &ws) {
-  std::size_t rings = 0, dated = 0;
-  for (std::size_t i = 0; i < ws.boot_count; ++i)
-    (ws.boots[i].ring_age >= 0 ? ws.ring_order[rings++]
-                               : ws.dated_order[dated++]) =
-        static_cast<std::uint8_t>(i);
-  std::sort(ws.ring_order.begin(), ws.ring_order.begin() + rings,
-            [&](std::uint8_t a, std::uint8_t b) {
-              return ws.boots[a].ring_age > ws.boots[b].ring_age;
-            });
-  std::sort(ws.dated_order.begin(), ws.dated_order.begin() + dated,
-            [&](std::uint8_t a, std::uint8_t b) {
-              return ws.boots[a].utc_key > ws.boots[b].utc_key;
-            });
-  // older_max[i], the newest dated file of ring boot i or any older one.
-  // newer_min[i], the oldest dated key of ring boot i or any newer one.
-  for (std::size_t k = rings; k-- > 0;) {
-    const std::uint64_t key = ws.boots[ws.ring_order[k]].utc_key;
-    ws.older_max[k] = std::max(key, k + 1 < rings ? ws.older_max[k + 1] : 0);
+// The unsynced files of every ring boot. A ring boot with no finalized file
+// anywhere (a reset before its first rotation leaves only a ".partial")
+// adds no rows, so the order leaves it out instead of stopping at it.
+void scan_unsynced(Workspace &ws, const Deadline &deadline) {
+  for (std::size_t i = 0; i < ws.boot_count; ++i) {
+    Boot &boot = ws.boots[i];
+    if (boot.ring_age < 0 || !unsynced_path(ws, boot.id, ws.path))
+      continue;
+    list_directory(ws.path.data(), [&](std::string_view name) {
+      if (const auto file = parse_file_name(name);
+          file && !file->hhmm && file->boot == boot.id)
+        note_file(boot, name, file->first, 0);
+      return !deadline.expired();
+    });
+    if (deadline.expired())
+      boot.complete = false;
   }
-  for (std::size_t k = 0; k < rings; ++k) {
-    const std::uint64_t key = ws.boots[ws.ring_order[k]].utc_key;
-    const std::uint64_t before = k ? ws.newer_min[k - 1] : 0;
-    ws.newer_min[k] = !key ? before : before ? std::min(before, key) : key;
-  }
-  std::size_t count = 0, r = 0, d = 0;
-  while (count < ws.order.size() && (r < rings || d < dated)) {
-    bool ring_next = d == dated;
-    if (r < rings && d < dated) {
-      const std::uint64_t key = ws.boots[ws.dated_order[d]].utc_key;
-      const bool ring_newer = ws.older_max[r] > key;
-      const bool dated_newer = ws.newer_min[r] && ws.newer_min[r] < key;
-      if (ring_newer == dated_newer)
-        return {count, true};
-      ring_next = ring_newer;
-    }
-    ws.order[count++] = ring_next ? ws.ring_order[r++] : ws.dated_order[d++];
-  }
-  return {count, false};
 }
 
 // The newest kMaxBootFiles finalized files of one boot, newest first.
@@ -509,10 +542,9 @@ float as_float(const Workspace &ws, telemetry::PhysicalType type,
   }
 }
 
-// Decodes the monotonic time and chart metrics of one file into
-// ws.file_rows, in file order. A missing metric column reads as NaN.
-std::expected<std::size_t, FileError> read_file(Workspace &ws) {
-  Source source{.fd = ::open(ws.path.data(), O_RDONLY)};
+// Opens ws.path into `source` and decodes its footer into ws.summary.
+std::expected<void, FileError> open_footer(Workspace &ws, Source &source) {
+  source.fd = ::open(ws.path.data(), O_RDONLY);
   struct stat info{};
   if (source.fd < 0 || ::fstat(source.fd, &info) != 0 || info.st_size <= 0)
     return std::unexpected(FileError::Open);
@@ -521,6 +553,112 @@ std::expected<std::size_t, FileError> read_file(Workspace &ws) {
       ws.footer.data(), ws.footer.size(), ws.summary);
   if (!footer.ok)
     return std::unexpected(FileError::Footer);
+  return {};
+}
+
+// The card used bytes over one file, from the sd_used_bytes chunk bounds in
+// its footer. No page is read.
+std::expected<restore_order::UsedRange, FileError>
+used_range(Workspace &ws, const Boot &boot, const FileRef &file) {
+  if (!file_path(ws, boot, file))
+    return std::unexpected(FileError::Open);
+  Source source;
+  if (const auto opened = open_footer(ws, source); !opened)
+    return std::unexpected(opened.error());
+  const auto column = telemetry::find_column(ws.summary, "sd_used_bytes");
+  if (!column ||
+      ws.summary.columns[*column].type != telemetry::PhysicalType::Int64)
+    return std::unexpected(FileError::Column);
+  std::optional<restore_order::UsedRange> range;
+  for (std::size_t g = 0; g < ws.summary.row_group_count; ++g) {
+    const auto &chunk = ws.summary.row_groups[g].columns[*column];
+    if (!chunk.has_bounds)
+      continue;
+    // PLAIN little endian INT64 bits, as the reader decoded them.
+    const auto low = std::bit_cast<std::int64_t>(chunk.min);
+    const auto high = std::bit_cast<std::int64_t>(chunk.max);
+    if (!range)
+      range = restore_order::UsedRange{.min = low, .max = high};
+    range->min = std::min(range->min, low);
+    range->max = std::max(range->max, high);
+  }
+  if (!range)
+    return std::unexpected(FileError::Stats);
+  return *range;
+}
+
+// The used bytes of one boot, the smallest of its oldest file and the
+// largest of its newest file. Unset when either footer has no bounds.
+void load_used(Workspace &ws, Boot &boot) {
+  if (boot.files == 0)
+    return;
+  const auto oldest = used_range(ws, boot, boot.oldest);
+  if (!oldest)
+    return;
+  if (boot.oldest.first == boot.newest.first) {
+    boot.used = *oldest;
+    return;
+  }
+  const auto newest = used_range(ws, boot, boot.newest);
+  if (newest)
+    boot.used =
+        restore_order::UsedRange{.min = oldest->min, .max = newest->max};
+}
+
+// Orders the boots newest first into ws.order, see restore_order.h. Boots
+// with no finalized file are left out. The used bytes footers are read only
+// when the proofs alone stop early, newest boots of each family first.
+restore_order::Result order_boots(Workspace &ws, const Deadline &deadline,
+                                  Seen &seen) {
+  std::size_t count = 0;
+  for (std::size_t i = 0; i < ws.boot_count; ++i) {
+    const Boot &boot = ws.boots[i];
+    (boot.ring_age >= 0 ? seen.ring_boots : seen.dated_boots) += 1;
+    if (boot.files == 0 && boot.complete)
+      continue;
+    ws.keys[count] = {.ring_age = boot.ring_age,
+                      .utc_key = boot.utc_key,
+                      .used = std::nullopt};
+    ws.key_boot[count++] = static_cast<std::uint8_t>(i);
+  }
+  const std::span<const restore_order::BootKey> keys{ws.keys.data(), count};
+  auto result = restore_order::order(keys, ws.order, ws.scratch);
+  if (result.cut) {
+    // After order(), scratch.ring and scratch.dated list each family newest
+    // first, so a short stats deadline still covers the newest boots.
+    std::size_t rings = 0;
+    for (std::size_t i = 0; i < count; ++i)
+      rings += ws.keys[i].ring_age >= 0 ? 1 : 0;
+    const std::size_t dated = count - rings;
+    const Deadline stats = deadline.within(kStatsUs);
+    for (std::size_t k = 0; k < std::max(rings, dated) && !stats.expired(); ++k)
+      for (const bool ring : {true, false}) {
+        if (k >= (ring ? rings : dated))
+          continue;
+        vTaskDelay(1); // let the idle tasks feed the task watchdog
+        if (stats.expired())
+          break;
+        const std::uint8_t key =
+            ring ? ws.scratch.ring[k] : ws.scratch.dated[k];
+        Boot &boot = ws.boots[ws.key_boot[key]];
+        load_used(ws, boot);
+        ws.keys[key].used = boot.used;
+      }
+    result = restore_order::order(keys, ws.order, ws.scratch);
+  }
+  for (std::size_t k = 0; k < result.count; ++k)
+    ws.order[k] = ws.key_boot[ws.order[k]];
+  seen.placed = static_cast<unsigned>(result.count);
+  seen.fallback = static_cast<unsigned>(result.fallback);
+  return result;
+}
+
+// Decodes the monotonic time and chart metrics of one file into
+// ws.file_rows, in file order. A missing metric column reads as NaN.
+std::expected<std::size_t, FileError> read_file(Workspace &ws) {
+  Source source;
+  if (const auto opened = open_footer(ws, source); !opened)
+    return std::unexpected(opened.error());
   const auto mono = telemetry::find_column(ws.summary, "monotonic_us");
   if (!mono ||
       ws.summary.columns[*mono].type != telemetry::PhysicalType::Int64 ||
@@ -651,7 +789,7 @@ Summary read_boots(Workspace &ws, std::size_t ordered,
 
 std::expected<Summary, Reason> restore(Workspace &ws, History &history,
                                        const char *output_directory,
-                                       const Deadline &deadline) {
+                                       const Deadline &deadline, Seen &seen) {
   std::array<char, kThingBytes> thing{};
   std::optional<list_since::Ring> ring;
   if (!read_identity(thing, ring))
@@ -664,18 +802,18 @@ std::expected<Summary, Reason> restore(Workspace &ws, History &history,
       if (list_since::is_zero(id) || id == list_since::kUnknownBoot ||
           find_boot(ws, id))
         continue;
-      ws.boots[ws.boot_count++] = {
-          .id = id, .ring_age = static_cast<int>(age), .utc_key = 0};
+      ws.boots[ws.boot_count++] = new_boot(id, static_cast<int>(age), 0);
     }
   find_days(ws);
   scan_dated(ws, deadline);
+  scan_unsynced(ws, deadline);
   if (ws.boot_count == 0)
     return std::unexpected(Reason::NoBoots);
-  const auto [ordered, unplaced] = order_boots(ws);
-  if (ordered == 0)
-    return std::unexpected(Reason::Order);
-  Summary summary = read_boots(ws, ordered, deadline);
-  if (summary.cut == Cut::None && unplaced)
+  const auto ordered = order_boots(ws, deadline, seen);
+  if (ordered.count == 0)
+    return std::unexpected(ordered.cut ? Reason::Order : Reason::NoRows);
+  Summary summary = read_boots(ws, ordered.count, deadline);
+  if (summary.cut == Cut::None && ordered.cut)
     summary.cut = Cut::Order;
   if (summary.rows == 0)
     return std::unexpected(summary.cut == Cut::Deadline ? Reason::Deadline
@@ -694,28 +832,33 @@ std::expected<Summary, Reason> restore(Workspace &ws, History &history,
 
 void restore_history(History &history, const char *output_directory) {
   const std::int64_t started = esp_timer_get_time();
-  const Deadline deadline{started};
+  const Deadline deadline{started, kDeadlineUs};
   void *memory = heap_caps_malloc(sizeof(Workspace), MALLOC_CAP_SPIRAM);
   std::expected<Summary, Reason> result = std::unexpected(Reason::Memory);
+  Seen seen;
   if (memory) {
     auto *ws = new (memory) Workspace();
-    result = restore(*ws, history, output_directory, deadline);
+    result = restore(*ws, history, output_directory, deadline, seen);
     ws->~Workspace();
     heap_caps_free(memory);
   }
   const auto ms =
       static_cast<unsigned long>((esp_timer_get_time() - started) / 1000);
   if (!result) {
-    oslog.printf("OS HISTORY restore=none reason=%s ms=%lu\n",
-                 reason_name(result.error()), ms);
+    oslog.printf("OS HISTORY restore=none reason=%s ms=%lu ring_boots=%u "
+                 "dated_boots=%u placed=%u fallback=%u\n",
+                 reason_name(result.error()), ms, seen.ring_boots,
+                 seen.dated_boots, seen.placed, seen.fallback);
     return;
   }
   oslog.printf("OS HISTORY restored boots=%u files=%u rows=%u span_s=%lu "
-               "ms=%lu skipped=%u cut=%s\n",
+               "ms=%lu skipped=%u cut=%s ring_boots=%u dated_boots=%u "
+               "placed=%u fallback=%u\n",
                result->boots, result->files,
                static_cast<unsigned>(result->rows),
                static_cast<unsigned long>(result->span_s), ms, result->skipped,
-               cut_name(result->cut));
+               cut_name(result->cut), seen.ring_boots, seen.dated_boots,
+               seen.placed, seen.fallback);
 }
 
 } // namespace opensensor::crowpanel
