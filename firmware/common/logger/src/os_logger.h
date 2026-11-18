@@ -124,6 +124,12 @@ struct Hooks {
   // freed on a PC becomes visible. Called by the storage worker with the bus
   // lock held and no file open. Never formats. Returns true when mounted.
   bool (*storage_remount)(void *) = nullptr;
+  // Optional. True when the mounted card still answers its status command
+  // (SD CMD13). The storage worker calls it with the bus lock held about
+  // every storage::kPresenceSeconds while the card may take rows. False is a
+  // write failure, so a pulled card goes to Retry before the next batch
+  // commit. Must not touch the filesystem.
+  bool (*storage_present)(void *) = nullptr;
   // Supply both or neither. Otherwise the engine owns its own bus mutex.
   void (*lock_bus)(void *) = nullptr;
   void (*unlock_bus)(void *) = nullptr;

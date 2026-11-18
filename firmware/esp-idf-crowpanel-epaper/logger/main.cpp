@@ -499,6 +499,7 @@ const oslogger::Hooks kHooks{
     .storage_cluster_bytes = [](void *) { return board::cluster_bytes(); },
     .storage_volume_serial = [](void *) { return board::volume_serial(); },
     .storage_remount = [](void *) { return board::remount_card(); },
+    .storage_present = [](void *) { return board::card_present(); },
 };
 
 bool logging = false;

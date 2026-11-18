@@ -2269,6 +2269,33 @@ void service_storage(std::size_t &count, bool &storage_ready,
   publish_storage(previous);
 }
 
+// In Ready the worker touches the card only at a batch commit, so a pulled
+// card would read as logging until then. The optional storage_present hook
+// asks the card for its status about every storage::kPresenceSeconds instead.
+// A failed answer is a write failure, so the Retry probe and remount path
+// takes over and STATUS and the screen show logging stopped.
+std::int64_t presence_checked = 0;
+void service_presence(bool storage_ready) {
+  if (!hooks.storage_present)
+    return;
+  const auto now = uptime_seconds();
+  const auto previous = governor.state();
+  if (!storage::presence_due(previous, storage_ready, now, presence_checked))
+    return;
+  presence_checked = now;
+  bool present;
+  {
+    BusLock lock;
+    present = hooks.storage_present(hooks.context);
+  }
+  if (present)
+    return;
+  ++errors;
+  oslog.println("PARQUET ERROR operation=card-status action=retry");
+  governor.write_failed(now);
+  publish_storage(previous);
+}
+
 // Explicit owner actions retry at once instead of waiting for the backoff.
 bool storage_writable(std::size_t &count, bool &storage_ready) {
   governor.request_probe();
@@ -2598,6 +2625,7 @@ void storage_worker(void *) {
       }
     }
     service_storage(count, storage_ready);
+    service_presence(storage_ready);
     // A recheck can resume without a probe write. A full batch would
     // otherwise drop every later sample. A failed commit leaves writable().
     if (count >= rows_per_group() && storage_ready && governor.writable())

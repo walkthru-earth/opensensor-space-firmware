@@ -95,6 +95,17 @@ constexpr bool remount_scans_partials(State previous, std::uint64_t free_bytes,
   return previous != State::Full || free_bytes >= t.reserve;
 }
 
+// While the card may take rows, the worker asks it for its status about
+// every kPresenceSeconds. A pulled card then leaves Ready before the next
+// batch commit, so the screen and STATUS stop saying it logs. Full and Retry
+// never ask, since their recheck and probe already touch the card.
+constexpr std::int64_t kPresenceSeconds = 5;
+constexpr bool presence_due(State state, bool storage_ready, std::int64_t now,
+                            std::int64_t last) {
+  return storage_ready && (state == State::Ready || state == State::Degraded) &&
+         now - last >= kPresenceSeconds;
+}
+
 // 10 s, 30 s, 60 s, then doubling to a 600 s cap.
 constexpr std::uint32_t backoff_seconds(std::uint32_t attempt) {
   if (attempt == 0)

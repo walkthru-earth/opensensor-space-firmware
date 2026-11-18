@@ -102,6 +102,7 @@ bool remount_card() {
 std::uint32_t cluster_bytes() {
   return opensensor::storage::fat_cluster_bytes(card);
 }
+bool card_present() { return opensensor::storage::card_answers(card); }
 std::uint32_t volume_serial() {
   return opensensor::storage::fat_volume_serial(card);
 }

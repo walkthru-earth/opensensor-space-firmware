@@ -51,6 +51,9 @@ bool remount_card();
 bool card_mounted();
 std::uint32_t cluster_bytes(); // 0 when unknown
 std::uint32_t volume_serial(); // FAT volume serial, 0 when unknown
+// Storage worker only, under the logger bus lock. False once the card stops
+// answering SD CMD13, as a pulled card does.
+bool card_present();
 bool storage_free_bytes(std::uint64_t &free_bytes);
 // Any task. The last value storage_free_bytes read, 0 before the first.
 std::uint64_t cached_free_bytes();
