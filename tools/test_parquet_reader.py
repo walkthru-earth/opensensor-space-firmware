@@ -1,4 +1,5 @@
-"""Checks for the bounded Parquet footer reader and its Iceberg DataFile metrics.
+"""Checks for the bounded Parquet footer reader, its Iceberg DataFile metrics and
+the column page decoder.
 
 Run with ``pixi run reader-test`` (ASan + UBSan) or
 ``pixi run python tools/test_parquet_reader.py``.
@@ -15,7 +16,13 @@ Run with ``pixi run reader-test`` (ASan + UBSan) or
    97 columns, 9 row groups, missing statistics and field ids, inconsistent
    counts and unsupported annotations. Every run has a timeout.
 3. A seeded mutation loop corrupts and truncates real footers.
-4. parquet_reader.cpp must compile with every stack frame under 1 KB.
+4. parquet_reader.cpp and parquet_columns.cpp must compile with every stack
+   frame under 1 KB.
+5. The page decoder (parquet_columns.h) reads every INT32, INT64 and FLOAT
+   column of the writer files and the plain PyArrow files back, and each row,
+   null and float bit pattern must match PyArrow and DuckDB. Dictionary pages,
+   ZSTD and DELTA_BINARY_PACKED are refused. Hand-built pages cover every
+   error, and a seeded loop corrupts and truncates real pages and chunks.
 """
 
 from __future__ import annotations
@@ -57,7 +64,8 @@ class Tools:
             base += ["-fsanitize=address,undefined", "-fno-sanitize-recover=all"]
         source = ROOT / "firmware/common/src"
         subprocess.run(base + [str(ROOT / "tools/parquet_reader_fixture.cpp"),
-                               str(source / "parquet_reader.cpp"), "-o", str(self.reader)], check=True)
+                               str(source / "parquet_reader.cpp"), str(source / "parquet_columns.cpp"),
+                               str(source / "lz4_codec.cpp"), "-o", str(self.reader)], check=True)
         self.geo = directory / "geo_fixture"
         common = ROOT / "firmware/common"
         includes = [arg for library in ("src", "runtime/src", "connectivity/src", "logger/src",
@@ -77,14 +85,22 @@ class Tools:
                                           f"rc={run.returncode} {run.stderr[-2000:]}")
         return json.loads(run.stdout)
 
+    def columns(self, path: Path) -> dict:
+        run = subprocess.run([str(self.reader), "columns", str(path)], capture_output=True, text=True,
+                             timeout=TIMEOUT)
+        require(run.returncode == 0, f"page decoder crashed on {path.name}: "
+                                     f"rc={run.returncode} {run.stderr[-2000:]}")
+        return json.loads(run.stdout)
+
 
 def check_stack() -> None:
     # Firmware tasks have small stacks; the reader may not grow them.
-    for level in ("-O0", "-O2", "-Os"):
-        subprocess.run(["clang++", CXX_STD, level, "-Wall", "-Wextra", "-Werror",
-                        "-Wframe-larger-than=1024", "-c", str(ROOT / "firmware/common/src/parquet_reader.cpp"),
-                        "-o", "/dev/null"], check=True)
-    print("PASS reader stack frames under 1024 bytes at -O0, -O2 and -Os", flush=True)
+    for source in ("parquet_reader.cpp", "parquet_columns.cpp"):
+        for level in ("-O0", "-O2", "-Os"):
+            subprocess.run(["clang++", CXX_STD, level, "-Wall", "-Wextra", "-Werror",
+                            "-Wframe-larger-than=1024", "-c", str(ROOT / "firmware/common/src" / source),
+                            "-o", "/dev/null"], check=True)
+    print("PASS reader and page decoder stack frames under 1024 bytes at -O0, -O2 and -Os", flush=True)
 
 
 # ---------------------------------------------------------------------------
@@ -234,6 +250,66 @@ def check_file(tools: Tools, path: Path, label: str) -> dict:
     return got
 
 
+def expected_rows(values: list, type_name: str) -> list:
+    """Rows as the page decoder prints them, FLOAT as its bit pattern, null as None."""
+    if type_name != "FLOAT":
+        return [None if v is None else int(v) for v in values]
+    return [None if v is None else bits(v, "FLOAT") for v in values]
+
+
+def same_rows(got: list, want: list, type_name: str) -> bool:
+    if len(got) != len(want):
+        return False
+    for g, w in zip(got, want, strict=True):
+        if (g is None) != (w is None):
+            return False
+        if g is None or g == w:
+            continue
+        # Python floats lose a NaN payload; any NaN pattern matches any NaN.
+        nan = type_name == "FLOAT" and math.isnan(struct.unpack("<f", g.to_bytes(4, "little"))[0]) \
+            and math.isnan(struct.unpack("<f", w.to_bytes(4, "little"))[0])
+        if not nan:
+            return False
+    return True
+
+
+def check_columns(tools: Tools, path: Path, refused: dict[str, str] | None = None) -> int:
+    """Page decoder rows against PyArrow and DuckDB. `refused` maps a column to its required error."""
+    refused = refused or {}
+    got = {column["name"]: column for column in tools.columns(path)["columns"]}
+    parquet = pq.ParquetFile(path)
+    table = parquet.read()
+    connection = duckdb.connect()
+    decoded = 0
+    for c in range(parquet.metadata.num_columns):
+        leaf = parquet.metadata.schema.column(c)
+        if leaf.physical_type == "BYTE_ARRAY":
+            require(leaf.name not in got, f"{path.name}: BYTE_ARRAY {leaf.name} skipped")
+            continue
+        column = got[leaf.name]
+        if leaf.name in refused:
+            require(column.get("error") == refused[leaf.name],
+                    f"{path.name}: {leaf.name} must be refused with {refused[leaf.name]}, got {column}")
+            continue
+        require("error" not in column, f"{path.name}: decoder refused {leaf.name}: {column.get('error')}")
+        arrow = table.column(leaf.name)
+        if pa.types.is_timestamp(arrow.type):
+            arrow = arrow.cast(pa.int64())
+        want = expected_rows(arrow.to_pylist(), leaf.physical_type)
+        require(same_rows(column["rows"], want, leaf.physical_type),
+                f"{path.name}: {leaf.name} rows differ from PyArrow")
+        quoted = '"' + leaf.name.replace('"', '""') + '"'
+        if pa.types.is_timestamp(table.column(leaf.name).type):
+            quoted = f"epoch_us({quoted})"
+        duck = [row[0] for row in connection.execute(
+            f"SELECT {quoted} FROM read_parquet(?, file_row_number = true) ORDER BY file_row_number",
+            [str(path)]).fetchall()]
+        require(same_rows(column["rows"], expected_rows(duck, leaf.physical_type), leaf.physical_type),
+                f"{path.name}: {leaf.name} rows differ from DuckDB")
+        decoded += 1
+    return decoded
+
+
 def writer_files(tools: Tools, directory: Path) -> None:
     for rows, columns, groups in ((9, 9, 1), (9, 9, 3), (9, 9, 8), (0, 8, 1), (90, 96, 1), (90, 77, 4)):
         for codec in ("none", "lz4"):
@@ -250,8 +326,22 @@ def writer_files(tools: Tools, directory: Path) -> None:
                         "all-null column has no bounds")
                 require((metrics[8]["lower_bound"], metrics[8]["upper_bound"]) == ("00000080", "00000000"),
                         "zero bounds widened to cover -0.0 and +0.0")
+            decoded = check_columns(tools, path)
             print(f"PASS firmware writer {groups} x {rows} rows x {columns} columns {codec}: "
-                  "PyArrow + DuckDB + Iceberg metrics agree", flush=True)
+                  f"PyArrow + DuckDB + Iceberg metrics agree, {decoded} columns decode to the same rows",
+                  flush=True)
+    # DELTA_BINARY_PACKED integers (#135, no board writes it) are refused, FLOAT
+    # columns of the same file still decode.
+    for codec in ("none", "lz4"):
+        path = directory / f"writer-delta-{codec}.parquet"
+        subprocess.run([str(tools.writer), str(path), "90", "9", codec, "2", "delta"],
+                       check=True, stdout=subprocess.DEVNULL, timeout=TIMEOUT)
+        integers = {leaf.name: "encoding" for leaf in pq.ParquetFile(path).schema
+                    if leaf.physical_type in ("INT32", "INT64")}
+        require(len(integers) >= 4, "delta file has integer columns")
+        decoded = check_columns(tools, path, integers)
+        require(decoded >= 3, "delta file FLOAT columns decode")
+    print("PASS DELTA_BINARY_PACKED integer pages are refused, FLOAT pages beside them decode", flush=True)
 
 
 def geo_files(tools: Tools, directory: Path) -> None:
@@ -299,7 +389,18 @@ def pyarrow_files(tools: Tools, directory: Path) -> None:
                 pq.write_table(table, path, compression=compression, use_dictionary=dictionary,
                                row_group_size=group_rows)
                 check_file(tools, path, path.name)
-    print("PASS PyArrow-written files (dictionary pages, LZ4_RAW, ZSTD, 1 and 3 row groups)", flush=True)
+                # PyArrow writes bit-packed definition levels and page
+                # statistics. ZSTD and dictionary pages are refused.
+                names = [leaf.name for leaf in pq.ParquetFile(path).schema]
+                if compression == "ZSTD":
+                    refused = dict.fromkeys(names, "codec")
+                elif dictionary:
+                    refused = dict.fromkeys(names, "encoding")
+                else:
+                    refused = {}
+                check_columns(tools, path, refused)
+    print("PASS PyArrow-written files (dictionary pages, LZ4_RAW, ZSTD, 1 and 3 row groups), "
+          "plain NONE and LZ4_RAW pages decode to the PyArrow and DuckDB rows", flush=True)
     for label, extra in (("string", pa.array(["a"] * rows)), ("list", pa.array([[1]] * rows)),
                          ("double", pa.array([1.0] * rows))):
         path = directory / f"pyarrow-{label}.parquet"
@@ -677,6 +778,25 @@ def fuzz(tools: Tools, directory: Path) -> None:
           "no crash, hang or inconsistent summary", flush=True)
 
 
+def page_cases(tools: Tools, directory: Path) -> None:
+    run = subprocess.run([str(tools.reader), "pagecases"], capture_output=True, text=True, timeout=TIMEOUT)
+    require(run.returncode == 0, f"page cases: rc={run.returncode} {run.stderr[-3000:]}")
+    cases = json.loads(run.stdout)["cases"]
+    targets = sorted(directory.glob("writer-9x9x*.parquet")) + sorted(directory.glob("writer-90x77x4-*.parquet")) + [
+        directory / "pyarrow-NONE-False-4.parquet", directory / "pyarrow-LZ4-False-11.parquet"]
+    total = accepted = refused = 0
+    for seed, path in enumerate(targets, start=101):
+        run = subprocess.run([str(tools.reader), "pagefuzz", str(path), "1500", str(seed)], capture_output=True,
+                             text=True, timeout=300)
+        require(run.returncode == 0, f"page fuzz {path.name}: rc={run.returncode} {run.stderr[-3000:]}")
+        result = json.loads(run.stdout)
+        total += result["iterations"]
+        accepted += result["accepted"]
+        refused += result["refused"]
+    print(f"PASS page decoder: {cases} hand-built pages return their exact result, {total} corrupted or "
+          f"truncated files gave {refused} refused and {accepted} bounded column decodes, no crash", flush=True)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--sanitize", action="store_true", help="enable AddressSanitizer and UBSan")
@@ -690,6 +810,7 @@ def main() -> None:
         pyarrow_files(tools, directory)
         crafted(tools, directory)
         fuzz(tools, directory)
+        page_cases(tools, directory)
     print("PASS Parquet footer reader" + (" (ASan + UBSan)" if args.sanitize else ""))
 
 

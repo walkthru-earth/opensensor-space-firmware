@@ -339,7 +339,7 @@
         "board": {
           "task_name": "cores3-board",
           "stack_bytes": 16384,
-          "measured": 4768,
+          "measured": 4752,
           "budget": 5248
         },
         "esp_timer": {
@@ -355,16 +355,16 @@
         ".iram0.text": 129792,
         ".dram0.data": 37120,
         ".dram0.bss": 61184,
-        ".flash.text": 1316096,
-        ".flash.rodata": 458496,
+        ".flash.text": 1314304,
+        ".flash.rodata": 457984,
         ".noinit": 256
       },
       "sections_measured": {
         ".iram0.text": 127031,
         ".dram0.data": 36325,
-        ".dram0.bss": 59976,
-        ".flash.text": 1290278,
-        ".flash.rodata": 449300,
+        ".dram0.bss": 59960,
+        ".flash.text": 1288526,
+        ".flash.rodata": 448980,
         ".noinit": 3
       }
     },
@@ -398,7 +398,7 @@
         "board": {
           "task_name": "os-board",
           "stack_bytes": 12288,
-          "measured": 4816,
+          "measured": 4800,
           "budget": 5312
         },
         "esp_timer": {
@@ -414,16 +414,16 @@
         ".iram0.text": 122624,
         ".dram0.data": 35072,
         ".dram0.bss": 58112,
-        ".flash.text": 1179648,
-        ".flash.rodata": 409856,
+        ".flash.text": 1177856,
+        ".flash.rodata": 409344,
         ".noinit": 0
       },
       "sections_measured": {
         ".iram0.text": 120035,
         ".dram0.data": 34164,
-        ".dram0.bss": 56936,
-        ".flash.text": 1156366,
-        ".flash.rodata": 401588,
+        ".dram0.bss": 56904,
+        ".flash.text": 1154610,
+        ".flash.rodata": 401284,
         ".noinit": 0
       }
     },
@@ -483,13 +483,13 @@
         "board": {
           "task_name": "os-board",
           "stack_bytes": 12288,
-          "measured": 4720,
-          "budget": 5248
+          "measured": 4704,
+          "budget": 5184
         },
         "os-ui": {
           "stack_bytes": 8192,
-          "measured": 3344,
-          "budget": 3712
+          "measured": 3280,
+          "budget": 3648
         },
         "esp_timer": {
           "measured": 592,
@@ -504,16 +504,16 @@
         ".iram0.text": 128000,
         ".dram0.data": 35072,
         ".dram0.bss": 58624,
-        ".flash.text": 1185536,
-        ".flash.rodata": 413952,
+        ".flash.text": 1206016,
+        ".flash.rodata": 411904,
         ".noinit": 256
       },
       "sections_measured": {
         ".iram0.text": 125295,
-        ".dram0.data": 34257,
-        ".dram0.bss": 57400,
-        ".flash.text": 1162158,
-        ".flash.rodata": 405720,
+        ".dram0.data": 34241,
+        ".dram0.bss": 57336,
+        ".flash.text": 1182202,
+        ".flash.rodata": 403800,
         ".noinit": 3
       }
     }
