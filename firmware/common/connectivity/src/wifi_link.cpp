@@ -830,37 +830,51 @@ bool respond(std::uint32_t link_generation, std::uint8_t peer,
 bool scan_running = false, scan_temporary = false;
 std::int64_t scan_deadline_us = 0;
 
-// The reply of one scan: the WIFI_AP frames, then WIFI_SCAN_END. Static and
-// LAN task only, so the list stays off the LAN stack. A LAN reply leaves at
-// once. A BLE reply leaves through ble::try_send_response, as many frames per
-// LAN step as the notify queue takes, because waiting for a BLE credit or for
-// the storage worker's response lock would stop every LAN peer (#178). The
-// scan stays pending until its reply is done, so a second scan waits.
+// The scan list. Task-owned static storage keeps it off the LAN stack. It
+// stays valid until the reply is done, because a second scan waits for that.
+wifi_ap_record_t records[kMaxScanEntries];
+
+// The reply of one scan: the WIFI_AP frames, then WIFI_SCAN_END. LAN task
+// only. It keeps the index of each reported record and builds a frame when it
+// is sent, so the reply adds no frame copies to internal RAM. A LAN reply
+// leaves at once. A BLE reply leaves through ble::try_send_response, as many
+// frames per LAN step as the notify queue takes, because waiting for a BLE
+// credit or for the storage worker's response lock would stop every LAN peer
+// (#178). The scan stays pending until its reply is done, so a second scan
+// waits.
 struct ScanReply {
-  std::uint8_t frames[kMaxScanEntries + 1][4 + config::kSsidMax]{};
-  std::uint8_t lengths[kMaxScanEntries + 1]{};
+  std::uint8_t picks[kMaxScanEntries]{};
   std::uint16_t total = 0, next = 0, sent = 0, found = 0;
   std::uint32_t generation = 0;
   std::int64_t progress_us = 0;
+  std::uint8_t end_error = 0;
   bool active = false, failed = false;
 };
 ScanReply scan_job;
+using ScanFrame = std::uint8_t[4 + config::kSsidMax];
+static_assert(kMaxScanEntries <= 255, "picks hold a record index in one byte");
 
-void stage_reply_frame(const std::uint8_t *frame, std::size_t length) {
-  if (scan_job.total > kMaxScanEntries || length > sizeof(scan_job.frames[0]))
-    return;
-  std::memcpy(scan_job.frames[scan_job.total], frame, length);
-  scan_job.lengths[scan_job.total] = static_cast<std::uint8_t>(length);
-  ++scan_job.total;
-}
-
-// The end frame always comes last and carries the count of AP frames that
-// were actually queued, so a reply cut short still counts true.
-std::uint8_t *reply_end_frame(std::uint16_t sent) {
-  auto *end = scan_job.frames[scan_job.total - 1];
-  end[1] = static_cast<std::uint8_t>(sent & 0xff);
-  end[2] = static_cast<std::uint8_t>((sent >> 8) & 0xff);
-  return end;
+// Builds frame `index` of the reply. The last one is WIFI_SCAN_END, which
+// carries the count of AP frames actually queued, so a reply cut short still
+// counts true.
+std::size_t reply_frame(std::uint16_t index, ScanFrame &frame) {
+  if (index + 1 >= scan_job.total) {
+    frame[0] = ble::kFrameWifiScanEnd;
+    frame[1] = static_cast<std::uint8_t>(scan_job.sent & 0xff);
+    frame[2] = static_cast<std::uint8_t>((scan_job.sent >> 8) & 0xff);
+    frame[3] = scan_job.end_error;
+    return 4;
+  }
+  const auto &record = records[scan_job.picks[index]];
+  const char *ssid = reinterpret_cast<const char *>(record.ssid);
+  const auto length = strnlen(ssid, sizeof(record.ssid));
+  frame[0] = ble::kFrameWifiAp;
+  frame[1] =
+      static_cast<std::uint8_t>(std::max<std::int8_t>(-127, record.rssi));
+  frame[2] = auth_code(record.authmode);
+  frame[3] = record.primary;
+  std::memcpy(frame + 4, ssid, length);
+  return 4 + length;
 }
 
 void end_scan_reply() {
@@ -881,10 +895,10 @@ void log_scan_end() {
 void pump_scan_reply(std::int64_t now) {
   while (scan_job.active) {
     const bool last = scan_job.next + 1 == scan_job.total;
-    const auto *frame =
-        last ? reply_end_frame(scan_job.sent) : scan_job.frames[scan_job.next];
-    const auto result = ble::try_send_response(
-        frame, scan_job.lengths[scan_job.next], scan_job.generation);
+    ScanFrame frame;
+    const auto length = reply_frame(scan_job.next, frame);
+    const auto result =
+        ble::try_send_response(frame, length, scan_job.generation);
     if (result == ossync::EnqueueResult::Full) {
       if (now - scan_job.progress_us < kScanReplyStallUs)
         return;
@@ -912,14 +926,14 @@ void pump_scan_reply(std::int64_t now) {
 }
 
 void send_lan_scan_reply(std::uint32_t link_generation, std::uint8_t peer) {
+  ScanFrame frame;
   for (; scan_job.next + 1 < scan_job.total; ++scan_job.next) {
-    if (!respond(link_generation, peer, scan_job.frames[scan_job.next],
-                 scan_job.lengths[scan_job.next]))
+    if (!respond(link_generation, peer, frame,
+                 reply_frame(scan_job.next, frame)))
       break;
     ++scan_job.sent;
   }
-  respond(link_generation, peer, reply_end_frame(scan_job.sent),
-          scan_job.lengths[scan_job.total - 1]);
+  respond(link_generation, peer, frame, reply_frame(scan_job.total - 1, frame));
   log_scan_end();
   end_scan_reply();
 }
@@ -929,21 +943,18 @@ void finish_scan(esp_err_t result) {
   const auto link_generation = scan_generation.load();
   const auto peer = scan_peer.load();
   std::uint16_t found = kMaxScanEntries;
-  // Task-owned static storage keeps the scan list off the LAN stack.
-  static wifi_ap_record_t records[kMaxScanEntries];
   std::memset(records, 0, sizeof(records));
   if (result == ESP_OK)
     result = esp_wifi_scan_get_ap_records(&found, records);
   scan_job.total = scan_job.next = scan_job.sent = 0;
   scan_job.found = 0;
   scan_job.failed = result != ESP_OK;
+  scan_job.end_error = 0;
   // get_ap_records releases the driver's full list. Release it on errors too.
   if (result != ESP_OK) {
     esp_wifi_clear_ap_list();
     oslog.record_only().printf("WIFI SCAN FAILED code=%d\n", result);
-    const std::uint8_t frame[] = {ble::kFrameWifiScanEnd, 0, 0,
-                                  ble::kErrWifiUnavailable};
-    stage_reply_frame(frame, sizeof(frame));
+    scan_job.end_error = ble::kErrWifiUnavailable;
   } else {
     scan_job.found = found;
     // Report each SSID once with its strongest access point; skip hidden.
@@ -964,18 +975,10 @@ void finish_scan(esp_err_t result) {
             best = j;
         }
       }
-      std::uint8_t frame[4 + config::kSsidMax];
-      frame[0] = ble::kFrameWifiAp;
-      frame[1] = static_cast<std::uint8_t>(
-          std::max<std::int8_t>(-127, records[best].rssi));
-      frame[2] = auth_code(records[best].authmode);
-      frame[3] = records[best].primary;
-      std::memcpy(frame + 4, ssid, length);
-      stage_reply_frame(frame, 4 + length);
+      scan_job.picks[scan_job.total++] = static_cast<std::uint8_t>(best);
     }
-    const std::uint8_t end[] = {ble::kFrameWifiScanEnd, 0, 0, 0};
-    stage_reply_frame(end, sizeof(end));
   }
+  ++scan_job.total; // the end frame
   if (scan_temporary) {
     esp_wifi_stop();
     station_has_ip = false;
