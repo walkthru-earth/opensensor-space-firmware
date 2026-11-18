@@ -9,6 +9,31 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## CrowPanel STAC sidecar (feat/crowpanel-stac-sidecar)
+
+**The CrowPanel now writes a STAC File Item next to each finalized dated
+file.** No column, row, footer key, LIVE key, template, `dict` or `desc`
+changes. Only the CrowPanel must be reflashed. Part of #184.
+
+**What changed.**
+
+- The CrowPanel writes `<file>.json` beside each finalized dated
+  `data_HHMM_` file, the same File Item CoreS3 and Waveshare write. Its
+  statistics cover the seven measurement columns `pm1_mass_ug_m3`,
+  `pm25_mass_ug_m3`, `pm4_mass_ug_m3`, `pm10_mass_ug_m3`,
+  `ambient_temperature_c`, `relative_humidity_percent` and `co2_ppm`.
+- The PM and CO2 statistics count only rows where `sen6x_status` equals 4.
+  Temperature and humidity count every finite value.
+- The boot log adds `PARQUET STAC sidecar=true columns=7 psram_bytes=<n>`,
+  and each dated file adds one `PARQUET STAC result=...` line.
+- `stac-item-test` proves the Item equal to the stac-opensensor CrowPanel
+  example at commit `07a4f21f98b9fffcece7055b95c6b9f9c6975bde`. Its
+  `buildItem` is the same as at `83787768`.
+
+**What the app must do.** Read a CrowPanel sidecar the same way as a CoreS3
+or Waveshare one. Sync still lists only `.parquet` files (#143), so nothing
+in sync changes. Drop any rule that expects no sidecar from a CrowPanel.
+
 ## LIVE `utc` in microseconds, CoreS3 LIVE `lst` and Arabic titles on every column (feat/live-utc-column-titles)
 
 **Every board changes its LIVE `utc` value and its template.** Every `desc`
@@ -239,7 +264,7 @@ mobile refactor (opensensor-space-mobile #219) derives labels from the
 column `cf:standard_name` and UCUM unit, and from the `opensensor:property`
 URI where a column has no `cf:standard_name`, so `pm4_mass_ug_m3` reads as
 PM4 from `pm4_mass_concentration`. Read the new columns by name when it
-opens a CrowPanel file. Do not expect a STAC sidecar next to a CrowPanel file. Nothing changes for CoreS3 or Waveshare.
+opens a CrowPanel file. This release wrote no STAC sidecar next to a CrowPanel file. The CrowPanel STAC sidecar entry below adds it. Nothing changes for CoreS3 or Waveshare.
 
 ## H3 from the embedded-h3-location library (feat/h3-lib-v2)
 
