@@ -82,7 +82,7 @@ void gauge_modules(Sample &row, const BatteryHealth &health) {
 constexpr std::int64_t kI64 = std::numeric_limits<std::int64_t>::max();
 constexpr std::int64_t kUtcUs = kI64 / 1000; // 9223372036854775000 ns
 constexpr std::int64_t kU16 = 65535;
-// `t` is the PMS5003T signed int16 deci degree, so -3276.8 prints widest.
+// `t` passes the -10.0..60.0 gate, so -10.0 is the widest it prints.
 // `rh` is capped at 100.0. `bat` passes the MAX17048 2500..4500 mV check.
 // `bstate` is opensensor::battery::State (0..5).
 constexpr livewidest::Widest kWidest[] = {
@@ -90,17 +90,17 @@ constexpr livewidest::Widest kWidest[] = {
     {"pms", 9, 0.0F},     {"c1", kU16, 0.0F},   {"c25", kU16, 0.0F},
     {"c10", kU16, 0.0F},  {"pm1", kU16, 0.0F},  {"pm25", kU16, 0.0F},
     {"pm10", kU16, 0.0F}, {"n03", kU16, 0.0F},  {"n05", kU16, 0.0F},
-    {"n1", kU16, 0.0F},   {"n25", kU16, 0.0F},  {"t", 0, -3276.8F},
+    {"n1", kU16, 0.0F},   {"n25", kU16, 0.0F},  {"t", 0, -10.0F},
     {"rh", 0, 100.0F},    {"bat", 4500, 0.0F},  {"pct", 100, 0.0F},
     {"bstate", 5, 0.0F},
 };
-// Measured 2026-10-26 with every declared key present, a one digit code or
+// Measured 2026-11-18 with every declared key present, a one digit code or
 // a 100 percent counted as null since null is wider, and each float at its
-// field's decimals (t and rh print one). The widest object is 270 bytes,
-// 480 - 270 = 210 bytes of headroom. The all-null object sent on overflow is
+// field's decimals (t and rh print one). The widest object is 268 bytes,
+// 480 - 268 = 212 bytes of headroom. The all-null object sent on overflow is
 // 211 bytes. A change here means a LIVE key, its widest value or its decimals
 // changed, update the numbers.
-constexpr std::size_t kWidestLiveBytes = 270;
+constexpr std::size_t kWidestLiveBytes = 268;
 constexpr std::size_t kAllNullLiveBytes = 211;
 void assert_live_keys(const oslogger::Field *table, std::size_t count) {
   const auto bytes = livewidest::measure(table, count, kWidest);
