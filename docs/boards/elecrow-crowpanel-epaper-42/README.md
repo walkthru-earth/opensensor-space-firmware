@@ -84,6 +84,39 @@ column, not just the screen. Every change logs
 The sensor forgets all three at a reset, so the board writes them before
 every start.
 
+## Chart history after a reset
+
+The 2 hour and 24 hour charts live in RAM. At boot, after the card mounts
+and before logging starts, the board reads this Thing's own finalized
+Parquet files back and seeds the charts with up to 24 hours of earlier rows,
+newest boot first. It reads the unsynced folders of the boots in the NVS boot
+ring and the two newest dated day folders. It only reads the card and NVS,
+it writes, renames and deletes nothing, and it stops after about 8 seconds
+with what it has. It logs one line, either `OS HISTORY restored boots=N
+files=N rows=N span_s=N ms=N skipped=N cut=none|budget|rows|order|deadline`
+or `OS HISTORY restore=none reason=no-thing|memory|path|no-boots|order-unknown|deadline|no-rows ms=N`.
+A failure only leaves the charts empty, logging starts the same way.
+
+Limits.
+
+- Rows still in RAM at a power cut are lost, and an unfinished `.partial`
+  file is skipped, so the chart before a reset ends at the last finalized
+  file, up to one file window early (15 minutes by default).
+- Each boot is a separate segment. A restart mark sits between two boots
+  and between the last one and this boot, and it never claims a length,
+  because the time the board was off is unknown.
+- The board has no RTC. Rows are placed by each boot's own monotonic time,
+  never by UTC, so a restored row is never placed at an exact clock time.
+- Boot order comes only from the NVS boot ring and the UTC in dated folder
+  and file names. When a boot that never had UTC cannot be placed against a
+  dated boot, the restore stops at that boot and older boots stay out
+  (`cut=order`, or `reason=order-unknown` when not even the newest boot can
+  be placed). A boot whose ring entry could not be saved (a `ringless=`
+  marker) and dated files older than the two newest day folders are not read.
+- At most 160 files per boot and 64 boots are considered. Files of another
+  shape, a damaged footer or a page the bounded decoder refuses count as
+  `skipped` and add nothing.
+
 ## First flash
 
 The image the owner unit carries before OpenSensor has a 0x6000 byte NVS
