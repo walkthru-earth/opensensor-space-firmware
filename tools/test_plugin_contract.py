@@ -290,6 +290,14 @@ def main() -> None:
             config_keys={"panel.display": panel, "panel.display.x": panel},
             settings=[*d["settings"], {"id": "panel", "label": "Display", "keys": ["panel.display", "panel.display.x"]}])),
                "dotted prefix", "a key that is a dotted prefix of another")
+        deep = "panel.a.b.c.d"
+        mutate(scratch, edit_json(board, lambda d: d.update(config_keys={deep: panel},
+                                                            settings=[*d["settings"], {"id": "panel", "label": "Display", "keys": [deep]}])),
+               "more than 4 dotted parts", "a key of 5 dotted parts")
+        long_key = "panel." + "a" * 43
+        mutate(scratch, edit_json(board, lambda d: d.update(config_keys={long_key: panel},
+                                                            settings=[*d["settings"], {"id": "panel", "label": "Display", "keys": [long_key]}])),
+               "schema", "a key of 49 bytes")
         for prefix in ("ble", "wifi", "lan", "ntp", "location", "thing", "owner", "sensor"):
             mutate(scratch, edit_json(board, lambda d, k=f"{prefix}.theme": d.update(
                 config_keys={k: panel}, settings=[*d["settings"], {"id": "panel", "label": "Display", "keys": [k]}])),

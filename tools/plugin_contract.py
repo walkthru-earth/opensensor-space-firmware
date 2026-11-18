@@ -507,6 +507,7 @@ def setup_rules(label: str, manifest: dict) -> None:
     require(not unused, f"{label}: config_keys {unused} are in no setup step or settings section")
     for key, spec in keys.items():
         require(len(key.encode()) <= 48, f"{label}: {key} is over 48 bytes")
+        require(len(key.split(".")) <= 4, f"{label}: {key} has more than 4 dotted parts")
         require(not set(key.split(".")) & SECRET_PARTS, f"{label}: {key} looks like a secret, never declared")
         values = spec.get("values")
         if isinstance(values, dict):

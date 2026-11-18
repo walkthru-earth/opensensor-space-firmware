@@ -264,8 +264,8 @@ by direction.
 | `0x06` | `FLUSH` | none | `FLUSHED` or `ERROR` 10; `status` notify |
 | `0x07` | `STATUS` | none | `status` cache/notify only; **no `response` frame**, so the phone must not wait on `response` for it. If the value exceeds MTU − 3 the notification is omitted and the phone reads the cached characteristic. Over LAN this produces a `STATUS` push frame, so it doubles as a keep-alive ping. |
 | `0x08` | `GET_CONFIG` | empty or one page byte `0..7` | `CONFIG` or BLE `CONFIG_CHUNK` sequence |
-| `0x09` | `SET_CONFIG` | `key=value` lines, utf8, `\n`-separated (see [configuration](#device-configuration-v2)) | `CONFIG` or BLE `CONFIG_CHUNK` sequence; `ERROR` 12 with the offending key as `detail` |
-| `0x0A` | `WIFI_SCAN` | none | `WIFI_AP` × n, then `WIFI_SCAN_END`; `ERROR` 15 if the radio cannot scan |
+| `0x09` | `SET_CONFIG` | `key=value` lines, utf8, `\n`-separated (see [configuration](#device-configuration-v2)) | `CONFIG` or BLE `CONFIG_CHUNK` sequence; `ERROR` 12 with the offending key as `detail`, see [ERROR details](#error-details) |
+| `0x0A` | `WIFI_SCAN` | none | `WIFI_AP` × n (at most 48), then `WIFI_SCAN_END`, whose `status` is 15 if the radio cannot scan. `ERROR` 7 `detail="scan-pending"` while another scan is queued |
 | `0x0B` | `REBOOT` | none | `REBOOTING`, then the device finalizes any RAM batch and restarts |
 | `0x0C` | `LOG_TAIL` | `max_bytes` u16 (device clips to the bytes it retains, at most 65535) | `LOG` × n, then `LOG_END` |
 | `0x0D` | `GET_TOKEN` | none | `TOKEN`; **BLE only**, `ERROR` 13 over LAN |
@@ -315,8 +315,8 @@ Error codes: 1 malformed request · 2 invalid name · 3 not a finalized Parquet 
 
 Rules:
 
-- **Names** are the same relative paths the serial `PARQUET FILE name=` line prints: `thing=…/year=…/month=…/day=…/data_HHMM_<boot>_<first>-<last>-<n>.parquet`, `thing=…/unsynced/boot=…/…`, or `legacy-parquet/…`. Since #5, `codec-test` copies live under `/sd/bench/boot=…/` outside the archive root and are never listed. Older cards may still list `benchmarks/boot=…/…`. Same character whitelist as `safe_name()` in the firmware: `[0-9a-z._=/-]`, no `..`, no `//`, ends in `.parquet`.
-- **`OPEN`** runs the finalized-file check (magic `PAR1` head and tail, footer length sane) and returns the CRC-32 (IEEE, same as the serial `crc32=` field) of the whole file. The device remembers the CRC it computed when it finalized the file, keyed by path, size and modification time, so `OPEN` of a recent file skips the full read. A cache miss (an older file, a reboot, a remount) reads the whole file once. Either way the value is the same. At most one logical file is open per connection; a new `OPEN` implicitly closes that connection's previous one without affecting other connections. Handles start at 1 and are invalid after disconnect. A path that does not exist is `ERROR` 3. A file the device cannot open for another reason, such as a full descriptor table, is `ERROR` 4.
+- **Names** are the same relative paths the serial `PARQUET FILE name=` line prints: `thing=…/year=…/month=…/day=…/data_HHMM_<boot>_<first>-<last>-<n>.parquet`, `thing=…/unsynced/boot=…/…`, or `legacy-parquet/…`. Since #5, `codec-test` copies live under `/sd/bench/boot=…/` outside the archive root and are never listed. Older cards may still list `benchmarks/boot=…/…`. Same character whitelist as `safe_name()` in the firmware: `[0-9a-z._=/-]`, no `..`, no `//`, ends in `.parquet`. A name is 9 to 384 bytes and never starts with `/` ([`safe_parquet_name`](../../firmware/common/src/sync_codec.h)). `OPEN` answers `ERROR` 2 `detail="length"` for an empty name or one of 400 bytes or more, and `ERROR` 2 `detail="charset"` for any other name that fails the rule ([`ArchiveSession::open`](../../firmware/common/connectivity/src/archive_sync.cpp)). `LIST` checks a legacy name before it adds the 15 byte `legacy-parquet/` prefix, so a listed legacy name can reach 399 bytes. `OPEN` checks the full name, so it refuses a listed name over 384 bytes with `ERROR` 2 ([`ListVisitor` and `resolve_path`](../../firmware/common/logger/src/os_logger.cpp)).
+- **`OPEN`** runs the finalized-file check (magic `PAR1` head and tail, footer length sane, size 12 to 1,048,576 bytes) and returns the CRC-32 (IEEE, same as the serial `crc32=` field) of the whole file. The device remembers the CRC it computed when it finalized the file, keyed by path, size and modification time, so `OPEN` of a recent file skips the full read. A cache miss (an older file, a reboot, a remount) reads the whole file once. Either way the value is the same. At most one logical file is open per connection; a new `OPEN` implicitly closes that connection's previous one without affecting other connections. Handles start at 1 and are invalid after disconnect. A path that does not exist is `ERROR` 3. A file the device cannot open for another reason, such as a full descriptor table, is `ERROR` 4. Both carry the requested name as `detail`. A file larger than 1,048,576 bytes fails the finalized check, so `OPEN` answers `ERROR` 3 for it ([`check_file`](../../firmware/common/logger/src/os_logger.cpp), [`parquet_complete`](../../firmware/common/src/sync_codec.h)). `LIST` and `LIST_SINCE` check only the name and that the size fits u32, not this cap, so such a file is still listed on every sync.
 - **CRC-32 check values.** Device (ROM table routine) and host tools agree on these, and a phone CRC implementation must too. Empty input is `00000000`. ASCII `123456789` is `cbf43926`. ASCII `The quick brown fox jumps over the lazy dog` is `414fa339`. The 1 MiB fixture whose byte `i` is `((i*31+7) & 0xff) ^ ((i>>12) & 0xff)` is `391e95d7`. Chunk boundaries never change the result.
 - **`READ`** is clipped to `max_read` and to end-of-file. Chunks are delivered in offset order; `next_offset` tells the phone where to continue. Offsets are absolute, so a phone can resume after a disconnect by `OPEN` + `READ` from where it stopped, provided `size` and `crc32` in the new `OPENED` frame match the earlier one (the file is immutable, so they must). After a storage remount the card may have been edited or swapped, so the first `READ` on each open handle runs the finalized check again. The same `size` and `crc32` keep the handle and the read proceeds. Only a proven change drops the handle. That is a different size or CRC from a completed check, or a file that is missing or no longer finalized on a card that mounted again. That `READ` answers `ERROR` 5 (bad handle), as does every later `READ` or `CLOSE` on it. The phone fails that file for the current run and a fresh `LIST` and `OPEN` decide what to fetch next. While the card has not mounted again, or when the check hits an I/O error or a short read, or the descriptor table is full, `READ` answers `READ_END` status 4 with no `CHUNK`. The handle stays valid and the check runs on the next `READ`. `CLOSE` on a handle still waiting for its check answers `CLOSED`.
 - A file is **complete** only when the phone has `size` bytes, its own CRC-32 equals `OPENED.crc32`, and the head/tail magic is `PAR1`. Anything else is discarded, never presented as data.
@@ -324,7 +324,8 @@ Rules:
 - CoreS3 v6.10 / Waveshare v2.4 accept the exact incoming anchor for future samples without flushing the current interval or creating a singleton file. Initial UTC, an RTC-to-external upgrade, and a correction strictly larger than two seconds in either direction start a new clock epoch; the next genuine sample closes the previous epoch/window. Small host/network refreshes keep the epoch, and each future row records its exact new anchor and source. Earlier rows retain their original UTC, epoch and anchor. Finalization records the latest same-boot reconciliation anchor in the footer; TIME_SET also supplies boot-scoped evidence to the phone. Accepted time is not an SD durability acknowledgement. Older firmware finalized every anchor and its first timed sample.
 - CoreS3 writes external UTC through its optional BM8563 callback on the main-loop task and can restore it at boot as `clk=2`. Successful Wi-Fi SNTP produces `clk=3`; Wi-Fi association alone is not an anchor. A board without usable RTC starts unanchored on each reboot. Disconnection during an uninterrupted boot retains its current monotonic UTC estimate. A later reboot's anchor must never date a prior unanchored boot.
 - Routine/background sync lists completed files and leaves the current interval open. Explicit “sync now” deliberately requests current unfinished readings using `FLUSH`.
-- `FLUSH` finalizes the RAM batch, and, on firmware v6, any row groups already in the open file, so the phone can pull everything up to now. Use it deliberately (a "sync now" action); it produces a short file and does not change the rotation interval. The `FLUSHED` row count is RAM rows plus rows that were already on the card in the open file.
+- `FLUSH` finalizes the RAM batch, and, on firmware v6, any row groups already in the open file, so the phone can pull everything up to now. Use it deliberately (a "sync now" action); it produces a short file and does not change the rotation interval. The `FLUSHED` row count is RAM rows plus rows that were already on the card in the open file. When the card cannot take rows, `FLUSH` answers `ERROR` 8 with the storage governor state as `detail`, one of `ready`, `degraded`, `full` or `retry` ([`state_name`](../../firmware/common/logger/src/storage_governor.h)). A failed write of the rows answers `ERROR` 8 `detail="write"` ([`os_logger.cpp`](../../firmware/common/logger/src/os_logger.cpp)).
+- **Trailing bytes.** These requests ignore any bytes after the opcode. `LIST` ([`archive_sync.cpp`](../../firmware/common/connectivity/src/archive_sync.cpp)), `FLUSH`, `STATUS` and `REBOOT` ([`os_logger.cpp`](../../firmware/common/logger/src/os_logger.cpp)), `WIFI_SCAN` and `GET_TOKEN` ([`control_sync.cpp`](../../firmware/common/connectivity/src/control_sync.cpp), [`sync_service.cpp`](../../firmware/common/connectivity/src/sync_service.cpp)), and `OTA_CANCEL` in every phase ([`Transfer::handle`](../../firmware/common/src/ota_transfer.cpp)). `OTA_END` also ignores them while an image is already staged, and answers `ERROR` 1 for them while receiving. The other fixed length requests check their body length and answer `ERROR` 1 for a wrong one. After the opcode, `READ` takes exactly 10 bytes, `CLOSE` and `LOG_TAIL` 2, `SET_TIME` 8 or 12, `GET_DESCRIPTOR` 6, `LIST_SINCE` 32, `GET_CONFIG` 0 or 1, and `GET_DIAG` and `ABORT` none.
 
 ## Device configuration (v2)
 
@@ -336,8 +337,8 @@ Rules:
 | `ble.pin` | 6 digits `000000`–`999999` | next boot | passkey for `fixed` mode |
 | `ble.clear_bonds` | `1` | *action* | forget every bonded phone |
 | `wifi.on` | `0` \| `1` | immediately | station radio on/off (off by default) |
-| `wifi.ssid` | ≤ 32 bytes, no control characters | immediately | network name |
-| `wifi.psk` | empty for an open network, or 8 to 63 bytes, no control characters | immediately | passphrase, stored in NVS in clear (flash encryption is not used on this board by rule) |
+| `wifi.ssid` | ≤ 32 bytes, no control characters (bytes `0x00` to `0x1F` and `0x7F`). Required while `wifi.on` is 1 | immediately | network name |
+| `wifi.psk` | empty (0 bytes) for an open network, or 8 to 63 bytes, no control characters (bytes `0x00` to `0x1F` and `0x7F`). 1 to 7 bytes answers `ERROR` 12 `detail="wifi.psk"` | immediately | passphrase, stored in NVS in clear (flash encryption is not used on this board by rule) |
 | `lan.on` | `0` \| `1` | immediately | TCP sync server + mDNS while Wi-Fi is connected (on by default) |
 | `lan.rotate_token` | `1` | *action* | new LAN token. A LAN caller reads its `CONFIG` reply first. Every LAN session then receives a [BYE](#bye) with reason `token-rotated` (10) and closes, and phones must fetch the token again over BLE |
 | `ntp.on` | `0` \| `1` (default 1) | immediately | enable automatic native SNTP when Wi-Fi has an IP lease |
@@ -414,6 +415,9 @@ derived from the config for required steps, never from this record.
 A board may own `SET_CONFIG` keys of its own, which its template declares in
 `firmware.config_keys` with type, values and `applies` (see the
 [plugin contract](plugins/README.md#setup-settings-and-config-keys)). A board
+key is at most 48 bytes and has at most 4 dotted parts. The phone reads page 7
+nested only 4 levels deep, so a deeper key would never read back. The template
+gate in `tools/plugin_contract.py` rejects a key past either bound. A board
 key never starts with a runtime prefix (`ble.`, `wifi.`, `lan.`, `ntp.`,
 `location.`, `thing.`, `owner.` or `sensor.`). The runtime hands each board
 key of a request to the board, which checks it against its own type. An
@@ -499,7 +503,53 @@ Changing Wi-Fi settings over a LAN session is allowed but will usually drop that
 
 `LOG_TAIL` returns the newest `max_bytes` (at most 65535) of the diagnostic ring that mirrors DebugLog output, excluding raw physical-owner command replies, the same `PARQUET …` / `BLE …` / `WIFI …` lines a bench log shows. It exists so an advanced user can see why something failed without a USB cable. It is text for humans, not a stable API. The ring is in PSRAM (64 KiB by default, `CONFIG_OS_LOG_PERSIST_RING_BYTES`) when the board image provides a persistent block, otherwise a 4 KiB internal ring (see [persistent log](#persistent-log)). The reply streams in `LOG` frames of at most 512 bytes over BLE or 1024 over LAN, so a text slice is at most 511 or 1023 bytes, also bounded by `payload_max`. A tail can contain lines from the previous boot after a warm reboot.
 
-`WIFI_SCAN` runs on the Wi-Fi task, not on the storage worker, and takes 2–4 s; the phone should show progress. The scan is asynchronous. Other LAN sessions keep reading and receiving frames while it runs, and a scan that does not finish within 15 s ends with `WIFI_SCAN_END` status 15 (unavailable). Hidden networks are omitted; duplicate SSIDs (several access points) are reported once with the strongest RSSI. Over BLE the reply leaves as the notify queue takes it, never waiting on the Wi-Fi task, so LAN peers keep moving while a BLE phone is slow. The frames keep their order and `WIFI_SCAN_END` still counts the `WIFI_AP` frames sent. A BLE reply that has no frame taken for 15 s is dropped, and a second `WIFI_SCAN` waits until the first reply ends.
+`WIFI_SCAN` runs on the Wi-Fi task, not on the storage worker, and takes 2–4 s; the phone should show progress. The scan is asynchronous. Other LAN sessions keep reading and receiving frames while it runs, and a scan that does not finish within 15 s ends with `WIFI_SCAN_END` status 15 (unavailable). Hidden networks are omitted; duplicate SSIDs (several access points) are reported once with the strongest RSSI. The device reads at most 48 access point records from the driver, so one scan reports at most 48 networks ([`kMaxScanEntries`](../../firmware/common/connectivity/src/wifi_link.cpp)). Only one scan is queued at a time. A `WIFI_SCAN` that arrives while a scan is queued or running, or before the Wi-Fi task has started, answers `ERROR` 7 `detail="scan-pending"` on its own link ([`request_scan`](../../firmware/common/connectivity/src/wifi_link.cpp), [`sync_service.cpp`](../../firmware/common/connectivity/src/sync_service.cpp), [`control_sync.cpp`](../../firmware/common/connectivity/src/control_sync.cpp)). Over BLE the reply leaves as the notify queue takes it, never waiting on the Wi-Fi task, so LAN peers keep moving while a BLE phone is slow. The frames keep their order and `WIFI_SCAN_END` still counts the `WIFI_AP` frames sent. A BLE reply that has no frame taken for 15 s is dropped, and a second `WIFI_SCAN` waits until the first reply ends.
+
+### ERROR details
+
+`ERROR.detail` is short ASCII text, at most 64 bytes, and absent when the
+firmware gives none. This table lists every `detail` that `SET_CONFIG`,
+`GET_CONFIG`, `GET_TOKEN`, `FLUSH` and `WIFI_SCAN` send. The details of
+`LIST`, `OPEN`, `GET_DIAG`, `GET_DESCRIPTOR`, the LAN handshake and LAN OTA
+are in their own sections.
+
+`SET_CONFIG` reads its body as lines split on `\n`. It drops one trailing `\r`
+from each line and skips blank lines. A line is at most 284 bytes after that.
+It checks the lines in order and stops at the first failure. Then it checks the
+whole request in the order of the rows from `empty` to `location.phone_cell`,
+and then it saves. Every
+boolean key (`ble.clear_bonds`, `wifi.on`, `lan.on`, `lan.rotate_token`,
+`ntp.on`, `ntp.dhcp`, `ntp.public_fallback` and `sensor.batch_candidate`)
+accepts `0`, `1`, `false` and `true`, in lower case only ([`parse_bool`](../../firmware/common/runtime/src/device_config.cpp)).
+The action keys `ble.clear_bonds` and `lan.rotate_token` accept `0` or `false`
+and then run no action. The `SET_CONFIG` detail is cut to 47 bytes
+([`control_sync.cpp`](../../firmware/common/connectivity/src/control_sync.cpp)).
+The rows come from [`apply_lines`](../../firmware/common/runtime/src/device_config.cpp)
+and [`control_sync.cpp`](../../firmware/common/connectivity/src/control_sync.cpp),
+except where a row names its source.
+
+| Request | Code | `detail` | When |
+| --- | --- | --- | --- |
+| `SET_CONFIG` | 12 | `malformed` | a line holds a NUL byte |
+| `SET_CONFIG` | 12 | `line-too-long` | a line is 285 bytes or longer |
+| `SET_CONFIG` | 12 | the raw line | a line has no `=`. The detail is the line itself, cut to 47 bytes |
+| `SET_CONFIG` | 12 | the key | an unknown key, or a value its row in the key table refuses. For example `wifi.psk` of 1 to 7 bytes, over 63 bytes or with a control byte, or `wifi.ssid` over 32 bytes or with a control byte. A line that starts with `=` gives an empty detail |
+| `SET_CONFIG` | 12 | `empty` | the body holds no line that is not blank |
+| `SET_CONFIG` | 12 | `wifi.ssid` | the request would leave `wifi.on` at 1 with an empty SSID |
+| `SET_CONFIG` | 12 | `sensor.identity` | the request would leave one of `sensor.vendor` and `sensor.model` set and the other empty, or a `sensor.serial` with no vendor |
+| `SET_CONFIG` | 12 | `sensor.serial` | the request would leave a serial that the board's sensor policy refuses |
+| `SET_CONFIG` | 12 | `sensor.batch_candidate` | the request would leave the batch candidate on for an identity that is not the supported batch |
+| `SET_CONFIG` | 12 | `location.cell` | the cell is coarser than resolution 8 |
+| `SET_CONFIG` | 12 | `location.phone_cell` | the phone cell is coarser than resolution 8 |
+| `SET_CONFIG` | 12 | `nvs` | a record failed to save, see [configuration](#device-configuration-v2) |
+| `GET_CONFIG` | 1 | `page` | the body is longer than one byte, or the page byte is above the last page in [additional configuration pages](#additional-configuration-pages) |
+| `GET_CONFIG`, `SET_CONFIG` | 1 | `json` | the page JSON does not fit 480 bytes. `SET_CONFIG` sends it after the change is saved |
+| `GET_CONFIG`, `SET_CONFIG` | 7 | `mtu` | BLE only. `payload_max` is 6 or less, so no `CONFIG_CHUNK` fits. `SET_CONFIG` sends it after the change is saved |
+| `GET_TOKEN` | 13 | `ble-only` | the request came over LAN |
+| `FLUSH` | 10 | none | there are no RAM rows and no open file ([`os_logger.cpp`](../../firmware/common/logger/src/os_logger.cpp)) |
+| `FLUSH` | 8 | `ready`, `degraded`, `full` or `retry` | the card cannot take rows. The detail is the storage governor state ([`storage_governor.h`](../../firmware/common/logger/src/storage_governor.h)) |
+| `FLUSH` | 8 | `write` | writing the rows failed ([`os_logger.cpp`](../../firmware/common/logger/src/os_logger.cpp)) |
+| `WIFI_SCAN` | 7 | `scan-pending` | a scan is queued or running, or the Wi-Fi task has not started ([`wifi_link.cpp`](../../firmware/common/connectivity/src/wifi_link.cpp)) |
 
 ### Physical UART owner provisioning
 
