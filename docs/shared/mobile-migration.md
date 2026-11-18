@@ -26,10 +26,11 @@ and `WIFI_SCAN` replies keep their bytes and order.
 - A row that meets a batch from another window is kept when the write moved
   the batch to the card and only the finalize or the free space read failed.
   `rows_dropped` no longer counts that row.
-- `PARQUET STATUS` prints the real `deployment=` (the owner's
-  `thing.deployment_id`, else the board default `unknown`) and
-  `calibration=`, the same values the next footer writes. They were literal
-  `unknown` before.
+- `PARQUET STATUS` prints the real `deployment=` and `calibration=`, the
+  same values the next footer writes. The deployment is the open file's
+  snapshot, else the first buffered row's, else the owner's live
+  `thing.deployment_id`, and the board default `unknown` when that is empty.
+  They were literal `unknown` before.
 - A USB provisioning line that refuses an owner value now says
   `OS CONFIG ok=0 key=owner.title` (or `owner.description`, `owner.provider`,
   `owner.url`, `thing.deployment_id`) and not `key=invalid-key`.

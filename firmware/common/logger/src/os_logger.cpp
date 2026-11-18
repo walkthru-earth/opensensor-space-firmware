@@ -2762,8 +2762,14 @@ void storage_worker(void *) {
         oslog.printf("OS CONFIG ok=0 key=%s\n", result.bad_key);
       std::memset(command.text, 0, sizeof(command.text));
     } else if (std::strcmp(command.text, "parquet status") == 0) {
-      // The ids the next file's footer writes, from the live owner setting.
-      const auto deployment = ::config::deployment_id();
+      // The deployment id the next footer writes: the open file's snapshot,
+      // else the first buffered row's, else the live owner setting.
+      const auto live = ::config::deployment_id();
+      const OutputFile &current = writer_state->telemetry;
+      const char *deployment = footer::next_deployment(
+          current.open() ? current.deployment.text.data() : nullptr,
+          count ? writer_state->rows[0].deployment.text.data() : nullptr,
+          live.text.data());
       oslog.printf(
           "PARQUET STATUS interval_s=%lu buffered=%u open_rows=%lu "
           "open_groups=%lu finalized=%lu "
@@ -2782,8 +2788,7 @@ void storage_worker(void *) {
           storage::state_name(governor.state()),
           static_cast<unsigned long long>(governor.free_bytes() / 1024),
           thing_text, codec_name(selected_codec), config.schema_name,
-          config.configuration_id,
-          footer::deployment_id(config, deployment.text.data()),
+          config.configuration_id, footer::deployment_id(config, deployment),
           config.calibration_id);
     } else if (std::strcmp(command.text, "parquet schema") == 0) {
       oslog.printf("PARQUET SCHEMA BEGIN schema=%s columns=%u sha256=%s "
