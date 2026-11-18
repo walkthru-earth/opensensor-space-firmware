@@ -1,7 +1,7 @@
 // Host tests for the CrowPanel e-paper UI, canvas clipping, UTF-8, history
 // rings, chart gaps, PM2.5 bands, reading quality, navigation, the refresh
-// cadence, the settings blob and popup, the theme and the sleeping screen.
-// Built and run
+// cadence, the settings blob and popup, the theme, the sleeping screen and
+// the boot order of the chart history restore. Built and run
 // by tools/test_crowpanel_ui.py with sanitizers.
 
 #include <algorithm>
@@ -12,6 +12,7 @@
 #include <limits>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string_view>
 #include <vector>
 
@@ -20,6 +21,7 @@
 #include "chart.h"
 #include "history.h"
 #include "pages.h"
+#include "restore_order.h"
 #include "settings.h"
 #include "ui_model.h"
 
@@ -208,11 +210,260 @@ void test_history() {
   CHECK(last(Window::Recent) == 7.0F);
 }
 
+// Ring positions, oldest first, that carry a restart bit.
+std::vector<std::size_t> restarts_of(const Series &s) {
+  std::vector<std::size_t> out;
+  for (std::size_t i = 0; i < s.size(); ++i)
+    if (s.restart(i))
+      out.push_back(i);
+  return out;
+}
+
+// Every point of every metric in both windows matches, NaN for NaN, and
+// neither has a restart point.
+bool same_history(const History &a, const History &b) {
+  if (a.empty() != b.empty())
+    return false;
+  for (std::size_t m = 0; m < kMetricCount; ++m)
+    for (const Window win : {Window::Recent, Window::Day}) {
+      const Series x = a.series(static_cast<Metric>(m), win);
+      const Series y = b.series(static_cast<Metric>(m), win);
+      if (x.size() != y.size() || x.start != y.start)
+        return false;
+      if (!restarts_of(x).empty() || !restarts_of(y).empty())
+        return false;
+      for (std::size_t i = 0; i < x.size(); ++i) {
+        const bool both_nan = std::isnan(x[i]) && std::isnan(y[i]);
+        if (!both_nan && x[i] != y[i])
+          return false;
+      }
+    }
+  return true;
+}
+
+// The live script test_history() also runs, as one function so the seeded
+// and plain objects see the same calls.
+void live_script(History &h) {
+  h.push(1000, all(1.0F));
+  h.push(1010, all(2.0F));
+  h.push(1020, all(kNaN));
+  h.push(1060, all(5.0F));
+  h.push(1065, all(7.0F));
+  h.push(900, all(99.0F));
+  h.push(1080, all(kNaN));
+  h.advance(1200);
+  h.push(1200 + 3 * 3600, all(3.0F));
+  h.advance(1200 + 3 * 3600 + 45);
+}
+
+void test_history_seed() {
+  // No seeding, or seeding calls with no rows, change nothing.
+  {
+    auto plain = std::make_unique<History>();
+    live_script(*plain);
+    auto finished = std::make_unique<History>();
+    finished->finish_seed();
+    live_script(*finished);
+    CHECK(same_history(*plain, *finished));
+    auto empty_boots = std::make_unique<History>();
+    empty_boots->seed_boot();
+    empty_boots->seed_boot();
+    empty_boots->finish_seed();
+    CHECK(empty_boots->empty());
+    live_script(*empty_boots);
+    CHECK(same_history(*plain, *empty_boots));
+    // seed_boot() without finish_seed(), the first push closes seeding.
+    auto open = std::make_unique<History>();
+    open->seed_boot();
+    live_script(*open);
+    CHECK(same_history(*plain, *open));
+  }
+
+  // One seeded boot then live rows. Recent slots 0, 1, 2 hold the boot,
+  // 3 is the restart and the live boot starts at 4 with its second 0.
+  {
+    auto h = std::make_unique<History>();
+    h->seed_boot();
+    h->seed(100, all(1.0F));
+    CHECK(!h->empty());
+    h->seed(110, all(2.0F));
+    h->seed(120, all(3.0F));
+    h->finish_seed();
+    CHECK(!h->empty());
+    h->push(5, all(9.0F));
+    const Series s = h->series(Metric::Pm25, Window::Recent);
+    const std::size_t n = s.size();
+    CHECK(s[n - 1] == 9.0F);
+    CHECK(std::isnan(s[n - 2]) && s.restart(n - 2));
+    CHECK(s[n - 3] == 3.0F && s[n - 4] == 2.0F && s[n - 5] == 1.0F);
+    CHECK(std::isnan(s[n - 6]));
+    CHECK(restarts_of(s) == std::vector<std::size_t>{n - 2});
+    // Minutes of the boot's own clock, 100 and 110 s share minute 1, 120 s
+    // is minute 2.
+    const Series d = h->series(Metric::Co2, Window::Day);
+    const std::size_t nd = d.size();
+    CHECK(d[nd - 1] == 9.0F);
+    CHECK(std::isnan(d[nd - 2]) && d.restart(nd - 2));
+    CHECK(d[nd - 3] == 3.0F && d[nd - 4] == 1.5F);
+    CHECK(restarts_of(d) == std::vector<std::size_t>{nd - 2});
+    // Live rows keep their own spacing after the restart.
+    h->push(45, all(4.0F));
+    const Series s2 = h->series(Metric::Pm25, Window::Recent);
+    CHECK(s2[n - 1] == 4.0F && s2[n - 5] == 9.0F && s2.restart(n - 6));
+    CHECK(std::isnan(s2[n - 2]) && !s2.restart(n - 2));
+    // Seeding is closed once live rows came.
+    h->seed_boot();
+    h->seed(1000, all(50.0F));
+    h->finish_seed();
+    CHECK(h->series(Metric::Pm25, Window::Recent)[n - 1] == 4.0F);
+    CHECK(restarts_of(h->series(Metric::Pm25, Window::Recent)).size() == 1);
+  }
+
+  // Two seeded boots, each with its own restart after it.
+  {
+    auto h = std::make_unique<History>();
+    h->seed_boot();
+    h->seed(50, all(1.0F));
+    h->seed(60, all(2.0F));
+    h->seed_boot();
+    h->seed(7, all(3.0F));
+    h->seed(17, all(4.0F));
+    h->finish_seed();
+    h->push(0, all(5.0F));
+    const Series s = h->series(Metric::Rh, Window::Recent);
+    const std::size_t n = s.size();
+    CHECK(s[n - 1] == 5.0F && s[n - 3] == 4.0F && s[n - 4] == 3.0F);
+    CHECK(s[n - 6] == 2.0F && s[n - 7] == 1.0F);
+    CHECK((restarts_of(s) == std::vector<std::size_t>{n - 5, n - 2}));
+    // Boot 1 has minutes 0 and 1, boot 2 one minute with 3 and 4.
+    const Series d = h->series(Metric::Rh, Window::Day);
+    const std::size_t nd = d.size();
+    CHECK(d[nd - 1] == 5.0F && d[nd - 3] == 3.5F);
+    CHECK(d[nd - 5] == 2.0F && d[nd - 6] == 1.0F);
+    CHECK((restarts_of(d) == std::vector<std::size_t>{nd - 4, nd - 2}));
+  }
+
+  // A seeded boot with no rows adds no restart, and seed() before any
+  // seed_boot() opens the first boot.
+  {
+    auto h = std::make_unique<History>();
+    h->seed(30, all(1.0F));
+    h->seed_boot();
+    h->seed_boot();
+    h->seed(40, all(2.0F));
+    h->seed_boot();
+    h->finish_seed();
+    h->push(0, all(3.0F));
+    const Series s = h->series(Metric::Temp, Window::Recent);
+    const std::size_t n = s.size();
+    CHECK(s[n - 1] == 3.0F && s[n - 3] == 2.0F && s[n - 5] == 1.0F);
+    CHECK((restarts_of(s) == std::vector<std::size_t>{n - 4, n - 2}));
+  }
+
+  // A minute bucket never mixes boots. Both rows fall in minute 0 of their
+  // own boot, they stay apart with a restart between.
+  {
+    auto h = std::make_unique<History>();
+    h->seed_boot();
+    h->seed(30, all(10.0F));
+    h->seed_boot();
+    h->seed(40, all(20.0F));
+    h->finish_seed();
+    const Series d = h->series(Metric::Pm10, Window::Day);
+    const std::size_t nd = d.size();
+    CHECK(std::isnan(d[nd - 1]) && d.restart(nd - 1));
+    CHECK(d[nd - 2] == 20.0F);
+    CHECK(std::isnan(d[nd - 3]) && d.restart(nd - 3));
+    CHECK(d[nd - 4] == 10.0F);
+    bool mixed = false;
+    for (std::size_t i = 0; i < nd; ++i)
+      mixed = mixed || d[i] == 15.0F;
+    CHECK(!mixed);
+  }
+
+  // More than the rings hold drops the oldest, restart bits included.
+  {
+    auto h = std::make_unique<History>();
+    h->seed_boot();
+    h->seed(0, all(-1.0F));
+    h->seed_boot();
+    // 30 h at one row a minute, the value is the boot minute.
+    for (std::uint32_t t = 0; t < 30 * 3600; t += 60)
+      h->seed(t, all(static_cast<float>(t / 60)));
+    h->finish_seed();
+    h->push(0, all(-2.0F));
+    // Day slots, boot 1 at 0, restart 1, boot 2 at 2..1801, restart 1802,
+    // live 1803. The window is slots 364..1803.
+    const Series d = h->series(Metric::Pm1, Window::Day);
+    const std::size_t nd = d.size();
+    CHECK(d[0] == 362.0F);
+    CHECK(d[nd - 3] == 1799.0F && d[nd - 1] == -2.0F);
+    CHECK(restarts_of(d) == std::vector<std::size_t>{nd - 2});
+    // Recent slots, one per minute row, five NaN between.
+    const Series s = h->series(Metric::Pm1, Window::Recent);
+    const std::size_t n = s.size();
+    CHECK(s[n - 1] == -2.0F && s.restart(n - 2) && s[n - 3] == 1799.0F);
+    CHECK(std::isnan(s[n - 4]) && s[n - 9] == 1798.0F);
+    CHECK(restarts_of(s) == std::vector<std::size_t>{n - 2});
+  }
+
+  // advance() before the first live push grows a gap after the restart and
+  // never moves it, and the first row then lands at its own time.
+  {
+    auto h = std::make_unique<History>();
+    h->seed_boot();
+    h->seed(500, all(1.0F));
+    h->seed(510, all(2.0F));
+    // No finish_seed(), advance() closes seeding itself.
+    h->advance(25);
+    const Series s = h->series(Metric::Co2, Window::Recent);
+    const std::size_t n = s.size();
+    // Live seconds 0, 10 and 20 are slots after the restart.
+    CHECK(std::isnan(s[n - 1]) && std::isnan(s[n - 2]) && std::isnan(s[n - 3]));
+    CHECK(std::isnan(s[n - 4]) && s.restart(n - 4) && s[n - 5] == 2.0F);
+    CHECK(restarts_of(s) == std::vector<std::size_t>{n - 4});
+    const Series d = h->series(Metric::Co2, Window::Day);
+    const std::size_t nd = d.size();
+    CHECK(std::isnan(d[nd - 1]) && d.restart(nd - 2) && d[nd - 3] == 1.5F);
+    h->push(29, all(8.0F));
+    const Series s2 = h->series(Metric::Co2, Window::Recent);
+    CHECK(s2[n - 1] == 8.0F && s2.restart(n - 4) && s2[n - 5] == 2.0F);
+    CHECK(restarts_of(s2) == std::vector<std::size_t>{n - 4});
+    const Series d2 = h->series(Metric::Co2, Window::Day);
+    CHECK(d2[nd - 1] == 8.0F && d2.restart(nd - 2));
+    h->advance(200);
+    CHECK(restarts_of(h->series(Metric::Co2, Window::Recent)) ==
+          std::vector<std::size_t>{n - 22});
+  }
+
+  // reset() clears seeds and restarts, and seeding works again after it.
+  {
+    auto h = std::make_unique<History>();
+    h->seed_boot();
+    h->seed(100, all(1.0F));
+    h->finish_seed();
+    h->push(10, all(2.0F));
+    h->reset();
+    CHECK(h->empty());
+    auto fresh = std::make_unique<History>();
+    CHECK(same_history(*h, *fresh));
+    live_script(*h);
+    live_script(*fresh);
+    CHECK(same_history(*h, *fresh));
+    h->reset();
+    h->seed_boot();
+    h->seed(100, all(1.0F));
+    h->finish_seed();
+    const Series s = h->series(Metric::Pm25, Window::Recent);
+    CHECK(restarts_of(s) == std::vector<std::size_t>{s.size() - 1});
+  }
+}
+
 void test_chart() {
   const std::array<float, 3> nan3{kNaN, kNaN, kNaN};
-  CHECK(!data_range({.ring = nan3, .start = 0}).valid);
+  CHECK(!data_range({.ring = nan3, .start = 0, .restarts = {}}).valid);
   const std::array<float, 4> some{3.0F, kNaN, -1.0F, 8.0F};
-  const Range r = data_range({.ring = some, .start = 1});
+  const Range r = data_range({.ring = some, .start = 1, .restarts = {}});
   CHECK(r.valid && r.lo == -1.0F && r.hi == 8.0F);
 
   Ticks t = nice_ticks(0.0F, 37.3F, 5);
@@ -256,15 +507,15 @@ void test_chart() {
   // A NaN in the middle leaves its column blank and breaks the line.
   auto b = std::make_unique<Buffer>();
   const std::array<float, 5> gap{1.0F, 1.0F, kNaN, 1.0F, 1.0F};
-  plot_series(b->canvas, {100, 100, 5, 10}, {.ring = gap, .start = 0}, 0.0F,
-              2.0F);
+  plot_series(b->canvas, {100, 100, 5, 10},
+              {.ring = gap, .start = 0, .restarts = {}}, 0.0F, 2.0F);
   CHECK(ink_count(b->canvas, {102, 90, 1, 30}) == 0);
   CHECK(ink_count(b->canvas, {100, 90, 2, 30}) == 2);
   // A lone point draws a 3 x 3 dot.
   b->canvas.clear();
   const std::array<float, 5> lone{kNaN, kNaN, 1.0F, kNaN, kNaN};
-  plot_series(b->canvas, {100, 100, 5, 10}, {.ring = lone, .start = 0}, 0.0F,
-              2.0F);
+  plot_series(b->canvas, {100, 100, 5, 10},
+              {.ring = lone, .start = 0, .restarts = {}}, 0.0F, 2.0F);
   CHECK(ink_count(b->canvas, {90, 90, 30, 30}) == 9);
   // The envelope keeps a single spike among 1440 points on 344 columns.
   b->canvas.clear();
@@ -272,20 +523,55 @@ void test_chart() {
   day.fill(1.0F);
   day[777] = 100.0F;
   const Rect plot{40, 50, 344, 100};
-  plot_series(b->canvas, plot, {.ring = day, .start = 0}, 0.0F, 100.0F);
+  plot_series(b->canvas, plot, {.ring = day, .start = 0, .restarts = {}}, 0.0F,
+              100.0F);
   CHECK(ink_count(b->canvas, {plot.x, plot.y, plot.w, 1}) >= 1);
   // A whole hour of NaN in a day draws a clean gap.
   b->canvas.clear();
   for (std::size_t i = 600; i < 660; ++i)
     day[i] = kNaN;
   day[777] = 1.0F;
-  plot_series(b->canvas, plot, {.ring = day, .start = 0}, 0.0F, 2.0F);
+  plot_series(b->canvas, plot, {.ring = day, .start = 0, .restarts = {}}, 0.0F,
+              2.0F);
   const int gx = plot.x + static_cast<int>((630 * 344) / 1440);
   CHECK(ink_count(b->canvas, {gx - 3, plot.y, 7, plot.h}) == 0);
   CHECK(ink_count(b->canvas, {plot.x, plot.y, 20, plot.h}) > 0);
+  // A restart draws a dashed line down its column, a plain NaN does not.
+  {
+    std::array<float, 1440> flat{};
+    flat.fill(5.0F);
+    flat[720] = kNaN;
+    std::array<std::uint8_t, 180> bits{};
+    const Rect chart_plot{46, 82, 344, 186};
+    const int col = chart_plot.x + static_cast<int>((721 * 343 - 1) / 1440);
+    const Rect whole{0, 0, kWidth, kHeight};
+    b->canvas.clear();
+    line_chart(b->canvas, chart_plot,
+               {.ring = flat, .start = 0, .restarts = {}}, {});
+    const int plain = ink_count(b->canvas, {col, chart_plot.y, 1, 60});
+    const int plain_all = ink_count(b->canvas, whole);
+    const int plain_col = ink_count(b->canvas, {col, 0, 1, kHeight});
+    bits[720 / 8] = static_cast<std::uint8_t>(1U << (720 % 8));
+    b->canvas.clear();
+    line_chart(b->canvas, chart_plot,
+               {.ring = flat, .start = 0, .restarts = bits}, {});
+    const int marked = ink_count(b->canvas, {col, chart_plot.y, 1, 60});
+    CHECK(marked >= plain + 25);
+    // Only that column changes.
+    CHECK(ink_count(b->canvas, whole) - plain_all ==
+          ink_count(b->canvas, {col, 0, 1, kHeight}) - plain_col);
+    // Restarts in a short series land on the point's own x.
+    b->canvas.clear();
+    const std::array<float, 5> five{1.0F, 1.0F, kNaN, 1.0F, 1.0F};
+    const std::array<std::uint8_t, 1> bit2{0x04};
+    restart_marks(b->canvas, {100, 100, 5, 10},
+                  {.ring = five, .start = 0, .restarts = bit2});
+    CHECK(ink_count(b->canvas, {102, 100, 1, 10}) == 8);
+    CHECK(ink_count(b->canvas, {100, 100, 5, 10}) == 8);
+  }
   // An empty chart says so instead of drawing a line.
   b->canvas.clear();
-  line_chart(b->canvas, plot, {.ring = nan3, .start = 0}, {});
+  line_chart(b->canvas, plot, {.ring = nan3, .start = 0, .restarts = {}}, {});
   CHECK(ink_count(b->canvas, {plot.x + 100, plot.y + 30, 140, 40}) > 0);
 
   // widen() centres a narrow range, floors at 0 on request, and leaves a
@@ -307,8 +593,8 @@ void test_chart() {
   for (std::size_t i = 0; i < hour.size(); ++i)
     hour[i] = static_cast<float>(i);
   const Rect spark{10, 10, 100, 200};
-  plot_series(b->canvas, spark, {.ring = hour, .start = 0}, 0.0F, 359.0F,
-              Detail::Mean);
+  plot_series(b->canvas, spark, {.ring = hour, .start = 0, .restarts = {}},
+              0.0F, 359.0F, Detail::Mean);
   bool one_per_column = true;
   for (int x = spark.x; x < spark.right(); ++x)
     one_per_column = one_per_column &&
@@ -318,8 +604,8 @@ void test_chart() {
   b->canvas.clear();
   for (std::size_t i = 90; i < 180; ++i)
     hour[i] = kNaN;
-  plot_series(b->canvas, spark, {.ring = hour, .start = 0}, 0.0F, 359.0F,
-              Detail::Mean);
+  plot_series(b->canvas, spark, {.ring = hour, .start = 0, .restarts = {}},
+              0.0F, 359.0F, Detail::Mean);
   CHECK(ink_count(b->canvas, {spark.x + 27, spark.y, 20, spark.h}) == 0);
   CHECK(ink_count(b->canvas, {spark.x, spark.y, 20, spark.h}) > 0);
 }
@@ -1086,12 +1372,152 @@ void test_theme() {
   }
 }
 
+namespace order = opensensor::crowpanel::restore_order;
+
+constexpr order::BootKey ring_boot(int age, std::uint64_t key = 0,
+                                   std::optional<order::UsedRange> used = {}) {
+  return {.ring_age = age, .utc_key = key, .used = used};
+}
+
+constexpr order::BootKey dated_boot(std::uint64_t key,
+                                    std::optional<order::UsedRange> used = {}) {
+  return {.ring_age = -1, .utc_key = key, .used = used};
+}
+
+constexpr order::UsedRange used(std::int64_t min, std::int64_t max) {
+  return {.min = min, .max = max};
+}
+
+struct Ordered {
+  std::vector<int> boots;
+  bool cut = false;
+  std::size_t fallback = 0;
+};
+
+Ordered run_order(std::span<const order::BootKey> boots,
+                  std::size_t capacity = 32) {
+  order::Scratch scratch;
+  std::array<std::uint8_t, 32> out{};
+  const auto result =
+      order::order(boots, std::span{out}.first(capacity), scratch);
+  Ordered ordered{.boots = {}, .cut = result.cut, .fallback = result.fallback};
+  for (std::size_t k = 0; k < result.count; ++k)
+    ordered.boots.push_back(out[k]);
+  return ordered;
+}
+
+bool same(const Ordered &got, std::vector<int> boots, bool cut,
+          std::size_t fallback) {
+  return got.boots == boots && got.cut == cut && got.fallback == fallback;
+}
+
+// The order works in a constant expression, so it needs no runtime state.
+constexpr std::size_t constant_order_count() {
+  const std::array boots{ring_boot(0), ring_boot(1),
+                         dated_boot(202611171000, used(10, 20))};
+  order::Scratch scratch;
+  std::array<std::uint8_t, 4> out{};
+  return order::order(boots, out, scratch).count;
+}
+static_assert(constant_order_count() == 0);
+
+void test_restore_order() {
+  using order::Relation;
+  // by_used. At or below the other's smallest is older, overlap is unknown.
+  CHECK(order::by_used(dated_boot(1, used(10, 20)),
+                       dated_boot(2, used(20, 30))) == Relation::Older);
+  CHECK(order::by_used(dated_boot(1, used(30, 40)),
+                       dated_boot(2, used(20, 30))) == Relation::Newer);
+  CHECK(order::by_used(dated_boot(1, used(10, 25)),
+                       dated_boot(2, used(20, 30))) == Relation::Unknown);
+  CHECK(order::by_used(dated_boot(1, used(10, 10)),
+                       dated_boot(2, used(10, 10))) == Relation::Unknown);
+  CHECK(order::by_used(dated_boot(1), dated_boot(2, used(20, 30))) ==
+        Relation::Unknown);
+
+  // Ring only, ring order.
+  {
+    const std::array boots{ring_boot(0), ring_boot(2), ring_boot(1)};
+    CHECK(same(run_order(boots), {1, 2, 0}, false, 0));
+  }
+  // Dated only, UTC order.
+  {
+    const std::array boots{dated_boot(202611170900), dated_boot(202611171100),
+                           dated_boot(202611171000)};
+    CHECK(same(run_order(boots), {1, 2, 0}, false, 0));
+  }
+  // Mixed, ring boots with dated files prove every step. Used bytes that
+  // would say otherwise are never asked.
+  {
+    std::array boots{ring_boot(1, 202611171400), ring_boot(0, 202611171100),
+                     dated_boot(202611171300), dated_boot(202611171000)};
+    CHECK(same(run_order(boots), {0, 2, 1, 3}, false, 0));
+    boots[2].used = used(1, 2);
+    boots[0].used = used(100, 200);
+    CHECK(same(run_order(boots), {0, 2, 1, 3}, false, 0));
+  }
+  // The hardware case. The newest ring boot never had UTC and the dated
+  // boots never entered the ring, so the proofs place nothing. Used bytes
+  // interleave them, R1 D1 D0 R0 from oldest.
+  {
+    std::array boots{ring_boot(1, 0, used(5000, 6000)),
+                     ring_boot(0, 0, used(1000, 2000)),
+                     dated_boot(202611171200, used(3000, 4000)),
+                     dated_boot(202611171100, used(2000, 2500))};
+    CHECK(same(run_order(boots), {0, 2, 3, 1}, false, 3));
+    for (auto &boot : boots)
+      boot.used.reset();
+    CHECK(same(run_order(boots), {}, true, 0));
+  }
+  // Overlapping used ranges stay unknown and keep the newer prefix.
+  {
+    const std::array boots{ring_boot(1, 0, used(9000, 9500)),
+                           ring_boot(0, 0, used(3000, 5000)),
+                           dated_boot(202611171200, used(4000, 6000))};
+    CHECK(same(run_order(boots), {0}, true, 1));
+  }
+  // Used bytes that contradict a proof are ignored. R1 got UTC after D0,
+  // so R0 and R1 are newer than D0 whatever the used bytes say.
+  {
+    const std::array boots{ring_boot(1, 0, used(100, 200)),
+                           ring_boot(0, 202611171200, used(50, 90)),
+                           dated_boot(202611171000, used(500, 600))};
+    CHECK(same(run_order(boots), {0, 1, 2}, false, 0));
+  }
+  // Proofs that disagree stop the order, used bytes never break the tie.
+  {
+    const std::array boots{ring_boot(1, 202611171000, used(9000, 9100)),
+                           ring_boot(0, 202611171400),
+                           dated_boot(202611171200, used(1, 2))};
+    CHECK(same(run_order(boots), {}, true, 0));
+  }
+  // Missing stats stay unknown, the newer prefix is kept.
+  {
+    const std::array boots{ring_boot(1, 0, used(5000, 6000)), ring_boot(0),
+                           dated_boot(202611171200, used(1000, 2000))};
+    CHECK(same(run_order(boots), {0}, true, 1));
+    const std::array none{ring_boot(0),
+                          dated_boot(202611171200, used(1000, 2000))};
+    CHECK(same(run_order(none), {}, true, 0));
+  }
+  // A full output ends the list without a cut, more than kMaxBoots places
+  // nothing and no boots is an empty order.
+  {
+    const std::array boots{ring_boot(0), ring_boot(1), ring_boot(2)};
+    CHECK(same(run_order(boots, 2), {2, 1}, false, 0));
+    std::vector<order::BootKey> many(order::kMaxBoots + 1, ring_boot(0));
+    CHECK(same(run_order(many), {}, true, 0));
+    CHECK(same(run_order({}), {}, false, 0));
+  }
+}
+
 } // namespace
 
 int main() {
   test_canvas();
   test_utf8_and_text();
   test_history();
+  test_history_seed();
   test_chart();
   test_bands();
   test_quality_and_format();
@@ -1104,6 +1530,7 @@ int main() {
   test_ui_handle();
   test_render_settings_and_sleep();
   test_theme();
+  test_restore_order();
   std::printf("crowpanel ui, %d checks passed\n", g_checks);
   return 0;
 }

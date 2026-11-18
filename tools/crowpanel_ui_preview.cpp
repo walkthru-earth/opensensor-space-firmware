@@ -264,6 +264,35 @@ int main(int argc, char **argv) {
     rc |= emit(dir, "status-fault", kStatusPage, m, *h);
   }
 
+  // Two earlier boots read back from the card, then 50 minutes of this
+  // boot. Each reboot draws as a dashed line, in the 24 h chart and in the
+  // last 2 h of the dashboard.
+  {
+    auto h = std::make_unique<History>();
+    Lcg rng;
+    std::array<float, kMetricCount> v{};
+    h->seed_boot();
+    for (std::uint32_t t = 0; t < 9 * 3600; t += 10)
+      h->seed(t + 25, day_sample(t, rng));
+    h->seed_boot();
+    for (std::uint32_t t = 0; t < 12 * 3600; t += 10)
+      h->seed(t + 18, day_sample(t + 9 * 3600 + 900, rng));
+    h->finish_seed();
+    const std::uint32_t end = 50 * 60;
+    for (std::uint32_t t = 20; t <= end; t += 10) {
+      v = day_sample(t + 21 * 3600 + 1800, rng);
+      h->push(t, v);
+    }
+    Model m{};
+    m.status = base_status();
+    m.status.uptime_s = end;
+    fill_now(m, v, end);
+    rc |= emit(dir, "dashboard-restart", kDashboardPage, m, *h);
+    rc |= emit(dir, "chart-restart", 1, m, *h);
+    rc |= emit_dark(dir, "chart-restart-dark", 1, m, *h);
+    rc |= emit_dark(dir, "dashboard-restart-dark", kDashboardPage, m, *h);
+  }
+
   // No sensor on the bus at all.
   {
     auto h = std::make_unique<History>();

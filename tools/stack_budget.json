@@ -355,16 +355,16 @@
         ".iram0.text": 129792,
         ".dram0.data": 37120,
         ".dram0.bss": 61184,
-        ".flash.text": 1314304,
-        ".flash.rodata": 457984,
+        ".flash.text": 1312768,
+        ".flash.rodata": 447232,
         ".noinit": 256
       },
       "sections_measured": {
         ".iram0.text": 127031,
         ".dram0.data": 36325,
-        ".dram0.bss": 59960,
-        ".flash.text": 1288526,
-        ".flash.rodata": 448980,
+        ".dram0.bss": 59944,
+        ".flash.text": 1286882,
+        ".flash.rodata": 438420,
         ".noinit": 3
       }
     },
@@ -392,7 +392,7 @@
         },
         "os-gnss": {
           "stack_bytes": 4096,
-          "measured": 2672,
+          "measured": 2656,
           "budget": 2944
         },
         "board": {
@@ -414,16 +414,16 @@
         ".iram0.text": 122624,
         ".dram0.data": 35072,
         ".dram0.bss": 58112,
-        ".flash.text": 1177856,
-        ".flash.rodata": 409344,
+        ".flash.text": 1175808,
+        ".flash.rodata": 399616,
         ".noinit": 0
       },
       "sections_measured": {
         ".iram0.text": 120035,
         ".dram0.data": 34164,
         ".dram0.bss": 56904,
-        ".flash.text": 1154610,
-        ".flash.rodata": 401284,
+        ".flash.text": 1152566,
+        ".flash.rodata": 391604,
         ".noinit": 0
       }
     },
@@ -504,16 +504,16 @@
         ".iram0.text": 128000,
         ".dram0.data": 35072,
         ".dram0.bss": 58624,
-        ".flash.text": 1179904,
-        ".flash.rodata": 410368,
+        ".flash.text": 1203456,
+        ".flash.rodata": 404224,
         ".noinit": 256
       },
       "sections_measured": {
         ".iram0.text": 125295,
         ".dram0.data": 34241,
         ".dram0.bss": 57336,
-        ".flash.text": 1156762,
-        ".flash.rodata": 402280,
+        ".flash.text": 1179714,
+        ".flash.rodata": 396136,
         ".noinit": 3
       }
     }
