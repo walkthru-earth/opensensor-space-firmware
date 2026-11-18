@@ -20,6 +20,8 @@ from host_cxx import CXX_STD
 
 ROOT = Path(__file__).resolve().parent.parent
 DISPLAY = ROOT / "firmware/esp-idf-crowpanel-epaper/display"
+# Only the header only restore_order.h is used from logger/.
+LOGGER = ROOT / "firmware/esp-idf-crowpanel-epaper/logger"
 PREVIEW = ROOT / "firmware/esp-idf-crowpanel-epaper/artifacts/ui-preview"
 # The host-portable part of the display stack. epd_uc8276c.cpp needs ESP-IDF.
 SOURCES = ["canvas.cpp", "chart.cpp", "history.cpp", "pages.cpp",
@@ -29,7 +31,7 @@ SOURCES = ["canvas.cpp", "chart.cpp", "history.cpp", "pages.cpp",
 def compile_one(main: Path, out: Path, sanitize: bool) -> None:
     command = ["clang++", CXX_STD, "-Wall", "-Wextra", "-Werror",
                "-Wshadow", "-Wconversion", "-Wno-sign-conversion",
-               f"-I{DISPLAY}", str(main), *[str(DISPLAY / s) for s in SOURCES],
+               f"-I{DISPLAY}", f"-I{LOGGER}", str(main), *[str(DISPLAY / s) for s in SOURCES],
                "-o", str(out)]
     if sanitize:
         command += ["-g", "-fsanitize=address,undefined",

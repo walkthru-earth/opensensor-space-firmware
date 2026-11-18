@@ -22,7 +22,12 @@ Never borrow a sibling trial's settings.
   Panel pins are in `opensensor::epd::Pins`, GPIO7 panel power stays high.
   It reads a copy of the latest row and the pairing passkey through the UI
   feed in `logger/main.cpp`, never the logger or the card. The 2 h and 24 h
-  chart history lives in RAM and starts empty after each reset.
+  chart history lives in RAM. At boot the board task seeds it once from this
+  Thing's own finalized Parquet (`logger/history_restore.*`), after the card
+  mounts and before `oslogger::begin`, so no storage worker and no UI task
+  run yet. It is read only on the card and NVS, bounded to 24 h of rows and
+  about 8 s, and logs one `OS HISTORY` line. A failure only leaves the charts
+  empty, it never stops logging. Limits are in the board README.
 - The settings popup (`display/settings.*`) is pure UI state. The UI task
   saves it as a versioned blob in NVS namespace `ospanel` key `ui` and hands
   altitude, CO2 self calibration, temperature offset and fan cleaning to the
