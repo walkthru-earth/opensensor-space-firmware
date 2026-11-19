@@ -980,7 +980,7 @@ void ui_task(void *) {
     // wake the screen or count as a key for sleep.
     if (phone != ui::PhoneDraft{}) {
       const auto theme = panel_settings.theme;
-      ui::apply_phone_draft(panel_settings, phone);
+      ui::apply_phone_draft(panel_settings, phone, state.page);
       save_due_us = now + kSaveAfterUs;
       request_sensor(phone.fan_clean);
       if (!state.asleep) {
@@ -1166,9 +1166,6 @@ bool init_board() {
   sensor_requests.settings = sensor_settings_of(panel_settings);
   control.wanted = sensor_requests.settings;
   const bool display_ok = start_display();
-  // The phone keys need the UI task, which needs the display.
-  if (display_ok)
-    config::set_board_keys(kBoardKeys);
   const bool bus_ok = board::start_sensor_bus(Sen6x::kAddress);
   board::sensor_delay_ms(nullptr, Sen6x::kPowerUpMs);
   oslog.printf("OS SEN6X bus ready=%u sda=%d scl=%d addr=0x%02x hz=%lu "
@@ -1194,14 +1191,18 @@ bool init_board() {
     opensensor::crowpanel::restore_history(*history,
                                            kLoggerConfig.output_directory);
   logging = oslogger::begin(kLoggerConfig, kHooks, mounted);
+  // The phone keys are applied by the UI task, so they are registered only
+  // once it runs, and before start_links so no link sees them change.
+  const bool ui_ok = display_ok && start_ui_task();
+  if (display_ok && !ui_ok)
+    oslog.println("OS ERROR operation=ui-task-create");
+  if (ui_ok)
+    config::set_board_keys(kBoardKeys);
   if (logging) {
     links_started = oslogger::start_links(display_ok);
     if (!links_started)
       oslog.println("OS ERROR operation=sync-start");
   }
-  const bool ui_ok = display_ok && start_ui_task();
-  if (display_ok && !ui_ok)
-    oslog.println("OS ERROR operation=ui-task-create");
   oslog.printf("OS READY logging=%u mounted=%u sample_ms=10000 display=%u "
                "sensor=%u\n",
                logging, mounted, ui_ok, snapshot.present);
