@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
+import boards as board_tools
 from host_cxx import CXX_STD
 
 
@@ -29,7 +30,8 @@ def presence_wiring_errors(logger: str, boards: dict[str, str]) -> list[str]:
         return ["service_presence is missing"]
     for needle in ("if (!hooks.storage_present) return;",
                    "storage::presence_due(previous, storage_ready, now, presence_checked)",
-                   "BusLock lock; present = hooks.storage_present(hooks.context);",
+                   "stamp_heartbeat(); bool present; { BusLock lock; "
+                   "present = hooks.storage_present(hooks.context); } stamp_heartbeat();",
                    "governor.write_failed(now); publish_storage(previous);"):
         if needle not in body:
             errors.append(f"service_presence lacks {needle}")
@@ -47,20 +49,22 @@ def presence_wiring_errors(logger: str, boards: dict[str, str]) -> list[str]:
 
 def check_presence_wiring(root: Path) -> None:
     logger = (root / "firmware/common/logger/src/os_logger.cpp").read_text()
-    boards = {name: (root / path).read_text() for name, path in (
-        ("cores3", "firmware/esp-idf-cores3/bringup/telemetry_logger.cpp"),
-        ("waveshare", "firmware/esp-idf-waveshare-sim7670g/logger/main.cpp"),
-        ("crowpanel", "firmware/esp-idf-crowpanel-epaper/logger/main.cpp"))}
+    # Every board in tools/boards.py, so a new board cannot skip the hook.
+    boards = {board.alias: "\n".join((root / name).read_text() for name in board_tools.tracked_sources(board, root)[0])
+              for board in board_tools.boards(root)}
+    assert boards, "tools/boards.py lists no board"
     errors = presence_wiring_errors(logger, boards)
     assert not errors, errors
     # Each mutant must be caught, so the check above cannot pass vacuously.
     mutants = {
         "no bus lock": (logger.replace("BusLock lock;\n    present = hooks.storage_present",
                                        "present = hooks.storage_present", 1), boards),
+        "no heartbeat": (logger.replace("  }\n  stamp_heartbeat();\n  if (present)", "  }\n  if (present)", 1), boards),
         "no write failure": (logger.replace("  governor.write_failed(now);\n  publish_storage(previous);\n}\n\n// Explicit",
                                             "  publish_storage(previous);\n}\n\n// Explicit", 1), boards),
         "not called": (logger.replace("    service_presence(storage_ready);\n", "", 1), boards),
-        "board unwired": (logger, {**boards, "crowpanel": boards["crowpanel"].replace(".storage_present", ".unused", 1)}),
+        **{f"{name} unwired": (logger, {**boards, name: text.replace(".storage_present", ".unused")})
+           for name, text in boards.items()},
     }
     for name, (text, wired) in mutants.items():
         assert presence_wiring_errors(text, wired), f"presence wiring mutant survived: {name}"
@@ -90,7 +94,7 @@ def main() -> None:
             command += ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
         subprocess.run(command, check=True)
         subprocess.run([str(executable)], check=True)
-    print("SD governor thresholds, hysteresis, backoff, recovery and the card presence check passed with no delete path, 4 wiring mutations fail")
+    print("SD governor thresholds, hysteresis, backoff, recovery and the card presence check passed with no delete path, every wiring mutation fails")
 
 
 if __name__ == "__main__":

@@ -2310,11 +2310,15 @@ void service_presence(bool storage_ready) {
   if (!storage::presence_due(previous, storage_ready, now, presence_checked))
     return;
   presence_checked = now;
+  // A card that stops answering can hold the bus until the SDMMC timeout, as
+  // measure_free can, so the stamps keep that wait from reading as a stall.
+  stamp_heartbeat();
   bool present;
   {
     BusLock lock;
     present = hooks.storage_present(hooks.context);
   }
+  stamp_heartbeat();
   if (present)
     return;
   ++errors;
