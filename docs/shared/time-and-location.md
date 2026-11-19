@@ -37,12 +37,57 @@ the existing monotonic estimate; the status reports the age of the latest
 network synchronization and when that evidence is stale. A board without a
 usable RTC starts unanchored again after reboot.
 
-The common Android/iOS session checks current STATUS clock evidence on each
-authenticated connection and refreshes unset/RTC clocks, external anchors older
-than six hours, or current estimates more than two seconds from the phone. That accepted host anchor can change
-`clock_status` back to 1 even after a successful network anchor, until a later
-SNTP cycle succeeds. The network service's last-sync evidence describes that
-service; it does not mean NTP exclusively owns the active logger clock.
+The network service's last-sync evidence describes that service. It does not
+mean NTP alone owns the active logger clock, see the clock rule below.
+
+## Clock rule
+
+This section owns the clock rule for both repositories. The protocol and
+pipeline documents link here.
+
+What the firmware accepts (#173, `firmware/common/src/utc_clock.h`). The same
+check covers SET_TIME over BLE or LAN, serial `parquet time`, SNTP and the RTC
+read at boot.
+
+- No source may set a time before 2026-10-29 UTC (`kAnchorFloorSeconds`) or
+  after 2100-01-01. SET_TIME answers ERROR 9, serial answers
+  `PARQUET ERROR operation=time reason=invalid-epoch`, an SNTP reply is ignored
+  and an RTC that holds such a date is `unusable`. The date equals the app's
+  phone floor and only moves forward, in a release. Decoding of stored rows
+  still accepts 2020 to 2100.
+- A new anchor that moves the clock more than one day from the current
+  estimate is a jump. The logger still takes it, starts a new `clock_epoch`
+  and logs `PARQUET CLOCK jump=true previous=… source=… skew_s=… rtc=kept`. It
+  does not copy that anchor to the RTC and drops an RTC write still pending, so
+  a wrong time does not survive a reboot. The next host or network anchor
+  within a day of it is not a jump, and that one is saved. So a wrong RTC is
+  corrected for the session at once and in the RTC on the second agreeing
+  anchor.
+- The first anchor of a boot is never a jump. Host and network anchors that
+  are not a jump are copied to the RTC as before.
+
+What the phone sends (`SmartSyncPolicy.decide` in the app, checked against
+opensensor-space-mobile main at 6f54b169). Android and iOS run it at most once
+per authenticated connection, before archive listing.
+
+- A phone whose own clock is before 2026-10-29 sends nothing.
+- On proto 3 or later, a sensor that did not answer STATUS is left alone.
+- No anchor, an RTC restored anchor or an unknown clock state is set.
+- A network (SNTP) anchor is kept when the phone could not measure the
+  difference, and also when the difference is over 60 s plus expected drift
+  (50 ppm of the anchor age) plus link uncertainty. A hand set phone is the
+  likelier fault.
+- Any anchor under six hours old is kept, whatever the difference, so two
+  phones do not flip the clock back and forth.
+- An anchor six hours old or more is set when the difference is over 2 s plus
+  link uncertainty, and also simply because of its age.
+- Otherwise the anchor is kept.
+
+So a phone does not correct a clock that is three seconds off while its anchor
+is under six hours old, and does not move `clock_status` from 3 to 1 when the
+network anchor is fresh or differs by more than a minute. An accepted phone
+anchor can still change `clock_status` from 3 to 1 when the network anchor is
+six hours old or more, until a later SNTP cycle succeeds.
 
 The implementation uses ordinary SNTP, which is unauthenticated. Encrypted BLE
 time provisioning remains useful offline; NTP adds automatic availability, and
