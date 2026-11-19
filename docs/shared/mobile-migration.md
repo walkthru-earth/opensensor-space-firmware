@@ -35,11 +35,11 @@ All three boards must be reflashed. Part of #184.
   English `title`. Every template names `opensensor:primary`. The plugin
   contract test fails a board that lacks either, and a unit that is not plain
   ASCII UCUM, so a ratio is `m3/m3` and never a superscript.
-- The templates grow to 50028 bytes on CoreS3, 41178 on Waveshare and 28311
+- The templates grow to 50040 bytes on CoreS3, 41178 on Waveshare and 28311
   on the CrowPanel.
   - `m5stack-cores3`, dict `f4f81218dc80d1a8e6db043197a2f7180c4f075f9e8348df30eaceef44d68370`,
-    desc `f5f0f850ea678dd7fdc08fc295ed01107ae395bb54ba731b8c8e2d64934b483c`
-    (was `04d8b42831fc8256dff52f403e57c5b00fccf724d08e7c6d2d4cd5cd82ee0966`).
+    desc `38b0982d1da0dfea20777af87544f30c8141ef297ed5146c402129133acbea0e`
+    (was `31c2043bbe91ce6e06ee08756d5b21bd70ca9bb5a12090614c0da88c47f00de1`).
   - `waveshare-esp32-s3-sim7670g`, desc `f46b72d6f93e1f2077693c32eb03036935d73026d4ee64a149a6c9c347e0af74`
     (was `4bff03290ab46e554db2389a28a3da41574745fffea0bb4e187355dd5b97967d`).
   - `elecrow-crowpanel-epaper-42`, desc `39da5da001dd662c6c05eddf08bbfdd1400d077dd5a9b7cdf2efaac939d08eb8`
@@ -104,7 +104,7 @@ must be reflashed so `GET_DESCRIPTOR` serves the new template. Part of #184.
 
 - New desc digests, with the dict digests unchanged.
   - `m5stack-cores3`, dict `3b4d8500a19f42c6743b0f7d725276c96ca14a0c249f613048603afbc3cfaff9`,
-    desc `04d8b42831fc8256dff52f403e57c5b00fccf724d08e7c6d2d4cd5cd82ee0966`
+    desc `31c2043bbe91ce6e06ee08756d5b21bd70ca9bb5a12090614c0da88c47f00de1`
     (was `4dd6c4b1ef19187ed2c011ab86018e43be0f28edc3af63a0f6a27b70ff203ef3`).
   - `waveshare-esp32-s3-sim7670g`, dict `a8605aafb6f76b794e9e7fb32927be6d203afeeb14527206c0e49c1eb0436809`,
     desc `4bff03290ab46e554db2389a28a3da41574745fffea0bb4e187355dd5b97967d`
@@ -113,17 +113,20 @@ must be reflashed so `GET_DESCRIPTOR` serves the new template. Part of #184.
     desc `6b4ecbab4e258f1091cd9048ddfe9260e160ef73166ee0c6b29669501c0c077a`
     (was `40544faf12a82d7895a5231758a2901cd4be851b918e839258f4c764879e0a98`).
 - Each column carries `title` from the registry English label,
-  `opensensor:title_i18n` with the other registry labels, `opensensor:group`
-  and `opensensor:decimals`. Decimals are on every column and follow the
-  firmware LIVE rounding, so they can differ from the registry default, for
-  example 0 on the PMS atmospheric columns and 2 on `ambient_temperature_c`.
+  `opensensor:group` and `opensensor:decimals`. It carries
+  `opensensor:title_i18n` only where the registry has other labels, and the
+  app falls back to `title` without one. Decimals are on every column and
+  follow the firmware LIVE rounding, so they can differ from the registry
+  default and by board, for example 0 on the CoreS3 PMS atmospheric columns,
+  2 on CoreS3 `ambient_temperature_c` and 1 on Waveshare and CrowPanel.
 - The PM2.5 and PM10 columns name a scale in `opensensor:scale`, and the
   template copies the registry scales into a top level `opensensor:scales`.
   There is no CO2 scale yet.
 - Classes of `pms_status` and `sen6x_status` have a `title`.
   `sen6x_device_status`, `imu_fresh_mask` and `gauge_status_flags` carry
-  `classification:bitfields`, one bit per field with classes `0 ok` and
-  `1 set`.
+  `classification:bitfields`, one bit per field. The bits of
+  `imu_fresh_mask` have classes `0 none` and `1 fresh`, the others `0 ok`
+  and `1 set`.
 - A top level `opensensor:primary`, `pm25_atmospheric_ug_m3` on CoreS3 and
   Waveshare and `pm25_mass_ug_m3` on the CrowPanel.
 - `firmware.setup` is `name`, `mobility`, `location` (required), `site` and
