@@ -121,7 +121,20 @@
             ],
             "properties": {
               "id": {
-                "$ref": "#/definitions/stepId"
+                "$comment": "bonds and sensor are Device settings sections only.",
+                "allOf": [
+                  {
+                    "$ref": "#/definitions/stepId"
+                  },
+                  {
+                    "not": {
+                      "enum": [
+                        "bonds",
+                        "sensor"
+                      ]
+                    }
+                  }
+                ]
               },
               "req": {
                 "type": "boolean"
@@ -141,7 +154,7 @@
           }
         },
         "settings": {
-          "$comment": "Ordered Device settings sections, with the same ids as setup.",
+          "$comment": "Ordered Device settings sections. name and mobility are setup steps only.",
           "type": "array",
           "items": {
             "type": "object",
@@ -150,7 +163,19 @@
             ],
             "properties": {
               "id": {
-                "$ref": "#/definitions/stepId"
+                "allOf": [
+                  {
+                    "$ref": "#/definitions/stepId"
+                  },
+                  {
+                    "not": {
+                      "enum": [
+                        "name",
+                        "mobility"
+                      ]
+                    }
+                  }
+                ]
               },
               "label": {
                 "type": "string",
@@ -205,7 +230,7 @@
       "$comment": "A board key, two or more dot separated parts. The app owns every key under the reserved prefixes.",
       "type": "string",
       "maxLength": 48,
-      "pattern": "^(?!(ble|wifi|lan|location|thing|owner|sensor)\\.)[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
+      "pattern": "^(?!(ble|wifi|lan|ntp|location|thing|owner|sensor)\\.)[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
     },
     "range": {
       "type": "object",
