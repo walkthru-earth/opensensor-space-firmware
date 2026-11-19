@@ -1447,6 +1447,26 @@ void test_phone_keys() {
   CHECK(s.temp_offset_dc == -100);
   // The draft's settings survive the NVS blob.
   CHECK(decode(encode(s)) == s);
+  // On the screen's own settings, Last viewed from the phone records the
+  // shown page as the knob does, and Dashboard leaves last_page alone.
+  {
+    Settings shown;
+    PhoneDraft last;
+    CHECK(set_phone_key(last, "panel.start_page", "last_viewed").has_value());
+    apply_phone_draft(shown, last, 2);
+    CHECK(shown.start_page == StartPage::LastViewed && shown.last_page == 2);
+    CHECK(start_page(shown) == 2);
+    PhoneDraft dash;
+    CHECK(set_phone_key(dash, "panel.start_page", "dashboard").has_value());
+    apply_phone_draft(shown, dash, 3);
+    CHECK(shown.start_page == StartPage::Dashboard && shown.last_page == 2);
+    PhoneDraft other;
+    CHECK(set_phone_key(other, "panel.theme", "dark").has_value());
+    apply_phone_draft(shown, other, 4);
+    CHECK(shown.last_page == 2);
+    apply_phone_draft(shown, last, kPageCount);
+    CHECK(shown.last_page == 2);
+  }
 
   // Two requests the UI task has not taken yet merge into one.
   PhoneDraft first;

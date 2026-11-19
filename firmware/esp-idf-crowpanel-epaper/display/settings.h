@@ -126,6 +126,10 @@ set_phone_key(PhoneDraft &d, std::string_view key, std::string_view value);
 void merge_phone_draft(PhoneDraft &into, const PhoneDraft &later);
 // Copies the draft's settings into s. The fan cleaning is the board's.
 void apply_phone_draft(Settings &s, const PhoneDraft &d);
+// The same on the screen's own settings. A draft that sets the start page to
+// Last viewed records the shown page as last_page, as the knob does, so the
+// next boot opens on it. Dashboard leaves last_page alone.
+void apply_phone_draft(Settings &s, const PhoneDraft &d, std::uint8_t shown);
 // The page 7 JSON, nested by key prefix, without the action. Returns its
 // length, or 0 when it does not fit.
 [[nodiscard]] std::size_t phone_page(std::span<char> out, const Settings &s);

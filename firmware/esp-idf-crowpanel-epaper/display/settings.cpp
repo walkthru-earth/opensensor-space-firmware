@@ -261,6 +261,12 @@ void apply_phone_draft(Settings &s, const PhoneDraft &d) {
     s.temp_offset_dc = *d.temp_offset_dc;
 }
 
+void apply_phone_draft(Settings &s, const PhoneDraft &d, std::uint8_t shown) {
+  apply_phone_draft(s, d);
+  if (d.start_page == StartPage::LastViewed && shown < kPageCount)
+    s.last_page = shown;
+}
+
 std::size_t phone_page(std::span<char> out, const Settings &s) {
   if (out.empty())
     return 0;
