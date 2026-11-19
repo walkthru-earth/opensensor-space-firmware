@@ -190,7 +190,7 @@ double from_bits(const std::string &hex) {
       static_cast<std::uint64_t>(std::strtoull(hex.c_str(), nullptr, 16)));
 }
 
-// Lines from test_stac_item.py, each from canonical.mjs at 07a4f21f.
+// Lines from test_stac_item.py, each from canonical.mjs at 204365f9.
 //   round2 <input bits> <result bits>
 //   rfc3339 <microseconds> <text>
 //   id x<hex name> <x<hex id> or ->
@@ -276,7 +276,7 @@ location::Cell cell_at(double lat, double lng) {
 
 constexpr std::array<std::uint8_t, 32> kSha{};
 constexpr std::string_view kName =
-    "data_1300_0f3a9c2e5b7d41e8a6c3f0b2d9e4a713_2881-2970-0.parquet";
+    "data_1200_0f3a9c2e5b7d41e8a6c3f0b2d9e4a713_2881-2970-0.parquet";
 
 stac::ItemFile file_facts(stac::Mobility mobility) {
   return {.name = kName,
@@ -284,7 +284,8 @@ stac::ItemFile file_facts(stac::Mobility mobility) {
           .sha256 = kSha,
           .thing = "3f2b9c1e-6a7d-4e58-9b1c-2d4f6a8e0c13",
           .mobility = mobility,
-          .sample_interval_ms = 10000};
+          .sample_interval_ms = 10000,
+          .rotation_interval_s = 900};
 }
 
 // A row with a time and a cell and every statistics column set, integer
@@ -402,10 +403,64 @@ void row_and_time_limits() {
     accumulator.reset();
     add(accumulator, row_at(1792843200000000, cell, 1));
     add(accumulator, row_at(time, cell, 1));
-    check(prepare_error(accumulator, file_facts(stac::Mobility::Fixed),
-                        geometry.buffers()) == ItemError::TimeRange,
+    // -1 us starts the window at 1970-01-01T00:00:00Z, so data_0000_.
+    auto file = file_facts(stac::Mobility::Fixed);
+    if (time < 0)
+      file.name =
+          "data_0000_0f3a9c2e5b7d41e8a6c3f0b2d9e4a713_2881-2970-0.parquet";
+    check(prepare_error(accumulator, file, geometry.buffers()) ==
+              ItemError::TimeRange,
           "time outside 1970 to 2099 fails");
   }
+}
+
+// canonical.mjs ROTATIONS and the HHMM window rule.
+void rotation_and_window() {
+  using stac::ItemError;
+  stac::Accumulator accumulator;
+  check(accumulator.configure(board_layout()).has_value(), "configures");
+  Geometry geometry;
+  const auto cell = cell_at(30.0444, 31.2357);
+  const auto prepare = [&](std::string_view name, std::uint32_t rotation,
+                           std::int64_t start) {
+    accumulator.reset();
+    add(accumulator, row_at(start + 600000000, cell, 1));
+    add(accumulator, row_at(start, cell, 1));
+    auto file = file_facts(stac::Mobility::Fixed);
+    file.name = name;
+    file.rotation_interval_s = rotation;
+    return prepare_error(accumulator, file, geometry.buffers());
+  };
+  const auto name = [](std::string_view hhmm) {
+    return "data_" + std::string(hhmm) +
+           "_0f3a9c2e5b7d41e8a6c3f0b2d9e4a713_2881-2970-0.parquet";
+  };
+  constexpr std::int64_t k1200 = 1792843200000000; // 2026-10-24T12:00:00Z
+  constexpr std::int64_t k1307 = k1200 + 67 * 60 * std::int64_t{1000000};
+  for (const std::uint32_t rotation : {0U, 60U, 300U, 899U, 7200U, 86400U})
+    check(prepare(name("1200"), rotation, k1200) == ItemError::BadRotation,
+          "a rotation outside 600, 900, 1800 and 3600 gets no Item");
+  check(prepare(name("1300"), 900, k1307) == ItemError::JsonStructure,
+        "data_1300_ may start at 13:07");
+  check(prepare(name("1315"), 900, k1307) == ItemError::WrongWindow,
+        "data_1315_ may not start at 13:07");
+  check(prepare(name("1300"), 600, k1307) == ItemError::JsonStructure,
+        "data_1300_ holds 13:07 in a 600 s window");
+  check(prepare(name("1300"), 1800, k1307) == ItemError::JsonStructure,
+        "data_1300_ holds 13:07 in a 1800 s window");
+  check(prepare(name("1200"), 3600, k1200 + 3599999999) ==
+            ItemError::JsonStructure,
+        "data_1200_ holds 12:59:59.999999 in a 3600 s window");
+  check(prepare(name("1200"), 3600, k1200 + 3600000000) ==
+            ItemError::WrongWindow,
+        "13:00 is not in data_1200_");
+  check(prepare(name("1145"), 900, k1200 - 1) == ItemError::JsonStructure,
+        "11:59:59.999999 is in data_1145_");
+  check(prepare(name("1200"), 900, k1200 - 1) == ItemError::WrongWindow,
+        "11:59:59.999999 is not in data_1200_");
+  check(stac::no_item(ItemError::BadRotation) &&
+            stac::no_item(ItemError::WrongWindow),
+        "both rules give no Item, not a failure");
 }
 
 void geometry_and_sink_errors() {
@@ -465,7 +520,7 @@ void geometry_and_sink_errors() {
   check(!no_staging && no_staging.error() == ItemError::JsonOverflow,
         "no staging fails");
   // A name longer than the href buffer.
-  std::string long_name = "data_1300_0f3a9c2e5b7d41e8a6c3f0b2d9e4a713_" +
+  std::string long_name = "data_1200_0f3a9c2e5b7d41e8a6c3f0b2d9e4a713_" +
                           std::string(300, '1') + "-1-1.parquet";
   auto long_file = file;
   long_file.name = long_name;
@@ -571,7 +626,7 @@ void stat_table_rules() {
   static_assert(!stac::stat_columns_valid(float_gate, kFloatFields,
                                           std::span(kFloatGate)),
                 "an equality gate on a float column is refused");
-  static_assert(stac::no_item(stac::ItemError::FixedManyCells) &&
+  static_assert(stac::no_item(stac::ItemError::WrongWindow) &&
                     !stac::no_item(stac::ItemError::TimeRange),
                 "no Item cases come first");
 }
@@ -587,6 +642,7 @@ int unit(const char *numbers) {
   stat_table_rules();
   layout_errors();
   row_and_time_limits();
+  rotation_and_window();
   geometry_and_sink_errors();
   largest_item();
   for (int e = 0; e <= static_cast<int>(stac::ItemError::JsonSink); ++e)
@@ -607,7 +663,7 @@ int unit(const char *numbers) {
 //
 // Input lines from test_stac_item.py.
 //   file <name>  size <n>  sha256 <hex>  thing <id or ->
-//   mobility fixed|moving  interval_ms <n>
+//   mobility fixed|moving  interval_ms <n>  rotation_s <n>
 //   col <name> <value or null>...  one line per column, every row
 int item(const char *path) {
   std::ifstream in(path);
@@ -621,6 +677,7 @@ int item(const char *path) {
   std::array<std::uint8_t, 32> sha{};
   auto mobility = stac::Mobility::Fixed;
   std::uint32_t interval_ms = 0;
+  std::uint32_t rotation_s = 0;
   std::vector<Sample> rows;
   std::size_t row_count = static_cast<std::size_t>(-1);
   std::string line;
@@ -650,6 +707,8 @@ int item(const char *path) {
           text == "fixed" ? stac::Mobility::Fixed : stac::Mobility::Moving;
     } else if (key == "interval_ms") {
       words >> interval_ms;
+    } else if (key == "rotation_s") {
+      words >> rotation_s;
     } else if (key == "col") {
       std::string column;
       words >> column;
@@ -717,7 +776,8 @@ int item(const char *path) {
                             .sha256 = sha,
                             .thing = thing,
                             .mobility = mobility,
-                            .sample_interval_ms = interval_ms};
+                            .sample_interval_ms = interval_ms,
+                            .rotation_interval_s = rotation_s};
   Geometry geometry;
   const auto prepared =
       stac::ItemBuilder::prepare(accumulator, file, geometry.buffers());

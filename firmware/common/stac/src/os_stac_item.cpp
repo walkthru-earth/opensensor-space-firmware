@@ -18,6 +18,8 @@ const char *item_error_name(ItemError error) {
     return "not-dated";
   case ItemError::NoThing:
     return "no-thing";
+  case ItemError::BadRotation:
+    return "bad-rotation";
   case ItemError::NoRows:
     return "no-rows";
   case ItemError::NullTime:
@@ -28,6 +30,8 @@ const char *item_error_name(ItemError error) {
     return "not-resolution-8";
   case ItemError::FixedManyCells:
     return "fixed-many-cells";
+  case ItemError::WrongWindow:
+    return "wrong-window";
   case ItemError::TimeRange:
     return "time-range";
   case ItemError::TooManyRows:
@@ -137,6 +141,38 @@ bool number_then(std::string_view &text, char end) {
     return false;
   text.remove_prefix(i + 1);
   return true;
+}
+
+// canonical.mjs ROTATIONS. Each divides 3600, so a window never crosses an
+// hour or a day.
+bool rotation_allowed(std::uint32_t seconds) {
+  return seconds == 600 || seconds == 900 || seconds == 1800 || seconds == 3600;
+}
+
+// canonical.mjs windowOf and hhmmOf. The id starts data_HHMM_, and HHMM must
+// be the UTC hour and minute that start the rotation window of `start_us`.
+// seconds is Math.floor(us / 1e6). The window keeps the truncating % of
+// JavaScript. A window outside the range of a JavaScript Date has no HHMM.
+bool window_matches(std::string_view id, std::int64_t start_us,
+                    std::uint32_t rotation) {
+  constexpr std::int64_t kMicros = 1'000'000;
+  constexpr std::int64_t kDay = 86'400;
+  constexpr std::int64_t kDateLimit = 8'640'000'000'000; // seconds
+  std::int64_t seconds = start_us / kMicros;
+  if (start_us % kMicros < 0)
+    --seconds;
+  const std::int64_t window =
+      seconds - seconds % static_cast<std::int64_t>(rotation);
+  if (window > kDateLimit || window < -kDateLimit)
+    return false;
+  const std::int64_t of_day = ((window % kDay) + kDay) % kDay;
+  const auto hour = of_day / 3600;
+  const auto minute = of_day % 3600 / 60;
+  const char hhmm[4] = {static_cast<char>('0' + hour / 10),
+                        static_cast<char>('0' + hour % 10),
+                        static_cast<char>('0' + minute / 10),
+                        static_cast<char>('0' + minute % 10)};
+  return id.size() >= 9 && id.substr(5, 4) == std::string_view(hhmm, 4);
 }
 
 // Days since 1970-01-01 to a proleptic Gregorian date, Howard Hinnant's
@@ -327,6 +363,8 @@ ItemBuilder::prepare(Accumulator &accumulator, const ItemFile &file,
     return std::unexpected(id.error());
   if (file.thing.empty())
     return std::unexpected(ItemError::NoThing);
+  if (!rotation_allowed(file.rotation_interval_s))
+    return std::unexpected(ItemError::BadRotation);
   if (accumulator.rows_ == 0)
     return std::unexpected(ItemError::NoRows);
   if (accumulator.null_time_)
@@ -353,6 +391,11 @@ ItemBuilder::prepare(Accumulator &accumulator, const ItemFile &file,
   }
   if (file.mobility == Mobility::Fixed && distinct.size() > 1)
     return std::unexpected(ItemError::FixedManyCells);
+  // HHMM names the window that holds the earliest row, so data_1300_ may
+  // start at 13:07 but data_1315_ may not. Checked before the time range,
+  // as canonical.mjs does.
+  if (!window_matches(*id, accumulator.start_us_, file.rotation_interval_s))
+    return std::unexpected(ItemError::WrongWindow);
   if (accumulator.start_us_ < 0 || accumulator.end_us_ >= kMaxTimeUs)
     return std::unexpected(ItemError::TimeRange);
 
