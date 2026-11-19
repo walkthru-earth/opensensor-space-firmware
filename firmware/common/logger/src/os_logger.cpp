@@ -1658,18 +1658,20 @@ const char *clock_source_name(std::int32_t source) {
   return opensensor::utc::source_name(source);
 }
 
-// Shared by `parquet time`, the BLE/LAN SET_TIME op and the boot-time RTC
-// seed. False for a bad epoch (before 2020 or after 2100, which also rejects
-// an RTC that was never written). Initial UTC, RTC upgrades and corrections
-// larger than two seconds start a new epoch; small refreshes keep the current
-// file. Captured rows keep their timestamps and exact anchors. `skew_ns`
-// receives new minus old estimate of the same monotonic instant, i.e. how far
-// the previous clock (RTC or earlier host) had drifted from this host.
+// Shared by `parquet time`, the BLE/LAN SET_TIME op, the network anchor and
+// the boot-time RTC seed. False for a bad epoch (before the source floor of
+// utc_clock.h or after 2100, which also rejects an RTC that was never
+// written). A move of more than a day against the current anchor is taken
+// but logged and kept out of the RTC (#173). Initial UTC, RTC upgrades and
+// corrections larger than two seconds start a new epoch; small refreshes keep
+// the current file. Captured rows keep their timestamps and exact anchors.
+// `skew_ns` receives new minus old estimate of the same monotonic instant, i.e.
+// how far the previous clock (RTC or earlier host) had drifted from this host.
 bool set_clock(std::int64_t seconds, std::int64_t mono, std::int32_t source,
                std::int64_t *skew_ns = nullptr,
                std::int32_t *previous = nullptr,
                std::uint32_t subsecond_us = 0) {
-  if (!opensensor::utc::supported_anchor(seconds, subsecond_us))
+  if (!opensensor::utc::accepted_anchor(seconds, subsecond_us))
     return false;
   const std::int64_t utc_ns = opensensor::utc::anchor_ns(seconds, subsecond_us);
   portENTER_CRITICAL(&clock_mutex);
@@ -1687,10 +1689,21 @@ bool set_clock(std::int64_t seconds, std::int64_t mono, std::int32_t source,
   clock_source = source;
   if (opensensor::utc::starts_new_epoch(previous_source, source, skew))
     ++clock_generation;
-  portEXIT_CRITICAL(&clock_mutex);
-  if (source == kClockHost || source == opensensor::utc::Network) {
+  // The RTC permission changes with the anchor, under the same lock, so
+  // service_rtc_write() never copies a jumped anchor through an older grant.
+  const bool jump = opensensor::utc::clock_jump(previous_source, skew);
+  if (jump) {
+    rtc_write_pending = false;
+  } else if (opensensor::utc::saves_to_rtc(previous_source, source, skew)) {
     rtc_write_requested_us = mono;
     rtc_write_pending = true;
+  }
+  portEXIT_CRITICAL(&clock_mutex);
+  if (jump) {
+    oslog.printf("PARQUET CLOCK jump=true previous=%s source=%s skew_s=%lld "
+                 "rtc=kept\n",
+                 clock_source_name(previous_source), clock_source_name(source),
+                 static_cast<long long>(skew / 1000000000));
   }
   return true;
 }
@@ -1728,22 +1741,26 @@ void seed_clock_from_rtc() {
 // Main-task half of a host sync: copies the anchor into the RTC. The chip
 // stores whole seconds, so the write waits for the anchor's next second
 // boundary (the 20 ms loop makes a 60 ms window reliable) and gives up
-// waiting after 5 s so a slow loop cannot postpone it forever.
+// waiting after 5 s so a slow loop cannot postpone it forever. The grant is
+// read and consumed under clock_mutex with the anchor it covers, so a clock
+// jump that lands meanwhile cancels it before any copy.
 void service_rtc_write(std::int64_t now) {
   if (!rtc_write_pending.load())
     return;
-  std::int64_t utc_anchor, mono_anchor;
+  bool due = false, overdue = false;
+  std::int64_t utc_ns = 0, fraction_ns = 0;
   portENTER_CRITICAL(&clock_mutex);
-  utc_anchor = anchor_utc_ns;
-  mono_anchor = anchor_mono_us;
+  if (rtc_write_pending.load()) {
+    utc_ns = opensensor::utc::estimate_ns(now, anchor_mono_us, anchor_utc_ns);
+    fraction_ns = utc_ns % 1000000000;
+    overdue = now - rtc_write_requested_us.load() > 5000000LL;
+    due = fraction_ns < 60000000LL || overdue;
+    if (due)
+      rtc_write_pending = false;
+  }
   portEXIT_CRITICAL(&clock_mutex);
-  const std::int64_t utc_ns =
-      opensensor::utc::estimate_ns(now, mono_anchor, utc_anchor);
-  const std::int64_t fraction_ns = utc_ns % 1000000000;
-  const bool overdue = now - rtc_write_requested_us.load() > 5000000LL;
-  if (fraction_ns >= 60000000LL && !overdue)
+  if (!due)
     return;
-  rtc_write_pending = false;
   if (!hooks.rtc_write) {
     oslog.println("PARQUET RTC write=skipped reason=absent");
     return;
