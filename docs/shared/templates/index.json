@@ -1,6 +1,6 @@
 {
   "by_desc": {
-    "04d8b42831fc8256dff52f403e57c5b00fccf724d08e7c6d2d4cd5cd82ee0966": {
+    "31c2043bbe91ce6e06ee08756d5b21bd70ca9bb5a12090614c0da88c47f00de1": {
       "board": "m5stack-cores3",
       "dict": "3b4d8500a19f42c6743b0f7d725276c96ca14a0c249f613048603afbc3cfaff9",
       "href": "m5stack-cores3/3b4d8500a19f42c6743b0f7d725276c96ca14a0c249f613048603afbc3cfaff9.json"
@@ -19,7 +19,7 @@
   "templates": {
     "3b4d8500a19f42c6743b0f7d725276c96ca14a0c249f613048603afbc3cfaff9": {
       "board": "m5stack-cores3",
-      "desc": "04d8b42831fc8256dff52f403e57c5b00fccf724d08e7c6d2d4cd5cd82ee0966",
+      "desc": "31c2043bbe91ce6e06ee08756d5b21bd70ca9bb5a12090614c0da88c47f00de1",
       "href": "m5stack-cores3/3b4d8500a19f42c6743b0f7d725276c96ca14a0c249f613048603afbc3cfaff9.json",
       "schema": "cores3-telemetry-v6"
     },

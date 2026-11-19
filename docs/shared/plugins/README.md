@@ -198,8 +198,8 @@ The schema reuses rather than redefines.
     "column": {
       "allOf": [
         {"$ref": "https://walkthru-earth.github.io/stac-opensensor/v0.1.0/schema.json#/definitions/column"},
-        {"required": ["name", "roles", "firmware"],
-         "not": {"anyOf": [{"required": ["opensensor:field_id"]}, {"required": ["opensensor:scale"]}, {"required": ["title"]}]},
+        {"required": ["name", "roles", "opensensor:property", "opensensor:aggregate", "firmware"],
+         "not": {"anyOf": [{"required": ["opensensor:field_id"]}, {"required": ["type"]}]},
          "properties": {"firmware": {"$ref": "#/definitions/firmware"}}}
       ]
     },
@@ -309,7 +309,9 @@ A Key is `{"type", "values", "applies", "page", "label", "label_i18n"}`.
 The name matches `[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+`, is at most 48 bytes,
 does not start with a reserved prefix (`ble.`, `wifi.`, `lan.`, `ntp.`,
 `location.`, `thing.`, `owner.` or `sensor.`) and has no `pin`, `psk`, `token`,
-`password` or `secret` part. `type` is `boolean`, `integer`, `enum` or
+`password` or `secret` part. No key is a dotted prefix of another, such as
+`panel.display` next to `panel.display.x`, because page 7 nests keys by
+prefix. `type` is `boolean`, `integer`, `enum` or
 `text`. An integer needs `values` as a range `{"min", "max"}` of whole
 numbers, so a decimal is a scaled integer such as `temp_offset_dc` in tenths
 of a degree. An enum needs `values` as a list of strings of at most 64 bytes.

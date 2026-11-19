@@ -30,11 +30,11 @@
             "classes": [
               {
                 "value": 0,
-                "name": "ok"
+                "name": "none"
               },
               {
                 "value": 1,
-                "name": "set"
+                "name": "fresh"
               }
             ]
           },
@@ -46,11 +46,11 @@
             "classes": [
               {
                 "value": 0,
-                "name": "ok"
+                "name": "none"
               },
               {
                 "value": 1,
-                "name": "set"
+                "name": "fresh"
               }
             ]
           },
@@ -62,11 +62,11 @@
             "classes": [
               {
                 "value": 0,
-                "name": "ok"
+                "name": "none"
               },
               {
                 "value": 1,
-                "name": "set"
+                "name": "fresh"
               }
             ]
           }
