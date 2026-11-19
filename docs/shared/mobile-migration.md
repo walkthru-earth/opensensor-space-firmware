@@ -9,6 +9,36 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## STAC Item rotation and window rules (fix/stac-item-window-rules)
+
+**Needs a matched reflash of all three boards. No app change is required.**
+No column, row, footer key, LIVE key, template, `dict` or `desc` changes.
+Only which files get a sidecar changes. Part of #184.
+
+**What changed.**
+
+- A board now writes no STAC File Item for a file whose rotation interval is
+  not 600, 900, 1800 or 3600 seconds. It prints
+  `PARQUET STAC result=skipped file=<path> reason=bad-rotation`.
+- A board now writes no STAC File Item for a file whose name HHMM is not the
+  UTC window of its earliest row. It prints
+  `PARQUET STAC result=skipped file=<path> reason=wrong-window`.
+- Both are skipped, never failed. The `.parquet` file is finalized and
+  synced as before.
+- The canonical pin moves to stac-opensensor commit
+  `204365f929e6f77bcaa6e70a0245c96cadc5c115`, and `stac-item-test` checks
+  both rules against it.
+
+**Why.** stac-opensensor `canonical.mjs` at that commit refuses both cases,
+so an Item never names a window its rows do not fit. The board now gives the
+same answer, so a phone that builds the Item from the same file agrees with
+the sidecar.
+
+**What the app must do.** Treat a missing sidecar for a `bad-rotation` or
+`wrong-window` file as expected, never as a sync error. Sync still lists only
+`.parquet` files (#143). If the app builds its own Item from a file, apply the
+same two rules and build none for these files.
+
 ## CrowPanel STAC sidecar (feat/crowpanel-stac-sidecar)
 
 **The CrowPanel now writes a STAC File Item next to each finalized dated
@@ -495,10 +525,8 @@ schema and dictionary strings and the `dict` and `desc` digests do not change.
   and the column statistics.
 - No sidecar is written for an `unsynced` file, a file with no located row, a
   file with a row that has no UTC, a cell that is not resolution 8, a fixed
-  Thing file with more than one cell, a board with no Thing id, a rotation
-  interval other than 600, 900, 1800 or 3600 seconds, or a file name whose
-  HHMM is not the window of its earliest row. Each of these prints one
-  skipped line.
+  Thing file with more than one cell or a board with no Thing id. Each of
+  these prints one skipped line.
 - New serial lines.
   `PARQUET STAC sidecar=true columns=<n> psram_bytes=<n>` at boot.
   `PARQUET STAC result=written file=<path> bytes=<n> rows=<n> polygons=<n> write_us=<n>`
