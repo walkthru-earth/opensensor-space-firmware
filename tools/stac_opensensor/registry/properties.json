@@ -8,7 +8,8 @@
         "ar": "درجة حرارة الهواء"
       },
       "short_label": {
-        "en": "Temperature"
+        "en": "Temperature",
+        "ar": "درجة الحرارة"
       },
       "definition": {
         "en": "Temperature of the air around the sensor."
@@ -23,7 +24,8 @@
         "ar": "الوقت"
       },
       "short_label": {
-        "en": "Time"
+        "en": "Time",
+        "ar": "الوقت"
       },
       "definition": {
         "en": "UTC time of the sample, in microseconds since the Unix epoch."
@@ -38,7 +40,8 @@
         "ar": "الرطوبة النسبية"
       },
       "short_label": {
-        "en": "Humidity"
+        "en": "Humidity",
+        "ar": "الرطوبة"
       },
       "symbol": "RH",
       "definition": {
@@ -54,7 +57,8 @@
         "ar": "تركيز كتلة الجسيمات PM2.5"
       },
       "short_label": {
-        "en": "PM2.5"
+        "en": "PM2.5",
+        "ar": "PM2.5"
       },
       "symbol": "PM2.5",
       "definition": {
@@ -65,13 +69,30 @@
       "decimals": 1,
       "scale": "who-2021-pm25"
     },
+    "http://vocab.nerc.ac.uk/standard_name/air_pressure/": {
+      "label": {
+        "en": "Air pressure",
+        "ar": "الضغط الجوي"
+      },
+      "short_label": {
+        "en": "Pressure",
+        "ar": "الضغط"
+      },
+      "definition": {
+        "en": "Pressure of the air at the sensor, not reduced to sea level."
+      },
+      "group": "climate",
+      "unit": "hPa",
+      "decimals": 1
+    },
     "http://vocab.nerc.ac.uk/standard_name/mass_concentration_of_pm10_ambient_aerosol_particles_in_air/": {
       "label": {
         "en": "PM10 mass concentration",
         "ar": "تركيز كتلة الجسيمات PM10"
       },
       "short_label": {
-        "en": "PM10"
+        "en": "PM10",
+        "ar": "PM10"
       },
       "symbol": "PM10",
       "definition": {
@@ -88,7 +109,8 @@
         "ar": "تركيز كتلة الجسيمات PM1"
       },
       "short_label": {
-        "en": "PM1"
+        "en": "PM1",
+        "ar": "PM1"
       },
       "symbol": "PM1",
       "definition": {
@@ -106,7 +128,8 @@
         "ar": "ثاني أكسيد الكربون"
       },
       "short_label": {
-        "en": "CO₂"
+        "en": "CO₂",
+        "ar": "CO₂"
       },
       "symbol": "CO₂",
       "definition": {
@@ -117,6 +140,25 @@
       "decimals": 0,
       "scale": null,
       "note": "TODO for the owner. No CO2 scale is defined yet. Choose one and its source before a client shows CO2 bands."
+    },
+    "http://vocab.nerc.ac.uk/standard_name/mole_fraction_of_nitrogen_dioxide_in_air/": {
+      "label": {
+        "en": "Nitrogen dioxide",
+        "ar": "ثاني أكسيد النيتروجين"
+      },
+      "short_label": {
+        "en": "NO₂",
+        "ar": "NO₂"
+      },
+      "symbol": "NO₂",
+      "definition": {
+        "en": "Nitrogen dioxide in the air, in parts per billion."
+      },
+      "group": "gas",
+      "unit": "[ppb]",
+      "decimals": 0,
+      "scale": null,
+      "note": "The WHO 2021 NO2 levels are in ug/m3, and turning ppb into ug/m3 needs temperature and pressure. No default scale until a ppb scale and its source are chosen."
     },
     "urn:walkthru-earth:property:acceleration_x": {
       "label": {
@@ -300,7 +342,8 @@
         "ar": "نسبة شحن البطارية"
       },
       "short_label": {
-        "en": "Battery"
+        "en": "Battery",
+        "ar": "البطارية"
       },
       "definition": {
         "en": "Charge left in the battery as a percentage of full."
@@ -337,7 +380,8 @@
         "ar": "جهد البطارية"
       },
       "short_label": {
-        "en": "Battery voltage"
+        "en": "Battery voltage",
+        "ar": "جهد البطارية"
       },
       "definition": {
         "en": "Voltage of the battery."
@@ -666,10 +710,12 @@
     },
     "urn:walkthru-earth:property:particle_count_gt_0p3um": {
       "label": {
-        "en": "Particles larger than 0.3 µm"
+        "en": "Particles larger than 0.3 µm",
+        "ar": "الجسيمات الأكبر من 0.3 µm"
       },
       "short_label": {
-        "en": ">0.3 µm"
+        "en": ">0.3 µm",
+        "ar": "أكبر من 0.3 µm"
       },
       "definition": {
         "en": "Particles larger than 0.3 micrometres counted in 0.1 litre of air."
@@ -680,10 +726,12 @@
     },
     "urn:walkthru-earth:property:particle_count_gt_0p5um": {
       "label": {
-        "en": "Particles larger than 0.5 µm"
+        "en": "Particles larger than 0.5 µm",
+        "ar": "الجسيمات الأكبر من 0.5 µm"
       },
       "short_label": {
-        "en": ">0.5 µm"
+        "en": ">0.5 µm",
+        "ar": "أكبر من 0.5 µm"
       },
       "definition": {
         "en": "Particles larger than 0.5 micrometres counted in 0.1 litre of air."
@@ -694,10 +742,12 @@
     },
     "urn:walkthru-earth:property:particle_count_gt_10um": {
       "label": {
-        "en": "Particles larger than 10 µm"
+        "en": "Particles larger than 10 µm",
+        "ar": "الجسيمات الأكبر من 10 µm"
       },
       "short_label": {
-        "en": ">10 µm"
+        "en": ">10 µm",
+        "ar": "أكبر من 10 µm"
       },
       "definition": {
         "en": "Particles larger than 10 micrometres counted in 0.1 litre of air."
@@ -708,10 +758,12 @@
     },
     "urn:walkthru-earth:property:particle_count_gt_1um": {
       "label": {
-        "en": "Particles larger than 1 µm"
+        "en": "Particles larger than 1 µm",
+        "ar": "الجسيمات الأكبر من 1 µm"
       },
       "short_label": {
-        "en": ">1 µm"
+        "en": ">1 µm",
+        "ar": "أكبر من 1 µm"
       },
       "definition": {
         "en": "Particles larger than 1 micrometres counted in 0.1 litre of air."
@@ -722,10 +774,12 @@
     },
     "urn:walkthru-earth:property:particle_count_gt_2p5um": {
       "label": {
-        "en": "Particles larger than 2.5 µm"
+        "en": "Particles larger than 2.5 µm",
+        "ar": "الجسيمات الأكبر من 2.5 µm"
       },
       "short_label": {
-        "en": ">2.5 µm"
+        "en": ">2.5 µm",
+        "ar": "أكبر من 2.5 µm"
       },
       "definition": {
         "en": "Particles larger than 2.5 micrometres counted in 0.1 litre of air."
@@ -736,10 +790,12 @@
     },
     "urn:walkthru-earth:property:particle_count_gt_5um": {
       "label": {
-        "en": "Particles larger than 5 µm"
+        "en": "Particles larger than 5 µm",
+        "ar": "الجسيمات الأكبر من 5 µm"
       },
       "short_label": {
-        "en": ">5 µm"
+        "en": ">5 µm",
+        "ar": "أكبر من 5 µm"
       },
       "definition": {
         "en": "Particles larger than 5 micrometres counted in 0.1 litre of air."
@@ -852,7 +908,8 @@
         "en": "PM10 mass concentration, CF=1"
       },
       "short_label": {
-        "en": "PM10 CF=1"
+        "en": "PM10 CF=1",
+        "ar": "PM10 CF=1"
       },
       "definition": {
         "en": "PM10 mass concentration under the factory calibration for standard particles (CF=1), not the ambient value."
@@ -868,7 +925,8 @@
         "en": "PM1 mass concentration, CF=1"
       },
       "short_label": {
-        "en": "PM1 CF=1"
+        "en": "PM1 CF=1",
+        "ar": "PM1 CF=1"
       },
       "definition": {
         "en": "PM1 mass concentration under the factory calibration for standard particles (CF=1), not the ambient value."
@@ -884,7 +942,8 @@
         "en": "PM2.5 batch candidate"
       },
       "short_label": {
-        "en": "PM2.5 candidate"
+        "en": "PM2.5 candidate",
+        "ar": "PM2.5 المقترح"
       },
       "definition": {
         "en": "PM2.5 after a candidate correction for the sensor batch. Under review, not the reported value."
@@ -911,7 +970,8 @@
         "en": "PM2.5 mass concentration, CF=1"
       },
       "short_label": {
-        "en": "PM2.5 CF=1"
+        "en": "PM2.5 CF=1",
+        "ar": "PM2.5 CF=1"
       },
       "definition": {
         "en": "PM2.5 mass concentration under the factory calibration for standard particles (CF=1), not the ambient value."
@@ -928,7 +988,8 @@
         "ar": "تركيز كتلة الجسيمات PM4"
       },
       "short_label": {
-        "en": "PM4"
+        "en": "PM4",
+        "ar": "PM4"
       },
       "symbol": "PM4",
       "definition": {
