@@ -495,8 +495,10 @@ schema and dictionary strings and the `dict` and `desc` digests do not change.
   and the column statistics.
 - No sidecar is written for an `unsynced` file, a file with no located row, a
   file with a row that has no UTC, a cell that is not resolution 8, a fixed
-  Thing file with more than one cell or a board with no Thing id. Each of
-  these prints one skipped line.
+  Thing file with more than one cell, a board with no Thing id, a rotation
+  interval other than 600, 900, 1800 or 3600 seconds, or a file name whose
+  HHMM is not the window of its earliest row. Each of these prints one
+  skipped line.
 - New serial lines.
   `PARQUET STAC sidecar=true columns=<n> psram_bytes=<n>` at boot.
   `PARQUET STAC result=written file=<path> bytes=<n> rows=<n> polygons=<n> write_us=<n>`
