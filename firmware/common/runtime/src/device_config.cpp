@@ -392,8 +392,12 @@ BlobBuffer readback_buffer;
 // load calls it before it touches the buffer, so a record is always written
 // and read through the member whose lifetime has begun, never through another
 // one. The new member starts zeroed.
-template <auto Member> auto &start_record(BlobBuffer &buffer) {
-  return *std::construct_at(&(buffer.*Member));
+Blob &start_cfg(BlobBuffer &buffer) { return *std::construct_at(&buffer.cfg); }
+OwnerBlob &start_owner(BlobBuffer &buffer) {
+  return *std::construct_at(&buffer.owner);
+}
+SetupBlob &start_setup(BlobBuffer &buffer) {
+  return *std::construct_at(&buffer.setup);
 }
 
 std::uint32_t crc32(const std::uint8_t *data, std::size_t size) {
@@ -469,8 +473,8 @@ bool save_locked(const Settings &settings) {
   nvs_handle_t store;
   if (nvs_open(kNamespace, NVS_READWRITE, &store) != ESP_OK)
     return false;
-  auto &staged_blob = start_record<&BlobBuffer::cfg>(staged_buffer);
-  auto &readback_blob = start_record<&BlobBuffer::cfg>(readback_buffer);
+  auto &staged_blob = start_cfg(staged_buffer);
+  auto &readback_blob = start_cfg(readback_buffer);
   encode_blob(staged_blob, settings);
   // One write and one commit.
   bool ok = committed(
@@ -822,8 +826,8 @@ decode_owner(const OwnerBlob &blob, std::size_t size) {
   nvs_handle_t store;
   if (nvs_open(kNamespace, NVS_READWRITE, &store) != ESP_OK)
     return false;
-  auto &owner_staged = start_record<&BlobBuffer::owner>(staged_buffer);
-  auto &owner_readback = start_record<&BlobBuffer::owner>(readback_buffer);
+  auto &owner_staged = start_owner(staged_buffer);
+  auto &owner_readback = start_owner(readback_buffer);
   encode_owner(owner_staged, owner);
   bool ok = committed(store, nvs_set_blob(store, kOwnerKey, &owner_staged,
                                           sizeof(owner_staged)));
@@ -838,7 +842,7 @@ decode_owner(const OwnerBlob &blob, std::size_t size) {
 
 // Reads the record through an open handle. Never erases it.
 OwnerSettings load_owner(nvs_handle_t store) {
-  auto &owner_readback = start_record<&BlobBuffer::owner>(readback_buffer);
+  auto &owner_readback = start_owner(readback_buffer);
   std::size_t size = sizeof(owner_readback);
   const auto result = nvs_get_blob(store, kOwnerKey, &owner_readback, &size);
   if (result == ESP_ERR_NVS_NOT_FOUND)
@@ -918,8 +922,8 @@ decode_setup(const SetupBlob &blob, std::size_t size) {
   nvs_handle_t store;
   if (nvs_open(kNamespace, NVS_READWRITE, &store) != ESP_OK)
     return false;
-  auto &setup_staged = start_record<&BlobBuffer::setup>(staged_buffer);
-  auto &setup_readback = start_record<&BlobBuffer::setup>(readback_buffer);
+  auto &setup_staged = start_setup(staged_buffer);
+  auto &setup_readback = start_setup(readback_buffer);
   encode_setup(setup_staged, setup);
   bool ok = committed(store, nvs_set_blob(store, kSetupKey, &setup_staged,
                                           sizeof(setup_staged)));
@@ -934,7 +938,7 @@ decode_setup(const SetupBlob &blob, std::size_t size) {
 
 // Reads the record through an open handle. Never erases it.
 SetupRecord load_setup(nvs_handle_t store) {
-  auto &setup_readback = start_record<&BlobBuffer::setup>(readback_buffer);
+  auto &setup_readback = start_setup(readback_buffer);
   std::size_t size = sizeof(setup_readback);
   const auto result = nvs_get_blob(store, kSetupKey, &setup_readback, &size);
   if (result == ESP_ERR_NVS_NOT_FOUND)
@@ -1196,7 +1200,7 @@ bool load(bool display_detected) {
     booted = settings;
     return false;
   }
-  auto &readback_blob = start_record<&BlobBuffer::cfg>(readback_buffer);
+  auto &readback_blob = start_cfg(readback_buffer);
   std::size_t blob_size = sizeof(readback_blob);
   const auto blob_result =
       nvs_get_blob(store, kBlobKey, &readback_blob, &blob_size);
