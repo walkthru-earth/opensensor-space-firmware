@@ -363,7 +363,7 @@
         ".iram0.text": 127031,
         ".dram0.data": 36341,
         ".dram0.bss": 60056,
-        ".flash.text": 1293682,
+        ".flash.text": 1293678,
         ".flash.rodata": 460788,
         ".noinit": 3
       }
@@ -422,7 +422,7 @@
         ".iram0.text": 120035,
         ".dram0.data": 34180,
         ".dram0.bss": 57016,
-        ".flash.text": 1157894,
+        ".flash.text": 1157890,
         ".flash.rodata": 409588,
         ".noinit": 0
       }
@@ -512,7 +512,7 @@
         ".iram0.text": 125295,
         ".dram0.data": 34257,
         ".dram0.bss": 57480,
-        ".flash.text": 1189154,
+        ".flash.text": 1189150,
         ".flash.rodata": 411352,
         ".noinit": 3
       }
