@@ -21,7 +21,7 @@ inline TimeRequestResult decode_time_request(const std::uint8_t *body,
   request.seconds = get_i64(body);
   request.precision = length == 12;
   request.subsecond_us = request.precision ? get_u32(body + 8) : 0;
-  return utc::supported_anchor(request.seconds, request.subsecond_us)
+  return utc::accepted_anchor(request.seconds, request.subsecond_us)
              ? TimeRequestResult::Ok
              : TimeRequestResult::InvalidEpoch;
 }
