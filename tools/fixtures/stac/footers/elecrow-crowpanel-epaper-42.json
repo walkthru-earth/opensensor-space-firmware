@@ -1,0 +1,38 @@
+{
+  "version": "0.1.0",
+  "thing": {
+    "id": "b4d9e2a7-5c31-4f08-9e6a-1a7c3f2d8e54",
+    "device_id": "3c84279f1a52",
+    "board": "elecrow-crowpanel-epaper-42",
+    "deployment_id": "unknown",
+    "mobility": "fixed"
+  },
+  "firmware": {
+    "version": "idf-crowpanel-parquet-v0.1",
+    "schema": "crowpanel-epaper-telemetry-v1",
+    "boot_id": "c81d4e2f9a3b47d6b0e5f1a2c7d93e48"
+  },
+  "dictionary": {
+    "sha256": "e7279c4edbe87071e4a51889124a43d7ffcd1977c79c8575887ae35bdee10903",
+    "version": "crowpanel-epaper-telemetry-v1",
+    "uri": "https://raw.githubusercontent.com/walkthru-earth/opensensor-space-firmware/9b1baebb62509349596f3d02f4cbd864133310d8/firmware/esp-idf-crowpanel-epaper/logger/telemetry_fields.inc"
+  },
+  "template": {
+    "href": "https://raw.githubusercontent.com/walkthru-earth/opensensor-space-firmware/31734ebc05cf0a13e26d31fb77205aab73f9eec7/docs/shared/templates/elecrow-crowpanel-epaper-42/e7279c4edbe87071e4a51889124a43d7ffcd1977c79c8575887ae35bdee10903.json",
+    "sha256": "40544faf12a82d7895a5231758a2901cd4be851b918e839258f4c764879e0a98"
+  },
+  "acquisition": {
+    "sample_interval_ms": 10000,
+    "time_semantics": "event_time_utc_us estimates snapshot start; collection_completed_mono_us bounds sequential reads; the SEN63C result is the latest data-ready reading, not sensor phenomenon time; result/ingestion time and clock uncertainty unknown; no RTC anchor and no retroactive UTC assignment",
+    "config_id": "crowpanel-epaper-acquisition-v1",
+    "config": "{\"sample_interval_ms\":10000,\"sen6x_model\":\"SEN63C\",\"sen6x_i2c_sda\":8,\"sen6x_i2c_scl\":9,\"sen6x_address\":107,\"sen6x_i2c_hz\":100000,\"pm_warmup_us\":30000000,\"co2_warmup_us\":24000000,\"stale_after_us\":3000000,\"temperature_range_c\":[-40,80],\"humidity_range_percent\":[0,100],\"snapshot\":\"latest-available-not-average\"}",
+    "calibration_id": "unknown"
+  },
+  "file": {
+    "rotation_interval_s": 900,
+    "row_groups": 1,
+    "row_group_rows_max": 90,
+    "compression": "LZ4_RAW",
+    "purpose": "telemetry"
+  }
+}

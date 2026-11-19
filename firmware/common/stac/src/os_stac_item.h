@@ -15,7 +15,7 @@
 
 // The STAC File Item a board writes next to each finalized dated Parquet file
 // (#142). It follows the canonical form of the stac-opensensor profile at
-// commit 83787768 (PROFILE.md "Canonical File Item" and scripts/canonical.mjs
+// commit 07a4f21f (PROFILE.md "Canonical File Item" and scripts/canonical.mjs
 // buildItem). The host gate stac-item-test proves the output equal to that
 // script's examples under its `differences` rules.
 //

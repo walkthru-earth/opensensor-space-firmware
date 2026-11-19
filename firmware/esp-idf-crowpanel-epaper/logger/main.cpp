@@ -32,6 +32,7 @@
 #include <os_console.h>
 #include <os_logger.h>
 #include <os_sen6x.h>
+#include <os_stac_item.h>
 #include <power.h>
 #include <span>
 #include <string_view>
@@ -464,9 +465,15 @@ void collect(oslogger::Row &row, std::int64_t now, std::int64_t, void *) {
   sample_mono_us = now;
 }
 
-// No STAC File Item sidecar yet (#142). stac-item-test proves every board that
-// sets Config::stac_columns against a stac-opensensor example, and that repo
-// has no CrowPanel example. Opt in once it does.
+// The STAC File Item statistics columns (#142, #184), the numeric measurement
+// columns of the board template in template order. stac-item-test proves the
+// Item against the stac-opensensor CrowPanel example.
+constexpr auto kStatColumns =
+    opensensor::stac::stat_columns<opensensor::stac::stat_count(
+        kFields, std::span(kSemantics))>(kFields, std::span(kSemantics));
+static_assert(opensensor::stac::stat_columns_valid(kStatColumns, kFields,
+                                                   std::span(kSemantics)),
+              "every STAC statistics column must have a gate the Item reads");
 
 // OpenSensor BLE name prefix, so the board advertises OS-xxxx.
 constexpr char kBleNamePrefix[] = "OS-";
@@ -491,6 +498,8 @@ const oslogger::Config kLoggerConfig{
     .descriptor_sha256 = kDescriptorSha256,
     .template_href = kTemplateHref,
     .self_test_field = "pm25_mass_ug_m3",
+    .stac_columns = kStatColumns.data(),
+    .stac_column_count = kStatColumns.size(),
 };
 const oslogger::Hooks kHooks{
     .collect = collect,

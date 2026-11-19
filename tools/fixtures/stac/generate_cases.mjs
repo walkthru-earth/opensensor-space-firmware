@@ -7,7 +7,7 @@
 // Run with Node from the repo root, against a stac-opensensor checkout at the
 // pinned commit with its npm dependencies installed (h3-js 4.5.0).
 //   node tools/fixtures/stac/generate_cases.mjs <stac-opensensor>/scripts/canonical.mjs tools/fixtures/stac > tools/fixtures/stac/cases.json
-// It refuses any canonical.mjs other than the one at commit 83787768.
+// It refuses any canonical.mjs other than the one at commit 07a4f21f.
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -17,10 +17,10 @@ const [canonicalPath, root] = process.argv.slice(2);
 if (!canonicalPath || !root)
   throw new Error("usage: generate_cases.mjs <canonical.mjs> <fixture dir>");
 const CANONICAL_SHA256 =
-  "98583cdb3c5b625f0d998e4650ee3a303c2ab4addd53f9486820c641182b9090";
+  "3c9b7dda502aa0785a72ce09a259a7f9dec5be880db2005e79793e3f7c304d22";
 const actual = createHash("sha256").update(readFileSync(canonicalPath)).digest("hex");
 if (actual !== CANONICAL_SHA256)
-  throw new Error(`canonical.mjs is ${actual}, not the 83787768 bytes`);
+  throw new Error(`canonical.mjs is ${actual}, not the 07a4f21f bytes`);
 const canonical = await import(pathToFileURL(resolve(canonicalPath)).href);
 const h3 = await import(
   pathToFileURL(join(resolve(canonicalPath), "../../node_modules/h3-js/dist/h3-js.es.js")).href
@@ -40,6 +40,10 @@ const BASES = {
   waveshare: {
     rows: "fixtures/thing=7c1e4b9a-3d52-4f86-a0b7-e9d2c5f81a46/data_0815_5e9d0c7b31a84f62b8d47a10c3e6f295_412-487-0.rows.json",
     template: "templates/waveshare-esp32-s3-sim7670g/a8605aafb6f76b794e9e7fb32927be6d203afeeb14527206c0e49c1eb0436809.json",
+  },
+  crowpanel: {
+    rows: "fixtures/thing=b4d9e2a7-5c31-4f08-9e6a-1a7c3f2d8e54/data_0900_c81d4e2f9a3b47d6b0e5f1a2c7d93e48_1-90-0.rows.json",
+    template: "templates/elecrow-crowpanel-epaper-42/e7279c4edbe87071e4a51889124a43d7ffcd1977c79c8575887ae35bdee10903.json",
   },
 };
 const load = (base) => {
@@ -133,6 +137,11 @@ const CASES = [
   ["waveshare-revisit", "waveshare", [
     ...setEach("h3_cell_id", spread([ring[4], ring[1], ring[4], home, ring[1]], n.waveshare)),
   ]],
+  // The SEN6x gate passes on every row, then fails on every row.
+  ["crowpanel-gates-pass", "crowpanel", [{ op: "set", column: "sen6x_status", rows: "all", value: 4 }]],
+  ["crowpanel-gates-fail", "crowpanel", [{ op: "set", column: "sen6x_status", rows: "all", value: 1 }]],
+  ["crowpanel-no-cell", "crowpanel", [{ op: "set", column: "h3_cell_id", rows: "all", value: null }]],
+  ["crowpanel-moving", "crowpanel", [{ op: "thing", key: "mobility", value: "moving" }]],
   ["waveshare-fixed", "waveshare", [
     { op: "thing", key: "mobility", value: "fixed" },
     { op: "set", column: "h3_cell_id", rows: "all", value: home },
@@ -225,7 +234,7 @@ const itemIds = idNames.map((name) => [name, ITEM_ID.exec(name)?.[1] ?? null]);
 // One entry per line, so a regenerated file diffs by case.
 const list = (entries) => `[\n${entries.map((e) => JSON.stringify(e)).join(",\n")}\n]`;
 process.stdout.write(`{
-"source": ${JSON.stringify("stac-opensensor 83787768cc8451109d48a03d4ef5493ffcd403dd scripts/canonical.mjs")},
+"source": ${JSON.stringify("stac-opensensor 07a4f21f98b9fffcece7055b95c6b9f9c6975bde scripts/canonical.mjs")},
 "canonical_sha256": ${JSON.stringify(CANONICAL_SHA256)},
 "h3_js": ${JSON.stringify(h3Version)},
 "cases": ${list(cases)},

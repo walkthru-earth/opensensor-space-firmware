@@ -1,0 +1,166 @@
+{
+  "type": "Feature",
+  "stac_version": "1.1.0",
+  "stac_extensions": [
+    "https://stac-extensions.github.io/table/v1.3.0/schema.json",
+    "https://stac-extensions.github.io/file/v2.1.0/schema.json",
+    "https://stac-extensions.github.io/grid/v1.1.0/schema.json",
+    "https://stac-extensions.github.io/anonymized-location/v1.0.0/schema.json",
+    "https://walkthru-earth.github.io/stac-opensensor/v0.1.0/schema.json",
+    "https://walkthru-earth.github.io/stac-opensensor/v0.1.0/profile.json"
+  ],
+  "id": "data_0900_c81d4e2f9a3b47d6b0e5f1a2c7d93e48_1-90-0",
+  "collection": "b4d9e2a7-5c31-4f08-9e6a-1a7c3f2d8e54",
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [
+          -0.19994138213246268,
+          5.558006773612992
+        ],
+        [
+          -0.1959779278465177,
+          5.5588039646837615
+        ],
+        [
+          -0.19526015817255207,
+          5.56270846453563
+        ],
+        [
+          -0.19850617357446357,
+          5.565815738856955
+        ],
+        [
+          -0.20246973624318532,
+          5.56501825853456
+        ],
+        [
+          -0.20318717512878523,
+          5.561113793159994
+        ],
+        [
+          -0.19994138213246268,
+          5.558006773612992
+        ]
+      ]
+    ]
+  },
+  "bbox": [
+    -0.20318717512878523,
+    5.558006773612992,
+    -0.19526015817255207,
+    5.565815738856955
+  ],
+  "properties": {
+    "datetime": null,
+    "start_datetime": "2026-11-14T09:00:03.218406Z",
+    "end_datetime": "2026-11-14T09:14:53.218407Z",
+    "opensensor:mobility": "fixed",
+    "opensensor:sample_interval_s": 10,
+    "grid:code": "H3-887576942dfffff",
+    "anon:size": 0.01,
+    "anon:warning": "The geometry is the H3 cell chosen by the owner, not the device position."
+  },
+  "links": [
+    {
+      "rel": "root",
+      "href": "../../../../catalog.json",
+      "type": "application/json"
+    },
+    {
+      "rel": "parent",
+      "href": "../../../collection.json",
+      "type": "application/json"
+    },
+    {
+      "rel": "collection",
+      "href": "../../../collection.json",
+      "type": "application/json"
+    }
+  ],
+  "assets": {
+    "data": {
+      "href": "./data_0900_c81d4e2f9a3b47d6b0e5f1a2c7d93e48_1-90-0.parquet",
+      "type": "application/vnd.apache.parquet",
+      "roles": [
+        "data"
+      ],
+      "file:size": 14262,
+      "file:checksum": "12206ae96f8e193225668e511f6d420a755414ee885dd1f42294558f7fb2a9665037",
+      "table:row_count": 90,
+      "table:columns": [
+        {
+          "name": "pm1_mass_ug_m3",
+          "type": "float",
+          "statistics": {
+            "minimum": 10.699999809265137,
+            "maximum": 21,
+            "mean": 15.7,
+            "valid_percent": 96.67
+          }
+        },
+        {
+          "name": "pm25_mass_ug_m3",
+          "type": "float",
+          "statistics": {
+            "minimum": 15.300000190734863,
+            "maximum": 29.799999237060547,
+            "mean": 22.38,
+            "valid_percent": 96.67
+          }
+        },
+        {
+          "name": "pm4_mass_ug_m3",
+          "type": "float",
+          "statistics": {
+            "minimum": 17.299999237060547,
+            "maximum": 34.099998474121094,
+            "mean": 25.56,
+            "valid_percent": 96.67
+          }
+        },
+        {
+          "name": "pm10_mass_ug_m3",
+          "type": "float",
+          "statistics": {
+            "minimum": 20.799999237060547,
+            "maximum": 40.599998474121094,
+            "mean": 31.13,
+            "valid_percent": 96.67
+          }
+        },
+        {
+          "name": "ambient_temperature_c",
+          "type": "float",
+          "statistics": {
+            "minimum": 28.600000381469727,
+            "maximum": 29.600000381469727,
+            "mean": 29.09,
+            "valid_percent": 100
+          }
+        },
+        {
+          "name": "relative_humidity_percent",
+          "type": "float",
+          "statistics": {
+            "minimum": 69.80000305175781,
+            "maximum": 72.19999694824219,
+            "mean": 71.04,
+            "valid_percent": 100
+          }
+        },
+        {
+          "name": "co2_ppm",
+          "type": "int32",
+          "statistics": {
+            "minimum": 412,
+            "maximum": 452,
+            "mean": 436,
+            "valid_percent": 96.67
+          }
+        }
+      ]
+    }
+  }
+}
