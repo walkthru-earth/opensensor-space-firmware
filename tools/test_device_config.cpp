@@ -1600,6 +1600,30 @@ void setup_record() {
   reject("thing.setup_v=7\nthing.setup_ack=2147483648", "thing.setup_ack");
   reject("thing.setup_v=7\nthing.setup_ack=x", "thing.setup_ack");
   reject("thing.setup_v=-1\nthing.setup_ack=0", "thing.setup_v");
+  // A first setup write whose `cfg` save then fails writes the unset record
+  // back. That stored {0, 0} loads after a reboot as unset with no line, and
+  // SET_CONFIG still refuses version 0.
+  {
+    const auto invalid = count(log_text(), kInvalid);
+    const auto rollback = count(log_text(), kRollback);
+    fake_platform::nvs.fail_write_key = "cfg";
+    config::Actions actions;
+    char bad_key[64];
+    assert(!apply("thing.setup_v=9\nthing.setup_ack=1\nwifi.ssid=other",
+                  actions, bad_key));
+    assert(std::strcmp(bad_key, "nvs") == 0);
+    fake_platform::nvs.fail_write_key.clear();
+    assert(count(log_text(), kRollback) == rollback);
+    assert(setup_blob().size() == kHeaderBytes + 8);
+    assert(le32(setup_blob().data() + kHeaderBytes) == 0);
+    assert(le32(setup_blob().data() + kHeaderBytes + 4) == 0);
+    assert(config::load(false));
+    assert(config::setup_record() == config::SetupRecord{});
+    assert(page_one().find("\"setup_v\":0,\"setup_ack\":0}") !=
+           std::string::npos);
+    assert(count(log_text(), kInvalid) == invalid);
+    reject("thing.setup_v=0\nthing.setup_ack=0", "thing.setup_v");
+  }
   // A setup only request writes the setup record, never `cfg`.
   const auto stored_cfg = cfg();
   const auto writes = fake_platform::nvs.writes;
@@ -1765,6 +1789,8 @@ void board_keys() {
   // Part of the hooks counts as none.
   config::set_board_keys({.begin = [] {}});
   reject("panel.theme=dark", "panel.theme");
+  json[0] = '\0';
+  assert(config::build_page(json, sizeof(json), config::kBoardKeysPage) == 2);
   assert(std::strcmp(json, "{}") == 0);
   // The reserved prefixes, ntp. among them, never reach the board.
   for (const char *key : {"ble.x", "wifi.x", "lan.x", "location.x", "thing.x",

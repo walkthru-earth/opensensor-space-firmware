@@ -16,6 +16,7 @@
 #include <array>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <span>
 #include <tuple>
 #include <type_traits>
@@ -387,12 +388,17 @@ static_assert(sizeof(OwnerBlob) <= sizeof(Blob) &&
               "owner and setup records fit the shared cfg buffers");
 BlobBuffer staged_buffer;
 BlobBuffer readback_buffer;
-Blob &staged_blob = staged_buffer.cfg;
-Blob &readback_blob = readback_buffer.cfg;
-OwnerBlob &owner_staged = staged_buffer.owner;
-OwnerBlob &owner_readback = readback_buffer.owner;
-SetupBlob &setup_staged = staged_buffer.setup;
-SetupBlob &setup_readback = readback_buffer.setup;
+// Makes one record type the active member of a shared buffer. Every save and
+// load calls it before it touches the buffer, so a record is always written
+// and read through the member whose lifetime has begun, never through another
+// one. The new member starts zeroed.
+Blob &start_cfg(BlobBuffer &buffer) { return *std::construct_at(&buffer.cfg); }
+OwnerBlob &start_owner(BlobBuffer &buffer) {
+  return *std::construct_at(&buffer.owner);
+}
+SetupBlob &start_setup(BlobBuffer &buffer) {
+  return *std::construct_at(&buffer.setup);
+}
 
 std::uint32_t crc32(const std::uint8_t *data, std::size_t size) {
   std::uint32_t crc = 0xffffffffU;
@@ -467,6 +473,8 @@ bool save_locked(const Settings &settings) {
   nvs_handle_t store;
   if (nvs_open(kNamespace, NVS_READWRITE, &store) != ESP_OK)
     return false;
+  auto &staged_blob = start_cfg(staged_buffer);
+  auto &readback_blob = start_cfg(readback_buffer);
   encode_blob(staged_blob, settings);
   // One write and one commit.
   bool ok = committed(
@@ -818,6 +826,8 @@ decode_owner(const OwnerBlob &blob, std::size_t size) {
   nvs_handle_t store;
   if (nvs_open(kNamespace, NVS_READWRITE, &store) != ESP_OK)
     return false;
+  auto &owner_staged = start_owner(staged_buffer);
+  auto &owner_readback = start_owner(readback_buffer);
   encode_owner(owner_staged, owner);
   bool ok = committed(store, nvs_set_blob(store, kOwnerKey, &owner_staged,
                                           sizeof(owner_staged)));
@@ -832,6 +842,7 @@ decode_owner(const OwnerBlob &blob, std::size_t size) {
 
 // Reads the record through an open handle. Never erases it.
 OwnerSettings load_owner(nvs_handle_t store) {
+  auto &owner_readback = start_owner(readback_buffer);
   std::size_t size = sizeof(owner_readback);
   const auto result = nvs_get_blob(store, kOwnerKey, &owner_readback, &size);
   if (result == ESP_ERR_NVS_NOT_FOUND)
@@ -877,7 +888,7 @@ void encode_setup(SetupBlob &blob, const SetupRecord &setup) {
 enum class [[nodiscard]] SetupDecodeError : std::uint8_t {
   Header, // size, magic, version or payload length is wrong
   Crc,    // the payload does not match its CRC
-  Range,  // a value SET_CONFIG would refuse
+  Range,  // a value SET_CONFIG would refuse, other than the unset {0, 0}
 };
 
 [[nodiscard]] std::expected<SetupRecord, SetupDecodeError>
@@ -896,6 +907,10 @@ decode_setup(const SetupBlob &blob, std::size_t size) {
   const SetupRecord decoded{
       .version = get_le(blob.payload.version, sizeof(blob.payload.version)),
       .ack = get_le(blob.payload.ack, sizeof(blob.payload.ack))};
+  // {0, 0} is the stored unset form a write back may leave. SET_CONFIG never
+  // stores version 0, so version 0 with any ack is damaged.
+  if (decoded == SetupRecord{})
+    return decoded;
   if (decoded.version == 0 || decoded.version > kSetupMax ||
       decoded.ack > kSetupMax)
     return std::unexpected(SetupDecodeError::Range);
@@ -907,6 +922,8 @@ decode_setup(const SetupBlob &blob, std::size_t size) {
   nvs_handle_t store;
   if (nvs_open(kNamespace, NVS_READWRITE, &store) != ESP_OK)
     return false;
+  auto &setup_staged = start_setup(staged_buffer);
+  auto &setup_readback = start_setup(readback_buffer);
   encode_setup(setup_staged, setup);
   bool ok = committed(store, nvs_set_blob(store, kSetupKey, &setup_staged,
                                           sizeof(setup_staged)));
@@ -921,6 +938,7 @@ decode_setup(const SetupBlob &blob, std::size_t size) {
 
 // Reads the record through an open handle. Never erases it.
 SetupRecord load_setup(nvs_handle_t store) {
+  auto &setup_readback = start_setup(readback_buffer);
   std::size_t size = sizeof(setup_readback);
   const auto result = nvs_get_blob(store, kSetupKey, &setup_readback, &size);
   if (result == ESP_ERR_NVS_NOT_FOUND)
@@ -1182,6 +1200,7 @@ bool load(bool display_detected) {
     booted = settings;
     return false;
   }
+  auto &readback_blob = start_cfg(readback_buffer);
   std::size_t blob_size = sizeof(readback_blob);
   const auto blob_result =
       nvs_get_blob(store, kBlobKey, &readback_blob, &blob_size);

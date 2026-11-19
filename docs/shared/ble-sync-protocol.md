@@ -205,7 +205,7 @@ Notified once per sample. Each board declares a short `live_key` next to the fie
 
 **LIVE rule.** Every LIVE key the board declares is present in every LIVE object. Its value is a number, or JSON `null` when the sample has no usable reading for it. That covers a value that is invalid or unavailable, a non-finite float (NaN or Inf), a value whose printed text is 32 characters or longer (at the decimals the boards use today, only a float of magnitude 1e27 or more gets there). Null is never sent as zero. An absent key means only that the board has no such field. The set of keys a board can send comes from its dictionary, the `live_key` in its `telemetry_fields.inc` (later the template `firmware.live_keys`). Clients parse the object by key name and ignore keys they do not know. Breaking changes are listed in [mobile-migration.md](mobile-migration.md).
 
-Each field's `live_key` and `decimals` are part of the board's `telemetry_fields.inc`, so the `info.dict` digest covers the LIVE key map and how each float prints. The current digests are CoreS3 `3b4d8500…`, Waveshare `a8605aaf…` and CrowPanel `e7279c4e…`. The full values are in [`templates/index.json`](templates/index.json). The digest hashes raw bytes, so a comment, whitespace or line ending edit to `telemetry_fields.inc` moves it. A client reads what each key means from the board template, `firmware.live_keys` and the column it names, and may show LIVE for any template whose SHA-256 it has verified, see [LIVE key stability](#live-key-stability).
+Each field's `live_key` and `decimals` are part of the board's `telemetry_fields.inc`, so the `info.dict` digest covers the LIVE key map and how each float prints. The current digests are CoreS3 `f4f81218…`, Waveshare `a8605aaf…` and CrowPanel `e7279c4e…`. The full values are in [`templates/index.json`](templates/index.json). The digest hashes raw bytes, so a comment, whitespace or line ending edit to `telemetry_fields.inc` moves it. A client reads what each key means from the board template, `firmware.live_keys` and the column it names, and may show LIVE for any template whose SHA-256 it has verified, see [LIVE key stability](#live-key-stability).
 
 **Float precision.** Integers print with no point. A float prints rounded to the `decimals` its field declares, chosen from the sensor resolution, so `1.00` and `1.0` are both possible and both mean the number one. Today CoreS3 prints `t` with two decimals (SHT20 steps 0.01 degC) and `imu_t` and `rh` with one. Waveshare prints `t` and `rh` with one (PMS5003T steps 0.1). Clients parse the value as a number and keep their own display rounding.
 
@@ -240,7 +240,7 @@ The whole object must fit 480 bytes. The firmware never sends a truncated object
 
 #### LIVE key stability
 
-- A LIVE key never changes meaning once released. Meaning is the quantity, the unit, the source (board or ambient air) and what each existing code value means. Adding a new code value is allowed and counts as a layout change below. Changing what an existing code value means is not allowed. A new meaning gets a new key. A retired key is never reused.
+- A LIVE key never changes meaning once released. Meaning is the quantity, the unit, the source (board or ambient air) and what each existing code value means. Adding a new code value is allowed and counts as a layout change below. Changing what an existing code value means is not allowed. A new meaning gets a new key. A retired key is never reused. No firmware has been released yet. Until the first release a key may still change meaning, in lockstep with the app, with a [mobile-migration.md](mobile-migration.md) entry that says **needs app update**. LIVE `utc` moved from nanoseconds to microseconds this way.
 - Each key in the table above means the same thing on every board. `imu_t` is always the IMU die temperature, never air. `t` is always ambient air temperature. A board that declares a key and has no valid value for it sends the key as null.
 - Firmware may add or drop keys. Clients read keys by name and ignore keys they do not know. A phone may show LIVE for any board template it has verified as in [How a phone checks it](#get_descriptor), the full 64 hex SHA-256 matching the footer `template.sha256` or the template link `file:checksum`, and starting with the 16 hex `desc` the device serves. The short `desc` alone never verifies a template. The phone maps each key through the template `firmware.live_keys` to its column, and filters each value by that column's `opensensor:plausible_range` and `opensensor:valid_when`. When the `valid_when` column has no LIVE key the phone cannot check the gate and does not show that value. The template stays valid and the value stays in the file. No shipped board has such a value. CoreS3 `als` is gated on `light_status`, which is LIVE as `lst`. There is no reviewed digest list ([decision 0003](decisions/0003-metadata-driven-apps.md), owner decision 2026-11-17, replacing opensensor-space-mobile #184). A phone that cannot verify a template still syncs files and shows no LIVE. It never guesses a meaning from a device name, a firmware string or a value.
 - Older CoreS3 builds that sent the IMU die temperature as `t` predate this rule and are not supported. No release may do the same.
@@ -401,8 +401,11 @@ record and before the main record, and only when a value changes or an
 earlier failure left it unsure. A failed save writes the previous record back
 and the request answers `ERROR` 12 with detail `nvs`. If that write back fails
 too the board logs `CONFIG ERROR operation=setup-rollback` and the next
-`SET_CONFIG` writes the record again. A missing record is unset. A damaged one
-is unset too, prints one `CONFIG SETUP invalid-stored-record=true` line, and
+`SET_CONFIG` writes the record again. A missing record is unset. A stored
+record with both values 0 is the unset form. A write back that restores an
+unset record stores it, and it loads as unset with no line. `SET_CONFIG` still
+refuses `thing.setup_v` 0. A record with `setup_v` 0 and any other `setup_ack`
+is damaged. A damaged one is unset too, prints one `CONFIG SETUP invalid-stored-record=true` line, and
 is kept, never erased. The advert `setup` bit and page 1 `thing.setup` stay
 derived from the config for required steps, never from this record.
 
