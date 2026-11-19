@@ -1,5 +1,10 @@
 {
   "by_desc": {
+    "38b0982d1da0dfea20777af87544f30c8141ef297ed5146c402129133acbea0e": {
+      "board": "m5stack-cores3",
+      "dict": "f4f81218dc80d1a8e6db043197a2f7180c4f075f9e8348df30eaceef44d68370",
+      "href": "m5stack-cores3/f4f81218dc80d1a8e6db043197a2f7180c4f075f9e8348df30eaceef44d68370.json"
+    },
     "39da5da001dd662c6c05eddf08bbfdd1400d077dd5a9b7cdf2efaac939d08eb8": {
       "board": "elecrow-crowpanel-epaper-42",
       "dict": "e7279c4edbe87071e4a51889124a43d7ffcd1977c79c8575887ae35bdee10903",
@@ -9,11 +14,6 @@
       "board": "waveshare-esp32-s3-sim7670g",
       "dict": "a8605aafb6f76b794e9e7fb32927be6d203afeeb14527206c0e49c1eb0436809",
       "href": "waveshare-esp32-s3-sim7670g/a8605aafb6f76b794e9e7fb32927be6d203afeeb14527206c0e49c1eb0436809.json"
-    },
-    "f5f0f850ea678dd7fdc08fc295ed01107ae395bb54ba731b8c8e2d64934b483c": {
-      "board": "m5stack-cores3",
-      "dict": "f4f81218dc80d1a8e6db043197a2f7180c4f075f9e8348df30eaceef44d68370",
-      "href": "m5stack-cores3/f4f81218dc80d1a8e6db043197a2f7180c4f075f9e8348df30eaceef44d68370.json"
     }
   },
   "templates": {
@@ -31,7 +31,7 @@
     },
     "f4f81218dc80d1a8e6db043197a2f7180c4f075f9e8348df30eaceef44d68370": {
       "board": "m5stack-cores3",
-      "desc": "f5f0f850ea678dd7fdc08fc295ed01107ae395bb54ba731b8c8e2d64934b483c",
+      "desc": "38b0982d1da0dfea20777af87544f30c8141ef297ed5146c402129133acbea0e",
       "href": "m5stack-cores3/f4f81218dc80d1a8e6db043197a2f7180c4f075f9e8348df30eaceef44d68370.json",
       "schema": "cores3-telemetry-v6"
     }

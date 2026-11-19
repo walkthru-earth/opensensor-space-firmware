@@ -86,14 +86,17 @@ the gate rules.
 | Column hints | Module manifest column, template `table:columns` | `title`, `opensensor:title_i18n`, `description`, `opensensor:description_i18n`, `opensensor:decimals` (on every column, authored or else `firmware.decimals`), `opensensor:group`, `opensensor:scale`, `classification:bitfields` on a `bitmask` column, and class `title`, `description` and `color_hint` |
 | Template hints | `board.json`, template top level | `opensensor:primary` names one `physicalMeasurement` column, `opensensor:scales` holds the registry scales its columns name |
 | Setup steps | `board.json` `setup`, template `firmware.setup` | Ordered `[{"id", "req", "keys"}]`, 1 to 31 steps. `id` names a step in the app catalog, which lists no `keys`, or a board step, which must. `req` marks a step setup cannot finish without |
-| Settings sections | `board.json` `settings`, template `firmware.settings` | Ordered `[{"id", "keys"}]`, same ids as setup. `name` and `mobility` are setup only |
+| Settings sections | `board.json` `settings`, template `firmware.settings` | Ordered `[{"id", "keys"}]`. `id` names a section in the app settings catalog, which is separate from the setup catalog, or a board section, which must list `keys`. `name` and `mobility` are setup steps only, `bonds` and `sensor` are settings sections only |
 | Config keys | `board.json` `config_keys`, template `firmware.config_keys` | Map from `SET_CONFIG` key to `type` (`boolean`, `integer`, `enum` or `text`), `values` (an enum list, or a range `{"min", "max"}` that an integer needs), `applies` (`immediately`, `next sample`, `next boot` or `action`), `page` 7, a plain `label` and an optional `label_i18n` map of the same shape as `opensensor:title_i18n`. Never a value, never a secret key. A decimal is a scaled integer |
 | Setup record | `GET_CONFIG` page 1 `thing`, NVS `setup` in `oscfg` | `setup_ack`, a bitmask in `firmware.setup` order from 0 to 2147483647, and `setup_v`, the first four bytes of SHA-256 over the ordered step ids joined by `\n`, read big endian with the top bit cleared, 0 read as 1, and `0x63b0c442` for the empty list. The phone writes both in one `SET_CONFIG`. A different `setup_v` reads as no step done |
-| Board settings | `GET_CONFIG` page 7 | The board specific keys from `config_keys`, a JSON object nested by key prefix with booleans as `true` or `false`, within the 480 byte page limit |
+| Board settings | `GET_CONFIG` page 7 | The board specific keys from `config_keys`, a JSON object nested by key prefix with booleans as `true` or `false`, within the 480 byte page limit. No key is a dotted prefix of another, so `panel.display` and `panel.display.x` cannot both exist, and every key maps to one leaf |
 
 A step is done when its `setup_ack` bit is set. A required step whose result
-the config proves, such as a cell for a fixed Thing, is derived from the
-config instead, as the advert `setup` bit is today. An unknown step id
+the config proves is derived from the config instead, as the advert `setup`
+bit is today. The required `location` step is done when the Thing is fixed
+and has a cell, or when `thing.mobility` is `moving`. A moving Thing finishes
+it by choosing moving in the `mobility` step, with no cell. Setup cannot
+finish with a fixed Thing that has no cell. An unknown step id
 renders a generic form from its typed `config_keys`. Without keys it is
 skipped, and an unknown required step leaves setup pending.
 

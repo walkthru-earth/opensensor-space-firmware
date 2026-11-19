@@ -157,8 +157,12 @@ links that do not resolve in this tree are rewritten as absolute links at its
 commit. Copyright (c) 2025-2026 Walkthru.Earth, licensed
 [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/). The host contract
 tests use them to validate the board templates, the scales the templates
-copy and the `opensensor` Parquet footer each board writes. They are not in
-any firmware image.
+copy and the `opensensor` Parquet footer each board writes. The files are
+not in any firmware image. Parts of the registries are. The generator copies
+the registry labels into the column titles and the `who-2021-pm25` and
+`who-2021-pm10` scale entries into `opensensor:scales`, and each board image
+carries its template as `kTemplateJson`, so these entries ship under the
+same license.
 
 The GeoParquet metadata schema
 [`tools/geoparquet/v2.0.0/schema.json`](tools/geoparquet/v2.0.0/schema.json)

@@ -364,7 +364,7 @@
         ".dram0.data": 36341,
         ".dram0.bss": 60056,
         ".flash.text": 1293486,
-        ".flash.rodata": 460772,
+        ".flash.rodata": 460788,
         ".noinit": 3
       }
     },
