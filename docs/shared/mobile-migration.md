@@ -14,7 +14,9 @@ owner wipes them and starts again.
 **Every board changes its LIVE `utc` value and its template.** Every `desc`
 moves. The CoreS3 `dict` moves for its new LIVE key `lst`, and the other
 boards keep theirs. No column, row, footer key or `GET_CONFIG` byte changes.
-All three boards must be reflashed. Part of #184.
+All three boards must be reflashed. Part of #184. **Needs app update**,
+because the LIVE layout changes and LIVE `utc` changes unit. No firmware with
+LIVE `utc` in nanoseconds was ever released.
 
 **What changed.**
 
