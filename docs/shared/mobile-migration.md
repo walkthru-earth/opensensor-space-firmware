@@ -9,6 +9,37 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## STAC Item rotation and window rules (fix/stac-item-window-rules)
+
+**Needs a matched reflash of all three boards. No app change is required.**
+No column, row, footer key, LIVE key, template, `dict` or `desc` changes.
+Only which files get a sidecar changes. Part of #184.
+
+**What changed.**
+
+- A board now writes no STAC File Item for a file whose rotation interval is
+  not 600, 900, 1800 or 3600 seconds. It prints
+  `PARQUET STAC result=skipped file=<path> reason=bad-rotation`.
+- A board now writes no STAC File Item for a file whose name HHMM is not the
+  UTC window of its earliest row. It prints
+  `PARQUET STAC result=skipped file=<path> reason=wrong-window`.
+- Both are skipped, never failed. The `.parquet` file is finalized and
+  synced as before.
+- The canonical pin moves to stac-opensensor commit
+  `204365f929e6f77bcaa6e70a0245c96cadc5c115`, and `stac-item-test` checks
+  both rules against it.
+
+**Why.** stac-opensensor `canonical.mjs` at that commit refuses both cases.
+It takes the window from the earliest row and checks only that row against
+the file name. It does not check that later rows fall in the same window.
+The board now gives the same answer, so a phone that builds the Item from the
+same file agrees with the sidecar.
+
+**What the app must do.** Treat a missing sidecar for a `bad-rotation` or
+`wrong-window` file as expected, never as a sync error. Sync still lists only
+`.parquet` files (#143). If the app builds its own Item from a file, apply the
+same two rules and build none for these files.
+
 ## CrowPanel STAC sidecar (feat/crowpanel-stac-sidecar)
 
 **The CrowPanel now writes a STAC File Item next to each finalized dated

@@ -975,6 +975,9 @@ void write_sidecar(const OutputFile &target, const char *ready,
                       ? stac::Mobility::Moving
                       : stac::Mobility::Fixed,
       .sample_interval_ms = config.sample_interval_ms,
+      // The value finalize_file() wrote to the footer. "parquet interval"
+      // finishes the open file before it changes this.
+      .rotation_interval_s = rotation_seconds.load(),
   };
   const stac::GeometryBuffers buffers{
       .points = stac_state->points,
