@@ -25,7 +25,7 @@ Newest first. Versions follow section 7 of the [README](README.md).
   catalog is name, location, mobility, site, wifi, pairing and lan. The
   settings catalog is location, site, wifi, pairing, lan, bonds and `sensor`,
   the sensor identity card. Key names refuse the reserved
-  prefixes and secret parts. All three boards set `primary`, `setup` and
+  prefixes and secret parts, and no key is a dotted prefix of another. All three boards set `primary`, `setup` and
   `settings`, Waveshare lists `sensor`, and none declares `config_keys` yet.
 - `desc` moves on every board. `dict`, `telemetry_fields.inc` and
   `shipped.lock` do not move.

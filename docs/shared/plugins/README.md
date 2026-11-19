@@ -198,8 +198,8 @@ The schema reuses rather than redefines.
     "column": {
       "allOf": [
         {"$ref": "https://walkthru-earth.github.io/stac-opensensor/v0.1.0/schema.json#/definitions/column"},
-        {"required": ["name", "roles", "firmware"],
-         "not": {"anyOf": [{"required": ["opensensor:field_id"]}, {"required": ["opensensor:scale"]}, {"required": ["title"]}]},
+        {"required": ["name", "roles", "opensensor:property", "opensensor:aggregate", "firmware"],
+         "not": {"anyOf": [{"required": ["opensensor:field_id"]}, {"required": ["type"]}]},
          "properties": {"firmware": {"$ref": "#/definitions/firmware"}}}
       ]
     },
@@ -308,7 +308,9 @@ A Key is `{"type", "values", "applies", "page", "label", "label_i18n"}`.
 The name matches `[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+`, is at most 48 bytes,
 does not start with a reserved prefix (`ble.`, `wifi.`, `lan.`, `ntp.`,
 `location.`, `thing.`, `owner.` or `sensor.`) and has no `pin`, `psk`, `token`,
-`password` or `secret` part. `type` is `boolean`, `integer`, `enum` or
+`password` or `secret` part. No key is a dotted prefix of another, such as
+`panel.display` next to `panel.display.x`, because page 7 nests keys by
+prefix. `type` is `boolean`, `integer`, `enum` or
 `text`. An integer needs `values` as a range `{"min", "max"}` of whole
 numbers, so a decimal is a scaled integer such as `temp_offset_dc` in tenths
 of a degree. An enum needs `values` as a list of strings of at most 64 bytes.
@@ -332,13 +334,13 @@ names that are not final.
     {"id": "name", "req": false},
     {"id": "location", "req": true},
     {"id": "wifi", "req": false},
-    {"id": "panel", "req": false, "label": "Display", "label_i18n": {"ar": "الشاشة"}, "keys": ["panel.theme", "panel.start_page"]}
+    {"id": "panel", "req": false, "label": "Display", "label_i18n": {"ar": "الشاشة"}, "keys": ["panel.theme"]}
   ],
   "settings": [
     {"id": "location"},
     {"id": "wifi"},
-    {"id": "panel", "label": "Display", "keys": ["panel.theme", "panel.refresh_s", "panel.start_page", "panel.sleep_s"]},
-    {"id": "sen6x", "label": "Air sensor", "label_i18n": {"ar": "مستشعر الهواء"}, "keys": ["sen6x.altitude_m", "sen6x.co2_asc", "sen6x.temp_offset_dc", "sen6x.fan_clean"]}
+    {"id": "panel", "label": "Display", "keys": ["panel.theme"]},
+    {"id": "sen6x", "label": "Air sensor", "label_i18n": {"ar": "مستشعر الهواء"}, "keys": ["sen6x.fan_clean"]}
   ],
   "config_keys": {
     "panel.theme": {"type": "enum", "values": ["light", "dark"], "applies": "immediately", "page": 7, "label": "Theme", "label_i18n": {"ar": "المظهر"}},

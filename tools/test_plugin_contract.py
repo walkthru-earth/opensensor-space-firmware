@@ -279,6 +279,10 @@ def main() -> None:
         mutate(scratch, edit_json(board, lambda d: d.update(config_keys={"panel.pin": dict(panel)},
                                                             settings=[*d["settings"], {"id": "panel", "label": "Display", "keys": ["panel.pin"]}])),
                "looks like a secret", "a secret key name")
+        mutate(scratch, edit_json(board, lambda d: d.update(
+            config_keys={"panel.display": panel, "panel.display.x": panel},
+            settings=[*d["settings"], {"id": "panel", "label": "Display", "keys": ["panel.display", "panel.display.x"]}])),
+               "dotted prefix", "a key that is a dotted prefix of another")
         for prefix in ("ble", "wifi", "lan", "ntp", "location", "thing", "owner", "sensor"):
             mutate(scratch, edit_json(board, lambda d, k=f"{prefix}.theme": d.update(
                 config_keys={k: panel}, settings=[*d["settings"], {"id": "panel", "label": "Display", "keys": [k]}])),

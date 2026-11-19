@@ -509,6 +509,10 @@ def setup_rules(label: str, manifest: dict) -> None:
             require(values["min"] <= values["max"], f"{label}: {key} range min is over max")
         if isinstance(values, list):
             require(all(len(v.encode()) <= 64 for v in values), f"{label}: {key} has a value over 64 bytes")
+    # Page 7 nests keys by dotted prefix, so a key that is a prefix of another
+    # would be both a leaf and an object.
+    nested = sorted(k for k in keys if any(other.startswith(k + ".") for other in keys))
+    require(not nested, f"{label}: config_keys {nested} are a dotted prefix of another key")
 
 
 def live_keys_across(boards: dict[str, list[Column]]) -> None:
