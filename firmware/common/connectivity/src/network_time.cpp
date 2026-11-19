@@ -57,8 +57,8 @@ esp_err_t tcpip_barrier(void *);
 void synchronized(struct timeval *time) {
   const auto mono = esp_timer_get_time();
   if (!time || time->tv_usec < 0 ||
-      !utc::supported_anchor(time->tv_sec,
-                             static_cast<std::uint32_t>(time->tv_usec)))
+      !utc::accepted_anchor(time->tv_sec,
+                            static_cast<std::uint32_t>(time->tv_usec)))
     return;
   portENTER_CRITICAL(&mutex);
   if (accepting) {
