@@ -143,11 +143,13 @@ clang-tools, clangxx and compiler-rt 23.1.4, cppcheck 2.22.0, jsonschema
 5.6.0 no longer pulls in bitstring, and pyarrow 26 now pulls in NumPy.
 
 The JSON Schemas `template.json`, `profile.json`, `schema.json` and
-`registry.json` in [`tools/stac_opensensor/v0.1.0`](tools/stac_opensensor/v0.1.0),
-the registries [`tools/stac_opensensor/registry`](tools/stac_opensensor/registry)
-(`properties.json`, `scales.json`) are copies of
+`registry.json` in [`tools/stac_opensensor/v0.1.0`](tools/stac_opensensor/v0.1.0)
+and the registry `properties.json` in
+[`tools/stac_opensensor/registry`](tools/stac_opensensor/registry) are copies of
 [stac-opensensor](https://github.com/walkthru-earth/stac-opensensor) at commit
-`07a4f21f98b9fffcece7055b95c6b9f9c6975bde`. The profile text
+`07a4f21f98b9fffcece7055b95c6b9f9c6975bde`. The registry `scales.json` in the
+same folder is a copy at commit `204365f929e6f77bcaa6e70a0245c96cadc5c115`.
+The profile text
 [`tools/stac_opensensor/PROFILE.md`](tools/stac_opensensor/PROFILE.md) is a
 copy at commit `204365f929e6f77bcaa6e70a0245c96cadc5c115`. `footer.json` in the
 same folder and the example
