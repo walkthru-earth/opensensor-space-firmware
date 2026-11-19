@@ -9,6 +9,70 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## Display hints and the setup manifest in the template (feat/display-hints-setup-manifest)
+
+**Every board template changes, `desc` moves and `dict` does not.** No
+column, row, LIVE key, footer key or `GET_CONFIG` byte changes. The image
+must be reflashed so `GET_DESCRIPTOR` serves the new template. Part of #184.
+
+**What changed.**
+
+- New desc digests, with the dict digests unchanged.
+  - `m5stack-cores3`, dict `3b4d8500a19f42c6743b0f7d725276c96ca14a0c249f613048603afbc3cfaff9`,
+    desc `31c2043bbe91ce6e06ee08756d5b21bd70ca9bb5a12090614c0da88c47f00de1`
+    (was `4dd6c4b1ef19187ed2c011ab86018e43be0f28edc3af63a0f6a27b70ff203ef3`).
+  - `waveshare-esp32-s3-sim7670g`, dict `a8605aafb6f76b794e9e7fb32927be6d203afeeb14527206c0e49c1eb0436809`,
+    desc `4bff03290ab46e554db2389a28a3da41574745fffea0bb4e187355dd5b97967d`
+    (was `d4e4fa499e20c414b3b1fd61343982e5735687d67cfb8b4591efaa5ed5f96bd4`).
+  - `elecrow-crowpanel-epaper-42`, dict `e7279c4edbe87071e4a51889124a43d7ffcd1977c79c8575887ae35bdee10903`,
+    desc `6b4ecbab4e258f1091cd9048ddfe9260e160ef73166ee0c6b29669501c0c077a`
+    (was `40544faf12a82d7895a5231758a2901cd4be851b918e839258f4c764879e0a98`).
+- Each column carries `title` from the registry English label,
+  `opensensor:group` and `opensensor:decimals`. It carries
+  `opensensor:title_i18n` only where the registry has other labels, and the
+  app falls back to `title` without one. Decimals are on every column and
+  follow the firmware LIVE rounding, so they can differ from the registry
+  default and by board, for example 0 on the CoreS3 PMS atmospheric columns,
+  2 on CoreS3 `ambient_temperature_c` and 1 on Waveshare and CrowPanel.
+- The PM2.5 and PM10 columns name a scale in `opensensor:scale`, and the
+  template copies the registry scales into a top level `opensensor:scales`.
+  There is no CO2 scale yet.
+- Classes of `pms_status` and `sen6x_status` have a `title`.
+  `sen6x_device_status`, `imu_fresh_mask` and `gauge_status_flags` carry
+  `classification:bitfields`, one bit per field. The bits of
+  `imu_fresh_mask` have classes `0 none` and `1 fresh`, the others `0 ok`
+  and `1 set`.
+- A top level `opensensor:primary`, `pm25_atmospheric_ug_m3` on CoreS3 and
+  Waveshare and `pm25_mass_ug_m3` on the CrowPanel.
+- `firmware.setup` is `name`, `mobility`, `location` (required), `site` and
+  `wifi` on every board. `firmware.settings` is `location`, `site`, `wifi`,
+  `pairing`, `lan` and `bonds`, with `sensor` after `site` on Waveshare, the
+  only board with a sensor identity. Each board lists every section that
+  applies to it. No step lists keys and no board declares
+  `firmware.config_keys` yet.
+- A step or section may carry `label` and `label_i18n`, the same shape as a
+  config key label. A catalog id may omit it. A board's own step or section
+  must carry `label`. No board step has one yet.
+- The templates grow to 40075 bytes on CoreS3, 33274 on Waveshare and 21683
+  on the CrowPanel.
+- A board config key may not start with `ntp.`, which joins `ble.`, `wifi.`,
+  `lan.`, `location.`, `thing.`, `owner.` and `sensor.` as app owned.
+- `setup_v` is the first four bytes of SHA-256 over the ordered setup step
+  ids joined by `\n`, read big endian with the top bit cleared, and 0 reads
+  as 1. The empty list gives `0x63b0c442`. The step list above gives
+  `1499644209` (`0x5962c131`) on every board, and
+  `pixi run plugin-contract-test` prints it per board.
+- The vendored stac-opensensor schemas move to `07a4f21`, whose template
+  schema carries the setup manifest. No template byte changes from it.
+
+**What the app must do.** Bundle the new templates and their digests.
+Resolve labels, decimals, scales and the primary column from the template
+as [decision 0003](decisions/0003-metadata-driven-apps.md) orders them, and
+build the wizard and Device settings from `firmware.setup` and
+`firmware.settings`, titled by `label` when the app has no title for the id. The firmware does not store `thing.setup_v` or
+`thing.setup_ack` and serves no page 7 yet, a later entry records them.
+Mirror the three templates into stac-opensensor `templates/`.
+
 ## Clock floor and one day jump rule (fix/164-173-clock-rule, issues #164 and #173)
 
 **Behaviour change, no new wire field or error code.** No frame layout, opcode,
@@ -125,7 +189,8 @@ the full SHA-256 matching the footer `template.sha256` or the template link
 `file:checksum` and starting with the served 16 hex `desc`, filtered by
 `opensensor:plausible_range` and `opensensor:valid_when`. Display hints in the
 template, the board setup and settings manifest, `thing.setup_ack` and
-`setup_v` on page 1 and a board settings page are planned and marked so.
+`setup_v` on page 1 and a board settings page were planned and marked so.
+The hints and the manifest shipped in the entry above.
 
 **What the app must do.** Drop the per digest LIVE profile gate and read
 meaning from the verified template (opensensor-space-mobile #219). Build

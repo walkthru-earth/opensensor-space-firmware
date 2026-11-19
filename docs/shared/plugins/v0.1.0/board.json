@@ -2,6 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://walkthru-earth.github.io/opensensor-space-firmware/plugins/v0.1.0/board.json#",
   "title": "OpenSensor Board Manifest",
+  "$comment": "The setup manifest definitions mirror the stac-opensensor template.json setup manifest (stac-opensensor #18). Firmware is stricter, page is 7 and enum values are strings.",
   "description": "One board variant, its template identity and the ordered module segments that make up its columns.",
   "type": "object",
   "required": ["type", "board_version", "board", "schema", "sample_interval_s", "segments"],
@@ -13,6 +14,37 @@
     "sample_interval_s": {"type": "number", "exclusiveMinimum": 0},
     "title": {"type": "string", "minLength": 1},
     "keywords": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "primary": {"description": "The main metric column, the template opensensor:primary. A physicalMeasurement column of this board.", "$ref": "module.json#/definitions/name"},
+    "setup": {
+      "description": "Ordered setup wizard steps, the template firmware.setup. Bit i of GET_CONFIG thing.setup_ack is step i, so 31 at most.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 31,
+      "items": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {"id": {"$ref": "#/definitions/stepId"}, "req": {"type": "boolean"}, "label": {"$ref": "#/definitions/stepLabel"}, "label_i18n": {"$ref": "https://walkthru-earth.github.io/stac-opensensor/v0.1.0/schema.json#/definitions/i18n"}, "keys": {"$ref": "#/definitions/stepKeys"}},
+        "additionalProperties": false
+      }
+    },
+    "settings": {
+      "description": "Ordered Device settings sections, the template firmware.settings. Same ids as setup. A board lists every section that applies to it, since the app shows no other.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {"id": {"$ref": "#/definitions/stepId"}, "label": {"$ref": "#/definitions/stepLabel"}, "label_i18n": {"$ref": "https://walkthru-earth.github.io/stac-opensensor/v0.1.0/schema.json#/definitions/i18n"}, "keys": {"$ref": "#/definitions/stepKeys"}},
+        "additionalProperties": false
+      }
+    },
+    "config_keys": {
+      "description": "Board SET_CONFIG keys on GET_CONFIG page 7, the template firmware.config_keys. Names and types only, never a value or a secret.",
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {"$ref": "#/definitions/configKey"},
+      "additionalProperties": {"$ref": "#/definitions/configKeySpec"}
+    },
     "local_modules": {
       "description": "Module manifests in the board app, relative to this file.",
       "type": "array",
@@ -55,5 +87,35 @@
       }
     }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "definitions": {
+    "stepId": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "not": {"enum": ["find", "pair", "permission", "done"]}},
+    "stepLabel": {"description": "The wizard page or Device settings card title. A catalog id may omit it, a board step or section carries it.", "type": "string", "minLength": 1},
+    "stepKeys": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/definitions/configKey"}},
+    "configKey": {"type": "string", "maxLength": 48, "pattern": "^(?!(ble|wifi|lan|ntp|location|thing|owner|sensor)\\.)[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"},
+    "range": {"type": "object", "required": ["min", "max"], "properties": {"min": {"type": "integer"}, "max": {"type": "integer"}}, "additionalProperties": false},
+    "configKeySpec": {
+      "type": "object",
+      "required": ["type", "applies", "page", "label"],
+      "properties": {
+        "type": {"enum": ["boolean", "integer", "enum", "text"]},
+        "values": {"oneOf": [
+          {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 64}},
+          {"$ref": "#/definitions/range"}
+        ]},
+        "applies": {"enum": ["immediately", "next sample", "next boot", "action"]},
+        "page": {"const": 7},
+        "label": {"type": "string", "minLength": 1},
+        "label_i18n": {"$ref": "https://walkthru-earth.github.io/stac-opensensor/v0.1.0/schema.json#/definitions/i18n"}
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {"if": {"properties": {"type": {"const": "boolean"}}}, "then": {"not": {"required": ["values"]}}},
+        {"if": {"properties": {"type": {"const": "integer"}}}, "then": {"required": ["values"], "properties": {"values": {"$ref": "#/definitions/range"}}}},
+        {"if": {"properties": {"type": {"const": "enum"}}}, "then": {"required": ["values"], "properties": {"values": {"type": "array"}}}},
+        {"if": {"properties": {"type": {"const": "text"}}}, "then": {"properties": {"values": {"allOf": [{"$ref": "#/definitions/range"}, {"properties": {"min": {"minimum": 0}, "max": {"maximum": 64}}}]}}}},
+        {"if": {"properties": {"applies": {"const": "action"}}}, "then": {"properties": {"type": {"const": "boolean"}}}}
+      ]
+    }
+  }
 }

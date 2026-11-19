@@ -2,7 +2,7 @@
 
 | | |
 | --- | --- |
-| Status | Decided 2026-11-17 by the owner. Not built |
+| Status | Decided 2026-11-17 by the owner. Hints and the setup manifest built in plugin contract 0.1.7 (#184). The setup record and the board settings page are not built |
 | Date | 2026-11-17 |
 | Issue | [#17](https://github.com/walkthru-earth/opensensor-space-firmware/issues/17), mobile [#219](https://github.com/walkthru-earth/opensensor-space-mobile/issues/219) |
 | Related | [0001](0001-standalone-thing-stac.md), [plugin contract](../plugins/README.md), [sync protocol](../ble-sync-protocol.md), [STAC contract](../stac-contract/README.md) |
@@ -42,8 +42,10 @@ shows no LIVE for it and its panel settings are reachable only from the knob.
    ordered setup steps, ordered settings sections and typed `config_keys`.
    The generator copies them into the template `firmware` block, so they
    are hashed with it and a change moves `desc`, never `dict`. The app keeps
-   a fixed catalog of step components (name, location, mobility, site, wifi,
-   pairing, lan, bonds and a generic form). Find, Pair, Permission and Done
+   a fixed catalog of setup steps (name, location, mobility, site, wifi,
+   pairing, lan), of settings sections (location, site, wifi, pairing, lan,
+   bonds, sensor) and a generic form. A board's own step or
+   section carries a label. Find, Pair, Permission and Done
    stay app owned. The device stores which steps are done. Board specific
    settings that live only on the device today, such as the CrowPanel panel
    and SEN63C options in NVS `ospanel`, get `SET_CONFIG` keys on a new
@@ -69,24 +71,31 @@ shows no LIVE for it and its panel settings are reachable only from the knob.
 `opensensor:group` is one of `particulate`, `gas`, `climate`, `light`,
 `motion`, `location`, `power`, `time` or `device`.
 
-## Planned shapes
+## Shapes
 
-None of this is built. The names below are the plan, and the PR that builds
-each part may refine them with a migration entry.
+The column hints, the template hints and the setup, settings and config key
+manifest are built ([#184](https://github.com/walkthru-earth/opensensor-space-firmware/issues/184),
+plugin contract 0.1.7). The setup record and the board settings page are
+not built yet, so no board declares `config_keys`. The
+[plugin contract](../plugins/README.md#setup-settings-and-config-keys) has
+the gate rules.
 
 | Part | Where | Shape |
 | --- | --- | --- |
-| Column hints | Module manifest column, template `table:columns` | `title`, `opensensor:title_i18n`, `description`, `opensensor:description_i18n`, `opensensor:decimals` (the generator fills it from `firmware.decimals` when the column authors none), `opensensor:group`, `opensensor:scale` |
-| Template hints | `board.json`, template top level | `opensensor:primary` names one column, `opensensor:scales` holds the scales its columns name |
-| Setup steps | `board.json` `setup`, template `firmware.setup` | Ordered `[{"id", "req", "keys"}]`. `id` names a step in the app catalog, `req` marks a step setup cannot finish without, optional `keys` lists the `config_keys` a generic step shows |
-| Settings sections | `board.json` `settings`, template `firmware.settings` | Ordered `[{"id", "keys"}]`, same ids as setup |
-| Config keys | `board.json` `config_keys`, template `firmware.config_keys` | Map from `SET_CONFIG` key to `type`, `values` (enum or range), `applies` (`immediately`, `next sample`, `next boot` or `action`), `page`, a plain `label` and an optional `label_i18n` map of the same shape as `opensensor:title_i18n`. Never a value, never a secret key |
-| Setup record | `GET_CONFIG` page 1 `thing` | `setup_ack`, a bitmask in `firmware.setup` order, and `setup_v`, which names the step list the bits refer to. A different `setup_v` reads as no step done |
-| Board settings | A new `GET_CONFIG` page after page 6 | The board specific keys from `config_keys`, within the 480 byte page limit |
+| Column hints | Module manifest column, template `table:columns` | `title`, `opensensor:title_i18n`, `description`, `opensensor:description_i18n`, `opensensor:decimals` (on every column, authored or else `firmware.decimals`), `opensensor:group`, `opensensor:scale`, `classification:bitfields` on a `bitmask` column, and class `title`, `description` and `color_hint` |
+| Template hints | `board.json`, template top level | `opensensor:primary` names one `physicalMeasurement` column, `opensensor:scales` holds the registry scales its columns name |
+| Setup steps | `board.json` `setup`, template `firmware.setup` | Ordered `[{"id", "req", "keys"}]`, 1 to 31 steps. `id` names a step in the app catalog, which lists no `keys`, or a board step, which must. `req` marks a step setup cannot finish without |
+| Settings sections | `board.json` `settings`, template `firmware.settings` | Ordered `[{"id", "keys"}]`. `id` names a section in the app settings catalog, which is separate from the setup catalog, or a board section, which must list `keys`. `name` and `mobility` are setup steps only, `bonds` and `sensor` are settings sections only |
+| Config keys | `board.json` `config_keys`, template `firmware.config_keys` | Map from `SET_CONFIG` key to `type` (`boolean`, `integer`, `enum` or `text`), `values` (an enum list, or a range `{"min", "max"}` that an integer needs), `applies` (`immediately`, `next sample`, `next boot` or `action`), `page` 7, a plain `label` and an optional `label_i18n` map of the same shape as `opensensor:title_i18n`. Never a value, never a secret key. A decimal is a scaled integer |
+| Setup record, not built | `GET_CONFIG` page 1 `thing` | `setup_ack`, a bitmask in `firmware.setup` order from 0 to 2147483647, and `setup_v`, the first four bytes of SHA-256 over the ordered step ids joined by `\n`, read big endian with the top bit cleared, 0 read as 1, and `0x63b0c442` for the empty list. The phone writes both in one `SET_CONFIG`. A different `setup_v` reads as no step done |
+| Board settings, not built | `GET_CONFIG` page 7 | The board specific keys from `config_keys`, a JSON object nested by key prefix with booleans as `true` or `false`, within the 480 byte page limit. No key is a dotted prefix of another, so `panel.display` and `panel.display.x` cannot both exist, and every key maps to one leaf |
 
 A step is done when its `setup_ack` bit is set. A required step whose result
-the config proves, such as a cell for a fixed Thing, is derived from the
-config instead, as the advert `setup` bit is today. An unknown step id
+the config proves is derived from the config instead, as the advert `setup`
+bit is today. The required `location` step is done when the Thing is fixed
+and has a cell, or when `thing.mobility` is `moving`. A moving Thing finishes
+it by choosing moving in the `mobility` step, with no cell. Setup cannot
+finish with a fixed Thing that has no cell. An unknown step id
 renders a generic form from its typed `config_keys`. Without keys it is
 skipped, and an unknown required step leaves setup pending.
 
@@ -106,15 +115,13 @@ move in lockstep (owner decision 14). Portolan adoption comes later.
    WHO PM2.5 and PM10 scales, so neither is meant for a single live value.
    Pick one for the panel, or publish both as scales.
    No display code changes until then.
-2. Translation shape is settled by stac-opensensor
-   [#16](https://github.com/walkthru-earth/stac-opensensor/pull/16), as in
-   decision 1. The firmware generator follows it once that lands.
-3. Page number and key names for the board settings page, and the exact
-   `setup_v` rule.
-4. A CO2 scale is missing. The registry in stac-opensensor #16 has a PM4
-   label. Its schema adopts `classification:bitfields`, but the bit
-   definitions for `sen6x_device_status` are open and the firmware generator
-   does not emit bitfields yet.
+2. Translation shape. Resolved, the generator follows stac-opensensor
+   [#16](https://github.com/walkthru-earth/stac-opensensor/pull/16).
+3. Board settings page and `setup_v`. Resolved as page 7 and the rule in the
+   table above. The CrowPanel key names land with the page 7 work.
+4. A CO2 scale is missing. The registry has a PM4 label. Bitfields are
+   resolved, the generator emits them for `sen6x_device_status`,
+   `imu_fresh_mask` and `gauge_status_flags`.
 5. CoreS3 `als` is gated on `light_status`, which has no LIVE key, so a phone
    cannot show it in LIVE. Add a LIVE key for `light_status`, or accept that.
 
