@@ -16,6 +16,7 @@
     "core": [
       {
         "name": "rtc_date_yyyymmdd",
+        "title": "Real time clock date",
         "unit": "{YYYYMMDD}",
         "roles": [
           "referenceInformation"
@@ -26,6 +27,7 @@
           "equals": 1
         },
         "opensensor:aggregate": "point",
+        "opensensor:group": "time",
         "firmware": {
           "type": "Int32",
           "unit": "YYYYMMDD",
@@ -36,6 +38,7 @@
       },
       {
         "name": "rtc_time_hhmmss",
+        "title": "Real time clock time",
         "unit": "{hhmmss}",
         "roles": [
           "referenceInformation"
@@ -46,6 +49,7 @@
           "equals": 1
         },
         "opensensor:aggregate": "point",
+        "opensensor:group": "time",
         "firmware": {
           "type": "Int32",
           "unit": "hhmmss",
@@ -56,6 +60,7 @@
       },
       {
         "name": "rtc_read_ok",
+        "title": "Real time clock read",
         "unit": "{boolean}",
         "roles": [
           "qualityInformation"
@@ -72,6 +77,7 @@
         ],
         "opensensor:property": "urn:walkthru-earth:property:real_time_clock_read_status",
         "opensensor:aggregate": "mode",
+        "opensensor:group": "time",
         "firmware": {
           "type": "Int32",
           "unit": "boolean",

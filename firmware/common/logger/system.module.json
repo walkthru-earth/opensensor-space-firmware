@@ -9,12 +9,14 @@
     "head": [
       {
         "name": "schema_version",
+        "title": "Row schema version",
         "unit": "1",
         "roles": [
           "referenceInformation"
         ],
         "opensensor:property": "urn:walkthru-earth:property:schema_version",
         "opensensor:aggregate": "mode",
+        "opensensor:group": "device",
         "firmware": {
           "type": "Int32",
           "unit": "1",
@@ -25,6 +27,7 @@
       },
       {
         "name": "device_id",
+        "title": "Device identifier",
         "unit": "1",
         "roles": [
           "referenceInformation"
@@ -32,6 +35,7 @@
         "opensensor:property": "urn:walkthru-earth:property:device_identifier",
         "opensensor:procedure": "identity",
         "opensensor:aggregate": "mode",
+        "opensensor:group": "device",
         "firmware": {
           "type": "Int64",
           "unit": "1",
@@ -42,6 +46,7 @@
       },
       {
         "name": "boot_id_hi",
+        "title": "Boot identifier, high half",
         "unit": "1",
         "roles": [
           "referenceInformation"
@@ -49,6 +54,7 @@
         "opensensor:property": "urn:walkthru-earth:property:boot_identifier_high",
         "opensensor:procedure": "identity",
         "opensensor:aggregate": "mode",
+        "opensensor:group": "device",
         "firmware": {
           "type": "Int64",
           "unit": "1",
@@ -59,6 +65,7 @@
       },
       {
         "name": "boot_id_lo",
+        "title": "Boot identifier, low half",
         "unit": "1",
         "roles": [
           "referenceInformation"
@@ -66,6 +73,7 @@
         "opensensor:property": "urn:walkthru-earth:property:boot_identifier_low",
         "opensensor:procedure": "identity",
         "opensensor:aggregate": "mode",
+        "opensensor:group": "device",
         "firmware": {
           "type": "Int64",
           "unit": "1",
@@ -76,12 +84,14 @@
       },
       {
         "name": "sequence",
+        "title": "Sample sequence number",
         "unit": "{count}",
         "roles": [
           "referenceInformation"
         ],
         "opensensor:property": "urn:walkthru-earth:property:sample_sequence_number",
         "opensensor:aggregate": "point",
+        "opensensor:group": "device",
         "firmware": {
           "type": "Int64",
           "unit": "count",
@@ -92,6 +102,7 @@
       },
       {
         "name": "monotonic_us",
+        "title": "Time since boot",
         "unit": "us",
         "roles": [
           "referenceInformation"
@@ -99,6 +110,7 @@
         "opensensor:property": "urn:walkthru-earth:property:monotonic_time_since_boot",
         "opensensor:procedure": "clock",
         "opensensor:aggregate": "point",
+        "opensensor:group": "time",
         "firmware": {
           "type": "Int64",
           "unit": "us",
@@ -109,6 +121,7 @@
       },
       {
         "name": "scheduled_us",
+        "title": "Scheduled sample time since boot",
         "unit": "us",
         "roles": [
           "referenceInformation"
@@ -116,6 +129,7 @@
         "opensensor:property": "urn:walkthru-earth:property:scheduled_sample_time_since_boot",
         "opensensor:procedure": "clock",
         "opensensor:aggregate": "point",
+        "opensensor:group": "time",
         "firmware": {
           "type": "Int64",
           "unit": "us",
@@ -126,6 +140,7 @@
       },
       {
         "name": "sample_jitter_us",
+        "title": "Sample jitter",
         "unit": "us",
         "roles": [
           "auxiliaryInformation"
@@ -133,6 +148,7 @@
         "opensensor:property": "urn:walkthru-earth:property:sample_jitter",
         "opensensor:procedure": "clock",
         "opensensor:aggregate": "mean",
+        "opensensor:group": "time",
         "firmware": {
           "type": "Int64",
           "unit": "us",
@@ -143,6 +159,10 @@
       },
       {
         "name": "event_time_utc_us",
+        "title": "Time",
+        "opensensor:title_i18n": {
+          "ar": "الوقت"
+        },
         "unit": "us",
         "roles": [
           "coordinate"
@@ -151,6 +171,7 @@
         "opensensor:property": "http://vocab.nerc.ac.uk/collection/P07/current/CFSN0115/",
         "opensensor:procedure": "clock",
         "opensensor:aggregate": "point",
+        "opensensor:group": "time",
         "firmware": {
           "type": "Int64",
           "unit": "us_since_unix_epoch",
@@ -161,6 +182,7 @@
       },
       {
         "name": "clock_status",
+        "title": "Clock status",
         "unit": "{code}",
         "roles": [
           "qualityInformation"
@@ -186,6 +208,7 @@
         "opensensor:property": "urn:walkthru-earth:property:clock_status",
         "opensensor:procedure": "clock",
         "opensensor:aggregate": "mode",
+        "opensensor:group": "time",
         "firmware": {
           "type": "Int32",
           "unit": "code",
@@ -198,6 +221,7 @@
     "runtime": [
       {
         "name": "heap_free_bytes",
+        "title": "Free heap memory",
         "unit": "By",
         "roles": [
           "auxiliaryInformation"
@@ -205,6 +229,7 @@
         "opensensor:property": "urn:walkthru-earth:property:free_heap_memory",
         "opensensor:procedure": "esp_runtime",
         "opensensor:aggregate": "minimum",
+        "opensensor:group": "device",
         "firmware": {
           "type": "Int64",
           "unit": "byte",
@@ -217,6 +242,7 @@
       },
       {
         "name": "heap_min_free_bytes",
+        "title": "Lowest free heap memory",
         "unit": "By",
         "roles": [
           "auxiliaryInformation"
@@ -224,6 +250,7 @@
         "opensensor:property": "urn:walkthru-earth:property:minimum_free_heap_memory",
         "opensensor:procedure": "esp_runtime",
         "opensensor:aggregate": "minimum",
+        "opensensor:group": "device",
         "firmware": {
           "type": "Int64",
           "unit": "byte",
@@ -236,6 +263,7 @@
       },
       {
         "name": "psram_free_bytes",
+        "title": "Free PSRAM",
         "unit": "By",
         "roles": [
           "auxiliaryInformation"
@@ -243,6 +271,7 @@
         "opensensor:property": "urn:walkthru-earth:property:free_psram_memory",
         "opensensor:procedure": "esp_runtime",
         "opensensor:aggregate": "minimum",
+        "opensensor:group": "device",
         "firmware": {
           "type": "Int64",
           "unit": "byte",
@@ -255,6 +284,7 @@
       },
       {
         "name": "sd_total_bytes",
+        "title": "Storage capacity",
         "unit": "By",
         "roles": [
           "auxiliaryInformation"
@@ -266,6 +296,7 @@
           "finite": true
         },
         "opensensor:aggregate": "point",
+        "opensensor:group": "device",
         "firmware": {
           "type": "Int64",
           "unit": "byte",
@@ -276,6 +307,7 @@
       },
       {
         "name": "sd_used_bytes",
+        "title": "Storage used",
         "unit": "By",
         "roles": [
           "auxiliaryInformation"
@@ -287,6 +319,7 @@
           "finite": true
         },
         "opensensor:aggregate": "point",
+        "opensensor:group": "device",
         "firmware": {
           "type": "Int64",
           "unit": "byte",
@@ -297,12 +330,14 @@
       },
       {
         "name": "rows_dropped",
+        "title": "Dropped rows",
         "unit": "{count}",
         "roles": [
           "auxiliaryInformation"
         ],
         "opensensor:property": "urn:walkthru-earth:property:dropped_row_count",
         "opensensor:aggregate": "point",
+        "opensensor:group": "device",
         "firmware": {
           "type": "Int64",
           "unit": "count",
@@ -313,12 +348,14 @@
       },
       {
         "name": "sample_deadlines_missed",
+        "title": "Missed sample deadlines",
         "unit": "{count}",
         "roles": [
           "auxiliaryInformation"
         ],
         "opensensor:property": "urn:walkthru-earth:property:missed_sample_deadline_count",
         "opensensor:aggregate": "point",
+        "opensensor:group": "device",
         "firmware": {
           "type": "Int64",
           "unit": "count",
@@ -329,6 +366,7 @@
       },
       {
         "name": "storage_errors",
+        "title": "Storage errors",
         "unit": "{count}",
         "roles": [
           "auxiliaryInformation"
@@ -336,6 +374,7 @@
         "opensensor:property": "urn:walkthru-earth:property:storage_error_count",
         "opensensor:procedure": "storage",
         "opensensor:aggregate": "point",
+        "opensensor:group": "device",
         "firmware": {
           "type": "Int64",
           "unit": "count",
@@ -346,6 +385,7 @@
       },
       {
         "name": "files_finalized",
+        "title": "Finalized files",
         "unit": "{count}",
         "roles": [
           "auxiliaryInformation"
@@ -353,6 +393,7 @@
         "opensensor:property": "urn:walkthru-earth:property:finalized_file_count",
         "opensensor:procedure": "storage",
         "opensensor:aggregate": "point",
+        "opensensor:group": "device",
         "firmware": {
           "type": "Int64",
           "unit": "count",
@@ -363,6 +404,7 @@
       },
       {
         "name": "last_write_us",
+        "title": "Last storage write",
         "unit": "us",
         "roles": [
           "auxiliaryInformation"
@@ -370,6 +412,7 @@
         "opensensor:property": "urn:walkthru-earth:property:last_storage_write_time",
         "opensensor:procedure": "storage",
         "opensensor:aggregate": "point",
+        "opensensor:group": "device",
         "firmware": {
           "type": "Int64",
           "unit": "us",
@@ -380,6 +423,7 @@
       },
       {
         "name": "last_sync_us",
+        "title": "Last storage sync",
         "unit": "us",
         "roles": [
           "auxiliaryInformation"
@@ -387,6 +431,7 @@
         "opensensor:property": "urn:walkthru-earth:property:last_storage_sync_time",
         "opensensor:procedure": "storage",
         "opensensor:aggregate": "point",
+        "opensensor:group": "device",
         "firmware": {
           "type": "Int64",
           "unit": "us",
@@ -397,12 +442,14 @@
       },
       {
         "name": "queue_high_water",
+        "title": "Queue high water mark",
         "unit": "{count}",
         "roles": [
           "auxiliaryInformation"
         ],
         "opensensor:property": "urn:walkthru-earth:property:queue_high_water_mark",
         "opensensor:aggregate": "maximum",
+        "opensensor:group": "device",
         "firmware": {
           "type": "Int32",
           "unit": "count",
@@ -415,6 +462,7 @@
     "clock_close": [
       {
         "name": "clock_epoch",
+        "title": "Clock epoch",
         "unit": "{count}",
         "roles": [
           "referenceInformation"
@@ -422,6 +470,7 @@
         "opensensor:property": "urn:walkthru-earth:property:clock_epoch",
         "opensensor:procedure": "clock",
         "opensensor:aggregate": "point",
+        "opensensor:group": "time",
         "firmware": {
           "type": "Int32",
           "unit": "count",
@@ -432,6 +481,7 @@
       },
       {
         "name": "collection_completed_mono_us",
+        "title": "Collection end since boot",
         "unit": "us",
         "roles": [
           "referenceInformation"
@@ -439,6 +489,7 @@
         "opensensor:property": "urn:walkthru-earth:property:collection_completed_time_since_boot",
         "opensensor:procedure": "clock",
         "opensensor:aggregate": "point",
+        "opensensor:group": "time",
         "firmware": {
           "type": "Int64",
           "unit": "us",
@@ -451,6 +502,7 @@
     "clock_anchor": [
       {
         "name": "clock_anchor_mono_us",
+        "title": "Clock anchor since boot",
         "unit": "us",
         "roles": [
           "referenceInformation"
@@ -462,6 +514,7 @@
           "finite": true
         },
         "opensensor:aggregate": "point",
+        "opensensor:group": "time",
         "firmware": {
           "type": "Int64",
           "unit": "us",
@@ -472,6 +525,7 @@
       },
       {
         "name": "clock_anchor_utc_us",
+        "title": "Clock anchor UTC time",
         "unit": "us",
         "roles": [
           "referenceInformation"
@@ -483,6 +537,7 @@
           "finite": true
         },
         "opensensor:aggregate": "point",
+        "opensensor:group": "time",
         "firmware": {
           "type": "Int64",
           "unit": "us_since_unix_epoch",
@@ -495,6 +550,7 @@
     "location": [
       {
         "name": "h3_cell_id",
+        "title": "H3 cell",
         "unit": "{h3_index}",
         "roles": [
           "referenceInformation"
@@ -506,6 +562,7 @@
           "finite": true
         },
         "opensensor:aggregate": "mode",
+        "opensensor:group": "location",
         "firmware": {
           "type": "Int64",
           "unit": "h3_index",
@@ -516,6 +573,7 @@
       },
       {
         "name": "h3_resolution",
+        "title": "H3 resolution",
         "unit": "1",
         "roles": [
           "referenceInformation"
@@ -531,6 +589,7 @@
           0,
           15
         ],
+        "opensensor:group": "location",
         "firmware": {
           "type": "Int32",
           "unit": "resolution_0_15",
@@ -541,6 +600,7 @@
       },
       {
         "name": "location_source",
+        "title": "Location source",
         "unit": "{code}",
         "roles": [
           "qualityInformation"
@@ -571,6 +631,7 @@
           "finite": true
         },
         "opensensor:aggregate": "mode",
+        "opensensor:group": "location",
         "firmware": {
           "type": "Int32",
           "unit": "uint8_code",
@@ -581,12 +642,14 @@
       },
       {
         "name": "geometry",
+        "title": "Cell centre point",
         "roles": [
           "coordinate"
         ],
         "opensensor:property": "urn:walkthru-earth:property:h3_cell_center_point",
         "opensensor:procedure": "h3_grid_center",
         "opensensor:aggregate": "mode",
+        "opensensor:group": "location",
         "firmware": {
           "type": "ByteArray",
           "unit": "wkb_point_crs84",

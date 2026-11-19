@@ -1,0 +1,154 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://walkthru-earth.github.io/stac-opensensor/v0.1.0/registry.json#",
+  "title": "OpenSensor registries",
+  "description": "The property registry and the scale registry. Not STAC documents. A client reads them to label, round, group and judge any column by its opensensor:property, including a column of a board it has never seen. Published at registry/properties.json and registry/scales.json next to the schemas.",
+  "type": "object",
+  "required": [
+    "type"
+  ],
+  "oneOf": [
+    {
+      "$ref": "#/definitions/propertyRegistry"
+    },
+    {
+      "$ref": "#/definitions/scaleRegistry"
+    }
+  ],
+  "definitions": {
+    "propertyRegistry": {
+      "type": "object",
+      "required": [
+        "type",
+        "properties"
+      ],
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "format": "uri"
+        },
+        "type": {
+          "const": "OpenSensorPropertyRegistry"
+        },
+        "properties": {
+          "description": "Entries keyed by the opensensor:property URI of a column.",
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^(https?://|urn:)"
+          },
+          "additionalProperties": {
+            "$ref": "#/definitions/property"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "property": {
+      "type": "object",
+      "required": [
+        "label",
+        "definition",
+        "group",
+        "decimals"
+      ],
+      "properties": {
+        "label": {
+          "description": "Full name. English is required, other languages are added after review.",
+          "allOf": [
+            {
+              "$ref": "schema.json#/definitions/i18n"
+            },
+            {
+              "required": [
+                "en"
+              ]
+            }
+          ]
+        },
+        "short_label": {
+          "description": "Name for a tight space such as a card or an axis.",
+          "allOf": [
+            {
+              "$ref": "schema.json#/definitions/i18n"
+            },
+            {
+              "required": [
+                "en"
+              ]
+            }
+          ]
+        },
+        "symbol": {
+          "description": "Conventional symbol, the same in every language.",
+          "type": "string",
+          "minLength": 1
+        },
+        "definition": {
+          "description": "One or two sentences on what the value is.",
+          "allOf": [
+            {
+              "$ref": "schema.json#/definitions/i18n"
+            },
+            {
+              "required": [
+                "en"
+              ]
+            }
+          ]
+        },
+        "group": {
+          "$ref": "schema.json#/definitions/group"
+        },
+        "unit": {
+          "description": "UCUM unit that columns of this property carry.",
+          "type": "string",
+          "minLength": 1
+        },
+        "decimals": {
+          "description": "Default decimals to show. Integer columns always show 0.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9
+        },
+        "scale": {
+          "description": "Default health scale id in registry/scales.json. null means no scale on purpose.",
+          "oneOf": [
+            {
+              "$ref": "schema.json#/definitions/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "note": {
+          "description": "Why a default is what it is, or what is still open.",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "scaleRegistry": {
+      "type": "object",
+      "required": [
+        "type",
+        "scales"
+      ],
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "format": "uri"
+        },
+        "type": {
+          "const": "OpenSensorScaleRegistry"
+        },
+        "scales": {
+          "$ref": "schema.json#/definitions/fields/properties/opensensor:scales"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -142,18 +142,27 @@ clang-tools, clangxx and compiler-rt 23.1.4, cppcheck 2.22.0, jsonschema
 15.2.0, GNU coreutils 9.12, Git 2.56.0, Rust 1.99.1 and pip 26.2.2. esptool
 5.6.0 no longer pulls in bitstring, and pyarrow 26 now pulls in NumPy.
 
-The JSON Schemas in [`tools/stac_opensensor/v0.1.0`](tools/stac_opensensor/v0.1.0)
-(`template.json`, `profile.json`, `schema.json`, `footer.json`), the profile
-text [`tools/stac_opensensor/PROFILE.md`](tools/stac_opensensor/PROFILE.md)
-and the example [`tools/stac_opensensor/footers/m5stack-cores3.json`](tools/stac_opensensor/footers/m5stack-cores3.json)
-are copies of
-[stac-opensensor](https://github.com/walkthru-earth/stac-opensensor) at commit
-`83787768cc8451109d48a03d4ef5493ffcd403dd`. The schemas and the example are
-unmodified. In `PROFILE.md` only the relative links that do not resolve in
-this tree are rewritten as absolute links at that commit. Copyright (c) 2025-2026 Walkthru.Earth, licensed
+The JSON Schemas `template.json`, `profile.json`, `schema.json` and
+`registry.json` in [`tools/stac_opensensor/v0.1.0`](tools/stac_opensensor/v0.1.0),
+the registries [`tools/stac_opensensor/registry`](tools/stac_opensensor/registry)
+(`properties.json`, `scales.json`) and the profile text
+[`tools/stac_opensensor/PROFILE.md`](tools/stac_opensensor/PROFILE.md) are
+copies of [stac-opensensor](https://github.com/walkthru-earth/stac-opensensor)
+at commit `07a4f21f98b9fffcece7055b95c6b9f9c6975bde`. `footer.json` in the
+same folder and the example
+[`tools/stac_opensensor/footers/m5stack-cores3.json`](tools/stac_opensensor/footers/m5stack-cores3.json)
+are copies at commit `83787768cc8451109d48a03d4ef5493ffcd403dd`. The schemas,
+registries and the example are unmodified. In `PROFILE.md` only the relative
+links that do not resolve in this tree are rewritten as absolute links at its
+commit. Copyright (c) 2025-2026 Walkthru.Earth, licensed
 [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/). The host contract
-tests use them to validate the board templates and the `opensensor` Parquet
-footer each board writes. They are not in any firmware image.
+tests use them to validate the board templates, the scales the templates
+copy and the `opensensor` Parquet footer each board writes. The files are
+not in any firmware image. Parts of the registries are. The generator copies
+the registry labels into the column titles and the `who-2021-pm25` and
+`who-2021-pm10` scale entries into `opensensor:scales`, and each board image
+carries its template as `kTemplateJson`, so these entries ship under the
+same license.
 
 The GeoParquet metadata schema
 [`tools/geoparquet/v2.0.0/schema.json`](tools/geoparquet/v2.0.0/schema.json)

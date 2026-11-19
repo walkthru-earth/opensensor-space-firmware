@@ -13,12 +13,64 @@
     "core": [
       {
         "name": "imu_fresh_mask",
+        "title": "Motion sensor fresh mask",
         "unit": "{bitmask}",
         "roles": [
           "qualityInformation"
         ],
         "opensensor:property": "urn:walkthru-earth:property:motion_sensor_fresh_mask",
         "opensensor:aggregate": "mode",
+        "opensensor:group": "motion",
+        "classification:bitfields": [
+          {
+            "offset": 0,
+            "length": 1,
+            "name": "accel",
+            "description": "Accelerometer read",
+            "classes": [
+              {
+                "value": 0,
+                "name": "none"
+              },
+              {
+                "value": 1,
+                "name": "fresh"
+              }
+            ]
+          },
+          {
+            "offset": 1,
+            "length": 1,
+            "name": "gyro",
+            "description": "Gyroscope read",
+            "classes": [
+              {
+                "value": 0,
+                "name": "none"
+              },
+              {
+                "value": 1,
+                "name": "fresh"
+              }
+            ]
+          },
+          {
+            "offset": 2,
+            "length": 1,
+            "name": "mag",
+            "description": "Magnetometer read",
+            "classes": [
+              {
+                "value": 0,
+                "name": "none"
+              },
+              {
+                "value": 1,
+                "name": "fresh"
+              }
+            ]
+          }
+        ],
         "firmware": {
           "type": "Int32",
           "unit": "bitmask",
@@ -29,6 +81,7 @@
       },
       {
         "name": "accel_x_g",
+        "title": "Acceleration X",
         "unit": "[g]",
         "roles": [
           "auxiliaryInformation"
@@ -39,6 +92,7 @@
           "finite": true
         },
         "opensensor:aggregate": "mean",
+        "opensensor:group": "motion",
         "firmware": {
           "type": "Float",
           "unit": "g",
@@ -49,6 +103,7 @@
       },
       {
         "name": "accel_y_g",
+        "title": "Acceleration Y",
         "unit": "[g]",
         "roles": [
           "auxiliaryInformation"
@@ -59,6 +114,7 @@
           "finite": true
         },
         "opensensor:aggregate": "mean",
+        "opensensor:group": "motion",
         "firmware": {
           "type": "Float",
           "unit": "g",
@@ -69,6 +125,7 @@
       },
       {
         "name": "accel_z_g",
+        "title": "Acceleration Z",
         "unit": "[g]",
         "roles": [
           "auxiliaryInformation"
@@ -79,6 +136,7 @@
           "finite": true
         },
         "opensensor:aggregate": "mean",
+        "opensensor:group": "motion",
         "firmware": {
           "type": "Float",
           "unit": "g",
@@ -89,6 +147,7 @@
       },
       {
         "name": "gyro_x_dps",
+        "title": "Rotation rate X",
         "unit": "deg/s",
         "roles": [
           "auxiliaryInformation"
@@ -99,6 +158,7 @@
           "finite": true
         },
         "opensensor:aggregate": "mean",
+        "opensensor:group": "motion",
         "firmware": {
           "type": "Float",
           "unit": "deg/s",
@@ -109,6 +169,7 @@
       },
       {
         "name": "gyro_y_dps",
+        "title": "Rotation rate Y",
         "unit": "deg/s",
         "roles": [
           "auxiliaryInformation"
@@ -119,6 +180,7 @@
           "finite": true
         },
         "opensensor:aggregate": "mean",
+        "opensensor:group": "motion",
         "firmware": {
           "type": "Float",
           "unit": "deg/s",
@@ -129,6 +191,7 @@
       },
       {
         "name": "gyro_z_dps",
+        "title": "Rotation rate Z",
         "unit": "deg/s",
         "roles": [
           "auxiliaryInformation"
@@ -139,6 +202,7 @@
           "finite": true
         },
         "opensensor:aggregate": "mean",
+        "opensensor:group": "motion",
         "firmware": {
           "type": "Float",
           "unit": "deg/s",
@@ -149,6 +213,7 @@
       },
       {
         "name": "mag_x_raw",
+        "title": "Magnetic field X, raw",
         "unit": "{raw_count}",
         "roles": [
           "auxiliaryInformation"
@@ -160,6 +225,7 @@
           "finite": true
         },
         "opensensor:aggregate": "mean",
+        "opensensor:group": "motion",
         "firmware": {
           "type": "Int32",
           "unit": "raw_count",
@@ -171,6 +237,7 @@
       },
       {
         "name": "mag_y_raw",
+        "title": "Magnetic field Y, raw",
         "unit": "{raw_count}",
         "roles": [
           "auxiliaryInformation"
@@ -182,6 +249,7 @@
           "finite": true
         },
         "opensensor:aggregate": "mean",
+        "opensensor:group": "motion",
         "firmware": {
           "type": "Int32",
           "unit": "raw_count",
@@ -193,6 +261,7 @@
       },
       {
         "name": "mag_z_raw",
+        "title": "Magnetic field Z, raw",
         "unit": "{raw_count}",
         "roles": [
           "auxiliaryInformation"
@@ -204,6 +273,7 @@
           "finite": true
         },
         "opensensor:aggregate": "mean",
+        "opensensor:group": "motion",
         "firmware": {
           "type": "Int32",
           "unit": "raw_count",
@@ -215,6 +285,7 @@
       },
       {
         "name": "imu_temperature_c",
+        "title": "Board temperature",
         "unit": "Cel",
         "roles": [
           "auxiliaryInformation"
@@ -229,6 +300,7 @@
           -40,
           85
         ],
+        "opensensor:group": "device",
         "firmware": {
           "type": "Float",
           "unit": "degC",
