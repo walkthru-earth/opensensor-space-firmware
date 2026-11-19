@@ -363,8 +363,8 @@
         ".iram0.text": 127031,
         ".dram0.data": 36341,
         ".dram0.bss": 60056,
-        ".flash.text": 1293386,
-        ".flash.rodata": 460692,
+        ".flash.text": 1293486,
+        ".flash.rodata": 460772,
         ".noinit": 3
       }
     },
@@ -422,8 +422,8 @@
         ".iram0.text": 120035,
         ".dram0.data": 34180,
         ".dram0.bss": 57016,
-        ".flash.text": 1157574,
-        ".flash.rodata": 409508,
+        ".flash.text": 1157686,
+        ".flash.rodata": 409588,
         ".noinit": 0
       }
     },
@@ -504,7 +504,7 @@
         ".iram0.text": 128000,
         ".dram0.data": 35072,
         ".dram0.bss": 58880,
-        ".flash.text": 1212672,
+        ".flash.text": 1212928,
         ".flash.rodata": 419584,
         ".noinit": 256
       },
@@ -512,8 +512,8 @@
         ".iram0.text": 125295,
         ".dram0.data": 34257,
         ".dram0.bss": 57480,
-        ".flash.text": 1188798,
-        ".flash.rodata": 411272,
+        ".flash.text": 1188914,
+        ".flash.rodata": 411352,
         ".noinit": 3
       }
     }

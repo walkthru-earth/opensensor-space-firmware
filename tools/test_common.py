@@ -17,6 +17,13 @@ def main() -> None:
     parser.add_argument("--sanitize", action="store_true")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
+    # The clock headers compile alone, so they never lean on include order.
+    with tempfile.TemporaryDirectory(prefix="aq-common-alone-") as directory:
+        for header in ("utc_clock.h", "time_sync.h"):
+            alone = Path(directory) / f"{Path(header).stem}_alone.cpp"
+            alone.write_text(f'#include "{header}"\n')
+            subprocess.run(["clang++", CXX_STD, "-Wall", "-Wextra", "-Werror", "-fsyntax-only",
+                            "-I", str(root / "firmware/common/src"), str(alone)], check=True)
     # The second build swaps crc32_update to the ROM routine's semantics.
     for variant, extra in (("loop", []), ("rom", ["-DOS_SYNC_ROM_CRC", "-I", str(root / "tools/rom_crc_host_fake")])):
         with tempfile.TemporaryDirectory(prefix="aq-common-test-") as directory:

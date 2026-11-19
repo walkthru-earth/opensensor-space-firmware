@@ -89,6 +89,48 @@ void clock_contract() {
   assert(std::strcmp(source_name(Rtc), "rtc") == 0);
   assert(std::strcmp(source_name(Network), "network") == 0);
   assert(std::strcmp(source_name(99), "none") == 0);
+
+  // #173. No source sets a time before the source floor, the same date as
+  // the app's phone floor. The 2020 range stays for decoding stored values.
+  static_assert(days_from_civil(2026, 10, 29) * 86400 == kAnchorFloorSeconds);
+  static_assert(!accepted_anchor(kAnchorFloorSeconds - 1, 999999));
+  static_assert(accepted_anchor(kAnchorFloorSeconds, 0));
+  static_assert(!accepted_anchor(kMinEpochSeconds, 0));
+  static_assert(supported_anchor(kMinEpochSeconds, 0));
+  static_assert(accepted_anchor(kMaxEpochSeconds, 0));
+  static_assert(!accepted_anchor(kMaxEpochSeconds, 1));
+  static_assert(!accepted_anchor(kAnchorFloorSeconds, 1000000));
+
+  // A move of more than a day against a held anchor is a jump. It is taken
+  // but never saved to the RTC. The first anchor of a boot is never a jump.
+  constexpr std::int64_t kSecondNs = 1000000000LL;
+  constexpr std::int64_t kTenYearsNs = 3653LL * 86400 * kSecondNs;
+  for (const auto source : {None, Host, Rtc, Network}) {
+    assert(clock_jump(source, kTenYearsNs) == (source != None));
+    assert(clock_jump(source, -kTenYearsNs) == (source != None));
+    assert(!clock_jump(source, kClockJumpNs));
+    assert(!clock_jump(source, -kClockJumpNs));
+    assert(clock_jump(source, kClockJumpNs + 1) == (source != None));
+    assert(clock_jump(source, std::numeric_limits<std::int64_t>::min()) ==
+           (source != None));
+    assert(clock_jump(source, std::numeric_limits<std::int64_t>::max()) ==
+           (source != None));
+  }
+  static_assert(kClockJumpNs == 86400 * kSecondNs);
+  // A ten year jump starts a new epoch and stays out of the RTC.
+  for (const auto previous : {Host, Rtc, Network}) {
+    for (const auto next : {Host, Network}) {
+      assert(starts_new_epoch(previous, next, kTenYearsNs));
+      assert(!saves_to_rtc(previous, next, kTenYearsNs));
+      assert(!saves_to_rtc(previous, next, -kTenYearsNs));
+      assert(saves_to_rtc(previous, next, 3 * kSecondNs));
+      assert(saves_to_rtc(previous, next, -kClockJumpNs));
+    }
+  }
+  // The first host or network anchor is saved. An RTC seed never is.
+  assert(saves_to_rtc(None, Host, 0) && saves_to_rtc(None, Network, 0));
+  for (const auto previous : {None, Host, Rtc, Network})
+    assert(!saves_to_rtc(previous, Rtc, 0));
 }
 
 void wire_contract() {
@@ -121,6 +163,13 @@ void wire_contract() {
   put_i64(request_bytes, std::numeric_limits<std::int64_t>::max());
   assert(decode_time_request(request_bytes, 8, request) ==
          TimeRequestResult::InvalidEpoch);
+  // SET_TIME before the source floor answers the same invalid epoch error.
+  put_i64(request_bytes, opensensor::utc::kAnchorFloorSeconds - 1);
+  assert(decode_time_request(request_bytes, 8, request) ==
+         TimeRequestResult::InvalidEpoch);
+  put_i64(request_bytes, opensensor::utc::kAnchorFloorSeconds);
+  assert(decode_time_request(request_bytes, 8, request) ==
+         TimeRequestResult::Ok);
   std::uint8_t bytes[8]{};
   put_u16(bytes, 0xa15b);
   assert(bytes[0] == 0x5b && bytes[1] == 0xa1);
