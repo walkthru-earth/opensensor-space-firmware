@@ -236,9 +236,13 @@ SampleLabels sample_labels();
 bool same_deployment(const DeploymentId &, const DeploymentId &);
 
 // The setup record (decision 0003, #184). Bit i of `ack` marks step i of the
-// template firmware.setup done. `version` names that step list, the first 31
-// bits of SHA-256 over the step ids joined by "\n", never 0. Both are 0 until
-// a phone writes the record. It has its own CRC-checked NVS record `setup`
+// template firmware.setup done. `version` names that step list. It is the
+// first four bytes of SHA-256 over the ordered step ids joined by "\n", read
+// big endian with the top bit cleared, and 0 read as 1, so 0x63b0c442 for the
+// empty list (tools/plugin_contract.py setup_v). Both are 0 until a phone
+// writes the record. That {0, 0} is also its stored unset form, which a write
+// back may store and which loads with no warning, while SET_CONFIG refuses
+// version 0. It has its own CRC-checked NVS record `setup`
 // beside `cfg` and `owner`. GET_CONFIG page 1 reports it as thing.setup_v and
 // thing.setup_ack, and SET_CONFIG takes both keys together. The board never
 // reads the bits. Required steps stay derived from the config (setup_needed).

@@ -36,7 +36,7 @@ def main() -> None:
     assert dict(documents[0])["utc"] is None and dict(documents[0])["rh"] is None
     assert dict(documents[1])["utc"] == 2**63 - 1
     assert all(value is None for _, value in documents[2])
-    print("Shared LIVE formatter: C++ asserts passed for keys, per field decimals, capacity, UTC scale and "
+    print("Shared LIVE formatter: C++ asserts passed for keys, per field decimals, capacity, unscaled UTC microseconds and "
           "the all-null overflow. Its three printed documents parse as JSON with every declared key in "
           "field-table order and null for no reading")
 

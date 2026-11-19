@@ -14,6 +14,9 @@
       {
         "name": "vbus_mv",
         "title": "USB bus voltage",
+        "opensensor:title_i18n": {
+          "ar": "جهد ناقل USB"
+        },
         "unit": "mV",
         "roles": [
           "auxiliaryInformation"
@@ -86,6 +89,9 @@
       {
         "name": "charging_status",
         "title": "Charging status",
+        "opensensor:title_i18n": {
+          "ar": "حالة الشحن"
+        },
         "unit": "{code}",
         "roles": [
           "auxiliaryInformation"
@@ -119,6 +125,9 @@
       {
         "name": "battery_current_ma",
         "title": "Battery current",
+        "opensensor:title_i18n": {
+          "ar": "تيار البطارية"
+        },
         "unit": "mA",
         "roles": [
           "auxiliaryInformation"
@@ -141,6 +150,9 @@
       {
         "name": "external_5v_enabled",
         "title": "External 5 V output on",
+        "opensensor:title_i18n": {
+          "ar": "مخرج 5 فولت الخارجي يعمل"
+        },
         "unit": "{boolean}",
         "roles": [
           "auxiliaryInformation"
@@ -169,6 +181,9 @@
       {
         "name": "usb_output_enabled",
         "title": "USB output on",
+        "opensensor:title_i18n": {
+          "ar": "مخرج USB يعمل"
+        },
         "unit": "{boolean}",
         "roles": [
           "auxiliaryInformation"

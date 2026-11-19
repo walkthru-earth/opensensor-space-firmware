@@ -17,6 +17,9 @@
       {
         "name": "rtc_date_yyyymmdd",
         "title": "Real time clock date",
+        "opensensor:title_i18n": {
+          "ar": "تاريخ ساعة الوقت الحقيقي"
+        },
         "unit": "{YYYYMMDD}",
         "roles": [
           "referenceInformation"
@@ -39,6 +42,9 @@
       {
         "name": "rtc_time_hhmmss",
         "title": "Real time clock time",
+        "opensensor:title_i18n": {
+          "ar": "وقت ساعة الوقت الحقيقي"
+        },
         "unit": "{hhmmss}",
         "roles": [
           "referenceInformation"
@@ -61,6 +67,9 @@
       {
         "name": "rtc_read_ok",
         "title": "Real time clock read",
+        "opensensor:title_i18n": {
+          "ar": "قراءة ساعة الوقت الحقيقي"
+        },
         "unit": "{boolean}",
         "roles": [
           "qualityInformation"

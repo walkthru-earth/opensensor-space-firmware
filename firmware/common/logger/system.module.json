@@ -10,6 +10,9 @@
       {
         "name": "schema_version",
         "title": "Row schema version",
+        "opensensor:title_i18n": {
+          "ar": "إصدار مخطط الصف"
+        },
         "unit": "1",
         "roles": [
           "referenceInformation"
@@ -28,6 +31,9 @@
       {
         "name": "device_id",
         "title": "Device identifier",
+        "opensensor:title_i18n": {
+          "ar": "معرّف الجهاز"
+        },
         "unit": "1",
         "roles": [
           "referenceInformation"
@@ -47,6 +53,9 @@
       {
         "name": "boot_id_hi",
         "title": "Boot identifier, high half",
+        "opensensor:title_i18n": {
+          "ar": "معرّف الإقلاع، النصف الأعلى"
+        },
         "unit": "1",
         "roles": [
           "referenceInformation"
@@ -66,6 +75,9 @@
       {
         "name": "boot_id_lo",
         "title": "Boot identifier, low half",
+        "opensensor:title_i18n": {
+          "ar": "معرّف الإقلاع، النصف الأدنى"
+        },
         "unit": "1",
         "roles": [
           "referenceInformation"
@@ -85,6 +97,9 @@
       {
         "name": "sequence",
         "title": "Sample sequence number",
+        "opensensor:title_i18n": {
+          "ar": "رقم تسلسل العينة"
+        },
         "unit": "{count}",
         "roles": [
           "referenceInformation"
@@ -103,6 +118,9 @@
       {
         "name": "monotonic_us",
         "title": "Time since boot",
+        "opensensor:title_i18n": {
+          "ar": "الوقت منذ الإقلاع"
+        },
         "unit": "us",
         "roles": [
           "referenceInformation"
@@ -122,6 +140,9 @@
       {
         "name": "scheduled_us",
         "title": "Scheduled sample time since boot",
+        "opensensor:title_i18n": {
+          "ar": "وقت العينة المجدول منذ الإقلاع"
+        },
         "unit": "us",
         "roles": [
           "referenceInformation"
@@ -141,6 +162,9 @@
       {
         "name": "sample_jitter_us",
         "title": "Sample jitter",
+        "opensensor:title_i18n": {
+          "ar": "تذبذب توقيت العينة"
+        },
         "unit": "us",
         "roles": [
           "auxiliaryInformation"
@@ -183,6 +207,9 @@
       {
         "name": "clock_status",
         "title": "Clock status",
+        "opensensor:title_i18n": {
+          "ar": "حالة الساعة"
+        },
         "unit": "{code}",
         "roles": [
           "qualityInformation"
@@ -222,6 +249,9 @@
       {
         "name": "heap_free_bytes",
         "title": "Free heap memory",
+        "opensensor:title_i18n": {
+          "ar": "الذاكرة الحرة"
+        },
         "unit": "By",
         "roles": [
           "auxiliaryInformation"
@@ -243,6 +273,9 @@
       {
         "name": "heap_min_free_bytes",
         "title": "Lowest free heap memory",
+        "opensensor:title_i18n": {
+          "ar": "أدنى ذاكرة حرة"
+        },
         "unit": "By",
         "roles": [
           "auxiliaryInformation"
@@ -264,6 +297,9 @@
       {
         "name": "psram_free_bytes",
         "title": "Free PSRAM",
+        "opensensor:title_i18n": {
+          "ar": "ذاكرة PSRAM الحرة"
+        },
         "unit": "By",
         "roles": [
           "auxiliaryInformation"
@@ -285,6 +321,9 @@
       {
         "name": "sd_total_bytes",
         "title": "Storage capacity",
+        "opensensor:title_i18n": {
+          "ar": "سعة التخزين"
+        },
         "unit": "By",
         "roles": [
           "auxiliaryInformation"
@@ -308,6 +347,9 @@
       {
         "name": "sd_used_bytes",
         "title": "Storage used",
+        "opensensor:title_i18n": {
+          "ar": "التخزين المستخدم"
+        },
         "unit": "By",
         "roles": [
           "auxiliaryInformation"
@@ -331,6 +373,9 @@
       {
         "name": "rows_dropped",
         "title": "Dropped rows",
+        "opensensor:title_i18n": {
+          "ar": "الصفوف المفقودة"
+        },
         "unit": "{count}",
         "roles": [
           "auxiliaryInformation"
@@ -349,6 +394,9 @@
       {
         "name": "sample_deadlines_missed",
         "title": "Missed sample deadlines",
+        "opensensor:title_i18n": {
+          "ar": "مواعيد العينات الفائتة"
+        },
         "unit": "{count}",
         "roles": [
           "auxiliaryInformation"
@@ -367,6 +415,9 @@
       {
         "name": "storage_errors",
         "title": "Storage errors",
+        "opensensor:title_i18n": {
+          "ar": "أخطاء التخزين"
+        },
         "unit": "{count}",
         "roles": [
           "auxiliaryInformation"
@@ -386,6 +437,9 @@
       {
         "name": "files_finalized",
         "title": "Finalized files",
+        "opensensor:title_i18n": {
+          "ar": "الملفات المكتملة"
+        },
         "unit": "{count}",
         "roles": [
           "auxiliaryInformation"
@@ -405,6 +459,9 @@
       {
         "name": "last_write_us",
         "title": "Last storage write",
+        "opensensor:title_i18n": {
+          "ar": "آخر كتابة إلى التخزين"
+        },
         "unit": "us",
         "roles": [
           "auxiliaryInformation"
@@ -424,6 +481,9 @@
       {
         "name": "last_sync_us",
         "title": "Last storage sync",
+        "opensensor:title_i18n": {
+          "ar": "آخر مزامنة للتخزين"
+        },
         "unit": "us",
         "roles": [
           "auxiliaryInformation"
@@ -443,6 +503,9 @@
       {
         "name": "queue_high_water",
         "title": "Queue high water mark",
+        "opensensor:title_i18n": {
+          "ar": "أعلى امتلاء لقائمة الانتظار"
+        },
         "unit": "{count}",
         "roles": [
           "auxiliaryInformation"
@@ -463,6 +526,9 @@
       {
         "name": "clock_epoch",
         "title": "Clock epoch",
+        "opensensor:title_i18n": {
+          "ar": "حقبة الساعة"
+        },
         "unit": "{count}",
         "roles": [
           "referenceInformation"
@@ -482,6 +548,9 @@
       {
         "name": "collection_completed_mono_us",
         "title": "Collection end since boot",
+        "opensensor:title_i18n": {
+          "ar": "نهاية الجمع منذ الإقلاع"
+        },
         "unit": "us",
         "roles": [
           "referenceInformation"
@@ -503,6 +572,9 @@
       {
         "name": "clock_anchor_mono_us",
         "title": "Clock anchor since boot",
+        "opensensor:title_i18n": {
+          "ar": "مرساة الساعة منذ الإقلاع"
+        },
         "unit": "us",
         "roles": [
           "referenceInformation"
@@ -526,6 +598,9 @@
       {
         "name": "clock_anchor_utc_us",
         "title": "Clock anchor UTC time",
+        "opensensor:title_i18n": {
+          "ar": "وقت مرساة الساعة بالتوقيت العالمي"
+        },
         "unit": "us",
         "roles": [
           "referenceInformation"
@@ -551,6 +626,9 @@
       {
         "name": "h3_cell_id",
         "title": "H3 cell",
+        "opensensor:title_i18n": {
+          "ar": "خلية H3"
+        },
         "unit": "{h3_index}",
         "roles": [
           "referenceInformation"
@@ -574,6 +652,9 @@
       {
         "name": "h3_resolution",
         "title": "H3 resolution",
+        "opensensor:title_i18n": {
+          "ar": "دقة H3"
+        },
         "unit": "1",
         "roles": [
           "referenceInformation"
@@ -601,6 +682,9 @@
       {
         "name": "location_source",
         "title": "Location source",
+        "opensensor:title_i18n": {
+          "ar": "مصدر الموقع"
+        },
         "unit": "{code}",
         "roles": [
           "qualityInformation"
@@ -643,6 +727,9 @@
       {
         "name": "geometry",
         "title": "Cell centre point",
+        "opensensor:title_i18n": {
+          "ar": "نقطة مركز الخلية"
+        },
         "roles": [
           "coordinate"
         ],

@@ -116,7 +116,7 @@ A Column object is a stac-opensensor column plus a `firmware` member.
 
 | Column field | Source | Maps to |
 | --- | --- | --- |
-| name, unit (UCUM), roles, `cf:standard_name`, `classification:classes` | Table and classification vocabularies | Template column, SEM `ucum`, `role` and `cf_standard_name`, CLASS rows |
+| name, unit (UCUM, plain ASCII such as `ug/m3` or `m3/m3`, never a superscript), roles, `cf:standard_name`, `classification:classes` | Table and classification vocabularies | Template column, SEM `ucum`, `role` and `cf_standard_name`, CLASS rows |
 | `opensensor:property`, `opensensor:aggregate`, `opensensor:plausible_range`, `opensensor:valid_when`, `opensensor:settle_s` | `$ref` to stac-opensensor `schema.json#/definitions/column` | SEM `property`, `aggregate`, `plausible_min`, `plausible_max`, `valid_when`, `settle_s` |
 | `opensensor:procedure`, optional | Same `$ref` | FIELD `procedure` when it differs from the module default |
 | `opensensor:derived`, optional | Same `$ref` | The board `kDerived` entry for a `modelResult` column, such as Waveshare `pm25_batch_candidate_ug_m3` in `telemetry_contract.h` line 437 |
@@ -148,7 +148,10 @@ stay plain strings in the default language, and the i18n maps are keyed by
 BCP 47 tag. `opensensor:group` is one of `particulate`, `gas`, `climate`,
 `light`, `motion`, `location`, `power`, `time` or `device`. A bitfield is
 allowed only on a `bitmask` column, its bits never overlap and stay inside
-the column width.
+the column width. A shipped board labels every column with `title` and an
+Arabic `opensensor:title_i18n`, and names a `primary` column. The plugin
+contract test fails a board without them. The example board and module carry
+them too.
 
 The generator copies the hints into the template column after `name`
 (`title`, `opensensor:title_i18n`, `description`,

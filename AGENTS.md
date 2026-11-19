@@ -160,7 +160,7 @@ in `firmware/common/`. Device protocol and telemetry contracts live in
   earlier dictionary. Parquet UTC columns (`*_utc_us`) use `TIMESTAMP(MICROS, UTC)` so
   files register in Iceberg v3 tables without rewrites. Do not switch them to
   NANOS, which maps only to v3 `timestamptz_ns` that Spark, Athena and Redshift
-  cannot read. LIVE `utc` stays nanoseconds.
+  cannot read. LIVE `utc` sends the same microseconds.
 - Our code is CC-BY-4.0 with Walkthru.Earth attribution. Third-party code keeps
   its own LICENSE, NOTICE and headers. When a dependency, vendored file or
   pinned version changes, update `THIRD_PARTY_NOTICES.md` from the linker maps.

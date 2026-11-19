@@ -1,6 +1,6 @@
 {
   "board": "waveshare",
-  "convention": "Every field valid with integers 1 and floats 1.0, rendered by the shared emitter through tools/live_sample.h. utc is the stored microseconds times 1000 on the wire.",
+  "convention": "Every field valid with integers 1 and floats 1.0, rendered by the shared emitter through tools/live_sample.h. utc is the stored microseconds, sent as is.",
   "digests": {
     "a8605aafb6f76b794e9e7fb32927be6d203afeeb14527206c0e49c1eb0436809": {
       "note": "Dictionary waveshare-sim7670g-telemetry-v8 (#28). Three MAX17048 validity tokens are renamed, battery_installed_vcell_read_ok, battery_installed_soc_read_ok_range_0_100 and battery_installed_soc_read_ok_uncapped. The LIVE keys and decimals are those of waveshare-sim7670g-telemetry-v7. Older digests are retired and no longer listed.",
@@ -29,7 +29,7 @@
             "pct": "battery_percent",
             "bstate": "battery_health_state"
           },
-          "payload": "{\"seq\":1,\"mono\":1,\"utc\":1000,\"pms\":1,\"c1\":1,\"c25\":1,\"c10\":1,\"pm1\":1,\"pm25\":1,\"pm10\":1,\"n03\":1,\"n05\":1,\"n1\":1,\"n25\":1,\"t\":1.0,\"rh\":1.0,\"bat\":1,\"pct\":1,\"bstate\":1}"
+          "payload": "{\"seq\":1,\"mono\":1,\"utc\":1,\"pms\":1,\"c1\":1,\"c25\":1,\"c10\":1,\"pm1\":1,\"pm25\":1,\"pm10\":1,\"n03\":1,\"n05\":1,\"n1\":1,\"n25\":1,\"t\":1.0,\"rh\":1.0,\"bat\":1,\"pct\":1,\"bstate\":1}"
         }
       ]
     }

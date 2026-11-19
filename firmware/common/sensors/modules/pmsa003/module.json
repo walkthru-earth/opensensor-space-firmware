@@ -17,6 +17,9 @@
       {
         "name": "pms_status",
         "title": "Particle sensor status",
+        "opensensor:title_i18n": {
+          "ar": "حالة مستشعر الجسيمات"
+        },
         "unit": "{code}",
         "roles": [
           "qualityInformation"
@@ -63,6 +66,9 @@
       {
         "name": "pms_age_ms",
         "title": "Particle sensor frame age",
+        "opensensor:title_i18n": {
+          "ar": "عمر إطار مستشعر الجسيمات"
+        },
         "unit": "ms",
         "roles": [
           "qualityInformation"
@@ -85,6 +91,9 @@
       {
         "name": "pm1_cf1_ug_m3",
         "title": "PM1 mass concentration, CF=1",
+        "opensensor:title_i18n": {
+          "ar": "تركيز كتلة الجسيمات PM1، CF=1"
+        },
         "unit": "ug/m3",
         "roles": [
           "physicalMeasurement"
@@ -112,6 +121,9 @@
       {
         "name": "pm25_cf1_ug_m3",
         "title": "PM2.5 mass concentration, CF=1",
+        "opensensor:title_i18n": {
+          "ar": "تركيز كتلة الجسيمات PM2.5، CF=1"
+        },
         "unit": "ug/m3",
         "roles": [
           "physicalMeasurement"
@@ -139,6 +151,9 @@
       {
         "name": "pm10_cf1_ug_m3",
         "title": "PM10 mass concentration, CF=1",
+        "opensensor:title_i18n": {
+          "ar": "تركيز كتلة الجسيمات PM10، CF=1"
+        },
         "unit": "ug/m3",
         "roles": [
           "physicalMeasurement"
@@ -261,6 +276,9 @@
       {
         "name": "particles_gt03_per_01l",
         "title": "Particles larger than 0.3 µm",
+        "opensensor:title_i18n": {
+          "ar": "الجسيمات الأكبر من 0.3 ميكرومتر"
+        },
         "unit": "{particles}/dL",
         "roles": [
           "physicalMeasurement"
@@ -288,6 +306,9 @@
       {
         "name": "particles_gt05_per_01l",
         "title": "Particles larger than 0.5 µm",
+        "opensensor:title_i18n": {
+          "ar": "الجسيمات الأكبر من 0.5 ميكرومتر"
+        },
         "unit": "{particles}/dL",
         "roles": [
           "physicalMeasurement"
@@ -315,6 +336,9 @@
       {
         "name": "particles_gt10_per_01l",
         "title": "Particles larger than 1 µm",
+        "opensensor:title_i18n": {
+          "ar": "الجسيمات الأكبر من 1 ميكرومتر"
+        },
         "unit": "{particles}/dL",
         "roles": [
           "physicalMeasurement"
@@ -342,6 +366,9 @@
       {
         "name": "particles_gt25_per_01l",
         "title": "Particles larger than 2.5 µm",
+        "opensensor:title_i18n": {
+          "ar": "الجسيمات الأكبر من 2.5 ميكرومتر"
+        },
         "unit": "{particles}/dL",
         "roles": [
           "physicalMeasurement"
@@ -369,6 +396,9 @@
       {
         "name": "particles_gt50_per_01l",
         "title": "Particles larger than 5 µm",
+        "opensensor:title_i18n": {
+          "ar": "الجسيمات الأكبر من 5 ميكرومتر"
+        },
         "unit": "{particles}/dL",
         "roles": [
           "physicalMeasurement"
@@ -396,6 +426,9 @@
       {
         "name": "particles_gt100_per_01l",
         "title": "Particles larger than 10 µm",
+        "opensensor:title_i18n": {
+          "ar": "الجسيمات الأكبر من 10 ميكرومتر"
+        },
         "unit": "{particles}/dL",
         "roles": [
           "physicalMeasurement"
@@ -423,6 +456,9 @@
       {
         "name": "pms_firmware",
         "title": "Particle sensor firmware version",
+        "opensensor:title_i18n": {
+          "ar": "إصدار برنامج مستشعر الجسيمات"
+        },
         "unit": "{code}",
         "roles": [
           "referenceInformation"
@@ -445,6 +481,9 @@
       {
         "name": "pms_error",
         "title": "Particle sensor error code",
+        "opensensor:title_i18n": {
+          "ar": "رمز خطأ مستشعر الجسيمات"
+        },
         "unit": "{code}",
         "roles": [
           "qualityInformation"
@@ -467,6 +506,9 @@
       {
         "name": "pms_frames",
         "title": "Particle sensor frames",
+        "opensensor:title_i18n": {
+          "ar": "إطارات مستشعر الجسيمات"
+        },
         "unit": "{count}",
         "roles": [
           "qualityInformation"
@@ -485,6 +527,9 @@
       {
         "name": "pms_checksum_errors",
         "title": "Particle sensor checksum errors",
+        "opensensor:title_i18n": {
+          "ar": "أخطاء المجموع الاختباري لمستشعر الجسيمات"
+        },
         "unit": "{count}",
         "roles": [
           "qualityInformation"
@@ -503,6 +548,9 @@
       {
         "name": "pms_length_errors",
         "title": "Particle sensor length errors",
+        "opensensor:title_i18n": {
+          "ar": "أخطاء طول إطار مستشعر الجسيمات"
+        },
         "unit": "{count}",
         "roles": [
           "qualityInformation"
@@ -523,6 +571,9 @@
       {
         "name": "pms_received_mono_us",
         "title": "Particle sensor frame time since boot",
+        "opensensor:title_i18n": {
+          "ar": "وقت إطار مستشعر الجسيمات منذ الإقلاع"
+        },
         "unit": "us",
         "roles": [
           "referenceInformation"

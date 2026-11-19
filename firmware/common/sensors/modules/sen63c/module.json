@@ -22,6 +22,9 @@
       {
         "name": "sen6x_status",
         "title": "Environmental sensor status",
+        "opensensor:title_i18n": {
+          "ar": "حالة المستشعر البيئي"
+        },
         "unit": "{code}",
         "roles": [
           "qualityInformation"
@@ -68,6 +71,9 @@
       {
         "name": "sen6x_device_status",
         "title": "Environmental sensor status flags",
+        "opensensor:title_i18n": {
+          "ar": "أعلام حالة المستشعر البيئي"
+        },
         "unit": "{bitmask}",
         "roles": [
           "qualityInformation"

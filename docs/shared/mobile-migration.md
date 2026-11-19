@@ -9,6 +9,49 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## LIVE `utc` in microseconds, CoreS3 LIVE `lst` and Arabic titles on every column (feat/live-utc-column-titles)
+
+**Every board changes its LIVE `utc` value and its template.** Every `desc`
+moves. The CoreS3 `dict` moves for its new LIVE key `lst`, and the other
+boards keep theirs. No column, row, footer key or `GET_CONFIG` byte changes.
+All three boards must be reflashed. Part of #184. **Needs app update**,
+because the LIVE layout changes and LIVE `utc` changes unit. No firmware with
+LIVE `utc` in nanoseconds was ever released.
+
+**What changed.**
+
+- LIVE `utc` is now microseconds since the Unix epoch, the same value as the
+  file column `event_time_utc_us` it maps to through `firmware.live_keys`.
+  It was nanoseconds. An unsynchronized row still sends `null`. The widest
+  LIVE object keeps its size, so the 480 byte checks are unchanged.
+- CoreS3 LIVE adds `lst`, the `light_status` code, right after `als`. It is
+  sent on every row. `als` is gated on `light_status` equals 3, so the app
+  can now check that gate in LIVE and show `als`. The CoreS3
+  dictionary is `cores3-telemetry-v8`, dict
+  `f4f81218dc80d1a8e6db043197a2f7180c4f075f9e8348df30eaceef44d68370`
+  (was `3b4d8500a19f42c6743b0f7d725276c96ca14a0c249f613048603afbc3cfaff9`).
+  Its `shipped.lock` gains a baseline release for the `ltr553` core segment.
+  The widest CoreS3 LIVE object grows to 344 bytes and the all-null object
+  to 276, both under 480.
+- Every template column carries an Arabic `opensensor:title_i18n` beside its
+  English `title`. Every template names `opensensor:primary`. The plugin
+  contract test fails a board that lacks either, and a unit that is not plain
+  ASCII UCUM, so a ratio is `m3/m3` and never a superscript.
+- The templates grow to 50040 bytes on CoreS3, 41178 on Waveshare and 28311
+  on the CrowPanel.
+  - `m5stack-cores3`, dict `f4f81218dc80d1a8e6db043197a2f7180c4f075f9e8348df30eaceef44d68370`,
+    desc `38b0982d1da0dfea20777af87544f30c8141ef297ed5146c402129133acbea0e`
+    (was `31c2043bbe91ce6e06ee08756d5b21bd70ca9bb5a12090614c0da88c47f00de1`).
+  - `waveshare-esp32-s3-sim7670g`, desc `f46b72d6f93e1f2077693c32eb03036935d73026d4ee64a149a6c9c347e0af74`
+    (was `4bff03290ab46e554db2389a28a3da41574745fffea0bb4e187355dd5b97967d`).
+  - `elecrow-crowpanel-epaper-42`, desc `39da5da001dd662c6c05eddf08bbfdd1400d077dd5a9b7cdf2efaac939d08eb8`
+    (was `7d675033aa932320b91237d1a68de9646cd40f569806202f4e01a885af2d7eeb`).
+
+**What the app must do.** Bundle the three new templates. Map LIVE `utc`
+through `firmware.live_keys` like any other key, as microseconds, and drop
+any nanosecond scaling. Gate CoreS3 `als` on `lst` like any other
+`valid_when` column. Read Arabic labels from the template.
+
 ## Setup record and board keys on page 7 (feat/board-settings-page)
 
 **Every board changes `GET_CONFIG`, and the CrowPanel template changes.**

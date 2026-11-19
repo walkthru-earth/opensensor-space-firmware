@@ -128,7 +128,7 @@ void documents() {
   assert(oslogger::format_live(fields, 7, row, nullptr, 8) == 0);
 }
 
-// Rows store UTC in microseconds, LIVE `utc` stays in nanoseconds.
+// LIVE `utc` carries the microseconds its column stores, unscaled.
 void utc_scale() {
   Field utc = field("event_time_utc_us", PhysicalType::Int64, "utc");
   utc.unit = "us_since_unix_epoch";
@@ -136,14 +136,14 @@ void utc_scale() {
   row.set(0, std::int64_t{1757990410000123});
   char json[64];
   assert(oslogger::format_live(&utc, 1, row, json, sizeof(json)));
-  assert(std::strcmp(json, "{\"utc\":1757990410000123000}") == 0);
-  // A UTC whose nanosecond form overflows INT64 is sent as null.
-  row.set(0, std::numeric_limits<std::int64_t>::max() / 1000 + 1);
+  assert(std::strcmp(json, "{\"utc\":1757990410000123}") == 0);
+  // The whole INT64 range prints, so no UTC is dropped for its size.
+  row.set(0, std::numeric_limits<std::int64_t>::max());
   assert(oslogger::format_live(&utc, 1, row, json, sizeof(json)));
-  assert(std::strcmp(json, "{\"utc\":null}") == 0);
-  row.set(0, std::numeric_limits<std::int64_t>::min() / 1000 - 1);
+  assert(std::strcmp(json, "{\"utc\":9223372036854775807}") == 0);
+  row.set(0, std::numeric_limits<std::int64_t>::min());
   assert(oslogger::format_live(&utc, 1, row, json, sizeof(json)));
-  assert(std::strcmp(json, "{\"utc\":null}") == 0);
+  assert(std::strcmp(json, "{\"utc\":-9223372036854775808}") == 0);
 }
 // An object over the BLE cap logs its real size once and publishes every key
 // as null, so the previous sample is never served as current. Fitting again

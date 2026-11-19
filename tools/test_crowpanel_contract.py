@@ -139,7 +139,14 @@ def check_phone_keys(firmware: Path) -> None:
     def listed(array: str) -> list[str]:
         found = re.search(array + r"\{(.*?)\};", source, re.S)
         require(found is not None, f"settings.cpp has no {array}")
-        return re.findall(r'"([a-z0-9_]+)"', found.group(1))
+        # Every string literal counts, so a value with a dash or any other
+        # character can never slip past the comparison.
+        body = found.group(1)
+        values = re.findall(r'"((?:[^"\\]|\\.)*)"', body)
+        rest = re.sub(r'"((?:[^"\\]|\\.)*)"', "", body)
+        require(re.fullmatch(r"[\s,]*", rest) is not None,
+                f"{array} holds something other than string literals")
+        return values
 
     for key, array in (("panel.theme", "kThemeKeys"), ("panel.refresh_s", "kRefreshKeys"),
                        ("panel.start_page", "kStartKeys"), ("panel.sleep_s", "kSleepKeys")):
