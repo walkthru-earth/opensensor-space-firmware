@@ -25,6 +25,24 @@ fails without the buffer. CrowPanel also logs a once only
 
 **What the app must do.** Nothing.
 
+## Clock floor and one day jump rule (fix/164-173-clock-rule, issues #164 and #173)
+
+**Behaviour change, no new wire field or error code.** No frame layout, opcode,
+STATUS key or column changes.
+
+**What changed.** Every clock source now has a floor of 2026-10-29 UTC, the
+same date as the app's phone floor. SET_TIME before it answers ERROR 9, as an
+epoch before 2020 did. An anchor that moves the clock more than one day is
+still taken but is logged and not saved to the RTC. The phone clock rule and
+the LAN reply bounds in the shared docs now match the app, see
+[the clock rule](time-and-location.md#clock-rule) and the LAN Transmit row of
+the [sync protocol](ble-sync-protocol.md).
+
+**What the app must do.** Nothing. The app already never sends a time before
+its floor and already uses 15 s for the first frame and 20 s between frames.
+Its comment that the contract states no inter-frame bound can now point to the
+Transmit row.
+
 ## CoreS3 power columns are null on a failed read (fix/166-cores3-power-null, issue #166)
 
 **No wire, image layout, digest or column change.** Column names, types and
