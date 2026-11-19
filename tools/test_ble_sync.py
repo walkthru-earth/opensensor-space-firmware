@@ -336,11 +336,11 @@ async def run():
     assert location["location"]["cell"] == "" and location["location"]["lat"] is None
     owner = await session.get_config(5)
     assert owner["thing"]["deployment_id"] == "cairo-07", owner
-    assert ble.LAST_CONFIG_PAGE == 6
+    assert ble.LAST_CONFIG_PAGE == 7
     description = await session.get_config(6)
     assert description == json.loads(PAGE6) | {"reboot_required": False}, description
     writes = client.writes
-    for page in (7, -1):
+    for page in (8, -1):
         try:
             await session.get_config(page)
         except ValueError:
@@ -444,24 +444,25 @@ async def run_config_chunks():
             raise AssertionError("a list CONFIG must fail the CLI")
     assert err.getvalue() == "FAIL CONFIG JSON is list, not an object\n", err.getvalue()
 
-    # The CLI accepts page 6, sends it and prints the assembled JSON.
+    # The CLI accepts pages 6 and 7, sends them and prints the assembled JSON.
     seen = []
 
     async def record(args):
         seen.append(args.page)
 
-    for argv in (["ble_sync.py", "config", "--page", "6"], ["ble_sync.py", "config"]):
+    for argv in (["ble_sync.py", "config", "--page", "6"], ["ble_sync.py", "config", "--page", "7"],
+                 ["ble_sync.py", "config"]):
         with patch.object(ble, "cmd_config", record), patch.object(sys, "argv", argv):
             await asyncio.to_thread(ble.main)
-    assert seen == [6, 0], seen
-    with patch.object(sys, "argv", ["ble_sync.py", "config", "--page", "7"]), \
+    assert seen == [6, 7, 0], seen
+    with patch.object(sys, "argv", ["ble_sync.py", "config", "--page", "8"]), \
             contextlib.redirect_stderr(io.StringIO()):
         try:
             await asyncio.to_thread(ble.main)
         except SystemExit as error:
             assert error.code == 2, error
         else:
-            raise AssertionError("--page 7 must be refused")
+            raise AssertionError("--page 8 must be refused")
     client = FakeClient()
     client.config_chunk = slice_bytes
     client.disconnect = AsyncMock()
@@ -473,7 +474,7 @@ async def run_config_chunks():
     assert json.loads(out.getvalue()) == json.loads(PAGE6) | {"reboot_required": False}, out.getvalue()
     assert client.disconnect.await_count == 1
     print("PASS ble_sync CONFIG_CHUNK: page 6 and legacy replies assembled, UTF-8 split across chunks, "
-          "gap, changed total, slice past total, missing last chunk and malformed JSON refused, CLI --page 6 accepted, 7 refused, bad JSON prints FAIL")
+          "gap, changed total, slice past total, missing last chunk and malformed JSON refused, CLI --page 6 and 7 accepted, 8 refused, bad JSON prints FAIL")
 
 
 def descriptor_offsets(client):

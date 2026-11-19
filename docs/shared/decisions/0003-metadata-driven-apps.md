@@ -75,8 +75,9 @@ shows no LIVE for it and its panel settings are reachable only from the knob.
 
 The column hints, the template hints and the setup, settings and config key
 manifest are built ([#184](https://github.com/walkthru-earth/opensensor-space-firmware/issues/184),
-plugin contract 0.1.7). The setup record and the board settings page are
-not built yet, so no board declares `config_keys`. The
+plugin contract 0.1.7). So are the setup record and the board settings page,
+and the CrowPanel declares its `config_keys`. The
+[sync protocol](../ble-sync-protocol.md#setup-record) has the device side and the
 [plugin contract](../plugins/README.md#setup-settings-and-config-keys) has
 the gate rules.
 
@@ -87,8 +88,8 @@ the gate rules.
 | Setup steps | `board.json` `setup`, template `firmware.setup` | Ordered `[{"id", "req", "keys"}]`, 1 to 31 steps. `id` names a step in the app catalog, which lists no `keys`, or a board step, which must. `req` marks a step setup cannot finish without |
 | Settings sections | `board.json` `settings`, template `firmware.settings` | Ordered `[{"id", "keys"}]`. `id` names a section in the app settings catalog, which is separate from the setup catalog, or a board section, which must list `keys`. `name` and `mobility` are setup steps only, `bonds` and `sensor` are settings sections only |
 | Config keys | `board.json` `config_keys`, template `firmware.config_keys` | Map from `SET_CONFIG` key to `type` (`boolean`, `integer`, `enum` or `text`), `values` (an enum list, or a range `{"min", "max"}` that an integer needs), `applies` (`immediately`, `next sample`, `next boot` or `action`), `page` 7, a plain `label` and an optional `label_i18n` map of the same shape as `opensensor:title_i18n`. Never a value, never a secret key. A decimal is a scaled integer |
-| Setup record, not built | `GET_CONFIG` page 1 `thing` | `setup_ack`, a bitmask in `firmware.setup` order from 0 to 2147483647, and `setup_v`, the first four bytes of SHA-256 over the ordered step ids joined by `\n`, read big endian with the top bit cleared, 0 read as 1, and `0x63b0c442` for the empty list. The phone writes both in one `SET_CONFIG`. A different `setup_v` reads as no step done |
-| Board settings, not built | `GET_CONFIG` page 7 | The board specific keys from `config_keys`, a JSON object nested by key prefix with booleans as `true` or `false`, within the 480 byte page limit. No key is a dotted prefix of another, so `panel.display` and `panel.display.x` cannot both exist, and every key maps to one leaf |
+| Setup record | `GET_CONFIG` page 1 `thing`, NVS `setup` in `oscfg` | `setup_ack`, a bitmask in `firmware.setup` order from 0 to 2147483647, and `setup_v`, the first four bytes of SHA-256 over the ordered step ids joined by `\n`, read big endian with the top bit cleared, 0 read as 1, and `0x63b0c442` for the empty list. The phone writes both in one `SET_CONFIG`. A different `setup_v` reads as no step done |
+| Board settings | `GET_CONFIG` page 7 | The board specific keys from `config_keys`, a JSON object nested by key prefix with booleans as `true` or `false`, within the 480 byte page limit. No key is a dotted prefix of another, so `panel.display` and `panel.display.x` cannot both exist, and every key maps to one leaf |
 
 A step is done when its `setup_ack` bit is set. A required step whose result
 the config proves is derived from the config instead, as the advert `setup`
@@ -118,7 +119,8 @@ move in lockstep (owner decision 14). Portolan adoption comes later.
 2. Translation shape. Resolved, the generator follows stac-opensensor
    [#16](https://github.com/walkthru-earth/stac-opensensor/pull/16).
 3. Board settings page and `setup_v`. Resolved as page 7 and the rule in the
-   table above. The CrowPanel key names land with the page 7 work.
+   table above. The CrowPanel keys are `panel.*` and `sen6x.*`, listed in
+   the [sync protocol](../ble-sync-protocol.md#board-keys-page-7).
 4. A CO2 scale is missing. The registry has a PM4 label. Bitfields are
    resolved, the generator emits them for `sen6x_device_status`,
    `imu_fresh_mask` and `gauge_status_flags`.
