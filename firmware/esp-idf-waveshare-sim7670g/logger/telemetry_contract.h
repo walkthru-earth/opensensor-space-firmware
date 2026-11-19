@@ -373,7 +373,7 @@ static constexpr std::string_view kTemplateKeywords[] = {
 constexpr const char *kTemplateHref =
     "https://raw.githubusercontent.com/walkthru-earth/"
     "opensensor-space-firmware/"
-    "d3689cc01ddf5b324390f889bd54e5c595afabbc/"
+    "f64f5ed2e98470433ddf74bc982e276018c5f581/"
     "docs/shared/templates/waveshare-esp32-s3-sim7670g/"
     "a8605aafb6f76b794e9e7fb32927be6d203afeeb14527206c0e49c1eb0436809.json";
 static_assert(opensensor::pinned::names_template(kTemplateHref,
