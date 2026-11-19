@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://walkthru-earth.github.io/stac-opensensor/v0.1.0/registry.json#",
   "title": "OpenSensor registries",
-  "description": "The property registry and the scale registry. Not STAC documents. A client reads them to label, round, group and judge any column by its opensensor:property, including a column of a board it has never seen. Published at registry/properties.json and registry/scales.json next to the schemas.",
+  "description": "The property registry, the scale registry and the board registry. Not STAC documents. A client reads them to label, round, group and judge any column by its opensensor:property, including a column of a board it has never seen. Published at registry/properties.json and registry/scales.json next to the schemas. The board registry lists every board slug, at registry/boards.json.",
   "type": "object",
   "required": [
     "type"
@@ -13,6 +13,9 @@
     },
     {
       "$ref": "#/definitions/scaleRegistry"
+    },
+    {
+      "$ref": "#/definitions/boardRegistry"
     }
   ],
   "definitions": {
@@ -146,6 +149,84 @@
         },
         "scales": {
           "$ref": "schema.json#/definitions/fields/properties/opensensor:scales"
+        }
+      },
+      "additionalProperties": false
+    },
+    "boardRegistry": {
+      "type": "object",
+      "required": [
+        "type",
+        "boards"
+      ],
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "format": "uri"
+        },
+        "type": {
+          "const": "OpenSensorBoardRegistry"
+        },
+        "boards": {
+          "description": "Entries keyed by board slug, <vendor>-<model>[-<variant>]. A slug is never reused or renamed.",
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)+$",
+            "maxLength": 64
+          },
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "vendor",
+              "model",
+              "title",
+              "home",
+              "first_template"
+            ],
+            "properties": {
+              "vendor": {
+                "type": "string",
+                "minLength": 1
+              },
+              "model": {
+                "type": "string",
+                "minLength": 1
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1
+              },
+              "home": {
+                "description": "Where the board publishes its templates, an https URL.",
+                "type": "string",
+                "format": "uri",
+                "pattern": "^https://"
+              },
+              "first_template": {
+                "description": "The template that registered the slug. href is immutable and hashes to sha256.",
+                "type": "object",
+                "required": [
+                  "sha256",
+                  "href"
+                ],
+                "properties": {
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "href": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "A raw.githubusercontent.com href pins a full 40 hex commit, never a branch.",
+                    "pattern": "^https://(?!raw\\.githubusercontent\\.com/)|^https://raw\\.githubusercontent\\.com/[^/]+/[^/]+/[0-9a-f]{40}/"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          }
         }
       },
       "additionalProperties": false

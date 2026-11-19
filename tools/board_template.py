@@ -21,7 +21,7 @@ from jsonschema import Draft7Validator, FormatChecker
 from referencing import Registry, Resource
 
 SCHEMAS = Path(__file__).resolve().parent / "stac_opensensor/v0.1.0"
-SPEC = "https://github.com/walkthru-earth/stac-opensensor (07a4f21)"
+SPEC = "https://github.com/walkthru-earth/stac-opensensor (204365f)"
 CHUNK = 74
 
 
