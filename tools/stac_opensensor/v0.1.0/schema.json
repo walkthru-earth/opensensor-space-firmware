@@ -155,7 +155,9 @@
             "maximum",
             "sum",
             "point",
-            "mode"
+            "mode",
+            "delta",
+            "circular_mean"
           ]
         },
         "opensensor:plausible_range": {

@@ -7,6 +7,6 @@ namespace contract {
 // desc, the SHA-256 of kTemplateJson in telemetry_template.h without its NUL.
 // Checked by tools/build-idf-board.sh and the host contract test.
 constexpr const char *kDescriptorSha256 =
-    "39da5da001dd662c6c05eddf08bbfdd1400d077dd5a9b7cdf2efaac939d08eb8";
+    "fe3097b4ca313128e82c15578607accd61e788030f0e2108a7282ffd8f9d7c5c";
 } // namespace contract
 } // namespace telemetry

@@ -8,7 +8,7 @@
 | Footer schema | <https://walkthru-earth.github.io/stac-opensensor/v0.1.0/footer.json> |
 | Version | 0.1.0 |
 
-The [extension](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/README.md) defines fields. This profile fixes how a whole catalog of Things uses them,
+The [extension](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/README.md) defines fields. This profile fixes how a whole catalog of Things uses them,
 so any client can read any Thing without guessing.
 A Thing is the OGC SensorThings term for a device that carries sensors. It is fixed in one place or moving.
 The profile says which extensions each document must declare, which fields each column must carry and which vocabularies to use.
@@ -17,11 +17,11 @@ A document follows the profile when it lists the profile schema in `stac_extensi
 STAC validators then check the profile like any other extension.
 
 - [Full example](#full-example)
-- [Profile schema](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/json-schema/profile.json)
-- [Template schema](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/json-schema/template.json)
-- [Footer schema](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/json-schema/footer.json)
-- [Registry schema](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/json-schema/registry.json), [property registry](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/registry/properties.json) and [scale registry](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/registry/scales.json)
-- [Decision register](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/docs/decisions.md)
+- [Profile schema](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/json-schema/profile.json)
+- [Template schema](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/json-schema/template.json)
+- [Footer schema](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/json-schema/footer.json)
+- [Registry schema](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/json-schema/registry.json), [property registry](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/registry/properties.json), [scale registry](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/registry/scales.json) and [board registry](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/registry/boards.json)
+- [Decision register](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/docs/decisions.md)
 
 ## Versioning
 
@@ -41,7 +41,7 @@ One Thing is described by three layers. Each layer has one owner.
 | --- | --- | --- | --- |
 | Board template | Firmware build | Firmware repo, `docs/shared/templates/<board>/<dict>.json` at a pinned commit | Columns and their meaning, sample interval, instruments, LIVE keys, protocol floor |
 | Thing Collection | The board, see [Writers](#writers) | `thing=<uuid>/collection.json` | Template columns, mobility, location extent, partitions, license and links |
-| Display hints | Template, owner config, [property registry](https://github.com/walkthru-earth/stac-opensensor/tree/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/registry) | Column fields, `opensensor:primary`, `registry/` | Column titles in each language, decimals, group, main metric, health scale |
+| Display hints | Template, owner config, [property registry](https://github.com/walkthru-earth/stac-opensensor/tree/204365f929e6f77bcaa6e70a0245c96cadc5c115/registry) | Column fields, `opensensor:primary`, `registry/` | Column titles in each language, decimals, group, main metric, health scale |
 
 The board template is plain JSON, not STAC. A firmware build generates it, and its SHA-256 is the descriptor digest.
 A device can serve it over BLE or LAN. A Thing Collection is the template's columns with facts about the Thing added.
@@ -70,18 +70,23 @@ thing=<uuid>/year=YYYY/month=MM/day=DD/<file>.json    its Item, same name
 templates/<board>/<template sha256>.json              optional template mirror
 ```
 
+Each child link href is `./thing=<uuid>/collection.json`, with the `./` and the UUID in lower case, so every
+catalog host writes the same link.
+
 `<file>` is the board's own name, `data_HHMM_<boot>_<first>-<last>-<attempt>`.
-`HHMM` is the UTC start of the rotation window that holds the first row, and `<boot>` is the 32 hex boot id from the footer.
-The window start is floor(first row seconds ÷ `rotation_interval_s`) × `rotation_interval_s`, as the firmware logger computes it.
-A board that boots at 13:07 with a 900 s window writes `data_1300_…` whose first row is 13:07.
-`<board>` is the board slug, such as `m5stack-cores3`.
+`HHMM` is the UTC start of the rotation window that holds the earliest row, and `<boot>` is the 32 hex boot id from the footer.
+The earliest row is the one with the smallest `event_time_utc_us`, so rows need not be stored in time order.
+The window start is floor(earliest row seconds ÷ `rotation_interval_s`) × `rotation_interval_s`, as the firmware logger computes it.
+A board that boots at 13:07 with a 900 s window writes `data_1300_…` whose earliest row is 13:07.
+`<board>` is the board slug, such as `m5stack-cores3`. Every slug is listed in [registry/boards.json](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/registry/boards.json),
+and [CONTRIBUTING.md](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/CONTRIBUTING.md#1-claim-a-board-slug) says how a new board claims one.
 `<dict>` is the 64 hex digest of the firmware dictionary. The footer holds it as `dictionary.sha256` and the template as `firmware.dict`.
 A template is keyed by `<dict>` because one schema can ship with several dictionaries.
 
 Only dated `data_HHMM_` files are published. Unsynced, benchmark and other board paths stay on the device.
 A board closes a file at the end of every rotation window and uploads it at once.
 The window is 600, 900, 1800 or 3600 s, 900 by default. Each divides 3600, so a window never crosses an hour or a day,
-and the date of the window is the date of its first row.
+and the date of the window is the date of its earliest row.
 So the newest data is at most one window old.
 Two files may share a window after a reboot or a retried upload. Readers order rows by time and drop repeats of the same Thing and time.
 Files written before the board knew UTC time get no Item until they are reconciled.
@@ -148,6 +153,8 @@ The catalog host writes only `catalog.json` and `thing=<uuid>/items.parquet`. It
 The phone app and an indexer transport and validate these documents.
 They MAY rebuild a File Item or a Thing Collection from the files, the footers, the templates and the owner config.
 A rebuilt document MUST equal the board's under [Canonical form](#canonical-form), and a tool never publishes one that differs.
+The owner config is not published. An indexer takes the owner fields of the source table below from the published Collection
+and rebuilds the rest.
 The phone writes a File Item only when it is the Thing, that is when the phone itself logs and uploads the file.
 When the phone uploads a board's file after a BLE or LAN sync, the file and its Item are published,
 but the Collection does not list it in its extent until the board learns of that upload. Telling the board is future work.
@@ -161,10 +168,13 @@ The board fills the Thing Collection from four sources.
 | Source | Fields |
 | --- | --- |
 | Template | `item_assets.data` columns with their display hints, `table:primary_datetime`, `table:primary_geometry`, `keywords`, `instruments`, `opensensor:sample_interval_s`, `opensensor:primary`, `opensensor:scales`, the dictionary link |
-| Footer of the newest file | `id` from `thing.id`, `opensensor:mobility`, the template link `href` and `file:checksum` |
+| Footer of the latest file | `id` from `thing.id`, `opensensor:mobility`, the template link `href` and `file:checksum` |
 | Upload ledger | `extent`, the union of uploaded Item boxes and the earliest uploaded `start_datetime` |
 | Owner config | `title`, `description`, `providers`, contacts, the bucket and prefix in `partition:glob`, column display hints, `opensensor:primary`, `opensensor:scales` |
 
+The latest file is the one with the latest window start. A reboot or a firmware update can leave two files in one window,
+and their footers can name different templates. Then the one with the latest `end_datetime` wins,
+then the greater file name in byte order, so the board and an indexer take the same footer.
 The owner sets the owner config at setup, and the board stores it. Everything else is fixed by this profile.
 A board never shrinks `extent`. It keeps the ledger summary, the first start time and the union box, in NVS,
 so an SD card swap or a lost ledger file does not reset it.
@@ -175,7 +185,20 @@ Two writers that follow these rules produce equal documents.
 Equal means the same JSON value. Key order and white space do not matter, array order does.
 Numbers compare as IEEE 754 doubles, so any printing that reads back to the same double is fine, such as C `%.17g`.
 Geometry coordinates, `bbox` and the Collection `extent.spatial` compare within 1e-9 degrees.
-[scripts/canonical.mjs](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/scripts/canonical.mjs) is the reference builder, and `npm run check-profile` rebuilds every example from its rows.
+[scripts/canonical.mjs](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/scripts/canonical.mjs) is the reference builder, and `npm run check-profile` rebuilds every example from its rows.
+`npm run --silent canonical -- item <file.parquet>` reads a data file, finds its template in `templates/` by the footer
+`template.sha256` and prints the canonical File Item. `--silent` keeps npm's banner out of the JSON.
+`--templates <dir>` searches another folder, and `--template <file.json>` names one file, whose bytes must hash to the same digest.
+`--expect <item.json>` prints the differences instead, and `npm run --silent canonical -- compare <a.json> <b.json>` compares two documents.
+The command exits 0 when equal, 1 on a difference, 2 on bad input and 3 when the file gets no Item.
+Bad input is a file it cannot read, an empty option, a template of another digest or a footer it cannot build from.
+[fixtures/golden/](https://github.com/walkthru-earth/stac-opensensor/tree/204365f929e6f77bcaa6e70a0245c96cadc5c115/fixtures/golden) holds one Parquet data file per board with the board's column types,
+its `opensensor` and `geo` keys, and its expected Item beside it as `<file>.json`.
+`npm test` builds the Item of each committed file and compares it with the expected one.
+[scripts/make-golden.mjs](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/scripts/make-golden.mjs) writes them from `fixtures/`, uncompressed, since the JavaScript writer has no LZ4.
+`npm test` does not rerun it, so a change to `fixtures/` needs it run and its diff committed.
+Files written by a board join the set once captured.
+A firmware or mobile writer test loads these files at a full 40 character commit of this repo and expects the same Item.
 Every rule fits an ESP32-S3. Each needs one pass over the rows, sums in doubles and H3 C.
 
 | Topic | Rule |
@@ -189,7 +212,7 @@ Every rule fits an ESP32-S3. Each needs one pass over the rows, sums in doubles 
 | `minimum` and `maximum` | The widened values, unrounded |
 | `mean` | The sum of counted values in row order ÷ their count, rounded to 2 decimals |
 | `valid_percent` | 100 × counted rows ÷ `table:row_count`, rounded to 2 decimals. A column with no counted row has only `valid_percent` `0` |
-| Rounding | Half away from zero, sign(v) × floor(\|v\| × 100 + 0.5) ÷ 100 in doubles |
+| Rounding | Half away from zero, sign(v) × floor(\|v\| × 100 + 0.5) ÷ 100 in doubles, each operation rounded on its own with no fused multiply add. C and Kotlin Native builds use `-ffp-contract=off` |
 | Item `stac_extensions` | Table, File, Grid for a fixed Thing only, Anonymized Location, the OpenSensor extension, this profile, in that order |
 | Item `links` | `root`, `parent`, `collection`, in that order, each with type `application/json` |
 | Item data asset | `href`, `type` `application/vnd.apache.parquet`, `roles` `["data"]`, `file:size`, `file:checksum`, `table:row_count` and the statistics |
@@ -197,13 +220,20 @@ Every rule fits an ESP32-S3. Each needs one pass over the rows, sums in doubles 
 | Geometry | The steps in [File Item](#file-item). H3 C 4.5.0 is the reference, the version the firmware vendors and h3-js 4.5.0 wraps |
 | Collection `stac_extensions` | Table, CF, Classification, File, Partition, Contacts when the owner gives a contact, the OpenSensor extension, this profile, in that order |
 | Collection `links` | `root`, `parent`, the dictionary `describedby`, the template `describedby` titled `Board template`, `license`, in that order |
-| Collection `extent` | One `bbox` from the ledger and one interval from the ledger start to `null` |
+| Collection `extent` | One `bbox` from the ledger and one interval from the ledger start to `null`. The ledger start is the earliest instant, compared as int64 microseconds, never as text |
+| Collection `license` | `CC-BY-4.0` |
+| Collection `root` and `parent` links | `href` `../catalog.json`, type `application/json` |
+| Collection dictionary link | The template's `describedby` link of type `text/plain`, copied unchanged |
+| Collection template link | `href` from the footer template `href`, type `application/json`, title `Board template`, `file:checksum` `1220` and the footer template `sha256` |
+| Collection `license` link | `href` `https://creativecommons.org/licenses/by/4.0/`, type `text/html`, title `CC BY 4.0` |
 | Collection columns | The template columns in template order, with the owner's display hints merged over the template's, key by key |
 | Collection `opensensor:primary` | The owner's, else the template's, else left out |
 | Collection `opensensor:scales` | The template's scales overlaid by the owner's, keeping only ids a column names. Left out when none is named |
 
 A file gets no Item when its name is not a dated `data_HHMM_` name, its footer has no Thing id or mobility, it has no rows,
 a row has no UTC time, no row is located, a cell is not resolution 8, or a fixed Thing file holds more than one cell.
+It also gets none when its name or partition is not the rotation window of its earliest row,
+or its footer `rotation_interval_s` is not 600, 900, 1800 or 3600.
 A null or zero `h3_cell_id` is not located.
 
 ## Thing Collection
@@ -224,7 +254,7 @@ A null or zero `h3_cell_id` is not located.
 | Columns equal the template's columns in template order, apart from the [display hints](#display-hints) | MUST |
 | `opensensor:scales` holds every scale a column points at | MUST |
 | `opensensor:primary`, when set, names a column | MUST |
-| A scale whose id is in the [scale registry](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/registry/scales.json) equals that registry entry | MUST |
+| A scale whose id is in the [scale registry](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/registry/scales.json) equals that registry entry | MUST |
 | `root`, `parent` and `child` links are relative | MUST |
 | No `item` links. Items are found by the partition glob, by listing or through `items.parquet` | SHOULD |
 | `extent.spatial` covers every published Item `bbox` | MUST |
@@ -243,6 +273,26 @@ Every column has `name`, `type` and exactly one value in `roles`. The role decid
 | `modelResult` | Derived column | `unit`, `opensensor:derived`, `opensensor:aggregate` |
 | `referenceInformation` | Identity or bookkeeping | Nothing more |
 | `coordinate` | Time or position | Nothing more |
+
+`opensensor:aggregate` says how a derived product rolls a column up over a longer period.
+Two values are not CF `cell_methods` words and need their own rule.
+
+| Value | Meaning | Roll-up |
+| --- | --- | --- |
+| `delta` | A counter stored as its change since the previous row, never negative | Sum of the deltas. A reader never differences them again |
+| `circular_mean` | An angle in degrees, such as a wind direction | atan2(Σ sin, Σ cos) of the counted values, in [0, 360). See below for null |
+
+A `circular_mean` is null in two cases, which a reader tells apart by the counted rows.
+With no counted rows there is no value, and a reader shows no data, as for any missing measurement.
+With counted rows whose resultant length √((Σ sin)² + (Σ cos)²) is at most 1e-9 times the counted rows,
+such as 0 and 180, there is no direction, and a reader shows no prevailing direction instead of an angle.
+
+A product that rolls a `circular_mean` up over longer periods keeps Σ sin, Σ cos and the counted rows of each window and adds them.
+That gives the row-level result exactly, and its null cases follow from the totals.
+Weighting each window's mean direction by its counted rows drops the resultant length, so it is not the same.
+Windows of 0 and 120 and of 90 and 90 give 75 that way, and about 80.1 from the rows.
+The Item core `statistics` `mean` stays the arithmetic mean of [Canonical form](#canonical-form),
+so a reader never rolls a `circular_mean` column up from it.
 
 ## Display hints
 
@@ -289,12 +339,15 @@ A user's own overrides, such as a renamed card or a hidden column, stay in the a
 
 ### Property registry
 
-[registry/properties.json](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/registry/properties.json) holds one entry per `opensensor:property` URI that a bundled template uses.
-Each entry has a `label`, `short_label` and `definition` in English, with Arabic only where the term is checked,
-an optional `symbol`, the `group`, the UCUM `unit` the templates use, default `decimals` and a default `scale`.
-[registry/scales.json](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/registry/scales.json) holds the shared scales by id.
-Both validate against [json-schema/registry.json](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/json-schema/registry.json).
-The [Publish JSON Schema](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/.github/workflows/publish.yaml) workflow serves them beside the schemas,
+[registry/properties.json](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/registry/properties.json) holds one entry per `opensensor:property` URI that a bundled template uses,
+and entries for common measurements a new board may use, such as air pressure and NO2.
+Each entry has a `label` and `definition` in English, and may have a `short_label`. Every `short_label` present has Arabic,
+and so does the `label` of each measurement a card shows, such as temperature, PM2.5, CO2 and battery charge.
+Diagnostic and device labels stay English.
+It also has an optional `symbol`, the `group`, an optional ASCII UCUM `unit` the templates use, default `decimals` and an optional default `scale`.
+[registry/scales.json](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/registry/scales.json) holds the shared scales by id.
+Both validate against [json-schema/registry.json](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/json-schema/registry.json).
+The [Publish JSON Schema](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/.github/workflows/publish.yaml) workflow serves them beside the schemas,
 at `https://walkthru-earth.github.io/stac-opensensor/<tag>/registry/properties.json` and `.../scales.json`.
 
 `npm run check-profile` fails when a template column names a property the registry lacks or a unit that differs from the registry's.
@@ -342,7 +395,7 @@ and is found only by listing the partition.
 | Geometry is never a device position, a cell centre or a track | MUST |
 | `bbox` is the bounding box of the geometry | MUST |
 | `anon:size` is `0.01` and `anon:warning` is the text below | MUST |
-| `start_datetime` and `end_datetime` are the first and last row times, `datetime` is `null` | MUST |
+| `start_datetime` and `end_datetime` are the smallest and largest `event_time_utc_us`, `datetime` is `null` | MUST |
 | `assets.data` is the Parquet file with role `data` and `table:row_count` | MUST |
 | `assets.data` `href` is relative, `./<file>.parquet` | MUST |
 | `root`, `parent` and `collection` links are relative | MUST |
@@ -352,7 +405,7 @@ and is found only by listing the partition.
 
 Geometry is built the same way by every writer, so a regenerated Item is equal to the board's.
 
-1. Take the distinct non-null `h3_cell_id` values of the file as 15 character lowercase H3 strings.
+1. Take the distinct located `h3_cell_id` values of the file, not null and not zero, as 15 character lowercase H3 strings.
 2. Sort them in ascending order.
 3. Call H3 `cellsToMultiPolygon` on that list with GeoJSON order, longitude first and closed rings.
 4. One polygon becomes a GeoJSON Polygon, more become a MultiPolygon. Coordinates are kept as H3 returns them.
@@ -432,7 +485,7 @@ These choices hold for every Thing.
 | Column ids | `opensensor:field_id` is the 1-based FIELD order, append only. The Thing release is a fresh baseline, every board renumbered its ids once there, and the append only rule holds from that baseline on |
 | Time | `event_time_utc_us`, int64 microseconds since the Unix epoch, as `table:primary_datetime` |
 | Location | H3 cell per row, resolution 8 for fixed and moving Things alike, see [Location](#location) |
-| Health scales | WHO 2021 24-hour guideline and interim targets for PM2.5 and PM10 in [registry/scales.json](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/registry/scales.json), `period` `P1D`, labels in English and Arabic, `color_hint` per step. PM1, PM4 and CO2 have none yet |
+| Health scales | WHO 2021 24-hour guideline and interim targets for PM2.5 and PM10 in [registry/scales.json](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/registry/scales.json), `period` `P1D`, labels in English and Arabic, `color_hint` per step. PM1, PM4 and CO2 have none yet |
 | Checksums | SHA-256 multihash in `file:checksum`, the `1220` prefix then 64 hex characters |
 | License | CC BY 4.0 |
 | Firmware facts | LIVE keys, protocol floor and unit labels stay in the template under `firmware` |
@@ -458,7 +511,7 @@ The profile reuses the SensorThings words so a SensorThings client maps it witho
 
 Every data file carries one key of ours, `opensensor`, in its Parquet key-value metadata, modelled on the GeoParquet `geo` key.
 The standard `geo` key sits beside it, see [Location](#location).
-The value is compact UTF-8 JSON that validates against [json-schema/footer.json](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/json-schema/footer.json).
+The value is compact UTF-8 JSON that validates against [json-schema/footer.json](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/json-schema/footer.json).
 No other key of ours is part of the contract.
 A file stands alone, so a writer can build its Thing Collection and Item from the footer, the rows and the template it names.
 
@@ -491,9 +544,9 @@ The Item takes its interval from the footer and the Collection from the template
 `npm run check-profile` warns when they differ, and never fails.
 Code meanings, such as clock quality codes, belong in the template, not in the footer.
 DuckDB reads it with `SELECT value::JSON FROM parquet_kv_metadata('file.parquet') WHERE key = 'opensensor'`.
-Examples [footers/m5stack-cores3.json](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/footers/m5stack-cores3.json),
-[footers/waveshare-esp32-s3-sim7670g.json](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/footers/waveshare-esp32-s3-sim7670g.json) and
-[footers/elecrow-crowpanel-epaper-42.json](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/footers/elecrow-crowpanel-epaper-42.json).
+Examples [footers/m5stack-cores3.json](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/footers/m5stack-cores3.json),
+[footers/waveshare-esp32-s3-sim7670g.json](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/footers/waveshare-esp32-s3-sim7670g.json) and
+[footers/elecrow-crowpanel-epaper-42.json](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/footers/elecrow-crowpanel-epaper-42.json).
 Firmware and app docs cite this profile by its full 40 character commit.
 
 ## Board template
@@ -528,8 +581,10 @@ Firmware and app docs cite this profile by its full 40 character commit.
 
 The board declares its own setup wizard and Device settings, as in firmware
 [decision 0003](https://github.com/walkthru-earth/opensensor-space-firmware/blob/85a0e77c9b3a70ec407e872346af867cd7d66f2e/docs/shared/decisions/0003-metadata-driven-apps.md).
-The generator will copy `setup`, `settings` and `config_keys` from the board `board.json` into the `firmware` block.
-It does not do so yet. That copy is the firmware follow-up in [opensensor-space-firmware#184](https://github.com/walkthru-earth/opensensor-space-firmware/issues/184).
+The firmware generator, `tools/plugin_contract.py`, copies `setup`, `settings` and `config_keys` from the board `board.json`
+into the `firmware` block, each one the board declares, as added in
+[opensensor-space-firmware#187](https://github.com/walkthru-earth/opensensor-space-firmware/pull/187).
+The templates in this repository predate it and carry none of the three.
 They are hashed with the template, so a change moves `desc` and never moves `dict`.
 Setup is local. It lives in the template and on the device, never in a Collection or an Item.
 
@@ -542,12 +597,21 @@ Setup is local. It lives in the template and on the device, never in a Collectio
 | keys | \[string] | The `config_keys` a generic step shows, each declared in `config_keys` |
 
 A Section is a Step without `req`. Ids are unique within `setup` and within `settings`.
-The app catalog holds `name`, `location`, `mobility`, `site`, `wifi`, `pairing`, `lan`, `bonds` and `sensor`.
+The app catalog differs by place.
+Setup step ids are `name`, `location`, `mobility`, `site`, `wifi`, `pairing` and `lan`.
+Settings section ids are `location`, `site`, `wifi`, `pairing`, `lan`, `bonds` and `sensor`, the sensor identity card in Device settings.
+`name` and `mobility` are setup only, and a settings section MUST NOT use them.
+`bonds` and `sensor` are settings only, and a setup step MUST NOT use them.
 A catalog step or section MAY omit `label`, since the app has its own title for it.
 A board's own step or section SHOULD carry `label`, and `label_i18n` for each language it supports.
 `find`, `pair`, `permission` and `done` stay app owned and never appear.
-An id outside the catalog is a generic form drawn from its `keys`. Without keys the app skips it, and a required one leaves setup pending.
+An id outside its catalog is a generic form drawn from its `keys`. Without keys the app skips it, and a required one leaves setup pending.
 The device stores which steps are done in `GET_CONFIG` page 1 `thing.setup_ack`, one bit per `setup` entry in order.
+Beside it `thing.setup_v` names the step list those bits refer to, and a `setup_v` the app does not expect reads as no step done.
+`setup_v` is the first four bytes of SHA-256 over the ordered `setup` ids joined by `\n` in UTF-8, read big-endian,
+with the top bit cleared. A result of 0 becomes 1, so 0 and an absent value both name no list.
+Only the ids count, so a step that changes only `req` or `keys` keeps its bit.
+The empty list gives `0x63b0c442`, and the example below, `location`, `wifi` and `panel`, gives `0x36eb6253`.
 
 | Key field | Type | Description |
 | --- | --- | --- |
@@ -560,7 +624,7 @@ The device stores which steps are done in `GET_CONFIG` page 1 `thing.setup_ack`,
 
 A Range is `{"min", "max"}`, two integers with `min` at most `max`.
 A key name has two or more dot separated parts of lower case letters, digits and `_`, at most 48 characters, such as `panel.theme`.
-Keys under `ble.`, `wifi.`, `lan.`, `location.`, `thing.`, `owner.` and `sensor.` belong to the app and are refused.
+Keys under `ble.`, `wifi.`, `lan.`, `ntp.`, `location.`, `thing.`, `owner.` and `sensor.` belong to the app and are refused.
 So a template can never declare the PIN, the Wi-Fi password or the LAN token.
 A key holds a name and a type, never a current or default value.
 The app keeps its own safety floors, such as confirming every `action` and requiring a location for a fixed Thing, whatever the manifest says.
@@ -591,25 +655,25 @@ and a fixed ELECROW CrowPanel e-paper with a Sensirion SEN63C in Accra, whose ow
 
 | File | Layer |
 | --- | --- |
-| [templates/m5stack-cores3/3b4d8500….json](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/templates/m5stack-cores3/3b4d8500a19f42c6743b0f7d725276c96ca14a0c249f613048603afbc3cfaff9.json) | CoreS3 template, `cores3-telemetry-v6`, 81 columns |
-| [templates/waveshare-esp32-s3-sim7670g/a8605aaf….json](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/templates/waveshare-esp32-s3-sim7670g/a8605aafb6f76b794e9e7fb32927be6d203afeeb14527206c0e49c1eb0436809.json) | Waveshare template, `waveshare-sim7670g-telemetry-v6`, 62 columns |
-| [templates/elecrow-crowpanel-epaper-42/e7279c4e….json](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/templates/elecrow-crowpanel-epaper-42/e7279c4edbe87071e4a51889124a43d7ffcd1977c79c8575887ae35bdee10903.json) | CrowPanel template, `crowpanel-epaper-telemetry-v1`, 39 columns |
-| [examples/catalog.json](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/examples/catalog.json) | Root Catalog |
-| [examples/thing=3f2b9c1e…/collection.json](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/examples/thing=3f2b9c1e-6a7d-4e58-9b1c-2d4f6a8e0c13/collection.json) | Fixed Thing Collection |
-| [examples/thing=3f2b9c1e…/…/data_1300_….json](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/examples/thing=3f2b9c1e-6a7d-4e58-9b1c-2d4f6a8e0c13/year=2026/month=10/day=24/data_1300_0f3a9c2e5b7d41e8a6c3f0b2d9e4a713_2881-2970-0.json) | Fixed File Item, one 900 s window |
-| [examples/thing=7c1e4b9a…/collection.json](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/examples/thing=7c1e4b9a-3d52-4f86-a0b7-e9d2c5f81a46/collection.json) | Moving Thing Collection |
-| [examples/thing=7c1e4b9a…/…/data_0815_….json](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/examples/thing=7c1e4b9a-3d52-4f86-a0b7-e9d2c5f81a46/year=2026/month=10/day=24/data_0815_5e9d0c7b31a84f62b8d47a10c3e6f295_412-487-0.json) | Moving File Item, three cells, first row 08:17:20 in the 08:15 window |
-| [examples/thing=b4d9e2a7…/collection.json](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/examples/thing=b4d9e2a7-5c31-4f08-9e6a-1a7c3f2d8e54/collection.json) | Fixed CrowPanel Collection with display hints and a main metric |
-| [examples/thing=b4d9e2a7…/…/data_0900_….json](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/examples/thing=b4d9e2a7-5c31-4f08-9e6a-1a7c3f2d8e54/year=2026/month=11/day=14/data_0900_c81d4e2f9a3b47d6b0e5f1a2c7d93e48_1-90-0.json) | CrowPanel File Item, the first rows still warming up |
-| [footers/m5stack-cores3.json](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/footers/m5stack-cores3.json) | CoreS3 footer of the fixed Item's file |
-| [footers/waveshare-esp32-s3-sim7670g.json](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/footers/waveshare-esp32-s3-sim7670g.json) | Waveshare footer of the moving Item's file |
-| [footers/elecrow-crowpanel-epaper-42.json](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/footers/elecrow-crowpanel-epaper-42.json) | CrowPanel footer of its Item's file |
-| [footers/](https://github.com/walkthru-earth/stac-opensensor/tree/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/footers) `*.geo.json` | GeoParquet `geo` keys of the same files |
-| [registry/](https://github.com/walkthru-earth/stac-opensensor/tree/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/registry) | Property and scale registries every template is checked against |
-| [fixtures/](https://github.com/walkthru-earth/stac-opensensor/tree/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/fixtures) | The rows of each example file and each Thing's owner config, the input of the rebuild |
+| [templates/m5stack-cores3/3b4d8500….json](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/templates/m5stack-cores3/3b4d8500a19f42c6743b0f7d725276c96ca14a0c249f613048603afbc3cfaff9.json) | CoreS3 template, `cores3-telemetry-v6`, 81 columns |
+| [templates/waveshare-esp32-s3-sim7670g/a8605aaf….json](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/templates/waveshare-esp32-s3-sim7670g/a8605aafb6f76b794e9e7fb32927be6d203afeeb14527206c0e49c1eb0436809.json) | Waveshare template, `waveshare-sim7670g-telemetry-v6`, 62 columns |
+| [templates/elecrow-crowpanel-epaper-42/e7279c4e….json](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/templates/elecrow-crowpanel-epaper-42/e7279c4edbe87071e4a51889124a43d7ffcd1977c79c8575887ae35bdee10903.json) | CrowPanel template, `crowpanel-epaper-telemetry-v1`, 39 columns |
+| [examples/catalog.json](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/examples/catalog.json) | Root Catalog |
+| [examples/thing=3f2b9c1e…/collection.json](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/examples/thing=3f2b9c1e-6a7d-4e58-9b1c-2d4f6a8e0c13/collection.json) | Fixed Thing Collection |
+| [examples/thing=3f2b9c1e…/…/data_1300_….json](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/examples/thing=3f2b9c1e-6a7d-4e58-9b1c-2d4f6a8e0c13/year=2026/month=10/day=24/data_1300_0f3a9c2e5b7d41e8a6c3f0b2d9e4a713_2881-2970-0.json) | Fixed File Item, one 900 s window |
+| [examples/thing=7c1e4b9a…/collection.json](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/examples/thing=7c1e4b9a-3d52-4f86-a0b7-e9d2c5f81a46/collection.json) | Moving Thing Collection |
+| [examples/thing=7c1e4b9a…/…/data_0815_….json](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/examples/thing=7c1e4b9a-3d52-4f86-a0b7-e9d2c5f81a46/year=2026/month=10/day=24/data_0815_5e9d0c7b31a84f62b8d47a10c3e6f295_412-487-0.json) | Moving File Item, three cells, earliest row 08:17:20 in the 08:15 window |
+| [examples/thing=b4d9e2a7…/collection.json](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/examples/thing=b4d9e2a7-5c31-4f08-9e6a-1a7c3f2d8e54/collection.json) | Fixed CrowPanel Collection with display hints and a main metric |
+| [examples/thing=b4d9e2a7…/…/data_0900_….json](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/examples/thing=b4d9e2a7-5c31-4f08-9e6a-1a7c3f2d8e54/year=2026/month=11/day=14/data_0900_c81d4e2f9a3b47d6b0e5f1a2c7d93e48_1-90-0.json) | CrowPanel File Item, the first rows still warming up |
+| [footers/m5stack-cores3.json](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/footers/m5stack-cores3.json) | CoreS3 footer of the fixed Item's file |
+| [footers/waveshare-esp32-s3-sim7670g.json](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/footers/waveshare-esp32-s3-sim7670g.json) | Waveshare footer of the moving Item's file |
+| [footers/elecrow-crowpanel-epaper-42.json](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/footers/elecrow-crowpanel-epaper-42.json) | CrowPanel footer of its Item's file |
+| [footers/](https://github.com/walkthru-earth/stac-opensensor/tree/204365f929e6f77bcaa6e70a0245c96cadc5c115/footers) `*.geo.json` | GeoParquet `geo` keys of the same files |
+| [registry/](https://github.com/walkthru-earth/stac-opensensor/tree/204365f929e6f77bcaa6e70a0245c96cadc5c115/registry) | Property and scale registries every template is checked against |
+| [fixtures/](https://github.com/walkthru-earth/stac-opensensor/tree/204365f929e6f77bcaa6e70a0245c96cadc5c115/fixtures) | The rows of each example file and each Thing's owner config, the input of the rebuild |
 
 `npm run check-profile` validates all of them.
-It rebuilds each Item and Collection with [scripts/canonical.mjs](https://github.com/walkthru-earth/stac-opensensor/blob/07a4f21f98b9fffcece7055b95c6b9f9c6975bde/scripts/canonical.mjs) and compares them with the examples.
+It rebuilds each Item and Collection with [scripts/canonical.mjs](https://github.com/walkthru-earth/stac-opensensor/blob/204365f929e6f77bcaa6e70a0245c96cadc5c115/scripts/canonical.mjs) and compares them with the examples.
 It checks the file name, HHMM and partition against the rotation window, the cells and the location columns of the rows,
 the Catalog child links, each footer and `geo` key against its template, Collection and rows,
 every template column against the property registry,

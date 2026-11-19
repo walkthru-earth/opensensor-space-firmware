@@ -144,11 +144,14 @@ clang-tools, clangxx and compiler-rt 23.1.4, cppcheck 2.22.0, jsonschema
 
 The JSON Schemas `template.json`, `profile.json`, `schema.json` and
 `registry.json` in [`tools/stac_opensensor/v0.1.0`](tools/stac_opensensor/v0.1.0),
-the registries [`tools/stac_opensensor/registry`](tools/stac_opensensor/registry)
-(`properties.json`, `scales.json`) and the profile text
+the registries
+[`tools/stac_opensensor/registry/properties.json`](tools/stac_opensensor/registry/properties.json)
+and
+[`tools/stac_opensensor/registry/scales.json`](tools/stac_opensensor/registry/scales.json)
+and the profile text
 [`tools/stac_opensensor/PROFILE.md`](tools/stac_opensensor/PROFILE.md) are
 copies of [stac-opensensor](https://github.com/walkthru-earth/stac-opensensor)
-at commit `07a4f21f98b9fffcece7055b95c6b9f9c6975bde`. `footer.json` in the
+at commit `204365f929e6f77bcaa6e70a0245c96cadc5c115`. `footer.json` in the
 same folder and the example
 [`tools/stac_opensensor/footers/m5stack-cores3.json`](tools/stac_opensensor/footers/m5stack-cores3.json)
 are copies at commit `83787768cc8451109d48a03d4ef5493ffcd403dd`. The schemas,

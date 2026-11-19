@@ -7,7 +7,7 @@
 // Run with Node from the repo root, against a stac-opensensor checkout at the
 // pinned commit with its npm dependencies installed (h3-js 4.5.0).
 //   node tools/fixtures/stac/generate_cases.mjs <stac-opensensor>/scripts/canonical.mjs tools/fixtures/stac > tools/fixtures/stac/cases.json
-// It refuses any canonical.mjs other than the one at commit 07a4f21f.
+// It refuses any canonical.mjs other than the one at commit 204365f9.
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -17,10 +17,10 @@ const [canonicalPath, root] = process.argv.slice(2);
 if (!canonicalPath || !root)
   throw new Error("usage: generate_cases.mjs <canonical.mjs> <fixture dir>");
 const CANONICAL_SHA256 =
-  "3c9b7dda502aa0785a72ce09a259a7f9dec5be880db2005e79793e3f7c304d22";
+  "157821ff8dbc53331b4a035385594badb67ccbd3cb0cff294111049dca37c478";
 const actual = createHash("sha256").update(readFileSync(canonicalPath)).digest("hex");
 if (actual !== CANONICAL_SHA256)
-  throw new Error(`canonical.mjs is ${actual}, not the 07a4f21f bytes`);
+  throw new Error(`canonical.mjs is ${actual}, not the 204365f9 bytes`);
 const canonical = await import(pathToFileURL(resolve(canonicalPath)).href);
 const h3 = await import(
   pathToFileURL(join(resolve(canonicalPath), "../../node_modules/h3-js/dist/h3-js.es.js")).href
@@ -68,6 +68,8 @@ const apply = (input, ops) => {
       input.file[op.key] = op.value;
     } else if (op.op === "thing") {
       input.footer.thing[op.key] = op.value;
+    } else if (op.op === "rotation") {
+      input.footer.file.rotation_interval_s = op.value;
     } else if (op.op === "truncate") {
       for (const name of Object.keys(input.rows))
         input.rows[name] = input.rows[name].slice(0, op.rows);
@@ -122,10 +124,20 @@ const CASES = [
   ["cores3-negative-readings", "cores3", [
     ...setEach("ambient_temperature_c", spread([-1.005, -2.675, -0.125, -40.5, 0.004999, -0.005], n.cores3)),
   ]],
+  // 13:00:00.1234 and 13:14:59.999999, both in the data_1300_ window.
   ["cores3-fraction-times", "cores3", [
-    { op: "set", column: "event_time_utc_us", rows: [0], value: 1792843200123400 },
-    { op: "set", column: "event_time_utc_us", rows: [89], value: 1792844099999999 },
+    { op: "set", column: "event_time_utc_us", rows: [0], value: 1792846800123400 },
+    { op: "set", column: "event_time_utc_us", rows: [89], value: 1792847699999999 },
   ]],
+  // HHMM names the window of the earliest row, never a later one.
+  ["cores3-row-before-window", "cores3", [
+    { op: "set", column: "event_time_utc_us", rows: [0], value: 1792846799999999 },
+  ]],
+  ["cores3-later-window-name", "cores3", [
+    { op: "file", key: "name", value: "data_1315_0f3a9c2e5b7d41e8a6c3f0b2d9e4a713_2881-2970-0.parquet" },
+  ]],
+  ["cores3-rotation-3600", "cores3", [{ op: "rotation", value: 3600 }]],
+  ["cores3-rotation-300", "cores3", [{ op: "rotation", value: 300 }]],
   ["cores3-moving", "cores3", [{ op: "thing", key: "mobility", value: "moving" }]],
   // Six cells around a missing centre make one polygon with a hole.
   ["waveshare-ring-hole", "waveshare", [...setEach("h3_cell_id", spread(ring, n.waveshare))]],
@@ -234,7 +246,7 @@ const itemIds = idNames.map((name) => [name, ITEM_ID.exec(name)?.[1] ?? null]);
 // One entry per line, so a regenerated file diffs by case.
 const list = (entries) => `[\n${entries.map((e) => JSON.stringify(e)).join(",\n")}\n]`;
 process.stdout.write(`{
-"source": ${JSON.stringify("stac-opensensor 07a4f21f98b9fffcece7055b95c6b9f9c6975bde scripts/canonical.mjs")},
+"source": ${JSON.stringify("stac-opensensor 204365f929e6f77bcaa6e70a0245c96cadc5c115 scripts/canonical.mjs")},
 "canonical_sha256": ${JSON.stringify(CANONICAL_SHA256)},
 "h3_js": ${JSON.stringify(h3Version)},
 "cases": ${list(cases)},
