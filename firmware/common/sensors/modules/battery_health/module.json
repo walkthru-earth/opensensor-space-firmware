@@ -13,6 +13,9 @@
       {
         "name": "battery_health_state",
         "title": "Battery health",
+        "opensensor:title_i18n": {
+          "ar": "صحة البطارية"
+        },
         "unit": "{code}",
         "roles": [
           "auxiliaryInformation"
@@ -62,6 +65,9 @@
       {
         "name": "battery_minutes_to_empty",
         "title": "Battery time to empty",
+        "opensensor:title_i18n": {
+          "ar": "الوقت المتبقي للبطارية"
+        },
         "unit": "min",
         "roles": [
           "auxiliaryInformation"

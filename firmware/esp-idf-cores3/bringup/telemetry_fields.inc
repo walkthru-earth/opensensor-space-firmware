@@ -57,7 +57,7 @@ FIELD(imu_temperature_c, Float, m5_imu, "degC", imu_temperature_read_finite, "im
 FIELD(light_ch0_raw, Int32, ltr553, "raw_count", light_valid, "als", 0)
 FIELD(light_ch1_raw, Int32, ltr553, "raw_count", light_valid, "", 0)
 FIELD(proximity_raw, Int32, ltr553, "raw_count", proximity_valid, "", 0)
-FIELD(light_status, Int32, ltr553, "code", always, "", 0)
+FIELD(light_status, Int32, ltr553, "code", always, "lst", 0)
 FIELD(proximity_status, Int32, ltr553, "code", always, "", 0)
 FIELD(vbus_mv, Int32, m5_power, "mV", api_report_unqualified, "vbus", 0)
 FIELD(battery_mv, Int32, m5_power, "mV", api_report_unqualified, "bat", 0)

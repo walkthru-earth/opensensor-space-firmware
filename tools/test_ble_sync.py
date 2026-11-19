@@ -51,6 +51,8 @@ GOLDEN_LIST_SINCE_END = bytes.fromhex("4e020000000000e80300000a00000002d4c3b2a1d
 # GET_CONFIG page 6, the owner description, with two byte UTF-8 characters.
 PAGE6 = ('{"owner":{"description":"Air near the Nile, '
          '\u0627\u0644\u0642\u0627\u0647\u0631\u0629"}}').encode()
+# GET_CONFIG page 7, the board keys, as a CrowPanel reports them.
+PAGE7 = b'{"panel":{"theme":"dark","refresh_s":"60"},"sen6x":{"co2_asc":true}}'
 
 
 class FakeClient:
@@ -98,6 +100,8 @@ class FakeClient:
         self.config_short = 0
         # config_body replaces every CONFIG body, to send malformed JSON.
         self.config_body = None
+        # The page byte of every GET_CONFIG, 0 for an empty body.
+        self.config_pages = []
 
     def emit_config(self, flags: int, text: bytes):
         if self.config_body is not None:
@@ -175,12 +179,15 @@ class FakeClient:
         elif op == ble.OP_GET_CONFIG:
             assert len(data) in (1, 2)
             page = data[1] if len(data) == 2 else 0
+            self.config_pages.append(page)
             if page == 1:
                 self.emit_config(0, b'{"location":{"cell":"","resolution":8,"cell_resolution":null,"lat":null,"lon":null,"country":""}}')
             elif page == 5:
                 self.emit_config(0, b'{"owner":{"title":"","provider":"","url":""},"thing":{"deployment_id":"cairo-07"}}')
             elif page == 6:
                 self.emit_config(0, PAGE6)
+            elif page == 7:
+                self.emit_config(0, PAGE7)
             else:
                 self.emit_config(0, CONFIG)
         elif op == ble.OP_SET_CONFIG:
@@ -336,11 +343,11 @@ async def run():
     assert location["location"]["cell"] == "" and location["location"]["lat"] is None
     owner = await session.get_config(5)
     assert owner["thing"]["deployment_id"] == "cairo-07", owner
-    assert ble.LAST_CONFIG_PAGE == 6
+    assert ble.LAST_CONFIG_PAGE == 7
     description = await session.get_config(6)
     assert description == json.loads(PAGE6) | {"reboot_required": False}, description
     writes = client.writes
-    for page in (7, -1):
+    for page in (8, -1):
         try:
             await session.get_config(page)
         except ValueError:
@@ -444,24 +451,25 @@ async def run_config_chunks():
             raise AssertionError("a list CONFIG must fail the CLI")
     assert err.getvalue() == "FAIL CONFIG JSON is list, not an object\n", err.getvalue()
 
-    # The CLI accepts page 6, sends it and prints the assembled JSON.
+    # The CLI accepts pages 6 and 7, sends them and prints the assembled JSON.
     seen = []
 
     async def record(args):
         seen.append(args.page)
 
-    for argv in (["ble_sync.py", "config", "--page", "6"], ["ble_sync.py", "config"]):
+    for argv in (["ble_sync.py", "config", "--page", "6"], ["ble_sync.py", "config", "--page", "7"],
+                 ["ble_sync.py", "config"]):
         with patch.object(ble, "cmd_config", record), patch.object(sys, "argv", argv):
             await asyncio.to_thread(ble.main)
-    assert seen == [6, 0], seen
-    with patch.object(sys, "argv", ["ble_sync.py", "config", "--page", "7"]), \
+    assert seen == [6, 7, 0], seen
+    with patch.object(sys, "argv", ["ble_sync.py", "config", "--page", "8"]), \
             contextlib.redirect_stderr(io.StringIO()):
         try:
             await asyncio.to_thread(ble.main)
         except SystemExit as error:
             assert error.code == 2, error
         else:
-            raise AssertionError("--page 7 must be refused")
+            raise AssertionError("--page 8 must be refused")
     client = FakeClient()
     client.config_chunk = slice_bytes
     client.disconnect = AsyncMock()
@@ -472,8 +480,21 @@ async def run_config_chunks():
         await ble.cmd_config(SimpleNamespace(page=6))
     assert json.loads(out.getvalue()) == json.loads(PAGE6) | {"reboot_required": False}, out.getvalue()
     assert client.disconnect.await_count == 1
+    # The real handler behind `config --page 7` sends page byte 7 and prints
+    # the board keys.
+    client = FakeClient()
+    client.disconnect = AsyncMock()
+    session = ble.Session(client)
+    await session.start()
+    with patch.object(ble, "connect", AsyncMock(return_value=(client, session))), \
+            patch.object(sys, "argv", ["ble_sync.py", "config", "--page", "7"]), \
+            contextlib.redirect_stdout(io.StringIO()) as out:
+        await asyncio.to_thread(ble.main)
+    assert client.config_pages == [7], client.config_pages
+    assert json.loads(out.getvalue()) == json.loads(PAGE7) | {"reboot_required": False}, out.getvalue()
+    assert client.disconnect.await_count == 1
     print("PASS ble_sync CONFIG_CHUNK: page 6 and legacy replies assembled, UTF-8 split across chunks, "
-          "gap, changed total, slice past total, missing last chunk and malformed JSON refused, CLI --page 6 accepted, 7 refused, bad JSON prints FAIL")
+          "gap, changed total, slice past total, missing last chunk and malformed JSON refused, CLI --page 6 and 7 accepted, 8 refused, page 7 sent and printed, bad JSON prints FAIL")
 
 
 def descriptor_offsets(client):

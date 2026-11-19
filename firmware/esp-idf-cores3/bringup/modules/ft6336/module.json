@@ -14,6 +14,9 @@
       {
         "name": "touch_points",
         "title": "Touch points",
+        "opensensor:title_i18n": {
+          "ar": "نقاط اللمس"
+        },
         "unit": "{count}",
         "roles": [
           "auxiliaryInformation"
@@ -32,6 +35,9 @@
       {
         "name": "touch_x_px",
         "title": "Touch X",
+        "opensensor:title_i18n": {
+          "ar": "اللمس X"
+        },
         "unit": "{pixel}",
         "roles": [
           "auxiliaryInformation"
@@ -58,6 +64,9 @@
       {
         "name": "touch_y_px",
         "title": "Touch Y",
+        "opensensor:title_i18n": {
+          "ar": "اللمس Y"
+        },
         "unit": "{pixel}",
         "roles": [
           "auxiliaryInformation"

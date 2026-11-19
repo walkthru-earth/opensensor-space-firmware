@@ -33,9 +33,11 @@ namespace contract {
 // ids 80 and 81. Still 81 leaves. This is the Thing field table baseline,
 // field ids are plain 1-based positions and append only from here (owner
 // answer to bridge question 36, 2026-10-26).
+// Dictionary v8 (#184) gives light_status the LIVE key lst. Columns are
+// unchanged from schema v6.
 constexpr std::int32_t kSchemaVersion = 6;
 constexpr const char *kSchemaName = "cores3-telemetry-v6";
-constexpr const char *kDictionaryVersion = "cores3-telemetry-v7";
+constexpr const char *kDictionaryVersion = "cores3-telemetry-v8";
 constexpr const char *kFirmware = "idf-cores3-parquet-v6.33";
 constexpr const char *kCreatedBy = "opensensor-space-firmware version 0.3";
 // Raw telemetry_fields.inc at a pinned commit on main (#89), so the bytes at
@@ -44,7 +46,7 @@ constexpr const char *kCreatedBy = "opensensor-space-firmware version 0.3";
 constexpr const char *kDictionaryUri =
     "https://raw.githubusercontent.com/walkthru-earth/"
     "opensensor-space-firmware/"
-    "093f2b8e45cd2b9e24e1324ad9fa2e6e20ad1d47/"
+    "73a7147ea4ee10ba4678b7f45fbd2bbcec2ade00/"
     "firmware/esp-idf-cores3/bringup/telemetry_fields.inc";
 static_assert(opensensor::pinned::names(kDictionaryUri,
                                         "firmware/esp-idf-cores3/bringup/"
@@ -319,9 +321,9 @@ static constexpr std::string_view kTemplateKeywords[] = {
 constexpr const char *kTemplateHref =
     "https://raw.githubusercontent.com/walkthru-earth/"
     "opensensor-space-firmware/"
-    "8c3b2f995379a779e3f8d6f813d11c6cc5457785/"
+    "20b9fc8b331993921d25c442fb89a93c54ec5109/"
     "docs/shared/templates/m5stack-cores3/"
-    "3b4d8500a19f42c6743b0f7d725276c96ca14a0c249f613048603afbc3cfaff9.json";
+    "f4f81218dc80d1a8e6db043197a2f7180c4f075f9e8348df30eaceef44d68370.json";
 static_assert(opensensor::pinned::names_template(kTemplateHref,
                                                  "m5stack-cores3",
                                                  kDictionarySha256),

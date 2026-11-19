@@ -225,7 +225,7 @@ Every row a dated telemetry file gets is also fed to the builder. At finalize
 the read back that checks structure and CRC-32 also feeds a SHA-256 of the
 whole file through PSA, so the file is read once. After the Parquet rename and
 the `PARQUET READY` line the worker writes the STAC File Item of the canonical
-form of stac-opensensor commit `83787768cc8451109d48a03d4ef5493ffcd403dd` as
+form of stac-opensensor commit `07a4f21f98b9fffcece7055b95c6b9f9c6975bde` as
 `<stem>-<last>-<attempt>.json` beside the `.parquet` file, in the same folder.
 
 - It writes `<file>.json.partial` with `O_EXCL`, syncs, closes and renames it

@@ -15,7 +15,9 @@
 // the control worker may change, so its row shows the state read only.
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
+#include <expected>
 #include <optional>
 #include <span>
 #include <string_view>
@@ -81,6 +83,56 @@ using SettingsBlob = std::array<std::uint8_t, kSettingsBlobBytes>;
 // Never fails. A wrong version gives all defaults. A field the blob is too
 // short for, or one out of range, gives that field's default.
 [[nodiscard]] Settings decode(std::span<const std::uint8_t> blob);
+
+// The phone's keys for these settings (#184), SET_CONFIG keys on GET_CONFIG
+// page 7. board.json declares the same names and types, and
+// crowpanel-contract-test checks that they match.
+//   panel.theme           enum light, dark
+//   panel.refresh_s       enum 10, 30, 60, 300
+//   panel.start_page      enum dashboard, last_viewed
+//   panel.sleep_s         enum 0, 600, 1800, 3600 (0 never sleeps)
+//   sen6x.co2_asc         boolean, 0, 1, false or true
+//   sen6x.altitude_m      integer 0 to 3000
+//   sen6x.temp_offset_dc  integer -100 to 50, tenths of a degree C
+//   sen6x.fan_clean       action, 1 or true starts a cleaning, 0 does nothing
+inline constexpr std::array<std::string_view, 8> kPhoneKeys{
+    "panel.theme",          "panel.refresh_s", "panel.start_page",
+    "panel.sleep_s",        "sen6x.co2_asc",   "sen6x.altitude_m",
+    "sen6x.temp_offset_dc", "sen6x.fan_clean"};
+
+enum class [[nodiscard]] PhoneKeyError : std::uint8_t {
+  Unknown, // not one of kPhoneKeys
+  Value,   // a value the key does not take
+};
+
+// The keys of one request. Each key that came sets its field.
+struct PhoneDraft {
+  std::optional<Theme> theme;
+  std::optional<RefreshEvery> refresh;
+  std::optional<StartPage> start_page;
+  std::optional<SleepAfter> sleep_after;
+  std::optional<bool> co2_asc;
+  std::optional<std::uint16_t> altitude_m;
+  std::optional<std::int16_t> temp_offset_dc;
+  bool fan_clean = false;
+  bool operator==(const PhoneDraft &) const = default;
+};
+
+// Checks one key into the draft. The draft is unchanged on an error.
+[[nodiscard]] std::expected<void, PhoneKeyError>
+set_phone_key(PhoneDraft &d, std::string_view key, std::string_view value);
+// Adds a later request to an earlier one not yet taken. The later value of
+// a key wins, and a cleaning asked by either stays asked.
+void merge_phone_draft(PhoneDraft &into, const PhoneDraft &later);
+// Copies the draft's settings into s. The fan cleaning is the board's.
+void apply_phone_draft(Settings &s, const PhoneDraft &d);
+// The same on the screen's own settings. A draft that sets the start page to
+// Last viewed records the shown page as last_page, as the knob does, so the
+// next boot opens on it. Dashboard leaves last_page alone.
+void apply_phone_draft(Settings &s, const PhoneDraft &d, std::uint8_t shown);
+// The page 7 JSON, nested by key prefix, without the action. Returns its
+// length, or 0 when it does not fit.
+[[nodiscard]] std::size_t phone_page(std::span<char> out, const Settings &s);
 
 enum class Row : std::uint8_t {
   Refresh,

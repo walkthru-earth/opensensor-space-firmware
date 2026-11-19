@@ -17,6 +17,9 @@
       {
         "name": "light_ch0_raw",
         "title": "Light, visible and infrared, raw",
+        "opensensor:title_i18n": {
+          "ar": "الضوء، المرئي وتحت الأحمر، خام"
+        },
         "unit": "{raw_count}",
         "roles": [
           "physicalMeasurement"
@@ -43,6 +46,9 @@
       {
         "name": "light_ch1_raw",
         "title": "Light, infrared, raw",
+        "opensensor:title_i18n": {
+          "ar": "الضوء، تحت الأحمر، خام"
+        },
         "unit": "{raw_count}",
         "roles": [
           "physicalMeasurement"
@@ -69,6 +75,9 @@
       {
         "name": "proximity_raw",
         "title": "Proximity, raw",
+        "opensensor:title_i18n": {
+          "ar": "القرب، خام"
+        },
         "unit": "{raw_count}",
         "roles": [
           "physicalMeasurement"
@@ -95,6 +104,9 @@
       {
         "name": "light_status",
         "title": "Light sensor status",
+        "opensensor:title_i18n": {
+          "ar": "حالة مستشعر الضوء"
+        },
         "unit": "{code}",
         "roles": [
           "qualityInformation"
@@ -129,13 +141,16 @@
           "type": "Int32",
           "unit": "code",
           "validity": "always",
-          "live_key": "",
+          "live_key": "lst",
           "decimals": 0
         }
       },
       {
         "name": "proximity_status",
         "title": "Proximity sensor status",
+        "opensensor:title_i18n": {
+          "ar": "حالة مستشعر القرب"
+        },
         "unit": "{code}",
         "roles": [
           "qualityInformation"

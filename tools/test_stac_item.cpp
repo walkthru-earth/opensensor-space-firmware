@@ -190,7 +190,7 @@ double from_bits(const std::string &hex) {
       static_cast<std::uint64_t>(std::strtoull(hex.c_str(), nullptr, 16)));
 }
 
-// Lines from test_stac_item.py, each from canonical.mjs at 83787768.
+// Lines from test_stac_item.py, each from canonical.mjs at 07a4f21f.
 //   round2 <input bits> <result bits>
 //   rfc3339 <microseconds> <text>
 //   id x<hex name> <x<hex id> or ->

@@ -12,6 +12,9 @@
       {
         "name": "sensor_serial_code",
         "title": "Particle sensor serial code",
+        "opensensor:title_i18n": {
+          "ar": "الرمز التسلسلي لمستشعر الجسيمات"
+        },
         "unit": "1",
         "roles": [
           "referenceInformation"
@@ -36,6 +39,9 @@
       {
         "name": "pm25_batch_candidate_ug_m3",
         "title": "PM2.5 batch candidate",
+        "opensensor:title_i18n": {
+          "ar": "PM2.5، القيمة المرشحة للدفعة"
+        },
         "unit": "ug/m3",
         "roles": [
           "modelResult"
@@ -70,6 +76,9 @@
       {
         "name": "pm25_batch_candidate_status",
         "title": "PM2.5 batch candidate status",
+        "opensensor:title_i18n": {
+          "ar": "حالة قيمة PM2.5 المرشحة للدفعة"
+        },
         "unit": "{code}",
         "roles": [
           "qualityInformation"

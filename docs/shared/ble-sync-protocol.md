@@ -203,22 +203,22 @@ BM8563 value as `clk=2`; a fresh host sync is still welcome.
 
 Notified once per sample. Each board declares a short `live_key` next to the fields it publishes, and the shared logger emits those keys in the board's field-table order.
 
-**LIVE rule.** Every LIVE key the board declares is present in every LIVE object. Its value is a number, or JSON `null` when the sample has no usable reading for it. That covers a value that is invalid or unavailable, a non-finite float (NaN or Inf), a value whose printed text is 32 characters or longer (at the decimals the boards use today, only a float of magnitude 1e27 or more gets there), and a UTC instant whose nanosecond form overflows INT64. Null is never sent as zero. An absent key means only that the board has no such field. The set of keys a board can send comes from its dictionary, the `live_key` in its `telemetry_fields.inc` (later the template `firmware.live_keys`). Clients parse the object by key name and ignore keys they do not know. Breaking changes are listed in [mobile-migration.md](mobile-migration.md).
+**LIVE rule.** Every LIVE key the board declares is present in every LIVE object. Its value is a number, or JSON `null` when the sample has no usable reading for it. That covers a value that is invalid or unavailable, a non-finite float (NaN or Inf), a value whose printed text is 32 characters or longer (at the decimals the boards use today, only a float of magnitude 1e27 or more gets there). Null is never sent as zero. An absent key means only that the board has no such field. The set of keys a board can send comes from its dictionary, the `live_key` in its `telemetry_fields.inc` (later the template `firmware.live_keys`). Clients parse the object by key name and ignore keys they do not know. Breaking changes are listed in [mobile-migration.md](mobile-migration.md).
 
-Each field's `live_key` and `decimals` are part of the board's `telemetry_fields.inc`, so the `info.dict` digest covers the LIVE key map and how each float prints. The current digests are CoreS3 `3b4d8500…`, Waveshare `a8605aaf…` and CrowPanel `e7279c4e…`. The full values are in [`templates/index.json`](templates/index.json). The digest hashes raw bytes, so a comment, whitespace or line ending edit to `telemetry_fields.inc` moves it. A client reads what each key means from the board template, `firmware.live_keys` and the column it names, and may show LIVE for any template whose SHA-256 it has verified, see [LIVE key stability](#live-key-stability).
+Each field's `live_key` and `decimals` are part of the board's `telemetry_fields.inc`, so the `info.dict` digest covers the LIVE key map and how each float prints. The current digests are CoreS3 `f4f81218…`, Waveshare `a8605aaf…` and CrowPanel `e7279c4e…`. The full values are in [`templates/index.json`](templates/index.json). The digest hashes raw bytes, so a comment, whitespace or line ending edit to `telemetry_fields.inc` moves it. A client reads what each key means from the board template, `firmware.live_keys` and the column it names, and may show LIVE for any template whose SHA-256 it has verified, see [LIVE key stability](#live-key-stability).
 
 **Float precision.** Integers print with no point. A float prints rounded to the `decimals` its field declares, chosen from the sensor resolution, so `1.00` and `1.0` are both possible and both mean the number one. Today CoreS3 prints `t` with two decimals (SHT20 steps 0.01 degC) and `imu_t` and `rh` with one. Waveshare prints `t` and `rh` with one (PMS5003T steps 0.1). Clients parse the value as a number and keep their own display rounding.
 
 ```json
-{"seq":15021,"mono":150210000000,"utc":1757990410000000000,"pms":4,
+{"seq":15021,"mono":150210000000,"utc":1757990410000000,"pms":4,
  "c1":5,"c25":7,"c10":9,"pm1":5,"pm25":7,"pm10":9,
  "n03":900,"n05":250,"n1":30,"n25":2,"n5":0,"n10":0,
- "imu_t":31.4,"als":120,"vbus":5000,"bat":4100,"pct":80,"chg":0,"t":null,"rh":null}
+ "imu_t":31.4,"als":120,"lst":3,"vbus":5000,"bat":4100,"pct":80,"chg":0,"t":null,"rh":null}
 ```
 
 | Key | Dictionary field |
 | --- | --- |
-| `seq`, `mono`, `utc` | `sequence`, `monotonic_us`, `event_time_utc_us` (null when unsynchronized). `utc` stays in nanoseconds, the file column `event_time_utc_us` × 1000 |
+| `seq`, `mono`, `utc` | `sequence`, `monotonic_us`, `event_time_utc_us` (null when unsynchronized). `utc` is in microseconds, the same value as the file column |
 | `pms` | `pms_status` code: 0 absent, 1 warming, 2 stale, 3 sensor error, 4 valid. Waveshare adds 5 model mismatch and 6 sleeping. Code 6 is reserved for the PMS duty cycle (#39) and no image writes it yet |
 | `pm1`,`pm25`,`pm10` | `pm*_atmospheric_ug_m3`, the values to display |
 | `c1`,`c25`,`c10` | `pm*_cf1_ug_m3` |
@@ -228,20 +228,21 @@ Each field's `live_key` and `decimals` are part of the board's `telemetry_fields
 | `imu_t` | CoreS3 `imu_temperature_c`, IMU die temperature. Never show it as air temperature |
 | `bat`,`pct`,`chg`,`vbus` | `battery_mv`, `battery_percent`, `charging_status`, `vbus_mv` when valid. CoreS3 reads the AXP2101 and AW9523 registers with their read status, so a failed read leaves `bat`, `pct` or `vbus` null, and `bat` is null outside 2500 to 4500 mV. `chg` still comes from the M5Unified charge state, so a failed read there gives code 2 unknown, never null. With no battery attached `pct` can still show a misleading value. Waveshare leaves battery fields null without an initialized, valid gauge/battery source; USB-only operation does not imply a battery measurement. Waveshare checks VCELL and SOC on their own, so `bat` can hold a value while `pct` is null and the reverse |
 | `bstate` | Waveshare `battery_health_state` code: 0 unknown, 1 external power likely, 2 ok, 3 low, 4 critical, 5 settling after a gauge reset. Inferred from cell voltage only, thresholds are uncalibrated |
-| `als` | CoreS3 `light_ch0_raw` |
+| `als` | CoreS3 `light_ch0_raw`. Null unless `lst == 3` |
+| `lst` | CoreS3 `light_status` code: 0 unavailable, 1 not fresh, 2 invalid, 3 valid, 4 I/O error. Always sent |
 | `sen` | CrowPanel `sen6x_status` code: 0 absent, 1 warming, 2 stale, 3 sensor error, 4 valid. A SEN63C fan speed warning alone stays 4 |
 | `m1`,`m25`,`m4`,`m10` | CrowPanel `pm*_mass_ug_m3`, SEN63C mass concentration, the values to display. Null unless `sen == 4` |
 | `co2` | CrowPanel `co2_ppm`, SEN63C CO2 in ppm. Null unless `sen == 4`, and null while the sensor reports no value, as in the first 24 s after a start |
 
 PM keys hold values only when `pms == 4` (CrowPanel `sen == 4`) and are null otherwise. The snapshot is the same row that was queued for storage; it is a display convenience, not a substitute for the stored file.
 
-The whole object must fit 480 bytes. The firmware never sends a truncated object. When a row would need more, the device publishes the object with every declared key set to `null` for that sample over BLE and LAN, instead of keeping the previous snapshot. A phone gets that all-null object as its LIVE notification and as the cached value, so it never shows an old sample as current. The next row that fits restores the full object. The device logs `PARQUET LIVE overflow bytes=<n> max=480` to serial and `LOG_TAIL`, where `n` is the exact size the full object needed without the terminating NUL. The line repeats at most once an hour while overflows continue. The host contract tests build each board's widest real row, every declared key at the widest value its producer can write or at `null` where null is wider, with a 19 digit `utc`. Measured with per field decimals it is 333 bytes on CoreS3 (2026-10-26) and 268 bytes on Waveshare (2026-11-18, `t` at its -10.0 gate), and the all-null object is 265 and 211 bytes. Measured 2026-11-17 the CrowPanel widest object is 175 bytes and its all-null object 118 bytes. The tests fail if any of them passes 480.
+The whole object must fit 480 bytes. The firmware never sends a truncated object. When a row would need more, the device publishes the object with every declared key set to `null` for that sample over BLE and LAN, instead of keeping the previous snapshot. A phone gets that all-null object as its LIVE notification and as the cached value, so it never shows an old sample as current. The next row that fits restores the full object. The device logs `PARQUET LIVE overflow bytes=<n> max=480` to serial and `LOG_TAIL`, where `n` is the exact size the full object needed without the terminating NUL. The line repeats at most once an hour while overflows continue. The host contract tests build each board's widest real row, every declared key at the widest value its producer can write or at `null` where null is wider, with `seq`, `mono` and `utc` at INT64_MAX, 19 digits. Measured with per field decimals it is 344 bytes on CoreS3 (2026-11-18) and 268 bytes on Waveshare (2026-11-18, `t` at its -10.0 gate), and the all-null object is 276 and 211 bytes. Measured 2026-11-17 the CrowPanel widest object is 175 bytes and its all-null object 118 bytes. The tests fail if any of them passes 480.
 
 #### LIVE key stability
 
-- A LIVE key never changes meaning once released. Meaning is the quantity, the unit, the source (board or ambient air) and what each existing code value means. Adding a new code value is allowed and counts as a layout change below. Changing what an existing code value means is not allowed. A new meaning gets a new key. A retired key is never reused.
+- A LIVE key never changes meaning once released. Meaning is the quantity, the unit, the source (board or ambient air) and what each existing code value means. Adding a new code value is allowed and counts as a layout change below. Changing what an existing code value means is not allowed. A new meaning gets a new key. A retired key is never reused. No firmware has been released yet. Until the first release a key may still change meaning, in lockstep with the app, with a [mobile-migration.md](mobile-migration.md) entry that says **needs app update**. LIVE `utc` moved from nanoseconds to microseconds this way.
 - Each key in the table above means the same thing on every board. `imu_t` is always the IMU die temperature, never air. `t` is always ambient air temperature. A board that declares a key and has no valid value for it sends the key as null.
-- Firmware may add or drop keys. Clients read keys by name and ignore keys they do not know. A phone may show LIVE for any board template it has verified as in [How a phone checks it](#get_descriptor), the full 64 hex SHA-256 matching the footer `template.sha256` or the template link `file:checksum`, and starting with the 16 hex `desc` the device serves. The short `desc` alone never verifies a template. The phone maps each key through the template `firmware.live_keys` to its column, and filters each value by that column's `opensensor:plausible_range` and `opensensor:valid_when`. When the `valid_when` column has no LIVE key the phone cannot check the gate and does not show that value. The template stays valid and the value stays in the file. Today that is only CoreS3 `als`, gated on `light_status`. There is no reviewed digest list ([decision 0003](decisions/0003-metadata-driven-apps.md), owner decision 2026-11-17, replacing opensensor-space-mobile #184). A phone that cannot verify a template still syncs files and shows no LIVE. It never guesses a meaning from a device name, a firmware string or a value.
+- Firmware may add or drop keys. Clients read keys by name and ignore keys they do not know. A phone may show LIVE for any board template it has verified as in [How a phone checks it](#get_descriptor), the full 64 hex SHA-256 matching the footer `template.sha256` or the template link `file:checksum`, and starting with the 16 hex `desc` the device serves. The short `desc` alone never verifies a template. The phone maps each key through the template `firmware.live_keys` to its column, and filters each value by that column's `opensensor:plausible_range` and `opensensor:valid_when`. When the `valid_when` column has no LIVE key the phone cannot check the gate and does not show that value. The template stays valid and the value stays in the file. No shipped board has such a value. CoreS3 `als` is gated on `light_status`, which is LIVE as `lst`. There is no reviewed digest list ([decision 0003](decisions/0003-metadata-driven-apps.md), owner decision 2026-11-17, replacing opensensor-space-mobile #184). A phone that cannot verify a template still syncs files and shows no LIVE. It never guesses a meaning from a device name, a firmware string or a value.
 - Older CoreS3 builds that sent the IMU die temperature as `t` predate this rule and are not supported. No release may do the same.
 - Every firmware release whose LIVE layout changes says **needs app update** in its release notes and in its [mobile-migration.md](mobile-migration.md) entry. A layout change is a key added, removed or renamed, a new code value, or a change in the decimals a float prints with. A digest that moves without a layout change still gets a fixture in `tools/fixtures/live_keys/` and a migration entry. The app reads the new layout from the new template, and file sync is unaffected.
 
@@ -262,7 +263,7 @@ by direction.
 | `0x05` | `SET_TIME` | `epoch_s` i64, optionally `subsecond_us` u32 | `TIME_SET` or `ERROR` 9; `status` notify |
 | `0x06` | `FLUSH` | none | `FLUSHED` or `ERROR` 10; `status` notify |
 | `0x07` | `STATUS` | none | `status` cache/notify only; **no `response` frame**, so the phone must not wait on `response` for it. If the value exceeds MTU − 3 the notification is omitted and the phone reads the cached characteristic. Over LAN this produces a `STATUS` push frame, so it doubles as a keep-alive ping. |
-| `0x08` | `GET_CONFIG` | empty or one page byte `0..6` | `CONFIG` or BLE `CONFIG_CHUNK` sequence |
+| `0x08` | `GET_CONFIG` | empty or one page byte `0..7` | `CONFIG` or BLE `CONFIG_CHUNK` sequence |
 | `0x09` | `SET_CONFIG` | `key=value` lines, utf8, `\n`-separated (see [configuration](#device-configuration-v2)) | `CONFIG` or BLE `CONFIG_CHUNK` sequence; `ERROR` 12 with the offending key as `detail` |
 | `0x0A` | `WIFI_SCAN` | none | `WIFI_AP` × n, then `WIFI_SCAN_END`; `ERROR` 15 if the radio cannot scan |
 | `0x0B` | `REBOOT` | none | `REBOOTING`, then the device finalizes any RAM batch and restarts |
@@ -327,7 +328,7 @@ Rules:
 
 ## Device configuration (v2)
 
-`GET_CONFIG` page 0 (empty body or byte 0) returns the legacy snapshot below. Pages 1 to 4 return additive location and time configuration and pages 5 and 6 the owner site keys, using the same CONFIG or CONFIG_CHUNK envelope. `SET_CONFIG` accepts the keys below and always acknowledges with the legacy page-0 snapshot. `SET_CONFIG` is **partial**: only the keys present change. Values are validated as a whole before anything is stored; one bad key rejects the request with `ERROR` 12 and nothing changes. Keys marked *action* are not stored, they do something once. The firmware persists the configuration as two CRC-checked NVS records. The owner site keys (`owner.*` and `thing.deployment_id`) live in one and every other key in the other. Each record is saved with a single write and commit and then read back. A request writes the owner record only when an owner value changes. It writes the main record whenever it carries any other key, even one equal to the stored value. Either record is also written when an earlier failure left it unsure. A request that writes both writes the owner record first, and the two writes are not atomic across a power cut. The phone therefore sends the owner keys in their own `SET_CONFIG`. On any persistence failure the reply is `ERROR` 12 with detail `nvs` and the live snapshot keeps the whole previous configuration, never half a request. A save can commit and still fail its readback, so after any failed save the board writes the previous value of every record the request wrote back, best effort. If a write back also fails it logs `CONFIG ERROR operation=owner-rollback` or `CONFIG ERROR operation=cfg-rollback`, the live snapshot still shows the previous values, and the record stays unsure. The next `SET_CONFIG`, even one that changes nothing in that record, writes it again from the live snapshot. A first boot whose seed write fails leaves the main record unsure the same way. While the main record is unsure an owner only `SET_CONFIG` writes it too, and if that write fails the owner change is refused with `nvs` and the owner record is written back. A boot before that loads whatever stayed in flash. After an `nvs` error the phone reads pages 0, 1, 5 and 6 again after the next `SET_CONFIG` succeeds or after the next reboot. A damaged or missing main record is a first boot, with a new random PIN and LAN token and Wi-Fi off. A damaged or missing owner record reads as empty. Power-cut behavior is not yet measured on hardware. Secrets are write-only: `wifi.psk` is never echoed, `GET_CONFIG` reports `psk_set` instead; the fixed BLE PIN is also not echoed and is represented by `pin_set`.
+`GET_CONFIG` page 0 (empty body or byte 0) returns the legacy snapshot below. Pages 1 to 4 return additive location and time configuration, pages 5 and 6 the owner site keys and page 7 the board keys, using the same CONFIG or CONFIG_CHUNK envelope. `SET_CONFIG` accepts the keys below and always acknowledges with the legacy page-0 snapshot. `SET_CONFIG` is **partial**: only the keys present change. Values are validated as a whole before anything is stored; one bad key rejects the request with `ERROR` 12 and nothing changes. Keys marked *action* are not stored, they do something once. The firmware persists the configuration as CRC-checked NVS records. The owner site keys (`owner.*` and `thing.deployment_id`) live in one, `thing.setup_v` and `thing.setup_ack` in a second (the setup record below), and every other runtime key in the main record. Board keys are the board's own, see [board keys](#board-keys-page-7). Each record is saved with a single write and commit and then read back. A request writes the owner record only when an owner value changes. It writes the main record whenever it carries any other key, even one equal to the stored value. Either record is also written when an earlier failure left it unsure. A request that writes both writes the owner record first, and the two writes are not atomic across a power cut. The phone therefore sends the owner keys in their own `SET_CONFIG`. On any persistence failure the reply is `ERROR` 12 with detail `nvs` and the live snapshot keeps the whole previous configuration, never half a request. A save can commit and still fail its readback, so after any failed save the board writes the previous value of every record the request wrote back, best effort. If a write back also fails it logs `CONFIG ERROR operation=owner-rollback` or `CONFIG ERROR operation=cfg-rollback`, the live snapshot still shows the previous values, and the record stays unsure. The next `SET_CONFIG`, even one that changes nothing in that record, writes it again from the live snapshot. A first boot whose seed write fails leaves the main record unsure the same way. While the main record is unsure an owner only `SET_CONFIG` writes it too, and if that write fails the owner change is refused with `nvs` and the owner record is written back. A boot before that loads whatever stayed in flash. After an `nvs` error the phone reads pages 0, 1, 5 and 6 again after the next `SET_CONFIG` succeeds or after the next reboot. A damaged or missing main record is a first boot, with a new random PIN and LAN token and Wi-Fi off. A damaged or missing owner record reads as empty. Power-cut behavior is not yet measured on hardware. Secrets are write-only: `wifi.psk` is never echoed, `GET_CONFIG` reports `psk_set` instead; the fixed BLE PIN is also not echoed and is represented by `pin_set`.
 
 | Key | Value | Applied | Meaning |
 | --- | --- | --- | --- |
@@ -354,6 +355,8 @@ Rules:
 | `owner.provider` | UTF-8, ≤ 64 bytes; empty clears | immediately | the organisation that runs the Thing, the STAC producer and licensor provider. Read back on page 5 |
 | `owner.url` | `https://` plus a host that starts with a letter or digit, ≤ 96 bytes, RFC 3986 characters only (no spaces, `"`, `\` or control characters); empty clears. The authority, the part after `https://` up to the first `/`, `?` or `#` or the end, must hold no `@`, so user info such as `https://a@example.org` or `https://a:b@example.org:8443/x` is refused, because page 5 echoes the link and STAC metadata publishes it. `https://@x` and `https://:443` are refused too. An `@` in the path, query or fragment such as `https://medium.com/@name` or `https://example.org?to=a@` is fine | immediately | the provider's link. Read back on page 5 |
 | `thing.deployment_id` | `[a-z0-9-]`, ≤ 32 bytes, a letter or digit at each end, never the literal `unknown`; empty clears | next sample | written to the footer `thing.deployment_id`, `unknown` while unset. Each file keeps the value of its first row and a change splits the file like a location change. Finalized files are never relabelled. Read back on page 5 |
+| `thing.setup_v` | `1..2147483647` | immediately | the setup step list the bits of `thing.setup_ack` refer to, the first four bytes of SHA-256 over the ordered template `firmware.setup` ids joined by `\n`, read big endian with the top bit cleared, 0 read as 1, and `0x63b0c442` for the empty list. Sent only together with `thing.setup_ack`. Read back on page 1 |
+| `thing.setup_ack` | `0..2147483647` | immediately | bitmask of the setup steps the phone has finished, bit 0 for the first step of `firmware.setup`. Sent only together with `thing.setup_v`, a request with one of the two answers `ERROR` 12 with the missing key as detail. Read back on page 1 |
 | `sensor.vendor` | `Plantower` on Waveshare V2; empty only when clearing the profile | immediately | owner-identified vendor; must match the board's declared physical sensor |
 | `sensor.model` | `PMS5003T` on Waveshare V2; empty only when clearing the profile | immediately | owner-identified model; does not change the hardcoded UART parser |
 | `sensor.serial` | `PMS5003T-` + valid `YYYYMMDD` + 1–9 unit digits, or empty | immediately | scanned or manually entered module sticker, echoed in CONFIG; an empty value clears it. Impossible calendar dates and mismatched model prefixes are rejected |
@@ -377,25 +380,62 @@ the requested object means unsupported, not an unset location.
 | Page | Response JSON |
 | --- | --- |
 | 0 or empty | Legacy `ble`, `wifi`, `lan`, `sensor` snapshot |
-| 1 | `{"location":{"cell":"","resolution":8,"cell_resolution":null,"lat":null,"lon":null,"country":"","phone_cell":"","gnss_cell":""},"thing":{"mobility":"fixed","setup":1}}`. Populated cells return their actual resolution and derived center in degrees. `thing.setup` is 1 while the advert `setup` bit is set, else 0. `location.gnss_cell` is present only on a board with a GNSS receiver (Waveshare V2, omitted on CoreS3). It holds the newest fix as a res 8 cell, or `""` without a fix from the last 15 s. It is never a coordinate and never stored. `location.phone_cell` is the res 8 phone cell held in RAM, or `""` when unset, after a reboot or 300 s after the last request that sent it (#140). `resolution` is always 8 and `cell_resolution` is 8 or null. The worst case page is 227 bytes, checked by `pixi run config-test` |
+| 1 | `{"location":{"cell":"","resolution":8,"cell_resolution":null,"lat":null,"lon":null,"country":"","phone_cell":"","gnss_cell":""},"thing":{"mobility":"fixed","setup":1,"setup_v":0,"setup_ack":0}}`. Populated cells return their actual resolution and derived center in degrees. `thing.setup` is 1 while the advert `setup` bit is set, else 0. `thing.setup_v` and `thing.setup_ack` are the stored setup record, both 0 while it is unset. `location.gnss_cell` is present only on a board with a GNSS receiver (Waveshare V2, omitted on CoreS3). It holds the newest fix as a res 8 cell, or `""` without a fix from the last 15 s. It is never a coordinate and never stored. `location.phone_cell` is the res 8 phone cell held in RAM, or `""` when unset, after a reboot or 300 s after the last request that sent it (#140). `resolution` is always 8 and `cell_resolution` is 8 or null. The worst case page is 271 bytes, checked by `pixi run config-test` |
 | 2 | `ntp` policy (`on`, `dhcp`, `public_fallback`, `interval_s`) plus `state`, `running`, `anchored`, `age_s` (null before sync), `stale`, `source`, `last_public`, `sync_count`, `error` |
 | 3 | `{"ntp":{"server1":""}}` |
 | 4 | `{"ntp":{"server2":""}}` |
 | 5 | `{"owner":{"title":"","provider":"","url":""},"thing":{"deployment_id":""}}`, 74 bytes empty and 458 at the worst case |
 | 6 | `{"owner":{"description":""}}`, 348 bytes at the worst case |
+| 7 | The board keys, JSON nested by key prefix, such as `{"panel":{"theme":"light"},"sen6x":{"co2_asc":true}}`. `{}` on a board without keys |
 
-**Planned, not built** ([decision 0003](decisions/0003-metadata-driven-apps.md)).
-No firmware sends these yet, and the bytes above are what boards send today.
-Page 1 `thing` gains `setup_ack`, a bitmask of the setup steps the phone has
-finished in the order of the template `firmware.setup`, and `setup_v`, which
-names the step list those bits refer to. A `setup_v` the phone does not
-expect reads as no step done. The device stores both, the phone sets them
-with a planned `SET_CONFIG` key, and the advert `setup` bit stays derived
-from the config for required steps. A new page after page
-6 carries the board specific settings that the template `firmware.config_keys`
-declares, such as the CrowPanel panel and SEN63C options that only the panel
-knob can change today. The keys, page number and limits are fixed in the PR
-that builds them, with a [mobile-migration.md](mobile-migration.md) entry.
+#### Setup record
+
+Built for [decision 0003](decisions/0003-metadata-driven-apps.md) (#184). The
+device keeps `thing.setup_v` and `thing.setup_ack` so a second phone sees the
+same setup progress. A `setup_v` the phone does not compute from the
+template it holds reads as no step done. The phone writes both keys in one
+`SET_CONFIG`. The record is its own NVS blob `setup` in namespace `oscfg`,
+magic `OSSU`, version 1, an 8 byte payload of two little endian u32 with a
+CRC-32. It is saved with one write and commit and read back, after the owner
+record and before the main record, and only when a value changes or an
+earlier failure left it unsure. A failed save writes the previous record back
+and the request answers `ERROR` 12 with detail `nvs`. If that write back fails
+too the board logs `CONFIG ERROR operation=setup-rollback` and the next
+`SET_CONFIG` writes the record again. A missing record is unset. A stored
+record with both values 0 is the unset form. A write back that restores an
+unset record stores it, and it loads as unset with no line. `SET_CONFIG` still
+refuses `thing.setup_v` 0. A record with `setup_v` 0 and any other `setup_ack`
+is damaged. A damaged one is unset too, prints one `CONFIG SETUP invalid-stored-record=true` line, and
+is kept, never erased. The advert `setup` bit and page 1 `thing.setup` stay
+derived from the config for required steps, never from this record.
+
+#### Board keys (page 7)
+
+A board may own `SET_CONFIG` keys of its own, which its template declares in
+`firmware.config_keys` with type, values and `applies` (see the
+[plugin contract](plugins/README.md#setup-settings-and-config-keys)). A board
+key never starts with a runtime prefix (`ble.`, `wifi.`, `lan.`, `ntp.`,
+`location.`, `thing.`, `owner.` or `sensor.`). The runtime hands each board
+key of a request to the board, which checks it against its own type. An
+unknown key or a value outside its type answers `ERROR` 12 with the key as
+detail and nothing changes. Once the rest of the request is saved the board
+keeps the values in its own storage, and page 7 reads them back as JSON
+nested by key prefix, booleans as `true` or `false`, enum values as strings
+and integers as numbers. An action key such as `sen6x.fan_clean` does its
+work once and is never on page 7. A request that holds only board keys
+writes no `oscfg` record. The serial `CONFIG SET` line counts board keys as
+`board_keys=N` and never names them.
+
+The CrowPanel keys are `panel.theme` (`light`, `dark`), `panel.refresh_s`
+(`10`, `30`, `60`, `300`), `panel.start_page` (`dashboard`, `last_viewed`,
+applied at the next boot), `panel.sleep_s` (`0` for never, `600`, `1800`,
+`3600`), `sen6x.co2_asc` (boolean), `sen6x.altitude_m` (0 to 3000),
+`sen6x.temp_offset_dc` (-100 to 50, tenths of a degree) and the action
+`sen6x.fan_clean` (`1` or `true` starts a cleaning, `0` or `false` does
+nothing). They are the panel knob settings, so the knob and the phone change
+the same values. The panel saves them in NVS namespace `ospanel` 5 s after
+the last change, like a knob change. CoreS3 and Waveshare V2 declare no
+board keys and answer page 7 with `{}`.
 
 The owner keys (#148) live in their own CRC-checked NVS record, separate from
 the main configuration record, so existing keys and types do not change. The
