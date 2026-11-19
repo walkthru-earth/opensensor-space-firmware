@@ -9,6 +9,40 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## WHO step labels from stac-opensensor 204365f (vendor/stac-scales-204365f)
+
+**Every board moves its `desc`. Needs app update and a matched reflash of all
+three boards.** No column, row, footer key, LIVE key, `dict` or `GET_CONFIG`
+byte changes. Only the step labels inside `opensensor:scales` change. Part of
+#184.
+
+**What changed.**
+
+- The vendored `tools/stac_opensensor/registry/scales.json` moves to
+  stac-opensensor commit `204365f929e6f77bcaa6e70a0245c96cadc5c115`. The
+  `who-2021-pm25` and `who-2021-pm10` steps keep their bounds and colours.
+  Their English labels are now `Within the WHO guideline`,
+  `Within WHO interim target 4` to `Within WHO interim target 1` and
+  `Above every WHO target`, with matching Arabic labels.
+- The generator copies these labels into each template, so every template
+  grows by 1538 bytes, to 51578 bytes on CoreS3, 42716 on Waveshare and
+  29849 on the CrowPanel.
+- New `desc` per board.
+
+| Board | `desc` before | `desc` now |
+| --- | --- | --- |
+| `m5stack-cores3` | `38b0982d1da0dfea20777af87544f30c8141ef297ed5146c402129133acbea0e` | `4e010301a21f994c2bf73c70922ee155657928afaa1603b8bff6ecfd8ff3778f` |
+| `waveshare-esp32-s3-sim7670g` | `f46b72d6f93e1f2077693c32eb03036935d73026d4ee64a149a6c9c347e0af74` | `8a01863d48a935e15f3cff3623df00b6aea1ffbeded036a65de80b3affce6634` |
+| `elecrow-crowpanel-epaper-42` | `39da5da001dd662c6c05eddf08bbfdd1400d077dd5a9b7cdf2efaac939d08eb8` | `fe3097b4ca313128e82c15578607accd61e788030f0e2108a7282ffd8f9d7c5c` |
+
+**Why.** stac-opensensor 204365f took the WHO step names the app already
+shows, so the template, the registry and the app now use one set of words.
+
+**What the app must do.** Bundle the three new templates and their `desc`
+values, then mirror them into stac-opensensor `templates/`. Read the step
+labels from the template as before. walkthru-earth/opensensor-space-mobile#350
+item 1 lands with that bundle.
+
 ## STAC Item rotation and window rules (fix/stac-item-window-rules)
 
 **Needs a matched reflash of all three boards. No app change is required.**

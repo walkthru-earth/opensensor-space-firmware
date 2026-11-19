@@ -1,37 +1,37 @@
 {
   "by_desc": {
-    "38b0982d1da0dfea20777af87544f30c8141ef297ed5146c402129133acbea0e": {
+    "4e010301a21f994c2bf73c70922ee155657928afaa1603b8bff6ecfd8ff3778f": {
       "board": "m5stack-cores3",
       "dict": "f4f81218dc80d1a8e6db043197a2f7180c4f075f9e8348df30eaceef44d68370",
       "href": "m5stack-cores3/f4f81218dc80d1a8e6db043197a2f7180c4f075f9e8348df30eaceef44d68370.json"
     },
-    "39da5da001dd662c6c05eddf08bbfdd1400d077dd5a9b7cdf2efaac939d08eb8": {
-      "board": "elecrow-crowpanel-epaper-42",
-      "dict": "e7279c4edbe87071e4a51889124a43d7ffcd1977c79c8575887ae35bdee10903",
-      "href": "elecrow-crowpanel-epaper-42/e7279c4edbe87071e4a51889124a43d7ffcd1977c79c8575887ae35bdee10903.json"
-    },
-    "f46b72d6f93e1f2077693c32eb03036935d73026d4ee64a149a6c9c347e0af74": {
+    "8a01863d48a935e15f3cff3623df00b6aea1ffbeded036a65de80b3affce6634": {
       "board": "waveshare-esp32-s3-sim7670g",
       "dict": "a8605aafb6f76b794e9e7fb32927be6d203afeeb14527206c0e49c1eb0436809",
       "href": "waveshare-esp32-s3-sim7670g/a8605aafb6f76b794e9e7fb32927be6d203afeeb14527206c0e49c1eb0436809.json"
+    },
+    "fe3097b4ca313128e82c15578607accd61e788030f0e2108a7282ffd8f9d7c5c": {
+      "board": "elecrow-crowpanel-epaper-42",
+      "dict": "e7279c4edbe87071e4a51889124a43d7ffcd1977c79c8575887ae35bdee10903",
+      "href": "elecrow-crowpanel-epaper-42/e7279c4edbe87071e4a51889124a43d7ffcd1977c79c8575887ae35bdee10903.json"
     }
   },
   "templates": {
     "a8605aafb6f76b794e9e7fb32927be6d203afeeb14527206c0e49c1eb0436809": {
       "board": "waveshare-esp32-s3-sim7670g",
-      "desc": "f46b72d6f93e1f2077693c32eb03036935d73026d4ee64a149a6c9c347e0af74",
+      "desc": "8a01863d48a935e15f3cff3623df00b6aea1ffbeded036a65de80b3affce6634",
       "href": "waveshare-esp32-s3-sim7670g/a8605aafb6f76b794e9e7fb32927be6d203afeeb14527206c0e49c1eb0436809.json",
       "schema": "waveshare-sim7670g-telemetry-v6"
     },
     "e7279c4edbe87071e4a51889124a43d7ffcd1977c79c8575887ae35bdee10903": {
       "board": "elecrow-crowpanel-epaper-42",
-      "desc": "39da5da001dd662c6c05eddf08bbfdd1400d077dd5a9b7cdf2efaac939d08eb8",
+      "desc": "fe3097b4ca313128e82c15578607accd61e788030f0e2108a7282ffd8f9d7c5c",
       "href": "elecrow-crowpanel-epaper-42/e7279c4edbe87071e4a51889124a43d7ffcd1977c79c8575887ae35bdee10903.json",
       "schema": "crowpanel-epaper-telemetry-v1"
     },
     "f4f81218dc80d1a8e6db043197a2f7180c4f075f9e8348df30eaceef44d68370": {
       "board": "m5stack-cores3",
-      "desc": "38b0982d1da0dfea20777af87544f30c8141ef297ed5146c402129133acbea0e",
+      "desc": "4e010301a21f994c2bf73c70922ee155657928afaa1603b8bff6ecfd8ff3778f",
       "href": "m5stack-cores3/f4f81218dc80d1a8e6db043197a2f7180c4f075f9e8348df30eaceef44d68370.json",
       "schema": "cores3-telemetry-v6"
     }
