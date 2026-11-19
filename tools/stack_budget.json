@@ -512,7 +512,7 @@
         ".iram0.text": 125295,
         ".dram0.data": 34257,
         ".dram0.bss": 57480,
-        ".flash.text": 1189074,
+        ".flash.text": 1189114,
         ".flash.rodata": 407352,
         ".noinit": 3
       }
