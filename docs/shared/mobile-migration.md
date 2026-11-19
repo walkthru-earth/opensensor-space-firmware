@@ -29,10 +29,11 @@ Only which files get a sidecar changes. Part of #184.
   `204365f929e6f77bcaa6e70a0245c96cadc5c115`, and `stac-item-test` checks
   both rules against it.
 
-**Why.** stac-opensensor `canonical.mjs` at that commit refuses both cases,
-so an Item never names a window its rows do not fit. The board now gives the
-same answer, so a phone that builds the Item from the same file agrees with
-the sidecar.
+**Why.** stac-opensensor `canonical.mjs` at that commit refuses both cases.
+It takes the window from the earliest row and checks only that row against
+the file name. It does not check that later rows fall in the same window.
+The board now gives the same answer, so a phone that builds the Item from the
+same file agrees with the sidecar.
 
 **What the app must do.** Treat a missing sidecar for a `bad-rotation` or
 `wrong-window` file as expected, never as a sync error. Sync still lists only
