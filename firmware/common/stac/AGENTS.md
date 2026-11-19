@@ -2,8 +2,9 @@
 
 `src/os_stac_item.*` builds the STAC File Item a board writes as `<file>.json`
 next to each finalized dated Parquet file (#142). It follows the canonical form
-of stac-opensensor commit `83787768cc8451109d48a03d4ef5493ffcd403dd`
+of stac-opensensor commit `07a4f21f98b9fffcece7055b95c6b9f9c6975bde`
 (`PROFILE.md` "Canonical File Item" and `scripts/canonical.mjs` `buildItem`).
+`buildItem` is the same at `83787768`, the commit the firmware followed first.
 
 - Board neutral. It touches no storage, NVS, radio or board pins. A board opts
   in through `oslogger::Config::stac_columns`, a table built at compile time by

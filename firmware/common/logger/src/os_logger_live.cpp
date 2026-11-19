@@ -1,7 +1,5 @@
 #include "os_logger_live.h"
-#include "telemetry_logical.h"
 
-#include <climits>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -62,18 +60,10 @@ Rendered render(const Field *fields, std::size_t count, const Row &row,
       int written = -1;
       switch (field.type) {
       case telemetry::PhysicalType::Int64: {
-        // UTC instants are stored in microseconds but LIVE keeps the wire
-        // unit of nanoseconds. The stored value is exact, so the scale is
-        // lossless.
-        const long long scale =
-            telemetry::logical_for(field.type, field.unit) ==
-                    telemetry::LogicalType::TimestampMicrosUtc
-                ? 1000
-                : 1;
-        const long long stored = static_cast<long long>(row.data[i]);
-        if (stored > LLONG_MAX / scale || stored < LLONG_MIN / scale)
-          break; // out of range for the wire unit, sent as null
-        written = std::snprintf(text, sizeof(text), "%lld", stored * scale);
+        // Every key carries its column's unit, so a UTC instant is sent in
+        // the microseconds the file stores.
+        written = std::snprintf(text, sizeof(text), "%lld",
+                                static_cast<long long>(row.data[i]));
         break;
       }
       case telemetry::PhysicalType::Int32: {

@@ -36,7 +36,12 @@ Never borrow a sibling trial's settings.
   saves it as a versioned blob in NVS namespace `ospanel` key `ui` and hands
   altitude, CO2 self calibration, temperature offset and fan cleaning to the
   board task through `sensor_requests` under the feed mutex. Only the board
-  task talks to the sensor. The Wi-Fi row is read-only, because
+  task talks to the sensor. The phone keys of page 7 (`panel.*`, `sen6x.*`)
+  come through `config::BoardKeys`. The storage worker parses them with
+  `ui::set_phone_key` and leaves them in `phone_pending`, and the UI task
+  takes them on its next pass. `shared_panel` is what page 7 reads. Keep the
+  key list in `board.json` and `display/settings.*` together,
+  `crowpanel-contract-test` checks it. The Wi-Fi row is read-only, because
   `config::apply_lines` is safe only from the control worker.
 - Sensor collection is the module table in `logger/sensor_modules.h` from
   the shared `sen63c` manifest. The screen and the stored row come from the

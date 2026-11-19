@@ -25,6 +25,118 @@ fails without the buffer. CrowPanel also logs a once only
 
 **What the app must do.** Nothing.
 
+## CrowPanel STAC sidecar (feat/crowpanel-stac-sidecar)
+
+**The CrowPanel now writes a STAC File Item next to each finalized dated
+file.** No column, row, footer key, LIVE key, template, `dict` or `desc`
+changes. Only the CrowPanel must be reflashed. Part of #184.
+
+**What changed.**
+
+- The CrowPanel writes `<file>.json` beside each finalized dated
+  `data_HHMM_` file, the same File Item CoreS3 and Waveshare write. Its
+  statistics cover the seven measurement columns `pm1_mass_ug_m3`,
+  `pm25_mass_ug_m3`, `pm4_mass_ug_m3`, `pm10_mass_ug_m3`,
+  `ambient_temperature_c`, `relative_humidity_percent` and `co2_ppm`.
+- The PM and CO2 statistics count only rows where `sen6x_status` equals 4.
+  Temperature and humidity count every finite value.
+- The boot log adds `PARQUET STAC sidecar=true columns=7 psram_bytes=<n>`,
+  and each dated file adds one `PARQUET STAC result=...` line.
+- `stac-item-test` proves the Item equal to the stac-opensensor CrowPanel
+  example at commit `07a4f21f98b9fffcece7055b95c6b9f9c6975bde`. Its
+  `buildItem` is the same as at `83787768`.
+
+**What the app must do.** Read a CrowPanel sidecar the same way as a CoreS3
+or Waveshare one. Sync still lists only `.parquet` files (#143), so nothing
+in sync changes. Drop any rule that expects no sidecar from a CrowPanel.
+
+## LIVE `utc` in microseconds, CoreS3 LIVE `lst` and Arabic titles on every column (feat/live-utc-column-titles)
+
+**Every board changes its LIVE `utc` value and its template.** Every `desc`
+moves. The CoreS3 `dict` moves for its new LIVE key `lst`, and the other
+boards keep theirs. No column, row, footer key or `GET_CONFIG` byte changes.
+All three boards must be reflashed. Part of #184. **Needs app update**,
+because the LIVE layout changes and LIVE `utc` changes unit. No firmware with
+LIVE `utc` in nanoseconds was ever released.
+
+**What changed.**
+
+- LIVE `utc` is now microseconds since the Unix epoch, the same value as the
+  file column `event_time_utc_us` it maps to through `firmware.live_keys`.
+  It was nanoseconds. An unsynchronized row still sends `null`. The widest
+  LIVE object keeps its size, so the 480 byte checks are unchanged.
+- CoreS3 LIVE adds `lst`, the `light_status` code, right after `als`. It is
+  sent on every row. `als` is gated on `light_status` equals 3, so the app
+  can now check that gate in LIVE and show `als`. The CoreS3
+  dictionary is `cores3-telemetry-v8`, dict
+  `f4f81218dc80d1a8e6db043197a2f7180c4f075f9e8348df30eaceef44d68370`
+  (was `3b4d8500a19f42c6743b0f7d725276c96ca14a0c249f613048603afbc3cfaff9`).
+  Its `shipped.lock` gains a baseline release for the `ltr553` core segment.
+  The widest CoreS3 LIVE object grows to 344 bytes and the all-null object
+  to 276, both under 480.
+- Every template column carries an Arabic `opensensor:title_i18n` beside its
+  English `title`. Every template names `opensensor:primary`. The plugin
+  contract test fails a board that lacks either, and a unit that is not plain
+  ASCII UCUM, so a ratio is `m3/m3` and never a superscript.
+- The templates grow to 50040 bytes on CoreS3, 41178 on Waveshare and 28311
+  on the CrowPanel.
+  - `m5stack-cores3`, dict `f4f81218dc80d1a8e6db043197a2f7180c4f075f9e8348df30eaceef44d68370`,
+    desc `38b0982d1da0dfea20777af87544f30c8141ef297ed5146c402129133acbea0e`
+    (was `31c2043bbe91ce6e06ee08756d5b21bd70ca9bb5a12090614c0da88c47f00de1`).
+  - `waveshare-esp32-s3-sim7670g`, desc `f46b72d6f93e1f2077693c32eb03036935d73026d4ee64a149a6c9c347e0af74`
+    (was `4bff03290ab46e554db2389a28a3da41574745fffea0bb4e187355dd5b97967d`).
+  - `elecrow-crowpanel-epaper-42`, desc `39da5da001dd662c6c05eddf08bbfdd1400d077dd5a9b7cdf2efaac939d08eb8`
+    (was `7d675033aa932320b91237d1a68de9646cd40f569806202f4e01a885af2d7eeb`).
+
+**What the app must do.** Bundle the three new templates. Map LIVE `utc`
+through `firmware.live_keys` like any other key, as microseconds, and drop
+any nanosecond scaling. Gate CoreS3 `als` on `lst` like any other
+`valid_when` column. Read Arabic labels from the template.
+
+## Setup record and board keys on page 7 (feat/board-settings-page)
+
+**Every board changes `GET_CONFIG`, and the CrowPanel template changes.**
+The CrowPanel `desc` moves and its `dict` does not. No column, row, LIVE key
+or footer key changes. All three boards must be reflashed. Part of #184.
+
+**What changed.**
+
+- `SET_CONFIG` takes `thing.setup_v` (1 to 2147483647) and
+  `thing.setup_ack` (0 to 2147483647), only together. A request with one of
+  them answers `ERROR` 12 with the missing key as detail. The device keeps
+  them in a new NVS record `setup` in `oscfg`. See the
+  [setup record](ble-sync-protocol.md#setup-record).
+- Page 1 `thing` ends with `"setup_v":N,"setup_ack":N`, both 0 while the
+  record is unset. The worst case page grows to 271 bytes.
+- `GET_CONFIG` takes page 7, the board keys nested by key prefix. CoreS3 and
+  Waveshare answer `{}`. The CrowPanel answers
+  `{"panel":{"theme":"light","refresh_s":"10","start_page":"dashboard","sleep_s":"0"},"sen6x":{"co2_asc":true,"altitude_m":0,"temp_offset_dc":0}}`
+  with its current values. Enum values are strings, integers are numbers.
+  See [board keys](ble-sync-protocol.md#board-keys-page-7).
+- The CrowPanel takes the `SET_CONFIG` keys `panel.theme`, `panel.refresh_s`,
+  `panel.start_page`, `panel.sleep_s`, `sen6x.co2_asc`, `sen6x.altitude_m`,
+  `sen6x.temp_offset_dc` and the action `sen6x.fan_clean`. They are the knob
+  settings, so a knob change shows on page 7 and a phone change shows on the
+  panel. An unknown board key or a bad value answers `ERROR` 12 with the key
+  as detail.
+- The CrowPanel template declares the eight keys in `firmware.config_keys`
+  with English and Arabic labels. `firmware.setup` gains a last step
+  `sen6x`, labelled "Air sensor", with `sen6x.altitude_m`, so its `setup_v`
+  changes to `1299261043` (`0x4d712673`). `firmware.settings` gains `sen6x` (labelled "Air sensor", all four
+  `sen6x` keys) and `panel` (labelled "Display", the four `panel` keys) after
+  `site`.
+  - `elecrow-crowpanel-epaper-42`, dict `e7279c4edbe87071e4a51889124a43d7ffcd1977c79c8575887ae35bdee10903`,
+    desc `7d675033aa932320b91237d1a68de9646cd40f569806202f4e01a885af2d7eeb`
+    (was `6b4ecbab4e258f1091cd9048ddfe9260e160ef73166ee0c6b29669501c0c077a`),
+    24289 bytes.
+
+**What the app must do.** Bundle the new CrowPanel template. Write
+`thing.setup_v` and `thing.setup_ack` in one `SET_CONFIG` as steps finish and
+read them back from page 1. Read page 7 for the values of the declared
+`config_keys` and render the `panel` and `sen6x` sections as generic forms.
+Send an action key only from an explicit tap. Map a `{"min","max"}` range to
+the integer field bounds.
+
 ## Display hints and the setup manifest in the template (feat/display-hints-setup-manifest)
 
 **Every board template changes, `desc` moves and `dict` does not.** No
@@ -85,8 +197,7 @@ must be reflashed so `GET_DESCRIPTOR` serves the new template. Part of #184.
 Resolve labels, decimals, scales and the primary column from the template
 as [decision 0003](decisions/0003-metadata-driven-apps.md) orders them, and
 build the wizard and Device settings from `firmware.setup` and
-`firmware.settings`, titled by `label` when the app has no title for the id. The firmware does not store `thing.setup_v` or
-`thing.setup_ack` and serves no page 7 yet, a later entry records them.
+`firmware.settings`, titled by `label` when the app has no title for the id. The setup record and page 7 come in the entry above.
 Mirror the three templates into stac-opensensor `templates/`.
 
 ## Clock floor and one day jump rule (fix/164-173-clock-rule, issues #164 and #173)
@@ -285,7 +396,7 @@ mobile refactor (opensensor-space-mobile #219) derives labels from the
 column `cf:standard_name` and UCUM unit, and from the `opensensor:property`
 URI where a column has no `cf:standard_name`, so `pm4_mass_ug_m3` reads as
 PM4 from `pm4_mass_concentration`. Read the new columns by name when it
-opens a CrowPanel file. Do not expect a STAC sidecar next to a CrowPanel file. Nothing changes for CoreS3 or Waveshare.
+opens a CrowPanel file. This release wrote no STAC sidecar next to a CrowPanel file. The CrowPanel STAC sidecar entry below adds it. Nothing changes for CoreS3 or Waveshare.
 
 ## H3 from the embedded-h3-location library (feat/h3-lib-v2)
 

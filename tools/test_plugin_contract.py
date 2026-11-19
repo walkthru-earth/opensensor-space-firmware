@@ -104,9 +104,11 @@ def older_release(lock: dict) -> dict:
 
 
 def with_history(change=None):
+    """Today's CoreS3 release alone, as an ordinary release, after a made up older one."""
     def apply(root: Path) -> None:
         def edit(lock: dict) -> None:
-            lock["releases"].insert(0, older_release(lock))
+            newest = {k: v for k, v in lock["releases"][-1].items() if k != "baseline"}
+            lock["releases"] = [older_release(lock), newest]
             if change:
                 change(lock)
         edit_json(CORES3 / gate.LOCK, edit)(root)
@@ -246,6 +248,11 @@ def main() -> None:
                "a primary that is not a measurement")
         mutate(scratch, edit_json(board, lambda d: d.update(primary="pm10_atmospheric_ug_m3")), "primary differs",
                "a primary change")
+        mutate(scratch, edit_json(board, lambda d: d.pop("primary")), "no primary metric", "a board without a primary")
+        mutate(scratch, edit_json(IMU, lambda d: column(d, "core", "accel_x_g").pop("opensensor:title_i18n")),
+               "no Arabic title", "a column without an Arabic title")
+        mutate(scratch, edit_json(PMSA003, lambda d: column(d, "core", "pm1_cf1_ug_m3").update(unit="ug/m\u00b3")),
+               "not a plain ASCII UCUM code", "a superscript in a unit")
         mutate(scratch, edit_json(board, lambda d: d["setup"].reverse()), "firmware setup differs",
                "a setup reorder")
         mutate(scratch, edit_json(board, lambda d: d["settings"].pop()), "firmware settings differs",
@@ -304,8 +311,16 @@ def main() -> None:
         mutate(scratch, replace_text(CORES3 / "telemetry_fields.inc", "// FIELD(", "//  FIELD("),
                "telemetry_fields.inc is", "a comment only edit of telemetry_fields.inc")
         mutate(scratch, lambda r: (r / lock).unlink(), "missing shipped.lock", "a missing lock")
-        mutate(scratch, edit_json(lock, lambda d: d["releases"][-1]["segments"][1].update(sha256="0" * 64)),
-               "segments differ from the board manifest", "an edited segment hash")
+        def edit_newest_hash(lock: dict) -> None:
+            # A baseline release may edit only the shipped segments it lists,
+            # so edit one of those to reach the manifest check.
+            newest = lock["releases"][-1]
+            listed = {(s["module"], s["segment"]) for s in newest.get("baseline", {}).get("segments", [])}
+            index = next((i for i, s in enumerate(newest["segments"]) if (s["module"], s["segment"]) in listed), 1)
+            newest["segments"][index].update(sha256="0" * 64)
+
+        mutate(scratch, edit_json(lock, edit_newest_hash), "segments differ from the board manifest",
+               "an edited segment hash")
         mutate(scratch, edit_json(lock, lambda d: d["releases"][-1]["segments"].pop()), "do not add up",
                "a removed lock segment")
         mutate(scratch, edit_json(lock, lambda d: d["releases"][-1]["segments"].insert(

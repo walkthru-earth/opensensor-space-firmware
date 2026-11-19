@@ -50,15 +50,14 @@ board_modules::Sen63cSnapshot measuring(std::int64_t now) {
 }
 
 // Widest values a real producer writes while each key is valid. INT64
-// counters take INT64_MAX so no uptime horizon is assumed. `utc` is the
-// largest microsecond count whose nanosecond form fits INT64, 19 digits.
+// counters and the microsecond `utc` take INT64_MAX so no uptime or date
+// horizon is assumed, 19 digits.
 // `sen` is one digit. A mass is a u16 tenth below the 0xFFFF sentinel.
 // `t` is clamped to -40..80 and `rh` to 0..100 by reading_of(). `co2` is a
 // signed int16, so -32768 prints widest.
 constexpr std::int64_t kI64 = std::numeric_limits<std::int64_t>::max();
-constexpr std::int64_t kUtcUs = kI64 / 1000;
 constexpr livewidest::Widest kWidest[] = {
-    {"seq", kI64, 0.0F}, {"mono", kI64, 0.0F},  {"utc", kUtcUs, 0.0F},
+    {"seq", kI64, 0.0F}, {"mono", kI64, 0.0F},  {"utc", kI64, 0.0F},
     {"sen", 9, 0.0F},    {"m1", 0, 6553.4F},    {"m25", 0, 6553.4F},
     {"m4", 0, 6553.4F},  {"m10", 0, 6553.4F},   {"t", 0, -40.0F},
     {"rh", 0, 100.0F},   {"co2", -32768, 0.0F},

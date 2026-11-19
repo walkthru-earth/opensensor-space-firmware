@@ -17,6 +17,9 @@
       {
         "name": "gauge_status",
         "title": "Battery gauge status",
+        "opensensor:title_i18n": {
+          "ar": "حالة مقياس البطارية"
+        },
         "unit": "{code}",
         "roles": [
           "qualityInformation"
@@ -106,6 +109,9 @@
       {
         "name": "battery_soc_raw_percent",
         "title": "Battery charge, raw",
+        "opensensor:title_i18n": {
+          "ar": "شحن البطارية، خام"
+        },
         "unit": "%",
         "roles": [
           "auxiliaryInformation"
@@ -132,6 +138,9 @@
       {
         "name": "battery_charge_rate_percent_per_h",
         "title": "Battery charge rate",
+        "opensensor:title_i18n": {
+          "ar": "معدل شحن البطارية"
+        },
         "unit": "%/h",
         "roles": [
           "auxiliaryInformation"
@@ -154,6 +163,9 @@
       {
         "name": "gauge_status_flags",
         "title": "Battery gauge alert flags",
+        "opensensor:title_i18n": {
+          "ar": "أعلام تنبيه مقياس البطارية"
+        },
         "unit": "{bitmask}",
         "roles": [
           "qualityInformation"
@@ -290,6 +302,9 @@
       {
         "name": "gauge_hibernating",
         "title": "Battery gauge hibernating",
+        "opensensor:title_i18n": {
+          "ar": "مقياس البطارية في السبات"
+        },
         "unit": "{boolean}",
         "roles": [
           "auxiliaryInformation"

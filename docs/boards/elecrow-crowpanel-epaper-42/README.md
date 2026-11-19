@@ -60,6 +60,12 @@ SCL. PM values appear after about 30 s of warm up and CO2 after about 24 s.
   to keep the value, EXIT to cancel.
 - Settings are saved to NVS namespace `ospanel` 5 seconds after the last
   change. The `oscfg` and `parquet` namespaces are never touched.
+- The phone app changes the same settings with the `panel.*` and `sen6x.*`
+  keys on `GET_CONFIG` page 7, see
+  [board keys](../../shared/ble-sync-protocol.md#board-keys-page-7). A phone
+  change shows on the screen and is saved like a knob change. It does not
+  wake a sleeping screen. The phone sets Altitude to any metre, the knob
+  then steps from that value.
 
 | Row | Values | Effect |
 | --- | --- | --- |

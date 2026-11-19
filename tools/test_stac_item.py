@@ -3,7 +3,7 @@
 Builds tools/test_stac_item.cpp once per board, with that board's field and
 semantics tables, and proves six things.
 
-1. The vendored stac-opensensor fixtures are the bytes of commit 83787768
+1. The vendored stac-opensensor fixtures are the bytes of commit 07a4f21f
    (tools/fixtures/stac/SHA256SUMS).
 2. The board statistics table equals the measurement columns of the board's
    published template, with the same opensensor:valid_when gates.
@@ -63,6 +63,12 @@ BOARDS = {
                 "data_0815_5e9d0c7b31a84f62b8d47a10c3e6f295_412-487-0.rows.json",
         "example": "examples/thing=7c1e4b9a-3d52-4f86-a0b7-e9d2c5f81a46/year=2026/month=10/day=24/"
                    "data_0815_5e9d0c7b31a84f62b8d47a10c3e6f295_412-487-0.json",
+    },
+    "crowpanel": {
+        "rows": "fixtures/thing=b4d9e2a7-5c31-4f08-9e6a-1a7c3f2d8e54/"
+                "data_0900_c81d4e2f9a3b47d6b0e5f1a2c7d93e48_1-90-0.rows.json",
+        "example": "examples/thing=b4d9e2a7-5c31-4f08-9e6a-1a7c3f2d8e54/year=2026/month=11/day=14/"
+                   "data_0900_c81d4e2f9a3b47d6b0e5f1a2c7d93e48_1-90-0.json",
     },
 }
 
@@ -561,8 +567,8 @@ def main() -> None:
     registry_proofs()
     logger_sidecar_proofs()
     cases = json.loads((FIXTURES / "cases.json").read_text())
-    require(cases["canonical_sha256"] == "98583cdb3c5b625f0d998e4650ee3a303c2ab4addd53f9486820c641182b9090",
-            "cases.json is not from canonical.mjs at 83787768")
+    require(cases["canonical_sha256"] == "3c9b7dda502aa0785a72ce09a259a7f9dec5be880db2005e79793e3f7c304d22",
+            "cases.json is not from canonical.mjs at 07a4f21f")
     require(cases["h3_js"] == "4.5.0", "cases.json is not from h3-js 4.5.0")
     comparator_proofs(json.loads((FIXTURES / BOARDS["cores3"]["example"]).read_text()))
     validators = schema_validators()

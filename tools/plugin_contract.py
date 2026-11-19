@@ -434,6 +434,10 @@ def cross_rules(label: str, columns: list[Column], board: Board, cap: int) -> No
         require(derived is None or set(derived["from"]) <= known, f"{c.name}: derived names an unknown column")
         require((derived is not None) == (c.spec["roles"] == ["modelResult"]), f"{c.name}: derived and modelResult")
         require(c.firmware["type"] == "Float" or c.firmware["decimals"] == 0, f"{c.name}: decimals on a non Float")
+        # UCUM codes are plain ASCII, m3/m3 and not a superscript. Apps
+        # render the exponents themselves.
+        unit = c.spec.get("unit", "")
+        require(all("!" <= ch <= "~" for ch in unit), f"{c.name}: unit {unit!r} is not a plain ASCII UCUM code")
     for name in board.manifest.get("class_subsets", {}):
         require(name in known, f"{label}: class_subsets names unknown column {name}")
     for c in columns:
@@ -670,6 +674,12 @@ def check_lock(root: Path, board: Board, raw: bytes, columns: list[Column], rows
 
 def check_board(root: Path, board: Board, columns: list[Column], checks: dict, base_lock: BaseLock) -> dict:
     label = board.manifest["board"]
+    # A shipped board names its main metric and labels every column in
+    # English and Arabic, so the app never falls back to a column name.
+    require(board.manifest.get("primary") is not None, f"{label}: no primary metric")
+    for c in columns:
+        require(bool(c.spec.get("title")), f"{c.name}: no title")
+        require(bool(c.spec.get("opensensor:title_i18n", {}).get("ar")), f"{c.name}: no Arabic title")
     directory = board.directory
     raw = (directory / "telemetry_fields.inc").read_bytes()
     have = inc_rows(raw.decode("utf-8"), "FIELD")

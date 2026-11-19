@@ -63,6 +63,61 @@ std::string_view copy_into(std::span<char> buf, std::string_view s) {
                                  static_cast<int>(s.size()), s.data()));
 }
 
+static constexpr std::array<std::string_view, 2> kThemeKeys{"light", "dark"};
+static constexpr std::array<std::string_view, 4> kRefreshKeys{"10", "30", "60",
+                                                              "300"};
+static constexpr std::array<std::string_view, 2> kStartKeys{"dashboard",
+                                                            "last_viewed"};
+static constexpr std::array<std::string_view, 4> kSleepKeys{"0", "600", "1800",
+                                                            "3600"};
+
+// The index of value in names, as the enum it names.
+template <typename E, std::size_t N>
+[[nodiscard]] std::optional<E>
+choice_of(const std::array<std::string_view, N> &names,
+          std::string_view value) {
+  const auto it = std::ranges::find(names, value);
+  if (it == names.end())
+    return std::nullopt;
+  return static_cast<E>(it - names.begin());
+}
+
+template <typename E, std::size_t N>
+[[nodiscard]] std::string_view
+name_of(const std::array<std::string_view, N> &names, E e) {
+  const auto i = std::to_underlying(e);
+  return i < N ? names[i] : names[0];
+}
+
+[[nodiscard]] std::optional<bool> boolean_of(std::string_view value) {
+  if (value == "1" || value == "true")
+    return true;
+  if (value == "0" || value == "false")
+    return false;
+  return std::nullopt;
+}
+
+// A plain decimal, an optional minus and 1 to 5 digits, within lo to hi.
+[[nodiscard]] std::optional<std::int32_t>
+integer_of(std::string_view value, std::int32_t lo, std::int32_t hi) {
+  const bool negative = value.starts_with('-');
+  if (negative)
+    value.remove_prefix(1);
+  if (value.empty() || value.size() > 5)
+    return std::nullopt;
+  std::int32_t n = 0;
+  for (const char c : value) {
+    if (c < '0' || c > '9')
+      return std::nullopt;
+    n = n * 10 + (c - '0');
+  }
+  if (negative)
+    n = -n;
+  if (n < lo || n > hi)
+    return std::nullopt;
+  return n;
+}
+
 } // namespace
 
 std::uint32_t refresh_seconds(const Settings &s) {
@@ -130,6 +185,112 @@ Settings decode(std::span<const std::uint8_t> blob) {
   if (has(11) && blob[10] <= std::to_underlying(Theme::Dark))
     s.theme = static_cast<Theme>(blob[10]);
   return s;
+}
+
+std::expected<void, PhoneKeyError>
+set_phone_key(PhoneDraft &d, std::string_view key, std::string_view value) {
+  const auto set =
+      [](auto &field,
+         const auto &parsed) -> std::expected<void, PhoneKeyError> {
+    if (!parsed)
+      return std::unexpected(PhoneKeyError::Value);
+    field = *parsed;
+    return {};
+  };
+  if (key == "panel.theme")
+    return set(d.theme, choice_of<Theme>(kThemeKeys, value));
+  if (key == "panel.refresh_s")
+    return set(d.refresh, choice_of<RefreshEvery>(kRefreshKeys, value));
+  if (key == "panel.start_page")
+    return set(d.start_page, choice_of<StartPage>(kStartKeys, value));
+  if (key == "panel.sleep_s")
+    return set(d.sleep_after, choice_of<SleepAfter>(kSleepKeys, value));
+  if (key == "sen6x.co2_asc")
+    return set(d.co2_asc, boolean_of(value));
+  if (key == "sen6x.altitude_m") {
+    const auto n = integer_of(value, 0, kAltitudeMaxM);
+    return set(d.altitude_m,
+               n ? std::optional<std::uint16_t>(static_cast<std::uint16_t>(*n))
+                 : std::nullopt);
+  }
+  if (key == "sen6x.temp_offset_dc") {
+    const auto n = integer_of(value, kTempOffsetMinDc, kTempOffsetMaxDc);
+    return set(d.temp_offset_dc,
+               n ? std::optional<std::int16_t>(static_cast<std::int16_t>(*n))
+                 : std::nullopt);
+  }
+  if (key == "sen6x.fan_clean") {
+    const auto start = boolean_of(value);
+    if (!start)
+      return std::unexpected(PhoneKeyError::Value);
+    d.fan_clean = d.fan_clean || *start;
+    return {};
+  }
+  return std::unexpected(PhoneKeyError::Unknown);
+}
+
+void merge_phone_draft(PhoneDraft &into, const PhoneDraft &later) {
+  const auto take = [](auto &field, const auto &value) {
+    if (value)
+      field = value;
+  };
+  take(into.theme, later.theme);
+  take(into.refresh, later.refresh);
+  take(into.start_page, later.start_page);
+  take(into.sleep_after, later.sleep_after);
+  take(into.co2_asc, later.co2_asc);
+  take(into.altitude_m, later.altitude_m);
+  take(into.temp_offset_dc, later.temp_offset_dc);
+  into.fan_clean = into.fan_clean || later.fan_clean;
+}
+
+void apply_phone_draft(Settings &s, const PhoneDraft &d) {
+  if (d.theme)
+    s.theme = *d.theme;
+  if (d.refresh)
+    s.refresh = *d.refresh;
+  if (d.start_page)
+    s.start_page = *d.start_page;
+  if (d.sleep_after)
+    s.sleep_after = *d.sleep_after;
+  if (d.co2_asc)
+    s.co2_asc = *d.co2_asc;
+  if (d.altitude_m)
+    s.altitude_m = *d.altitude_m;
+  if (d.temp_offset_dc)
+    s.temp_offset_dc = *d.temp_offset_dc;
+}
+
+void apply_phone_draft(Settings &s, const PhoneDraft &d, std::uint8_t shown) {
+  apply_phone_draft(s, d);
+  if (d.start_page == StartPage::LastViewed && shown < kPageCount)
+    s.last_page = shown;
+}
+
+std::size_t phone_page(std::span<char> out, const Settings &s) {
+  if (out.empty())
+    return 0;
+  const auto theme = name_of(kThemeKeys, s.theme);
+  const auto refresh = name_of(kRefreshKeys, s.refresh);
+  const auto start = name_of(kStartKeys, s.start_page);
+  const auto sleep = name_of(kSleepKeys, s.sleep_after);
+  const int n =
+      std::snprintf(out.data(), out.size(),
+                    "{\"panel\":{\"theme\":\"%.*s\",\"refresh_s\":\"%.*s\","
+                    "\"start_page\":\"%.*s\",\"sleep_s\":\"%.*s\"},"
+                    "\"sen6x\":{\"co2_asc\":%s,\"altitude_m\":%u,"
+                    "\"temp_offset_dc\":%d}}",
+                    static_cast<int>(theme.size()), theme.data(),
+                    static_cast<int>(refresh.size()), refresh.data(),
+                    static_cast<int>(start.size()), start.data(),
+                    static_cast<int>(sleep.size()), sleep.data(),
+                    s.co2_asc ? "true" : "false", unsigned{s.altitude_m},
+                    int{s.temp_offset_dc});
+  if (n <= 0 || static_cast<std::size_t>(n) >= out.size()) {
+    out[0] = '\0';
+    return 0;
+  }
+  return static_cast<std::size_t>(n);
 }
 
 Effect popup_input(PopupState &p, Settings &s, const SettingsInfo &board,

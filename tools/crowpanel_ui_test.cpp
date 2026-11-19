@@ -1372,6 +1372,142 @@ void test_theme() {
   }
 }
 
+void test_phone_keys() {
+  // Every key the board declares takes one good value and sets the draft.
+  for (const auto key : kPhoneKeys) {
+    const std::string_view good =
+        key == "panel.theme"                                 ? "dark"
+        : key == "panel.start_page"                          ? "last_viewed"
+        : key == "panel.refresh_s"                           ? "60"
+        : key == "panel.sleep_s"                             ? "600"
+        : key == "sen6x.co2_asc" || key == "sen6x.fan_clean" ? "true"
+                                                             : "0";
+    PhoneDraft d;
+    CHECK(set_phone_key(d, key, good).has_value());
+    CHECK(!(d == PhoneDraft{}));
+  }
+
+  PhoneDraft d;
+  CHECK(set_phone_key(d, "panel.theme", "dark").has_value());
+  CHECK(set_phone_key(d, "panel.refresh_s", "300").has_value());
+  CHECK(set_phone_key(d, "panel.start_page", "last_viewed").has_value());
+  CHECK(set_phone_key(d, "panel.sleep_s", "3600").has_value());
+  CHECK(set_phone_key(d, "sen6x.co2_asc", "false").has_value());
+  CHECK(set_phone_key(d, "sen6x.altitude_m", "3000").has_value());
+  CHECK(set_phone_key(d, "sen6x.temp_offset_dc", "-100").has_value());
+  CHECK(!d.fan_clean);
+  CHECK(set_phone_key(d, "sen6x.fan_clean", "0").has_value());
+  CHECK(!d.fan_clean);
+  CHECK(set_phone_key(d, "sen6x.fan_clean", "1").has_value());
+  CHECK(d.fan_clean);
+  // A later 0 does not cancel a cleaning already asked for.
+  CHECK(set_phone_key(d, "sen6x.fan_clean", "false").has_value());
+  CHECK(d.fan_clean);
+
+  // A refusal leaves the draft as it was.
+  const PhoneDraft before = d;
+  const auto refused = [&](std::string_view key, std::string_view value,
+                           PhoneKeyError want) {
+    const auto r = set_phone_key(d, key, value);
+    CHECK(!r.has_value() && r.error() == want);
+    CHECK(d == before);
+  };
+  refused("panel.theme", "Dark", PhoneKeyError::Value);
+  refused("panel.theme", "", PhoneKeyError::Value);
+  refused("panel.refresh_s", "20", PhoneKeyError::Value);
+  refused("panel.refresh_s", "010", PhoneKeyError::Value);
+  refused("panel.start_page", "settings", PhoneKeyError::Value);
+  refused("panel.sleep_s", "off", PhoneKeyError::Value);
+  refused("sen6x.co2_asc", "yes", PhoneKeyError::Value);
+  refused("sen6x.co2_asc", "TRUE", PhoneKeyError::Value);
+  refused("sen6x.altitude_m", "3001", PhoneKeyError::Value);
+  refused("sen6x.altitude_m", "-1", PhoneKeyError::Value);
+  refused("sen6x.altitude_m", "1e3", PhoneKeyError::Value);
+  refused("sen6x.altitude_m", "", PhoneKeyError::Value);
+  refused("sen6x.altitude_m", "-", PhoneKeyError::Value);
+  refused("sen6x.altitude_m", "123456", PhoneKeyError::Value);
+  refused("sen6x.temp_offset_dc", "51", PhoneKeyError::Value);
+  refused("sen6x.temp_offset_dc", "-101", PhoneKeyError::Value);
+  refused("sen6x.temp_offset_dc", "+5", PhoneKeyError::Value);
+  refused("sen6x.fan_clean", "2", PhoneKeyError::Value);
+  refused("panel.contrast", "1", PhoneKeyError::Unknown);
+  refused("sen6x", "1", PhoneKeyError::Unknown);
+  refused("", "", PhoneKeyError::Unknown);
+
+  Settings s;
+  apply_phone_draft(s, PhoneDraft{});
+  CHECK(s == Settings{});
+  apply_phone_draft(s, d);
+  CHECK(s.theme == Theme::Dark);
+  CHECK(s.refresh == RefreshEvery::M5);
+  CHECK(s.start_page == StartPage::LastViewed);
+  CHECK(s.sleep_after == SleepAfter::H1);
+  CHECK(!s.co2_asc);
+  CHECK(s.altitude_m == 3000);
+  CHECK(s.temp_offset_dc == -100);
+  // The draft's settings survive the NVS blob.
+  CHECK(decode(encode(s)) == s);
+  // On the screen's own settings, Last viewed from the phone records the
+  // shown page as the knob does, and Dashboard leaves last_page alone.
+  {
+    Settings shown;
+    PhoneDraft last;
+    CHECK(set_phone_key(last, "panel.start_page", "last_viewed").has_value());
+    apply_phone_draft(shown, last, 2);
+    CHECK(shown.start_page == StartPage::LastViewed && shown.last_page == 2);
+    CHECK(start_page(shown) == 2);
+    PhoneDraft dash;
+    CHECK(set_phone_key(dash, "panel.start_page", "dashboard").has_value());
+    apply_phone_draft(shown, dash, 3);
+    CHECK(shown.start_page == StartPage::Dashboard && shown.last_page == 2);
+    PhoneDraft other;
+    CHECK(set_phone_key(other, "panel.theme", "dark").has_value());
+    apply_phone_draft(shown, other, 4);
+    CHECK(shown.last_page == 2);
+    apply_phone_draft(shown, last, kPageCount);
+    CHECK(shown.last_page == 2);
+  }
+
+  // Two requests the UI task has not taken yet merge into one.
+  PhoneDraft first;
+  CHECK(set_phone_key(first, "panel.theme", "dark").has_value());
+  CHECK(set_phone_key(first, "sen6x.altitude_m", "100").has_value());
+  CHECK(set_phone_key(first, "sen6x.fan_clean", "1").has_value());
+  PhoneDraft second;
+  CHECK(set_phone_key(second, "sen6x.altitude_m", "250").has_value());
+  CHECK(set_phone_key(second, "sen6x.co2_asc", "0").has_value());
+  merge_phone_draft(first, second);
+  CHECK(first.theme == Theme::Dark);
+  CHECK(first.altitude_m == 250);
+  CHECK(first.co2_asc == false);
+  CHECK(first.fan_clean);
+  CHECK(!first.refresh && !first.start_page && !first.sleep_after &&
+        !first.temp_offset_dc);
+  PhoneDraft none;
+  merge_phone_draft(none, PhoneDraft{});
+  CHECK(none == PhoneDraft{});
+
+  std::array<char, 256> page{};
+  const std::size_t n = phone_page(page, Settings{});
+  CHECK(std::string_view(page.data(), n) ==
+        "{\"panel\":{\"theme\":\"light\",\"refresh_s\":\"10\","
+        "\"start_page\":\"dashboard\",\"sleep_s\":\"0\"},"
+        "\"sen6x\":{\"co2_asc\":true,\"altitude_m\":0,"
+        "\"temp_offset_dc\":0}}");
+  const std::size_t m = phone_page(page, s);
+  CHECK(std::string_view(page.data(), m) ==
+        "{\"panel\":{\"theme\":\"dark\",\"refresh_s\":\"300\","
+        "\"start_page\":\"last_viewed\",\"sleep_s\":\"3600\"},"
+        "\"sen6x\":{\"co2_asc\":false,\"altitude_m\":3000,"
+        "\"temp_offset_dc\":-100}}");
+  // A buffer one byte short gives 0 and an empty string.
+  std::array<char, 256> small{};
+  CHECK(phone_page(std::span<char>(small.data(), m), s) == 0);
+  CHECK(small[0] == '\0');
+  CHECK(phone_page(std::span<char>(small.data(), m + 1), s) == m);
+  CHECK(phone_page(std::span<char>{}, s) == 0);
+}
+
 namespace order = opensensor::crowpanel::restore_order;
 
 constexpr order::BootKey ring_boot(int age, std::uint64_t key = 0,
@@ -1530,6 +1666,7 @@ int main() {
   test_ui_handle();
   test_render_settings_and_sleep();
   test_theme();
+  test_phone_keys();
   test_restore_order();
   std::printf("crowpanel ui, %d checks passed\n", g_checks);
   return 0;

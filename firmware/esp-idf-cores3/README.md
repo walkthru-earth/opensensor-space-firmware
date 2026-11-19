@@ -2,7 +2,7 @@
 
 The current source is a pure **ESP-IDF 6.1** application, firmware identity
 **`idf-cores3-parquet-v6.33`**, with an **81-column** CoreS3 schema
-`cores3-telemetry-v6` and dictionary `cores3-telemetry-v7`. The original 77
+`cores3-telemetry-v6` and dictionary `cores3-telemetry-v8`. The original 77
 columns retain their order and types. Four nullable location fields follow,
 `h3_cell_id`, `h3_resolution`, `location_source` and the WKB Point `geometry`.
 Since v6.12 the two UTC instants are `event_time_utc_us` and
@@ -10,7 +10,7 @@ Since v6.12 the two UTC instants are `event_time_utc_us` and
 and every leaf carries Parquet `field_id` = its 1-based dictionary position
 (see [mobile migration](../../docs/shared/mobile-migration.md)). Each `FIELD`
 row ends with its LIVE key and its LIVE float decimals, so the dictionary
-SHA-256 `3b4d8500…` covers the LIVE key map and precision. `bringup/main.cpp` owns board setup, sensors, display and native
+SHA-256 `f4f81218…` covers the LIVE key map and precision. `bringup/main.cpp` owns board setup, sensors, display and native
 UART; `bringup/telemetry_logger.cpp` supplies the OSLogger adapter. M5Unified
 **0.3.0** and M5GFX **0.3.0** are native IDF components; there are no Arduino
 APIs or Arduino component in the application. Location uses the optional shared
