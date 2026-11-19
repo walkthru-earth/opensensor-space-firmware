@@ -1,0 +1,118 @@
+{
+  "$schema": "https://walkthru-earth.github.io/stac-opensensor/v0.1.0/registry.json",
+  "type": "OpenSensorScaleRegistry",
+  "scales": {
+    "who-2021-pm25": {
+      "source": "https://www.who.int/publications/i/item/9789240034228",
+      "unit": "ug/m3",
+      "period": "P1D",
+      "guideline": 15,
+      "steps": [
+        {
+          "upper": 15,
+          "label": {
+            "en": "Guideline",
+            "ar": "الحد الإرشادي"
+          },
+          "color_hint": "C6EBA8"
+        },
+        {
+          "upper": 25,
+          "label": {
+            "en": "Interim target 4",
+            "ar": "الهدف المرحلي 4"
+          },
+          "color_hint": "F5D75E"
+        },
+        {
+          "upper": 37.5,
+          "label": {
+            "en": "Interim target 3",
+            "ar": "الهدف المرحلي 3"
+          },
+          "color_hint": "F2A14A"
+        },
+        {
+          "upper": 50,
+          "label": {
+            "en": "Interim target 2",
+            "ar": "الهدف المرحلي 2"
+          },
+          "color_hint": "DC5A4A"
+        },
+        {
+          "upper": 75,
+          "label": {
+            "en": "Interim target 1",
+            "ar": "الهدف المرحلي 1"
+          },
+          "color_hint": "9A3F8E"
+        },
+        {
+          "upper": null,
+          "label": {
+            "en": "Above interim target 1",
+            "ar": "فوق الهدف المرحلي 1"
+          },
+          "color_hint": "5C1A33"
+        }
+      ]
+    },
+    "who-2021-pm10": {
+      "source": "https://www.who.int/publications/i/item/9789240034228",
+      "unit": "ug/m3",
+      "period": "P1D",
+      "guideline": 45,
+      "steps": [
+        {
+          "upper": 45,
+          "label": {
+            "en": "Guideline",
+            "ar": "الحد الإرشادي"
+          },
+          "color_hint": "C6EBA8"
+        },
+        {
+          "upper": 50,
+          "label": {
+            "en": "Interim target 4",
+            "ar": "الهدف المرحلي 4"
+          },
+          "color_hint": "F5D75E"
+        },
+        {
+          "upper": 75,
+          "label": {
+            "en": "Interim target 3",
+            "ar": "الهدف المرحلي 3"
+          },
+          "color_hint": "F2A14A"
+        },
+        {
+          "upper": 100,
+          "label": {
+            "en": "Interim target 2",
+            "ar": "الهدف المرحلي 2"
+          },
+          "color_hint": "DC5A4A"
+        },
+        {
+          "upper": 150,
+          "label": {
+            "en": "Interim target 1",
+            "ar": "الهدف المرحلي 1"
+          },
+          "color_hint": "9A3F8E"
+        },
+        {
+          "upper": null,
+          "label": {
+            "en": "Above interim target 1",
+            "ar": "فوق الهدف المرحلي 1"
+          },
+          "color_hint": "5C1A33"
+        }
+      ]
+    }
+  }
+}

@@ -13,12 +13,14 @@
     "core": [
       {
         "name": "touch_points",
+        "title": "Touch points",
         "unit": "{count}",
         "roles": [
           "auxiliaryInformation"
         ],
         "opensensor:property": "urn:walkthru-earth:property:touch_point_count",
         "opensensor:aggregate": "maximum",
+        "opensensor:group": "device",
         "firmware": {
           "type": "Int32",
           "unit": "count",
@@ -29,6 +31,7 @@
       },
       {
         "name": "touch_x_px",
+        "title": "Touch X",
         "unit": "{pixel}",
         "roles": [
           "auxiliaryInformation"
@@ -43,6 +46,7 @@
           0,
           319
         ],
+        "opensensor:group": "device",
         "firmware": {
           "type": "Int32",
           "unit": "pixel",
@@ -53,6 +57,7 @@
       },
       {
         "name": "touch_y_px",
+        "title": "Touch Y",
         "unit": "{pixel}",
         "roles": [
           "auxiliaryInformation"
@@ -67,6 +72,7 @@
           0,
           239
         ],
+        "opensensor:group": "device",
         "firmware": {
           "type": "Int32",
           "unit": "pixel",

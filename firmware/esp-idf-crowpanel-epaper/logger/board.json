@@ -14,6 +14,49 @@
     "relative humidity",
     "low-cost sensor"
   ],
+  "primary": "pm25_mass_ug_m3",
+  "setup": [
+    {
+      "id": "name",
+      "req": false
+    },
+    {
+      "id": "mobility",
+      "req": false
+    },
+    {
+      "id": "location",
+      "req": true
+    },
+    {
+      "id": "site",
+      "req": false
+    },
+    {
+      "id": "wifi",
+      "req": false
+    }
+  ],
+  "settings": [
+    {
+      "id": "location"
+    },
+    {
+      "id": "site"
+    },
+    {
+      "id": "wifi"
+    },
+    {
+      "id": "pairing"
+    },
+    {
+      "id": "lan"
+    },
+    {
+      "id": "bonds"
+    }
+  ],
   "segments": [
     {
       "module": "system",
