@@ -1,0 +1,5 @@
+# Logger variant only, appended after ../sdkconfig.defaults. The diagnostic
+# variant does not build the logger component, so it cannot name its symbols.
+# Mount the internal flash volume at /flash for cardless logging, decision
+# record 0004. The partition table stays as it is.
+CONFIG_OS_LOGGER_FLASH_FALLBACK=y

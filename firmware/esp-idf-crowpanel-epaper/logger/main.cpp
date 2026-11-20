@@ -20,6 +20,7 @@
 #include <esp_psram.h>
 #include <esp_timer.h>
 #include <expected>
+#include <flash_volume.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <freertos/semphr.h>
@@ -34,6 +35,7 @@
 #include <os_sen6x.h>
 #include <os_stac_item.h>
 #include <power.h>
+#include <sdkconfig.h>
 #include <span>
 #include <string_view>
 #include <utility>
@@ -1148,6 +1150,20 @@ void update_indicator(std::int64_t now) {
     previous = on;
   }
 }
+
+// Mounts the internal flash volume (decision record 0004) and prints its
+// OS FLASH line. Returns the fallback archive root, or nullptr when the
+// volume is off or the build leaves it out.
+const char *mount_flash_fallback() {
+#if CONFIG_OS_LOGGER_FLASH_FALLBACK
+  std::array<char, opensensor::storage::kFlashLineBytes> line{};
+  const auto volume = opensensor::storage::mount_flash_volume(line);
+  oslog.printf("%s", line.data());
+  return volume ? opensensor::storage::kFlashArchiveDirectory : nullptr;
+#else
+  return nullptr;
+#endif
+}
 } // namespace
 
 bool init_board() {
@@ -1204,12 +1220,14 @@ bool init_board() {
       mounted, static_cast<unsigned long long>(board::card_bytes()),
       board::sd_buffer_reserved(), board::kSdMosi, board::kSdMiso,
       board::kSdClk, board::kSdCs, board::kSdPower);
+  oslogger::Config logger_config = kLoggerConfig;
+  logger_config.fallback_directory = mount_flash_fallback();
   // Earlier boots' rows seed the charts. Before the storage worker exists,
   // so nothing else touches the card, and before the UI task owns history.
   if (mounted && history)
     opensensor::crowpanel::restore_history(*history,
                                            kLoggerConfig.output_directory);
-  logging = oslogger::begin(kLoggerConfig, kHooks, mounted);
+  logging = oslogger::begin(logger_config, kHooks, mounted);
   // The phone keys are applied by the UI task, so they are registered only
   // once it runs, and before start_links so no link sees them change.
   const bool ui_ok = display_ok && start_ui_task();

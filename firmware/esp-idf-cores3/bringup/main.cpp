@@ -21,6 +21,7 @@
 #include <esp_timer.h>
 #include <esp_vfs_fat.h>
 #include <fat_volume.h>
+#include <flash_volume.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <nvs_flash.h>
@@ -338,6 +339,20 @@ esp_err_t mount_sd() {
   const esp_vfs_fat_sdmmc_mount_config_t mount =
       opensensor::storage::archive_mount_config();
   return esp_vfs_fat_sdspi_mount("/sd", &host, &device, &mount, &sd_card);
+}
+
+// Mounts the internal flash volume (decision record 0004) and prints its
+// OS FLASH line. Returns the fallback archive root, or nullptr when the
+// volume is off or the build leaves it out.
+static const char *mount_flash_fallback() {
+#if CONFIG_OS_LOGGER_FLASH_FALLBACK
+  std::array<char, opensensor::storage::kFlashLineBytes> line{};
+  const auto volume = opensensor::storage::mount_flash_volume(line);
+  oslog.printf("%s", line.data());
+  return volume ? opensensor::storage::kFlashArchiveDirectory : nullptr;
+#else
+  return nullptr;
+#endif
 }
 
 bool report_sd() {
@@ -931,9 +946,10 @@ static void board_begin() {
   report_rtc_imu_touch();
   sd_mounted = report_sd();
   report_dma_memory("sd-mounted");
+  const char *fallback_directory = mount_flash_fallback();
   start_pms();
   // os_logger prints the cause. The device page shows "not started".
-  if (!telemetry::begin_logger(sd_mounted))
+  if (!telemetry::begin_logger(sd_mounted, fallback_directory))
     oslog.println("DIAG logger status=start_failed logging=false");
   if (kEnableBle) {
     ble_started = telemetry::start_links(M5.getDisplayCount() > 0);

@@ -16,3 +16,6 @@ CONFIG_OS_PM_DFS_MAX_MHZ=240
 # H3 allocates through the os_h3_ PSRAM hooks in firmware/common/location
 # (src/os_h3_alloc.cpp), which fail the build if this differs.
 CONFIG_EMBEDDED_H3_LOCATION_ALLOC_PREFIX="os_h3_"
+# Mount the internal flash volume at /flash for cardless logging, decision
+# record 0004. The partition table stays as it is.
+CONFIG_OS_LOGGER_FLASH_FALLBACK=y
