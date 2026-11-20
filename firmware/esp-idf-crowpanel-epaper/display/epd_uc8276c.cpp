@@ -1,7 +1,6 @@
 // UC8276C init values and the GC and DU waveforms come from Elecrow's v1.2
 // demo driver as documented by
-// ESPBoards/esphome-lvgl-crowpanel-epaper-5.79-4.2, by way of the bible-eink
-// epd_ssd1683 component.
+// ESPBoards/esphome-lvgl-crowpanel-epaper-5.79-4.2.
 //
 // Controller power states, tracked in `state_`.
 //   Deep     deep sleep, registers and RAM lost, the way out is a RST pulse
