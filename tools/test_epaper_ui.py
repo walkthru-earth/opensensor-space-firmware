@@ -31,6 +31,10 @@ COMPONENT = ROOT / "firmware/common/epaper_ui"
 # equal to the host 400 x 300 profile.
 LOGGER = ROOT / "firmware/esp-idf-crowpanel-epaper/logger"
 BOARD_DISPLAY = ROOT / "firmware/esp-idf-crowpanel-epaper/display"
+# The ePaper-3.97 profile comes as display/display_profile.h from its board
+# root, which also holds the board_io.h it reads the IMU mount from. The test
+# holds it to the host 800 x 480 profile.
+BOARD_397 = ROOT / "firmware/esp-idf-waveshare-epaper-397"
 PREVIEW = ROOT / "artifacts/epaper-ui-preview"
 # Every source the component's CMakeLists.txt builds.
 SOURCES = sorted((COMPONENT / "src").glob("*.cpp"))
@@ -79,7 +83,7 @@ GOLDEN = {
 def compile_one(main: Path, out: Path, sanitize: bool) -> None:
     command = ["clang++", CXX_STD, "-Wall", "-Wextra", "-Werror",
                "-Wshadow", "-Wconversion", "-Wno-sign-conversion",
-               f"-I{COMPONENT / 'include'}", f"-I{LOGGER}", f"-I{BOARD_DISPLAY}", str(main), *[str(s) for s in SOURCES],
+               f"-I{COMPONENT / 'include'}", f"-I{LOGGER}", f"-I{BOARD_DISPLAY}", f"-I{BOARD_397}", str(main), *[str(s) for s in SOURCES],
                "-o", str(out)]
     if sanitize:
         command += ["-g", "-fsanitize=address,undefined",
