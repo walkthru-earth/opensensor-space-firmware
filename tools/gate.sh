@@ -74,9 +74,9 @@ tasks=(
   "ltr553-test"
   "max17048-test"
   "sen6x-test"
-  # CrowPanel e-paper dashboard on host and its baked fonts
-  "crowpanel-ui-test"
-  "crowpanel-fonts-test"
+  # Shared e-paper UI on host, CrowPanel goldens, and its baked fonts
+  "epaper-ui-test"
+  "epaper-fonts-test"
   # Shared text, Arabic shaping and bidi, strings and baked Arabic fonts
   "text-test"
   "text-fonts-test"

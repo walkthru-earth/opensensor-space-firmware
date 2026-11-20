@@ -1,7 +1,8 @@
 #pragma once
 
 // Driver for the 400x300 UC8276C panel on the ELECROW CrowPanel ESP32-S3
-// 4.2 inch board v1.2. ESP-IDF only, the rest of display/ is host portable.
+// 4.2 inch board v1.2. ESP-IDF only. The pages and the refresh policy live
+// in firmware/common/epaper_ui, this driver meets its epd::Panel concept.
 //
 // Board v1.0 has an SSD1683 instead. This driver detects it and refuses it,
 // no v1.0 board has been checked here.
@@ -13,7 +14,7 @@
 #include <expected>
 #include <span>
 
-#include "canvas.h"
+#include "epaper_ui/panel.h"
 
 namespace opensensor::epd {
 
@@ -27,27 +28,13 @@ struct Pins {
   int busy = 48; // Active low on the UC8276C.
 };
 
-enum class Mode : std::uint8_t { Full, Partial };
+inline constexpr int kWidth = 400;
+inline constexpr int kHeight = 300;
+// The frame in the epaper_ui convention, 50 bytes per row.
+inline constexpr std::size_t kFrameBytes =
+    static_cast<std::size_t>(kWidth / 8) * kHeight;
 
-enum class [[nodiscard]] Error : std::uint8_t {
-  NotReady,              // begin() has not succeeded.
-  AlreadyStarted,        // begin() ran before.
-  Gpio,                  // A pin could not be configured.
-  SpiBus,                // spi_bus_initialize failed, the host may be taken.
-  SpiDevice,             // spi_bus_add_device failed.
-  NoMemory,              // No DMA capable internal RAM for the two frames.
-  UnsupportedController, // BUSY idles low, an SSD1683 board v1.0.
-  BusyTimeout,           // The controller did not release BUSY in time.
-  Spi,                   // A transfer failed.
-};
-
-[[nodiscard]] const char *to_string(Error e);
-
-// The panel frame, the same layout as ui::Canvas. 1 bit per pixel, MSB is
-// the left pixel, a set bit is black.
-using Frame = std::span<const std::uint8_t, ui::kFrameBytes>;
-
-class Panel {
+class Uc8276c {
 public:
   // Configures the pins, adds the panel to SPI2 at 10 MHz and allocates two
   // 15000 B frames in DMA capable internal RAM. Resets the panel and checks
@@ -59,8 +46,11 @@ public:
   // booster off. A partial refresh uses the DU waveform against the last
   // frame shown. The first show() after begin(), sleep() or an error is
   // full whatever `mode` says. Blocks for the refresh, up to about 4 s for
-  // a full one.
-  [[nodiscard]] std::expected<void, Error> show(Frame frame, Mode mode);
+  // a full one. The UC8276C has no fast waveform here and refreshes only
+  // the whole frame, so Fast is Unsupported and `window` must be the whole
+  // frame. A frame of another size is BadFrame.
+  [[nodiscard]] std::expected<void, Error>
+  show(std::span<const std::uint8_t> frame, Refresh mode, Rect window);
 
   // Deep sleep. The image stays on the glass, the next show() resets the
   // controller first.
@@ -69,6 +59,7 @@ public:
   [[nodiscard]] bool ready() const { return ready_; }
 
 private:
+  enum class Mode : std::uint8_t { Full, Partial };
   enum class State : std::uint8_t { Deep, Standby, On };
 
   [[nodiscard]] std::expected<void, Error> wait_idle(int timeout_ms);
@@ -93,5 +84,7 @@ private:
   bool ready_ = false;
   bool started_ = false;
 };
+
+static_assert(Panel<Uc8276c>);
 
 } // namespace opensensor::epd
