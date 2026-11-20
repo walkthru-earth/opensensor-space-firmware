@@ -193,7 +193,7 @@ OpenSensor partition table, so the NVS check passes.
 
 `pixi run stack-budget --image epaper397/logger --path` prints each task's
 deepest static call path. The UI task `os-ui` has an 8 KiB stack, the same
-as on the CrowPanel, and measures 3,344 bytes static worst case. Its logical
+as on the CrowPanel, and measures 3,408 bytes static worst case. Its logical
 frame, the panel frame, the frame on the glass (48,000 bytes each) and the
 chart history live in PSRAM. CI fails the board leg when a task or section grows past
 [tools/stack_budget.json](../../../tools/stack_budget.json).
