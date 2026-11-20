@@ -87,7 +87,10 @@ it.
 - The popup rows, their values and the sensor settings behave as on the
   CrowPanel, see
   [its keys section](../elecrow-crowpanel-epaper-42/README.md#keys-and-the-settings-popup).
-  Rotation here offers Auto as well, and Auto is the default.
+  Rotation here offers Auto as well, and Auto is the default. The Language
+  row after it switches every page between English and Egyptian Arabic in
+  the Cairo font, with a full refresh. Arabic reads right to left, numbers,
+  units and sensor names stay Latin.
 - Settings are saved to the NVS blob `ospanel/ui`, the same format as the
   CrowPanel, 5 seconds after the last change. The `oscfg` and `parquet`
   namespaces are never touched and nothing is erased.
