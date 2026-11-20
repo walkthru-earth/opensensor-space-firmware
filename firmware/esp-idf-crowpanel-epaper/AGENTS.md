@@ -33,9 +33,12 @@ Never borrow a sibling trial's settings.
   keeps only its driver (`display/epd_uc8276c.*`) and its
   `display/display_profile.h`, which must stay equal to the host 400 x 300
   profile so the golden frames are the frames it sends. A UI change goes in
-  the shared component and reaches every e-paper board.
+  the shared component and reaches every e-paper board. The UI draws in
+  English or Egyptian Arabic from `firmware/common/text`, so this board
+  lists `../common/text` in `EXTRA_COMPONENT_DIRS`.
 - The settings popup is pure UI state. The UI task
-  saves it as a versioned blob in NVS namespace `ospanel` key `ui` and hands
+  saves it as a versioned blob (version 3, with the language) in NVS
+  namespace `ospanel` key `ui` and hands
   altitude, CO2 self calibration, temperature offset and fan cleaning to the
   board task through `sensor_requests` under the feed mutex. Only the board
   task talks to the sensor. The phone keys of page 7 (`panel.*`, `sen6x.*`)

@@ -11,6 +11,7 @@ Copyright 2009 The Cairo Project Authors.
 SHA-256 `667c987182391c91f4e57a2f455b1794fb5e3ee6ca4ef3383e86bb690fa9c964`
 
 The firmware never links this file. `tools/gen_arabic_fonts.py` bakes glyph
-bitmaps from it into `../../src/os_arabic_fonts_gen.cpp`, and `pixi run
+bitmaps from it into `../../src/os_arabic_fonts_s_gen.cpp` and
+`../../src/os_arabic_fonts_l_gen.cpp`, and `pixi run
 text-fonts-test` fails when that output is stale. The bitmaps are a rendering
 of the font and stay under the OFL.

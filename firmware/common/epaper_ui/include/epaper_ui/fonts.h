@@ -4,28 +4,19 @@
 // glyph tables are static constexpr, so they stay in flash .rodata. Each set
 // lives in its own generated file, so an image links only the set its layout
 // names.
+//
+// Glyph and Font are the text component's types, so one blitter draws Inter
+// and the Arabic Cairo fonts. Each Latin font names the Arabic font of its
+// size as its fallback, the compact set the _s sizes and the large set the
+// _l sizes, and the hero font none.
 
-#include <cstdint>
-#include <span>
+#include "os_text_font.h"
 
 namespace opensensor::ui {
 
-struct Glyph {
-  std::uint32_t codepoint;
-  std::uint32_t offset; // Into Font::bits, rows MSB first, padded to a byte.
-  std::uint8_t width;
-  std::uint8_t height;
-  std::int8_t x_offset; // From the pen position.
-  std::int8_t y_offset; // Top row relative to the baseline, negative is up.
-  std::uint8_t advance;
-};
-
-struct Font {
-  std::span<const Glyph> glyphs; // Sorted by codepoint.
-  const std::uint8_t *bits = nullptr;
-  int ascent = 0;
-  int descent = 0;
-};
+using Glyph = text::Glyph;
+using Font = text::Font;
+using text::find_glyph;
 
 // The five roles the pages draw with. A layout names one set.
 struct FontSet {
@@ -35,9 +26,6 @@ struct FontSet {
   const Font &value; // Tile values.
   const Font &hero;  // Digits, '.', '-' and space only.
 };
-
-// The glyph for `cp`, or nullptr when the font lacks it.
-[[nodiscard]] const Glyph *find_glyph(const Font &font, std::uint32_t cp);
 
 namespace fonts {
 // 13, 14, 18, 28 and 64 px, for a 400 x 300 class panel.

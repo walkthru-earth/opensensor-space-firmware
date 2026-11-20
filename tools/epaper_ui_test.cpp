@@ -2,8 +2,9 @@
 // rings, chart gaps, PM2.5 bands, reading quality, navigation, the display
 // profile and refresh policy, rotation and the Presenter, the motion sensor
 // tracker, the settings blob and popup, the theme, the sleeping screen and
-// the CrowPanel's boot order of the chart history restore. Built and run by
-// tools/test_epaper_ui.py with sanitizers.
+// the CrowPanel's boot order of the chart history restore, and the Arabic
+// strings, glyphs and fit. Built and run by tools/test_epaper_ui.py with
+// sanitizers.
 
 #include <algorithm>
 #include <array>
@@ -33,6 +34,7 @@
 #include "epaper_ui/strings.h"
 #include "epaper_ui/ui_model.h"
 #include "epaper_ui_host_profiles.h"
+#include "os_text.h"
 #include "restore_order.h"
 
 using namespace opensensor::ui;
@@ -807,6 +809,7 @@ void test_settings_blob() {
   CHECK(start_page(d) == kDashboardPage);
   CHECK(d.co2_asc && d.altitude_m == 0 && d.temp_offset_dc == 0);
   CHECK(d.theme == Theme::Light && d.rotation == ScreenRotation::R0);
+  CHECK(d.language == Language::English);
   CHECK(defaults(false) == d);
   CHECK(defaults(true).rotation == ScreenRotation::Auto);
 
@@ -822,9 +825,10 @@ void test_settings_blob() {
                    .temp_offset_dc = -73,
                    .sleep_after = SleepAfter::H1,
                    .theme = Theme::Dark,
-                   .rotation = ScreenRotation::R270};
+                   .rotation = ScreenRotation::R270,
+                   .language = Language::Arabic};
   const SettingsBlob b = encode(s);
-  CHECK(b.size() == 12 && b[0] == 2 && b[10] == 1 && b[11] == 3);
+  CHECK(b.size() == 13 && b[0] == 3 && b[10] == 1 && b[11] == 3 && b[12] == 1);
   // Explicit little endian, independent of the host.
   CHECK(b[5] == (2950 & 0xFF) && b[6] == (2950 >> 8));
   CHECK(b[7] == 0xB7 && b[8] == 0xFF); // -73 as two's complement.
@@ -846,7 +850,7 @@ void test_settings_blob() {
   // Empty, a bad version and a short blob.
   CHECK(decode({}) == d);
   SettingsBlob bad = b;
-  bad[0] = 3;
+  bad[0] = 4;
   CHECK(decode(bad) == d);
   bad[0] = 0;
   CHECK(decode(bad) == d);
@@ -866,6 +870,7 @@ void test_settings_blob() {
   Settings want_old = s;
   want_old.theme = Theme::Light;
   want_old.rotation = ScreenRotation::R0;
+  want_old.language = Language::English;
   CHECK(decode(old) == want_old);
   // A version 1 blob of eleven bytes migrates. Every field stays and the
   // rotation is the board default, Auto only with a motion sensor.
@@ -873,16 +878,44 @@ void test_settings_blob() {
   v1[0] = 1;
   Settings want_v1 = s;
   want_v1.rotation = ScreenRotation::R0;
+  want_v1.language = Language::English;
   CHECK(decode(v1) == want_v1);
   want_v1.rotation = ScreenRotation::Auto;
   CHECK(decode(v1, true) == want_v1);
-  // Version 1 never had byte 11, a stray one is not read.
+  // Version 1 never had bytes 11 and 12, stray ones are not read.
   v1.push_back(2);
+  v1.push_back(1);
   want_v1.rotation = ScreenRotation::R0;
   CHECK(decode(v1) == want_v1);
-  // The migrated settings save as version 2 and read back the same.
+  // The migrated settings save as version 3 and read back the same.
+  CHECK(encode(want_v1)[0] == 3);
   CHECK(decode(encode(want_v1)) == want_v1);
-  // A longer blob reads its first twelve bytes.
+  // A version 2 blob, twelve bytes, migrates. Every field stays, rotation
+  // too, and the language is English.
+  std::vector<std::uint8_t> v2(b.begin(), b.begin() + 12);
+  v2[0] = 2;
+  Settings want_v2 = s;
+  want_v2.language = Language::English;
+  CHECK(decode(v2) == want_v2);
+  CHECK(decode(v2, true) == want_v2);
+  // Version 2 never had byte 12, a stray Arabic one is not read.
+  v2.push_back(1);
+  CHECK(decode(v2) == want_v2);
+  CHECK(decode(encode(want_v2)) == want_v2);
+  // A version 2 blob from before the theme row was set, eleven bytes, keeps
+  // its fields and gives the default rotation and English.
+  std::vector<std::uint8_t> v2_short(b.begin(), b.begin() + 11);
+  v2_short[0] = 2;
+  Settings want_v2_short = want_v2;
+  want_v2_short.rotation = ScreenRotation::R0;
+  CHECK(decode(v2_short) == want_v2_short);
+  // Both languages survive the round trip.
+  for (const Language lang : {Language::English, Language::Arabic}) {
+    Settings t{};
+    t.language = lang;
+    CHECK(decode(encode(t)).language == lang);
+  }
+  // A longer blob reads its first thirteen bytes.
   std::vector<std::uint8_t> longer(b.begin(), b.end());
   longer.push_back(0xEE);
   CHECK(decode(longer) == s);
@@ -920,6 +953,9 @@ void test_settings_blob() {
   CHECK(out_of_range(11, 5).rotation == ScreenRotation::R0);
   CHECK(out_of_range(11, 0xFF).rotation == ScreenRotation::R0);
   CHECK(out_of_range(11, 5).theme == Theme::Dark);
+  CHECK(out_of_range(12, 2).language == Language::English);
+  CHECK(out_of_range(12, 0xFF).language == Language::English);
+  CHECK(out_of_range(12, 2).rotation == ScreenRotation::R270);
   SettingsBlob hi = b;
   hi[5] = (3001 & 0xFF);
   hi[6] = (3001 >> 8);
@@ -982,12 +1018,13 @@ void test_popup_rows() {
     CHECK(p.selected == Row::Refresh);
     CHECK(s == Settings{});
   }
-  // The display rows sit together, Theme right after Start on.
+  // The display rows sit together, Theme right after Start on and Language
+  // right after Rotation.
   {
     constexpr std::array<Row, kRowCount> kOrder{
-        Row::Refresh,    Row::StartPage,   Row::Theme,  Row::Rotation,
-        Row::Wifi,       Row::FanCleaning, Row::Co2Asc, Row::Altitude,
-        Row::TempOffset, Row::SleepAfter};
+        Row::Refresh,  Row::StartPage,  Row::Theme,       Row::Rotation,
+        Row::Language, Row::Wifi,       Row::FanCleaning, Row::Co2Asc,
+        Row::Altitude, Row::TempOffset, Row::SleepAfter};
     PopupState p = opened();
     Settings s{};
     for (const Row want : kOrder) {
@@ -997,6 +1034,7 @@ void test_popup_rows() {
     CHECK(p.selected == Row::Refresh);
     CHECK(row_label(Row::Theme) == "Theme");
     CHECK(row_label(Row::Rotation) == "Rotation");
+    CHECK(row_label(Row::Language) == "Language");
   }
   // Rotation cycles 0, 90, 180, 270 without a motion sensor, and Auto first
   // with one.
@@ -2391,6 +2429,222 @@ void test_render_rotations() {
   }
 }
 
+int g_misfits = 0;
+
+// Counts and prints a string `w` pixels wide that passes `max_w`, so every
+// string too long for a frame names itself in one run.
+void check_fits(int w, int max_w, std::string_view what, const Canvas &c,
+                int line) {
+  ++g_checks;
+  if (w <= max_w)
+    return;
+  ++g_misfits;
+  std::fprintf(stderr, "FAIL line %d: %dx%d, %.*s is %d px, room for %d\n",
+               line, c.width(), c.height(), static_cast<int>(what.size()),
+               what.data(), w, max_w);
+}
+#define CHECK_FITS(w, max_w, what, c)                                          \
+  check_fits((w), (max_w), (what), (c), __LINE__)
+
+// True when `cp` is an Arabic letter, mark or presentation form, the
+// codepoints only the Cairo fallback holds.
+bool arabic(char32_t cp) {
+  return (cp >= 0x0600 && cp <= 0x06FF) || (cp >= 0xFB50 && cp <= 0xFDFF) ||
+         (cp >= 0xFE70 && cp <= 0xFEFF);
+}
+
+void test_arabic_strings_and_glyphs() {
+  // Every id has both languages, and the Arabic is not the English copied.
+  int same = 0;
+  for (std::size_t i = 0; i < opensensor::text::kStringCount; ++i) {
+    const auto id = static_cast<Str>(i);
+    CHECK(!opensensor::text::text(opensensor::text::Lang::En, id).empty());
+    CHECK(!opensensor::text::text(opensensor::text::Lang::ArEg, id).empty());
+    same += opensensor::text::text(opensensor::text::Lang::En, id) ==
+                    opensensor::text::text(opensensor::text::Lang::ArEg, id)
+                ? 1
+                : 0;
+  }
+  CHECK(same < static_cast<int>(opensensor::text::kStringCount) / 2);
+
+  // Every codepoint an Arabic string draws, after shaping into its
+  // contextual forms, is baked. Arabic ones in every font a page draws
+  // words with, through the fallback, the rest in the small and label
+  // fonts every string can land in.
+  for (std::size_t i = 0; i < opensensor::text::kStringCount; ++i) {
+    const std::string_view s = opensensor::text::text(
+        opensensor::text::Lang::ArEg, static_cast<Str>(i));
+    std::array<char32_t, opensensor::text::kMaxLine> line{};
+    const auto vis =
+        opensensor::text::to_visual(s, line, opensensor::text::Direction::Rtl,
+                                    opensensor::text::OnMalformed::Reject);
+    CHECK(vis.has_value());
+    if (!vis)
+      continue;
+    for (const FontSet *fs : {&fonts::compact, &fonts::large}) {
+      for (const char32_t cp : *vis) {
+        const Font *used = nullptr;
+        if (arabic(cp)) {
+          for (const Font *f : {&fs->small, &fs->label, &fs->title, &fs->value})
+            CHECK(find_glyph_or_fallback(*f, cp, used) != nullptr);
+        } else {
+          for (const Font *f : {&fs->small, &fs->label})
+            CHECK(find_glyph_or_fallback(*f, cp, used) != nullptr);
+        }
+      }
+    }
+  }
+}
+
+void test_language_switch() {
+  set_language(Language::English);
+  CHECK(language() == Language::English && !rtl());
+  CHECK(tr(Str::SettingsTitle) == "Settings");
+  set_language(Language::Arabic);
+  CHECK(language() == Language::Arabic && rtl());
+  CHECK(
+      tr(Str::SettingsTitle) ==
+      opensensor::text::text(opensensor::text::Lang::ArEg, Str::SettingsTitle));
+  CHECK(std::string_view{tr_fmt(Str::AltitudeFmt)} ==
+        opensensor::text::text(opensensor::text::Lang::ArEg, Str::AltitudeFmt));
+  // The Language row toggles, saves and redraws the whole frame.
+  set_language(Language::English);
+  Settings s{};
+  UiState ui{};
+  static_cast<void>(handle(ui, s, kAllThere, Input::Menu));
+  ui.popup.selected = Row::Language;
+  Outcome o = handle(ui, s, kAllThere, Input::Press);
+  CHECK(o.effect == Effect::Changed && o.full_refresh);
+  CHECK(s.language == Language::Arabic && ui.popup.open);
+  // render_screen() takes the language from the settings.
+  {
+    auto h = std::make_unique<History>();
+    Buffer b;
+    render_screen(b.canvas, ui, s, kAllThere, Model{}, *h);
+    CHECK(language() == Language::Arabic);
+  }
+  o = handle(ui, s, kAllThere, Input::Press);
+  CHECK(o.effect == Effect::Changed && o.full_refresh);
+  CHECK(s.language == Language::English);
+  // The value names each language in itself, whatever the panel shows.
+  std::array<char, 24> buf{};
+  PopupState p{};
+  set_language(Language::Arabic);
+  s.language = Language::English;
+  CHECK(row_value(buf, Row::Language, s, p, kAllThere) == "English");
+  set_language(Language::English);
+  s.language = Language::Arabic;
+  CHECK(row_value(buf, Row::Language, s, p, kAllThere) ==
+        opensensor::text::text(opensensor::text::Lang::ArEg, Str::LangArabic));
+  CHECK(row_label(Row::Language) == "Language");
+}
+
+// The Arabic words fit where the pages put them, at every size class, in
+// landscape and portrait.
+void test_arabic_fit() {
+  // Every value a row can show, across settings and boards.
+  std::vector<std::pair<Settings, SettingsInfo>> variants;
+  for (std::uint8_t k = 0; k < 5; ++k) {
+    Settings s{};
+    s.refresh = static_cast<RefreshEvery>(std::min<std::uint8_t>(k, 3));
+    s.start_page = k % 2 == 0 ? StartPage::Dashboard : StartPage::LastViewed;
+    s.theme = k % 2 == 0 ? Theme::Light : Theme::Dark;
+    s.rotation = static_cast<ScreenRotation>(k);
+    s.language = k % 2 == 0 ? Language::English : Language::Arabic;
+    s.co2_asc = k % 2 == 0;
+    s.altitude_m = k % 2 == 0 ? 0 : kAltitudeMaxM;
+    s.temp_offset_dc = k % 2 == 0 ? kTempOffsetMinDc : kTempOffsetMaxDc;
+    s.sleep_after = static_cast<SleepAfter>(std::min<std::uint8_t>(k, 3));
+    SettingsInfo info{.wifi_configured = k != 2,
+                      .wifi_on = k % 2 == 1,
+                      .sensor_present = k != 3,
+                      .fan_cleaning = k == 1};
+    variants.emplace_back(s, info);
+  }
+  constexpr std::array<Str, 10> kStatusRows{
+      Str::RowClock,     Str::RowUptime,     Str::RowSamples, Str::RowSdCard,
+      Str::RowBluetooth, Str::RowWifi,       Str::RowThing,   Str::RowFirmware,
+      Str::RowSensor,    Str::RowSensorState};
+  constexpr std::array<Str, 5> kHints{Str::HintEdit, Str::HintWifiSet,
+                                      Str::HintWifiUnset, Str::HintCo2Asc,
+                                      Str::HintPick};
+  for (const Language lang : {Language::English, Language::Arabic}) {
+    set_language(lang);
+    for (const DisplayProfile *prof : {&kHost400x300, &kHost800x480}) {
+      for (const Rotation r : {Rotation::R0, Rotation::R90}) {
+        Buffer b(*prof, r);
+        const Canvas &c = b.canvas;
+        const Layout &l = c.layout();
+        const FontSet &fs = c.fonts();
+        // The popup, a label and its value with a gap between them.
+        const int row_w = l.popup.w - 2 * l.popup.pad;
+        for (std::uint8_t i = 0; i < kRowCount; ++i) {
+          const auto row = static_cast<Row>(i);
+          const std::string_view label = row_label(row);
+          for (const auto &[s, info] : variants) {
+            std::array<char, 24> buf{};
+            const PopupState p{};
+            const std::string_view v = row_value(buf, row, s, p, info);
+            CHECK_FITS(text_width(fs.label, label) + 8 +
+                           text_width(fs.label, v),
+                       row_w, label, c);
+          }
+        }
+        CHECK_FITS(text_width(fs.title, tr(Str::SettingsTitle)), row_w,
+                   tr(Str::SettingsTitle), c);
+        // A hint is one line on a landscape frame and at most two on a
+        // portrait one.
+        for (const Str id : kHints) {
+          const std::string_view hint = tr(id);
+          if (c.width() > c.height()) {
+            CHECK_FITS(text_width(fs.small, hint), row_w, hint, c);
+          } else {
+            const std::size_t cut = line_break(fs.small, hint, row_w);
+            std::string_view rest = hint.substr(cut);
+            while (!rest.empty() && rest.front() == ' ')
+              rest.remove_prefix(1);
+            CHECK_FITS(text_width(fs.small, rest), row_w, hint, c);
+          }
+        }
+        // A footer is one line on a landscape frame and at most two on a
+        // portrait one, the layout has room for no more.
+        const int edge = l.header.margin;
+        for (const auto &[id, max_w] :
+             {std::pair{Str::BandFootnote, c.width() - l.page.title.x - edge},
+              std::pair{Str::PairFootnote, c.width() - 2 * edge}}) {
+          const std::string_view foot = tr(id);
+          if (c.width() > c.height()) {
+            CHECK_FITS(text_width(fs.small, foot), max_w, foot, c);
+          } else {
+            std::string_view rest =
+                foot.substr(line_break(fs.small, foot, max_w));
+            while (!rest.empty() && rest.front() == ' ')
+              rest.remove_prefix(1);
+            CHECK_FITS(text_width(fs.small, rest), max_w, foot, c);
+          }
+        }
+        CHECK_FITS(text_width(fs.title, tr(Str::PairTitle)),
+                   c.width() - 2 * edge, tr(Str::PairTitle), c);
+        CHECK_FITS(text_width(fs.label, tr(Str::PairPrompt)),
+                   c.width() - 2 * edge, tr(Str::PairPrompt), c);
+        // A status name ends before its value starts.
+        for (const Str id : kStatusRows)
+          CHECK_FITS(text_width(fs.small, tr(id)) + 4,
+                     l.status.value_x - l.page.title.x, tr(id), c);
+        // A tile label and its unit share the tile's top line.
+        for (std::size_t m = 0; m < kMetricCount; ++m) {
+          const MetricInfo &mi = info(static_cast<Metric>(m));
+          CHECK_FITS(text_width(fs.label, tr(mi.label)) + 6 +
+                         text_width(fs.small, tr(mi.unit)),
+                     l.tiles.w - 2 * l.tiles.pad, tr(mi.label), c);
+        }
+      }
+    }
+  }
+  set_language(Language::English);
+  CHECK(g_misfits == 0);
+}
+
 } // namespace
 
 int main() {
@@ -2423,6 +2677,9 @@ int main() {
   test_effective_rotation();
   test_line_break();
   test_render_rotations();
+  test_arabic_strings_and_glyphs();
+  test_language_switch();
+  test_arabic_fit();
   std::printf("epaper ui, %d checks passed\n", g_checks);
   return 0;
 }

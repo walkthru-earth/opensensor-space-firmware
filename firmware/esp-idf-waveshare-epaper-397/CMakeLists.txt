@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 set(IDF_TARGET esp32s3)
-set(EXTRA_COMPONENT_DIRS "../common" "../common/runtime" "../common/connectivity" "../common/logger" "../common/location" "../common/stac" "../common/gnss" "../common/sensors" "../common/power" "../common/upload" "../common/epaper_ui")
+set(EXTRA_COMPONENT_DIRS "../common" "../common/runtime" "../common/connectivity" "../common/logger" "../common/location" "../common/stac" "../common/gnss" "../common/sensors" "../common/power" "../common/upload" "../common/epaper_ui" "../common/text")
 set(OS_VARIANT logger CACHE STRING "Firmware variant: logger")
 if(NOT OS_VARIANT STREQUAL "logger")
     message(FATAL_ERROR "OS_VARIANT must be logger")

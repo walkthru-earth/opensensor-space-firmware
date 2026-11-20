@@ -21,7 +21,8 @@ def main() -> None:
                    str(root / "tools/test_text.cpp"),
                    str(src / "os_text.cpp"),
                    str(src / "os_text_font.cpp"),
-                   str(src / "os_arabic_fonts_gen.cpp"),
+                   str(src / "os_arabic_fonts_s_gen.cpp"),
+                   str(src / "os_arabic_fonts_l_gen.cpp"),
                    "-o", str(executable)]
         if args.sanitize:
             command += ["-fsanitize=address,undefined", "-fno-sanitize-recover=all"]

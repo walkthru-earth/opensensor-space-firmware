@@ -52,33 +52,60 @@ names. A new size class is a new layout source plus host profile in
 
 ## Settings blob
 
-NVS `ospanel/ui`, version 2, 12 bytes, layout in `settings.h`. Version 1
-(11 bytes, no rotation) decodes with every field kept and rotation at its
-default, and the next save writes version 2. Never erase it. Going back to
-an image that knows only version 1 gives defaults.
+NVS `ospanel/ui`, version 3, 13 bytes, layout in `settings.h`. Byte 11 is
+the rotation and byte 12 the language (0 English, 1 Arabic). Version 2 (12
+bytes, no language) and version 1 (11 bytes, no rotation either) decode with
+every field they hold kept and the rest at their defaults, English for the
+language, and the next save writes version 3. Never erase it. Going back to
+an image that knows only an older version gives defaults.
 
 ## Goldens
 
-`tools/test_epaper_ui.py` holds the sha256 of every 400x300 r0 frame, the
-frames the CrowPanel sends. The CrowPanel's `display_profile.h` must equal
+`tools/test_epaper_ui.py` holds the sha256 of every English 400x300 r0
+frame, the frames the CrowPanel sends, and of four Arabic ones under
+`ar/400x300/r0` (dashboard, status, chart and settings). The preview writes
+every frame in both languages, English at `<size>/r<deg>` and Arabic at
+`ar/<size>/r<deg>`. The CrowPanel's `display_profile.h` must equal
 `kHost400x300`, the host test checks it. A golden moves only with a
 deliberate change to what the CrowPanel shows. Look at the new PNG first,
 then paste the hash the failure prints, and say so in the PR.
 
 ## Text and i18n
 
-Every drawn word is a `Str` id in `strings.h`, English only. `tr()` gives
-a `string_view`, `tr_fmt()` a C string for `snprintf` format ids. A
-translation is a second table of the same ids plus its glyphs in the font
-sets. Right to left or joined scripts also change `shape()` in `canvas.h`.
-Nothing translates yet. No colons, semicolons or em dashes in panel copy.
+- Every drawn word is a `Str` id, which is `text::StringId` from the one
+  string table `firmware/common/text/src/os_strings.inc`, English and
+  Egyptian Arabic. Add or change a word there, then run
+  `pixi run text-fonts` so the Cairo tables hold its glyphs. Rules for the
+  table are in `firmware/common/text/AGENTS.md`.
+- `Settings::language` picks the language and the popup's Language row
+  toggles it with a full refresh. `render_screen()` calls `set_language()`
+  first, so `tr()` and `tr_fmt()` answer in it. Only the display task calls
+  `set_language()`. A board that draws outside `render_screen()` calls it
+  itself. The row value names each language in itself.
+- `shape()` in `canvas.h` sends Arabic lines through `text::to_visual()`,
+  which joins the letters and reorders the line, and draws each code point
+  from the Latin font or its Cairo fallback (`_s` for Compact, `_l` for
+  Large). The hero font has no fallback, it draws digits only.
+- In Arabic the pages mirror, text right aligned and labels on the right of
+  the popup, the status rows, the tiles and the chart heading. Plots, the
+  time axis, the header and the hero stay as they are. A value and its unit
+  are their own left to right runs. Use `text_fit()` and `mx()` in
+  `pages.cpp` for anything new.
+- `epaper-ui-test` checks every id in both languages, that every code point
+  an Arabic string draws is baked, and that the Arabic fits the popup, the
+  hints, the footnotes, the status names and the tile labels at 400x300,
+  300x400, 800x480 and 480x800. Look at the Arabic previews after a string
+  change.
+- No colons, semicolons or em dashes in panel copy, in either language.
 
 ## Fonts
 
 `tools/epaper_gen_fonts.py` bakes `src/fonts_compact_gen.cpp` and
 `src/fonts_large_gen.cpp` from the vendored Inter in `vendor/inter/`
 (SIL OFL 1.1). Regenerate with `pixi run epaper-fonts`, and
-`epaper-fonts-test` fails on stale output.
+`epaper-fonts-test` fails on stale output. The Arabic glyphs come from the
+`text` component, so a board that links this one adds `../common/text` to
+its `EXTRA_COMPONENT_DIRS`.
 
 ## Rules
 
