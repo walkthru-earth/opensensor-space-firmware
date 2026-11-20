@@ -11,6 +11,10 @@
     "pms_identity": [
       {
         "name": "sensor_serial_code",
+        "title": "Particle sensor serial code",
+        "opensensor:title_i18n": {
+          "ar": "الرمز التسلسلي لمستشعر الجسيمات"
+        },
         "unit": "1",
         "roles": [
           "referenceInformation"
@@ -21,6 +25,7 @@
           "finite": true
         },
         "opensensor:aggregate": "mode",
+        "opensensor:group": "particulate",
         "firmware": {
           "type": "Int64",
           "unit": "1",
@@ -33,6 +38,10 @@
       },
       {
         "name": "pm25_batch_candidate_ug_m3",
+        "title": "PM2.5 batch candidate",
+        "opensensor:title_i18n": {
+          "ar": "PM2.5، القيمة المرشحة للدفعة"
+        },
         "unit": "ug/m3",
         "roles": [
           "modelResult"
@@ -55,6 +64,7 @@
           0,
           1000
         ],
+        "opensensor:group": "particulate",
         "firmware": {
           "type": "Float",
           "unit": "ug/m3",
@@ -65,6 +75,10 @@
       },
       {
         "name": "pm25_batch_candidate_status",
+        "title": "PM2.5 batch candidate status",
+        "opensensor:title_i18n": {
+          "ar": "حالة قيمة PM2.5 المرشحة للدفعة"
+        },
         "unit": "{code}",
         "roles": [
           "qualityInformation"
@@ -90,6 +104,7 @@
         "opensensor:property": "urn:walkthru-earth:property:pm25_batch_candidate_status",
         "opensensor:procedure": "batch_candidate_gate",
         "opensensor:aggregate": "mode",
+        "opensensor:group": "particulate",
         "firmware": {
           "type": "Int32",
           "unit": "code",

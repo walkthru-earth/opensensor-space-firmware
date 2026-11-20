@@ -1,0 +1,1203 @@
+{
+  "$schema": "https://walkthru-earth.github.io/stac-opensensor/v0.1.0/registry.json",
+  "type": "OpenSensorPropertyRegistry",
+  "properties": {
+    "http://vocab.nerc.ac.uk/collection/P07/current/CFSN0023/": {
+      "label": {
+        "en": "Air temperature",
+        "ar": "درجة حرارة الهواء"
+      },
+      "short_label": {
+        "en": "Temperature",
+        "ar": "درجة الحرارة"
+      },
+      "definition": {
+        "en": "Temperature of the air around the sensor."
+      },
+      "group": "climate",
+      "unit": "Cel",
+      "decimals": 1
+    },
+    "http://vocab.nerc.ac.uk/collection/P07/current/CFSN0115/": {
+      "label": {
+        "en": "Time",
+        "ar": "الوقت"
+      },
+      "short_label": {
+        "en": "Time",
+        "ar": "الوقت"
+      },
+      "definition": {
+        "en": "UTC time of the sample, in microseconds since the Unix epoch."
+      },
+      "group": "time",
+      "unit": "us",
+      "decimals": 0
+    },
+    "http://vocab.nerc.ac.uk/collection/P07/current/CFSN0413/": {
+      "label": {
+        "en": "Relative humidity",
+        "ar": "الرطوبة النسبية"
+      },
+      "short_label": {
+        "en": "Humidity",
+        "ar": "الرطوبة"
+      },
+      "symbol": "RH",
+      "definition": {
+        "en": "Water vapour in the air as a percentage of what the air could hold at its temperature."
+      },
+      "group": "climate",
+      "unit": "%",
+      "decimals": 1
+    },
+    "http://vocab.nerc.ac.uk/collection/P07/current/YUDG9DXK/": {
+      "label": {
+        "en": "PM2.5 mass concentration",
+        "ar": "تركيز كتلة الجسيمات PM2.5"
+      },
+      "short_label": {
+        "en": "PM2.5",
+        "ar": "PM2.5"
+      },
+      "symbol": "PM2.5",
+      "definition": {
+        "en": "Mass of airborne particles with an aerodynamic diameter up to 2.5 micrometres per cubic metre of air."
+      },
+      "group": "particulate",
+      "unit": "ug/m3",
+      "decimals": 1,
+      "scale": "who-2021-pm25"
+    },
+    "http://vocab.nerc.ac.uk/standard_name/air_pressure/": {
+      "label": {
+        "en": "Air pressure",
+        "ar": "الضغط الجوي"
+      },
+      "short_label": {
+        "en": "Pressure",
+        "ar": "الضغط"
+      },
+      "definition": {
+        "en": "Pressure of the air at the sensor, not reduced to sea level."
+      },
+      "group": "climate",
+      "unit": "hPa",
+      "decimals": 1
+    },
+    "http://vocab.nerc.ac.uk/standard_name/mass_concentration_of_pm10_ambient_aerosol_particles_in_air/": {
+      "label": {
+        "en": "PM10 mass concentration",
+        "ar": "تركيز كتلة الجسيمات PM10"
+      },
+      "short_label": {
+        "en": "PM10",
+        "ar": "PM10"
+      },
+      "symbol": "PM10",
+      "definition": {
+        "en": "Mass of airborne particles with an aerodynamic diameter up to 10 micrometres per cubic metre of air."
+      },
+      "group": "particulate",
+      "unit": "ug/m3",
+      "decimals": 1,
+      "scale": "who-2021-pm10"
+    },
+    "http://vocab.nerc.ac.uk/standard_name/mass_concentration_of_pm1_ambient_aerosol_particles_in_air/": {
+      "label": {
+        "en": "PM1 mass concentration",
+        "ar": "تركيز كتلة الجسيمات PM1"
+      },
+      "short_label": {
+        "en": "PM1",
+        "ar": "PM1"
+      },
+      "symbol": "PM1",
+      "definition": {
+        "en": "Mass of airborne particles with an aerodynamic diameter up to 1 micrometres per cubic metre of air."
+      },
+      "group": "particulate",
+      "unit": "ug/m3",
+      "decimals": 1,
+      "scale": null,
+      "note": "WHO 2021 sets no guideline for PM1, so it gets no scale."
+    },
+    "http://vocab.nerc.ac.uk/standard_name/mole_fraction_of_carbon_dioxide_in_air/": {
+      "label": {
+        "en": "Carbon dioxide",
+        "ar": "ثاني أكسيد الكربون"
+      },
+      "short_label": {
+        "en": "CO₂",
+        "ar": "CO₂"
+      },
+      "symbol": "CO₂",
+      "definition": {
+        "en": "Carbon dioxide in the air, in parts per million."
+      },
+      "group": "gas",
+      "unit": "[ppm]",
+      "decimals": 0,
+      "scale": null,
+      "note": "TODO for the owner. No CO2 scale is defined yet. Choose one and its source before a client shows CO2 bands."
+    },
+    "http://vocab.nerc.ac.uk/standard_name/mole_fraction_of_nitrogen_dioxide_in_air/": {
+      "label": {
+        "en": "Nitrogen dioxide",
+        "ar": "ثاني أكسيد النيتروجين"
+      },
+      "short_label": {
+        "en": "NO₂",
+        "ar": "NO₂"
+      },
+      "symbol": "NO₂",
+      "definition": {
+        "en": "Nitrogen dioxide in the air, in parts per billion."
+      },
+      "group": "gas",
+      "unit": "[ppb]",
+      "decimals": 0,
+      "scale": null,
+      "note": "The WHO 2021 NO2 levels are in ug/m3, and turning ppb into ug/m3 needs temperature and pressure. No default scale until a ppb scale and its source are chosen."
+    },
+    "urn:walkthru-earth:property:acceleration_x": {
+      "label": {
+        "en": "Acceleration X"
+      },
+      "definition": {
+        "en": "Acceleration along the X axis of the board, in multiples of standard gravity."
+      },
+      "group": "motion",
+      "unit": "[g]",
+      "decimals": 3
+    },
+    "urn:walkthru-earth:property:acceleration_y": {
+      "label": {
+        "en": "Acceleration Y"
+      },
+      "definition": {
+        "en": "Acceleration along the Y axis of the board, in multiples of standard gravity."
+      },
+      "group": "motion",
+      "unit": "[g]",
+      "decimals": 3
+    },
+    "urn:walkthru-earth:property:acceleration_z": {
+      "label": {
+        "en": "Acceleration Z"
+      },
+      "definition": {
+        "en": "Acceleration along the Z axis of the board, in multiples of standard gravity."
+      },
+      "group": "motion",
+      "unit": "[g]",
+      "decimals": 3
+    },
+    "urn:walkthru-earth:property:ambient_light_infrared_raw": {
+      "label": {
+        "en": "Light, infrared, raw"
+      },
+      "definition": {
+        "en": "Raw count of the light sensor channel that sees infrared light only."
+      },
+      "group": "light",
+      "unit": "{raw_count}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:ambient_light_status": {
+      "label": {
+        "en": "Light sensor status"
+      },
+      "definition": {
+        "en": "State of the light sensor reading."
+      },
+      "group": "light",
+      "unit": "{code}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:ambient_light_visible_and_infrared_raw": {
+      "label": {
+        "en": "Light, visible and infrared, raw"
+      },
+      "definition": {
+        "en": "Raw count of the light sensor channel that sees visible and infrared light."
+      },
+      "group": "light",
+      "unit": "{raw_count}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:angular_rate_x": {
+      "label": {
+        "en": "Rotation rate X"
+      },
+      "definition": {
+        "en": "Rotation rate about the X axis of the board."
+      },
+      "group": "motion",
+      "unit": "deg/s",
+      "decimals": 2
+    },
+    "urn:walkthru-earth:property:angular_rate_y": {
+      "label": {
+        "en": "Rotation rate Y"
+      },
+      "definition": {
+        "en": "Rotation rate about the Y axis of the board."
+      },
+      "group": "motion",
+      "unit": "deg/s",
+      "decimals": 2
+    },
+    "urn:walkthru-earth:property:angular_rate_z": {
+      "label": {
+        "en": "Rotation rate Z"
+      },
+      "definition": {
+        "en": "Rotation rate about the Z axis of the board."
+      },
+      "group": "motion",
+      "unit": "deg/s",
+      "decimals": 2
+    },
+    "urn:walkthru-earth:property:battery_charge_rate": {
+      "label": {
+        "en": "Battery charge rate"
+      },
+      "definition": {
+        "en": "How fast the battery charge changes, in percent per hour."
+      },
+      "group": "power",
+      "unit": "%/h",
+      "decimals": 1
+    },
+    "urn:walkthru-earth:property:battery_charging_status": {
+      "label": {
+        "en": "Charging status"
+      },
+      "definition": {
+        "en": "Whether and how the battery is charging."
+      },
+      "group": "power",
+      "unit": "{code}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:battery_current": {
+      "label": {
+        "en": "Battery current"
+      },
+      "definition": {
+        "en": "Current into or out of the battery."
+      },
+      "group": "power",
+      "unit": "mA",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:battery_gauge_alert_flags": {
+      "label": {
+        "en": "Battery gauge alert flags"
+      },
+      "definition": {
+        "en": "Bit flags the battery fuel gauge raises."
+      },
+      "group": "power",
+      "unit": "{bitmask}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:battery_gauge_hibernating": {
+      "label": {
+        "en": "Battery gauge hibernating"
+      },
+      "definition": {
+        "en": "Whether the battery fuel gauge is in its low power state."
+      },
+      "group": "power",
+      "unit": "{boolean}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:battery_gauge_status": {
+      "label": {
+        "en": "Battery gauge status"
+      },
+      "definition": {
+        "en": "State of the battery fuel gauge reading."
+      },
+      "group": "power",
+      "unit": "{code}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:battery_health_state": {
+      "label": {
+        "en": "Battery health"
+      },
+      "definition": {
+        "en": "Health class of the battery as the board judges it."
+      },
+      "group": "power",
+      "unit": "{code}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:battery_state_of_charge": {
+      "label": {
+        "en": "Battery charge",
+        "ar": "نسبة شحن البطارية"
+      },
+      "short_label": {
+        "en": "Battery",
+        "ar": "البطارية"
+      },
+      "definition": {
+        "en": "Charge left in the battery as a percentage of full."
+      },
+      "group": "power",
+      "unit": "%",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:battery_state_of_charge_raw": {
+      "label": {
+        "en": "Battery charge, raw"
+      },
+      "definition": {
+        "en": "Charge left in the battery as the fuel gauge reports it, before rounding."
+      },
+      "group": "power",
+      "unit": "%",
+      "decimals": 2
+    },
+    "urn:walkthru-earth:property:battery_time_to_empty": {
+      "label": {
+        "en": "Battery time to empty"
+      },
+      "definition": {
+        "en": "Minutes until the battery is empty at the present rate."
+      },
+      "group": "power",
+      "unit": "min",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:battery_voltage": {
+      "label": {
+        "en": "Battery voltage",
+        "ar": "جهد البطارية"
+      },
+      "short_label": {
+        "en": "Battery voltage",
+        "ar": "جهد البطارية"
+      },
+      "definition": {
+        "en": "Voltage of the battery."
+      },
+      "group": "power",
+      "unit": "mV",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:board_temperature": {
+      "label": {
+        "en": "Board temperature"
+      },
+      "definition": {
+        "en": "Temperature inside the board, read from the motion sensor die. Not the air temperature."
+      },
+      "group": "device",
+      "unit": "Cel",
+      "decimals": 1
+    },
+    "urn:walkthru-earth:property:boot_identifier_high": {
+      "label": {
+        "en": "Boot identifier, high half"
+      },
+      "definition": {
+        "en": "Upper 64 bits of the random identifier of the boot that wrote the row."
+      },
+      "group": "device",
+      "unit": "1",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:boot_identifier_low": {
+      "label": {
+        "en": "Boot identifier, low half"
+      },
+      "definition": {
+        "en": "Lower 64 bits of the random identifier of the boot that wrote the row."
+      },
+      "group": "device",
+      "unit": "1",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:clock_anchor_time_since_boot": {
+      "label": {
+        "en": "Clock anchor since boot"
+      },
+      "definition": {
+        "en": "Monotonic time since boot at which the UTC clock was last set."
+      },
+      "group": "time",
+      "unit": "us",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:clock_anchor_utc_time": {
+      "label": {
+        "en": "Clock anchor UTC time"
+      },
+      "definition": {
+        "en": "UTC time that the clock was set to at its last anchor."
+      },
+      "group": "time",
+      "unit": "us",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:clock_epoch": {
+      "label": {
+        "en": "Clock epoch"
+      },
+      "definition": {
+        "en": "Counter that grows each time the UTC clock is set during a boot."
+      },
+      "group": "time",
+      "unit": "{count}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:clock_status": {
+      "label": {
+        "en": "Clock status"
+      },
+      "definition": {
+        "en": "Where the UTC clock came from when the sample was taken."
+      },
+      "group": "time",
+      "unit": "{code}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:collection_completed_time_since_boot": {
+      "label": {
+        "en": "Collection end since boot"
+      },
+      "definition": {
+        "en": "Monotonic time since boot when all sensor reads of the sample finished."
+      },
+      "group": "time",
+      "unit": "us",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:device_identifier": {
+      "label": {
+        "en": "Device identifier"
+      },
+      "definition": {
+        "en": "Hardware identifier of the board that wrote the row."
+      },
+      "group": "device",
+      "unit": "1",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:dropped_row_count": {
+      "label": {
+        "en": "Dropped rows"
+      },
+      "definition": {
+        "en": "Rows dropped since boot because the logger could not keep up."
+      },
+      "group": "device",
+      "unit": "{count}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:environmental_sensor_device_status_flags": {
+      "label": {
+        "en": "Environmental sensor status flags"
+      },
+      "definition": {
+        "en": "Bit flags the environmental sensor reports about its own health, such as fan or measurement errors."
+      },
+      "group": "device",
+      "unit": "{bitmask}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:environmental_sensor_status": {
+      "label": {
+        "en": "Environmental sensor status"
+      },
+      "definition": {
+        "en": "State of the environmental sensor reading, such as warming up, stale or valid."
+      },
+      "group": "device",
+      "unit": "{code}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:external_5v_output_enabled": {
+      "label": {
+        "en": "External 5 V output on"
+      },
+      "definition": {
+        "en": "Whether the board supplies 5 V to its external port."
+      },
+      "group": "power",
+      "unit": "{boolean}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:finalized_file_count": {
+      "label": {
+        "en": "Finalized files"
+      },
+      "definition": {
+        "en": "Parquet files closed since boot."
+      },
+      "group": "device",
+      "unit": "{count}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:free_heap_memory": {
+      "label": {
+        "en": "Free heap memory"
+      },
+      "definition": {
+        "en": "Free heap memory of the board when the sample was written."
+      },
+      "group": "device",
+      "unit": "By",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:free_psram_memory": {
+      "label": {
+        "en": "Free PSRAM"
+      },
+      "definition": {
+        "en": "Free external PSRAM of the board when the sample was written."
+      },
+      "group": "device",
+      "unit": "By",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:h3_cell_center_point": {
+      "label": {
+        "en": "Cell centre point"
+      },
+      "definition": {
+        "en": "Centre point of the H3 cell of the row."
+      },
+      "group": "location",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:h3_cell_index": {
+      "label": {
+        "en": "H3 cell"
+      },
+      "definition": {
+        "en": "H3 cell that holds the row location."
+      },
+      "group": "location",
+      "unit": "{h3_index}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:h3_resolution": {
+      "label": {
+        "en": "H3 resolution"
+      },
+      "definition": {
+        "en": "Resolution of the H3 cell of the row."
+      },
+      "group": "location",
+      "unit": "1",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:last_storage_sync_time": {
+      "label": {
+        "en": "Last storage sync"
+      },
+      "definition": {
+        "en": "Monotonic time since boot of the last sync to storage."
+      },
+      "group": "device",
+      "unit": "us",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:last_storage_write_time": {
+      "label": {
+        "en": "Last storage write"
+      },
+      "definition": {
+        "en": "Monotonic time since boot of the last write to storage."
+      },
+      "group": "device",
+      "unit": "us",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:location_source": {
+      "label": {
+        "en": "Location source"
+      },
+      "definition": {
+        "en": "Where the row location came from, such as a configured cell, satellite positioning or the phone."
+      },
+      "group": "location",
+      "unit": "{code}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:magnetic_field_x_raw": {
+      "label": {
+        "en": "Magnetic field X, raw"
+      },
+      "definition": {
+        "en": "Uncalibrated magnetometer count along the X axis of the board."
+      },
+      "group": "motion",
+      "unit": "{raw_count}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:magnetic_field_y_raw": {
+      "label": {
+        "en": "Magnetic field Y, raw"
+      },
+      "definition": {
+        "en": "Uncalibrated magnetometer count along the Y axis of the board."
+      },
+      "group": "motion",
+      "unit": "{raw_count}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:magnetic_field_z_raw": {
+      "label": {
+        "en": "Magnetic field Z, raw"
+      },
+      "definition": {
+        "en": "Uncalibrated magnetometer count along the Z axis of the board."
+      },
+      "group": "motion",
+      "unit": "{raw_count}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:minimum_free_heap_memory": {
+      "label": {
+        "en": "Lowest free heap memory"
+      },
+      "definition": {
+        "en": "Lowest free heap memory since boot."
+      },
+      "group": "device",
+      "unit": "By",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:missed_sample_deadline_count": {
+      "label": {
+        "en": "Missed sample deadlines"
+      },
+      "definition": {
+        "en": "Samples since boot that started after their deadline."
+      },
+      "group": "device",
+      "unit": "{count}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:monotonic_time_since_boot": {
+      "label": {
+        "en": "Time since boot"
+      },
+      "definition": {
+        "en": "Monotonic time since boot when the sample started."
+      },
+      "group": "time",
+      "unit": "us",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:motion_sensor_fresh_mask": {
+      "label": {
+        "en": "Motion sensor fresh mask"
+      },
+      "definition": {
+        "en": "Bit flags that tell which motion sensor readings are new in this sample."
+      },
+      "group": "motion",
+      "unit": "{bitmask}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:particle_count_gt_0p3um": {
+      "label": {
+        "en": "Particles larger than 0.3 µm",
+        "ar": "الجسيمات الأكبر من 0.3 µm"
+      },
+      "short_label": {
+        "en": ">0.3 µm",
+        "ar": "أكبر من 0.3 µm"
+      },
+      "definition": {
+        "en": "Particles larger than 0.3 micrometres counted in 0.1 litre of air."
+      },
+      "group": "particulate",
+      "unit": "{particles}/dL",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:particle_count_gt_0p5um": {
+      "label": {
+        "en": "Particles larger than 0.5 µm",
+        "ar": "الجسيمات الأكبر من 0.5 µm"
+      },
+      "short_label": {
+        "en": ">0.5 µm",
+        "ar": "أكبر من 0.5 µm"
+      },
+      "definition": {
+        "en": "Particles larger than 0.5 micrometres counted in 0.1 litre of air."
+      },
+      "group": "particulate",
+      "unit": "{particles}/dL",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:particle_count_gt_10um": {
+      "label": {
+        "en": "Particles larger than 10 µm",
+        "ar": "الجسيمات الأكبر من 10 µm"
+      },
+      "short_label": {
+        "en": ">10 µm",
+        "ar": "أكبر من 10 µm"
+      },
+      "definition": {
+        "en": "Particles larger than 10 micrometres counted in 0.1 litre of air."
+      },
+      "group": "particulate",
+      "unit": "{particles}/dL",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:particle_count_gt_1um": {
+      "label": {
+        "en": "Particles larger than 1 µm",
+        "ar": "الجسيمات الأكبر من 1 µm"
+      },
+      "short_label": {
+        "en": ">1 µm",
+        "ar": "أكبر من 1 µm"
+      },
+      "definition": {
+        "en": "Particles larger than 1 micrometres counted in 0.1 litre of air."
+      },
+      "group": "particulate",
+      "unit": "{particles}/dL",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:particle_count_gt_2p5um": {
+      "label": {
+        "en": "Particles larger than 2.5 µm",
+        "ar": "الجسيمات الأكبر من 2.5 µm"
+      },
+      "short_label": {
+        "en": ">2.5 µm",
+        "ar": "أكبر من 2.5 µm"
+      },
+      "definition": {
+        "en": "Particles larger than 2.5 micrometres counted in 0.1 litre of air."
+      },
+      "group": "particulate",
+      "unit": "{particles}/dL",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:particle_count_gt_5um": {
+      "label": {
+        "en": "Particles larger than 5 µm",
+        "ar": "الجسيمات الأكبر من 5 µm"
+      },
+      "short_label": {
+        "en": ">5 µm",
+        "ar": "أكبر من 5 µm"
+      },
+      "definition": {
+        "en": "Particles larger than 5 micrometres counted in 0.1 litre of air."
+      },
+      "group": "particulate",
+      "unit": "{particles}/dL",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:particle_sensor_checksum_error_count": {
+      "label": {
+        "en": "Particle sensor checksum errors"
+      },
+      "definition": {
+        "en": "Frames from the particle sensor with a bad checksum since boot."
+      },
+      "group": "particulate",
+      "unit": "{count}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:particle_sensor_error_code": {
+      "label": {
+        "en": "Particle sensor error code"
+      },
+      "definition": {
+        "en": "Error code the particle sensor reports."
+      },
+      "group": "particulate",
+      "unit": "{code}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:particle_sensor_firmware_version": {
+      "label": {
+        "en": "Particle sensor firmware version"
+      },
+      "definition": {
+        "en": "Firmware version the particle sensor reports."
+      },
+      "group": "particulate",
+      "unit": "{code}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:particle_sensor_frame_age": {
+      "label": {
+        "en": "Particle sensor frame age"
+      },
+      "definition": {
+        "en": "Age of the particle sensor frame used for the sample."
+      },
+      "group": "particulate",
+      "unit": "ms",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:particle_sensor_frame_count": {
+      "label": {
+        "en": "Particle sensor frames"
+      },
+      "definition": {
+        "en": "Valid frames received from the particle sensor since boot."
+      },
+      "group": "particulate",
+      "unit": "{count}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:particle_sensor_frame_received_time_since_boot": {
+      "label": {
+        "en": "Particle sensor frame time since boot"
+      },
+      "definition": {
+        "en": "Monotonic time since boot when the particle sensor frame arrived."
+      },
+      "group": "particulate",
+      "unit": "us",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:particle_sensor_length_error_count": {
+      "label": {
+        "en": "Particle sensor length errors"
+      },
+      "definition": {
+        "en": "Frames from the particle sensor with a bad length since boot."
+      },
+      "group": "particulate",
+      "unit": "{count}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:particle_sensor_serial_code": {
+      "label": {
+        "en": "Particle sensor serial code"
+      },
+      "definition": {
+        "en": "Serial code the particle sensor reports."
+      },
+      "group": "particulate",
+      "unit": "1",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:particle_sensor_status": {
+      "label": {
+        "en": "Particle sensor status"
+      },
+      "definition": {
+        "en": "State of the particle sensor reading, such as warming up, stale or valid."
+      },
+      "group": "particulate",
+      "unit": "{code}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:pm10_cf1_mass_concentration": {
+      "label": {
+        "en": "PM10 mass concentration, CF=1"
+      },
+      "short_label": {
+        "en": "PM10 CF=1",
+        "ar": "PM10 CF=1"
+      },
+      "definition": {
+        "en": "PM10 mass concentration under the factory calibration for standard particles (CF=1), not the ambient value."
+      },
+      "group": "particulate",
+      "unit": "ug/m3",
+      "decimals": 0,
+      "scale": null,
+      "note": "CF=1 is the factory value, uncorrected for ambient air, so it gets no health scale."
+    },
+    "urn:walkthru-earth:property:pm1_cf1_mass_concentration": {
+      "label": {
+        "en": "PM1 mass concentration, CF=1"
+      },
+      "short_label": {
+        "en": "PM1 CF=1",
+        "ar": "PM1 CF=1"
+      },
+      "definition": {
+        "en": "PM1 mass concentration under the factory calibration for standard particles (CF=1), not the ambient value."
+      },
+      "group": "particulate",
+      "unit": "ug/m3",
+      "decimals": 0,
+      "scale": null,
+      "note": "CF=1 is the factory value, uncorrected for ambient air, so it gets no health scale."
+    },
+    "urn:walkthru-earth:property:pm25_batch_candidate_mass_concentration": {
+      "label": {
+        "en": "PM2.5 batch candidate"
+      },
+      "short_label": {
+        "en": "PM2.5 candidate",
+        "ar": "PM2.5 المقترح"
+      },
+      "definition": {
+        "en": "PM2.5 after a candidate correction for the sensor batch. Under review, not the reported value."
+      },
+      "group": "particulate",
+      "unit": "ug/m3",
+      "decimals": 1,
+      "scale": null,
+      "note": "A candidate correction under review, so it gets no health scale."
+    },
+    "urn:walkthru-earth:property:pm25_batch_candidate_status": {
+      "label": {
+        "en": "PM2.5 batch candidate status"
+      },
+      "definition": {
+        "en": "Whether the batch candidate correction could be applied to the sample."
+      },
+      "group": "particulate",
+      "unit": "{code}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:pm25_cf1_mass_concentration": {
+      "label": {
+        "en": "PM2.5 mass concentration, CF=1"
+      },
+      "short_label": {
+        "en": "PM2.5 CF=1",
+        "ar": "PM2.5 CF=1"
+      },
+      "definition": {
+        "en": "PM2.5 mass concentration under the factory calibration for standard particles (CF=1), not the ambient value."
+      },
+      "group": "particulate",
+      "unit": "ug/m3",
+      "decimals": 0,
+      "scale": null,
+      "note": "CF=1 is the factory value, uncorrected for ambient air, so it gets no health scale."
+    },
+    "urn:walkthru-earth:property:pm4_mass_concentration": {
+      "label": {
+        "en": "PM4 mass concentration",
+        "ar": "تركيز كتلة الجسيمات PM4"
+      },
+      "short_label": {
+        "en": "PM4",
+        "ar": "PM4"
+      },
+      "symbol": "PM4",
+      "definition": {
+        "en": "Mass of airborne particles with an aerodynamic diameter up to 4 micrometres per cubic metre of air."
+      },
+      "group": "particulate",
+      "unit": "ug/m3",
+      "decimals": 1,
+      "scale": null,
+      "note": "WHO 2021 sets no guideline for PM4, so it gets no scale."
+    },
+    "urn:walkthru-earth:property:proximity_raw": {
+      "label": {
+        "en": "Proximity, raw"
+      },
+      "definition": {
+        "en": "Raw count of the proximity sensor."
+      },
+      "group": "light",
+      "unit": "{raw_count}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:proximity_status": {
+      "label": {
+        "en": "Proximity sensor status"
+      },
+      "definition": {
+        "en": "State of the proximity sensor reading."
+      },
+      "group": "light",
+      "unit": "{code}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:queue_high_water_mark": {
+      "label": {
+        "en": "Queue high water mark"
+      },
+      "definition": {
+        "en": "Most rows waiting in the logger queue at once since boot."
+      },
+      "group": "device",
+      "unit": "{count}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:real_time_clock_date": {
+      "label": {
+        "en": "Real time clock date"
+      },
+      "definition": {
+        "en": "Date the battery backed clock reads, as YYYYMMDD."
+      },
+      "group": "time",
+      "unit": "{YYYYMMDD}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:real_time_clock_read_status": {
+      "label": {
+        "en": "Real time clock read"
+      },
+      "definition": {
+        "en": "Whether the battery backed clock was read."
+      },
+      "group": "time",
+      "unit": "{boolean}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:real_time_clock_time": {
+      "label": {
+        "en": "Real time clock time"
+      },
+      "definition": {
+        "en": "Time the battery backed clock reads, as hhmmss."
+      },
+      "group": "time",
+      "unit": "{hhmmss}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:sample_jitter": {
+      "label": {
+        "en": "Sample jitter"
+      },
+      "definition": {
+        "en": "How late the sample started compared with its schedule."
+      },
+      "group": "time",
+      "unit": "us",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:sample_sequence_number": {
+      "label": {
+        "en": "Sample sequence number"
+      },
+      "definition": {
+        "en": "Number of the sample within its boot, counting up from the first sample."
+      },
+      "group": "device",
+      "unit": "{count}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:scheduled_sample_time_since_boot": {
+      "label": {
+        "en": "Scheduled sample time since boot"
+      },
+      "definition": {
+        "en": "Monotonic time since boot at which the sample was due."
+      },
+      "group": "time",
+      "unit": "us",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:schema_version": {
+      "label": {
+        "en": "Row schema version"
+      },
+      "definition": {
+        "en": "Version of the row layout the firmware wrote."
+      },
+      "group": "device",
+      "unit": "1",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:storage_capacity": {
+      "label": {
+        "en": "Storage capacity"
+      },
+      "definition": {
+        "en": "Total size of the storage card."
+      },
+      "group": "device",
+      "unit": "By",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:storage_error_count": {
+      "label": {
+        "en": "Storage errors"
+      },
+      "definition": {
+        "en": "Storage write or sync errors since boot."
+      },
+      "group": "device",
+      "unit": "{count}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:storage_used": {
+      "label": {
+        "en": "Storage used"
+      },
+      "definition": {
+        "en": "Space in use on the storage card."
+      },
+      "group": "device",
+      "unit": "By",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:touch_point_count": {
+      "label": {
+        "en": "Touch points"
+      },
+      "definition": {
+        "en": "Number of touches on the screen."
+      },
+      "group": "device",
+      "unit": "{count}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:touch_x_position": {
+      "label": {
+        "en": "Touch X"
+      },
+      "definition": {
+        "en": "Horizontal screen position of the first touch."
+      },
+      "group": "device",
+      "unit": "{pixel}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:touch_y_position": {
+      "label": {
+        "en": "Touch Y"
+      },
+      "definition": {
+        "en": "Vertical screen position of the first touch."
+      },
+      "group": "device",
+      "unit": "{pixel}",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:usb_bus_voltage": {
+      "label": {
+        "en": "USB bus voltage"
+      },
+      "definition": {
+        "en": "Voltage on the USB power input."
+      },
+      "group": "power",
+      "unit": "mV",
+      "decimals": 0
+    },
+    "urn:walkthru-earth:property:usb_output_enabled": {
+      "label": {
+        "en": "USB output on"
+      },
+      "definition": {
+        "en": "Whether the board supplies power on its USB port."
+      },
+      "group": "power",
+      "unit": "{boolean}",
+      "decimals": 0
+    }
+  }
+}

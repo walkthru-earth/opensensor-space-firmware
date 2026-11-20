@@ -16,6 +16,10 @@
     "core": [
       {
         "name": "gauge_status",
+        "title": "Battery gauge status",
+        "opensensor:title_i18n": {
+          "ar": "حالة مقياس البطارية"
+        },
         "unit": "{code}",
         "roles": [
           "qualityInformation"
@@ -37,6 +41,7 @@
         ],
         "opensensor:property": "urn:walkthru-earth:property:battery_gauge_status",
         "opensensor:aggregate": "mode",
+        "opensensor:group": "power",
         "firmware": {
           "type": "Int32",
           "unit": "code",
@@ -47,6 +52,10 @@
       },
       {
         "name": "battery_mv",
+        "title": "Battery voltage",
+        "opensensor:title_i18n": {
+          "ar": "جهد البطارية"
+        },
         "unit": "mV",
         "roles": [
           "auxiliaryInformation"
@@ -61,6 +70,7 @@
           2500,
           4500
         ],
+        "opensensor:group": "power",
         "firmware": {
           "type": "Int32",
           "unit": "mV",
@@ -71,6 +81,10 @@
       },
       {
         "name": "battery_percent",
+        "title": "Battery charge",
+        "opensensor:title_i18n": {
+          "ar": "نسبة شحن البطارية"
+        },
         "unit": "%",
         "roles": [
           "auxiliaryInformation"
@@ -81,6 +95,7 @@
           0,
           100
         ],
+        "opensensor:group": "power",
         "firmware": {
           "type": "Int32",
           "unit": "%",
@@ -93,6 +108,10 @@
     "v5": [
       {
         "name": "battery_soc_raw_percent",
+        "title": "Battery charge, raw",
+        "opensensor:title_i18n": {
+          "ar": "شحن البطارية، خام"
+        },
         "unit": "%",
         "roles": [
           "auxiliaryInformation"
@@ -107,6 +126,7 @@
           0,
           120
         ],
+        "opensensor:group": "power",
         "firmware": {
           "type": "Float",
           "unit": "%",
@@ -117,6 +137,10 @@
       },
       {
         "name": "battery_charge_rate_percent_per_h",
+        "title": "Battery charge rate",
+        "opensensor:title_i18n": {
+          "ar": "معدل شحن البطارية"
+        },
         "unit": "%/h",
         "roles": [
           "auxiliaryInformation"
@@ -127,6 +151,7 @@
           "finite": true
         },
         "opensensor:aggregate": "mean",
+        "opensensor:group": "power",
         "firmware": {
           "type": "Float",
           "unit": "%/h",
@@ -137,6 +162,10 @@
       },
       {
         "name": "gauge_status_flags",
+        "title": "Battery gauge alert flags",
+        "opensensor:title_i18n": {
+          "ar": "أعلام تنبيه مقياس البطارية"
+        },
         "unit": "{bitmask}",
         "roles": [
           "qualityInformation"
@@ -147,6 +176,121 @@
           "finite": true
         },
         "opensensor:aggregate": "mode",
+        "opensensor:group": "power",
+        "classification:bitfields": [
+          {
+            "offset": 0,
+            "length": 1,
+            "name": "ri",
+            "description": "Reset indicator",
+            "classes": [
+              {
+                "value": 0,
+                "name": "ok"
+              },
+              {
+                "value": 1,
+                "name": "set"
+              }
+            ]
+          },
+          {
+            "offset": 1,
+            "length": 1,
+            "name": "vh",
+            "description": "Voltage high alert",
+            "classes": [
+              {
+                "value": 0,
+                "name": "ok"
+              },
+              {
+                "value": 1,
+                "name": "set"
+              }
+            ]
+          },
+          {
+            "offset": 2,
+            "length": 1,
+            "name": "vl",
+            "description": "Voltage low alert",
+            "classes": [
+              {
+                "value": 0,
+                "name": "ok"
+              },
+              {
+                "value": 1,
+                "name": "set"
+              }
+            ]
+          },
+          {
+            "offset": 3,
+            "length": 1,
+            "name": "vr",
+            "description": "Voltage reset alert",
+            "classes": [
+              {
+                "value": 0,
+                "name": "ok"
+              },
+              {
+                "value": 1,
+                "name": "set"
+              }
+            ]
+          },
+          {
+            "offset": 4,
+            "length": 1,
+            "name": "hd",
+            "description": "State of charge low alert",
+            "classes": [
+              {
+                "value": 0,
+                "name": "ok"
+              },
+              {
+                "value": 1,
+                "name": "set"
+              }
+            ]
+          },
+          {
+            "offset": 5,
+            "length": 1,
+            "name": "sc",
+            "description": "State of charge changed 1 percent",
+            "classes": [
+              {
+                "value": 0,
+                "name": "ok"
+              },
+              {
+                "value": 1,
+                "name": "set"
+              }
+            ]
+          },
+          {
+            "offset": 6,
+            "length": 1,
+            "name": "envr",
+            "description": "Voltage reset alert enabled",
+            "classes": [
+              {
+                "value": 0,
+                "name": "ok"
+              },
+              {
+                "value": 1,
+                "name": "set"
+              }
+            ]
+          }
+        ],
         "firmware": {
           "type": "Int32",
           "unit": "bitmask",
@@ -157,6 +301,10 @@
       },
       {
         "name": "gauge_hibernating",
+        "title": "Battery gauge hibernating",
+        "opensensor:title_i18n": {
+          "ar": "مقياس البطارية في السبات"
+        },
         "unit": "{boolean}",
         "roles": [
           "auxiliaryInformation"
@@ -177,6 +325,7 @@
           "finite": true
         },
         "opensensor:aggregate": "mode",
+        "opensensor:group": "power",
         "firmware": {
           "type": "Int32",
           "unit": "boolean",

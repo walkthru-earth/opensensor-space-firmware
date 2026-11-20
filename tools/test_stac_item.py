@@ -3,7 +3,7 @@
 Builds tools/test_stac_item.cpp once per board, with that board's field and
 semantics tables, and proves six things.
 
-1. The vendored stac-opensensor fixtures are the bytes of commit 83787768
+1. The vendored stac-opensensor fixtures are the bytes of commit 204365f9
    (tools/fixtures/stac/SHA256SUMS).
 2. The board statistics table equals the measurement columns of the board's
    published template, with the same opensensor:valid_when gates.
@@ -64,6 +64,22 @@ BOARDS = {
         "example": "examples/thing=7c1e4b9a-3d52-4f86-a0b7-e9d2c5f81a46/year=2026/month=10/day=24/"
                    "data_0815_5e9d0c7b31a84f62b8d47a10c3e6f295_412-487-0.json",
     },
+    "crowpanel": {
+        "rows": "fixtures/thing=b4d9e2a7-5c31-4f08-9e6a-1a7c3f2d8e54/"
+                "data_0900_c81d4e2f9a3b47d6b0e5f1a2c7d93e48_1-90-0.rows.json",
+        "example": "examples/thing=b4d9e2a7-5c31-4f08-9e6a-1a7c3f2d8e54/year=2026/month=11/day=14/"
+                   "data_0900_c81d4e2f9a3b47d6b0e5f1a2c7d93e48_1-90-0.json",
+    },
+    # stac-opensensor has no ePaper-3.97 example yet. The board writes the same
+    # SEN63C measurement columns and valid_when gates as the CrowPanel, which
+    # the template_table check proves, so it builds from the CrowPanel rows.
+    # TODO: switch to its own fixture once stac-opensensor publishes one.
+    "epaper397": {
+        "rows": "fixtures/thing=b4d9e2a7-5c31-4f08-9e6a-1a7c3f2d8e54/"
+                "data_0900_c81d4e2f9a3b47d6b0e5f1a2c7d93e48_1-90-0.rows.json",
+        "example": "examples/thing=b4d9e2a7-5c31-4f08-9e6a-1a7c3f2d8e54/year=2026/month=11/day=14/"
+                   "data_0900_c81d4e2f9a3b47d6b0e5f1a2c7d93e48_1-90-0.json",
+    },
 }
 
 
@@ -91,12 +107,23 @@ def registry_proofs() -> None:
 REASONS = {
     "not a dated data_HHMM_ file": "not-dated",
     "no Thing id or mobility in the footer": "no-thing",
+    "the rotation interval is not 600, 900, 1800 or 3600": "bad-rotation",
     "no rows": "no-rows",
     "a row has no UTC time": "null-time",
     "no located row": "not-located",
     "a cell is not resolution 8": "not-resolution-8",
     "a fixed Thing file holds more than one cell": "fixed-many-cells",
 }
+# The one reason that names a value, the HHMM the file name should carry.
+WINDOW_REASON = re.compile(
+    r"HHMM in the file name is not [0-9]{4}, the start of the window of its earliest row")
+
+
+def reason_name(reason: str) -> str:
+    if WINDOW_REASON.fullmatch(reason):
+        return "wrong-window"
+    require(reason in REASONS, f"cases.json has an unknown reason: {reason}")
+    return REASONS[reason]
 MEASUREMENT = {"physicalMeasurement", "modelResult"}
 NUMERIC = {"int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "float", "double"}
 TOLERANCE = 1e-9
@@ -252,6 +279,8 @@ def apply(data: dict, ops: list[dict]) -> dict:
             data["file"][op["key"]] = op["value"]
         elif kind == "thing":
             data["footer"]["thing"][op["key"]] = op["value"]
+        elif kind == "rotation":
+            data["footer"]["file"]["rotation_interval_s"] = op["value"]
         elif kind == "truncate":
             for name in data["rows"]:
                 data["rows"][name] = data["rows"][name][: op["rows"]]
@@ -281,6 +310,7 @@ def input_text(data: dict) -> str:
         f"thing {thing['id'] or '-'}",
         f"mobility {thing['mobility']}",
         f"interval_ms {data['footer']['acquisition']['sample_interval_ms']}",
+        f"rotation_s {data['footer']['file']['rotation_interval_s']}",
     ]
     for name, values in data["rows"].items():
         lines.append(" ".join(["col", name, *map(value_text, values)]))
@@ -348,7 +378,7 @@ def board_checks(board: str, executable: Path, directory: Path, cases: dict,
         output = run_item(executable, directory, apply(load_base(board), case["ops"]))
         expect = case["expect"]
         if "none" in expect:
-            want = f"none {REASONS[expect['none']]}"
+            want = f"none {reason_name(expect['none'])}"
             if output != want:
                 problems.append(f"{case['name']} gave {output[:60]}, want {want}")
         elif not output.startswith("{"):
@@ -405,6 +435,10 @@ MUTATIONS = [
      "const double shifted = scaled + 0.5;", "const double shifted = scaled;", "cores3"),
     ("allow two cells for a fixed Thing", "stac/src/os_stac_item.cpp",
      "distinct.size() > 1", "distinct.size() > 2", "cores3"),
+    ("allow any rotation", "stac/src/os_stac_item.cpp",
+     "if (!rotation_allowed(file.rotation_interval_s))", "if (false)", "cores3"),
+    ("name the window from the last row", "stac/src/os_stac_item.cpp",
+     "window_matches(*id, accumulator.start_us_,", "window_matches(*id, accumulator.end_us_,", "cores3"),
     ("keep trailing zeros of the fraction", "stac/src/os_stac_item.cpp",
      "while (out[used - 1] == '0')", "while (false)", "cores3"),
 ]
@@ -460,6 +494,10 @@ SIDECAR_NAMES = re.compile(
     r"partial_length =\s*std::snprintf\(partial, sizeof\(partial\), \"%s\.partial\", path\);")
 # finalize_file() order. The digest begins before the one read, an error path
 # aborts it, and it finishes only after the Parquet rename.
+# The Item checks the rotation and HHMM window against the value the footer
+# carries. "parquet interval" finishes the open file before it changes it.
+SIDECAR_ROTATION = ".rotation_interval_s = rotation_seconds.load(),"
+FOOTER_ROTATION = "{.rotation_seconds = rotation_seconds.load(),"
 FINALIZE_ORDER = (
     "if (const auto begun = stac_state->sha.begin(); begun)",
     "ok = finalized_file(target.partial, size, crc, sha) &&",
@@ -494,7 +532,11 @@ def check_logger_sidecar(source: str) -> None:
             "write_sidecar() must open only its partial with O_CREAT | O_EXCL")
     require(len(SIDECAR_NO_REPLACE.findall(sidecar)) == 1 and sidecar.count("::rename(") == 1,
             "write_sidecar() must refuse an existing .json right before its one rename")
+    require(sidecar.count(SIDECAR_ROTATION) == 1,
+            "write_sidecar() must pass the rotation the footer recorded")
     finalize = logger_body(source, "\nbool finalize_file(OutputFile &target)")
+    require(finalize.count(FOOTER_ROTATION) == 1,
+            "finalize_file() must write the same rotation to the footer")
     at = 0
     for step in FINALIZE_ORDER:
         found = finalize.find(step, at)
@@ -527,6 +569,7 @@ LOGGER_MUTANTS = [
      "ok = finalized_file(target.partial, size, crc, nullptr) &&"),
     ("abort removed", "if (sha)\n      sha->abort();\n    close_failed(target, \"finalize\"",
      "close_failed(target, \"finalize\""),
+    ("rotation not passed to the Item", ".rotation_interval_s = rotation_seconds.load(),", ""),
 ]
 
 
@@ -561,8 +604,8 @@ def main() -> None:
     registry_proofs()
     logger_sidecar_proofs()
     cases = json.loads((FIXTURES / "cases.json").read_text())
-    require(cases["canonical_sha256"] == "98583cdb3c5b625f0d998e4650ee3a303c2ab4addd53f9486820c641182b9090",
-            "cases.json is not from canonical.mjs at 83787768")
+    require(cases["canonical_sha256"] == "157821ff8dbc53331b4a035385594badb67ccbd3cb0cff294111049dca37c478",
+            "cases.json is not from canonical.mjs at 204365f9")
     require(cases["h3_js"] == "4.5.0", "cases.json is not from h3-js 4.5.0")
     comparator_proofs(json.loads((FIXTURES / BOARDS["cores3"]["example"]).read_text()))
     validators = schema_validators()

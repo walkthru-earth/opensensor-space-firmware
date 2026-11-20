@@ -97,6 +97,113 @@
           "sha256": "0d7e1e7a66992d35564ff37ad430fc0efaa03155ab22746211c11e8059f2a256"
         }
       ]
+    },
+    {
+      "dict": "f4f81218dc80d1a8e6db043197a2f7180c4f075f9e8348df30eaceef44d68370",
+      "rows": 81,
+      "baseline": {
+        "reason": "Owner approved LIVE key lst for light_status (#184, 2026-11-18)",
+        "migration": "LIVE `utc` in microseconds, CoreS3 LIVE `lst` and Arabic titles on every column (feat/live-utc-column-titles)",
+        "segments": [
+          {
+            "module": "ltr553",
+            "segment": "core"
+          }
+        ]
+      },
+      "segments": [
+        {
+          "module": "system",
+          "segment": "head",
+          "first": 1,
+          "rows": 10,
+          "sha256": "f8d63dc250ef43b6bc993add6c519444cf06136e4c53ccaa1fc2fb0b40f30954"
+        },
+        {
+          "module": "pmsa003",
+          "segment": "core",
+          "first": 11,
+          "rows": 19,
+          "sha256": "053513fe6b7e3a239c100a07a6afb153f3c3a5be6d5d2826e187ffc5aec357a9"
+        },
+        {
+          "module": "m5_imu",
+          "segment": "core",
+          "first": 30,
+          "rows": 11,
+          "sha256": "9f437b0e73f84b2c2976c5d1a6e72a8f3de1ab107fb75e2f4e71f61ae4e0d974"
+        },
+        {
+          "module": "ltr553",
+          "segment": "core",
+          "first": 41,
+          "rows": 5,
+          "sha256": "c81d5f15e56a04c162a43f5d11ca6be21f68eef12b94882fb5d0da147634fc12"
+        },
+        {
+          "module": "axp2101",
+          "segment": "core",
+          "first": 46,
+          "rows": 7,
+          "sha256": "05d891b313599663dd048a3dcd9762fb2eea58682487835ff9f6ec77e2b9106c"
+        },
+        {
+          "module": "bm8563",
+          "segment": "core",
+          "first": 53,
+          "rows": 3,
+          "sha256": "43144163b1ba17d81996dfbd63dba8659f77edb9e125bc11ee5a2987618bb4ac"
+        },
+        {
+          "module": "ft6336",
+          "segment": "core",
+          "first": 56,
+          "rows": 3,
+          "sha256": "92be75f4b773efa00970f892fde3688875e94c34d9ac3849ad21a1584b4c4596"
+        },
+        {
+          "module": "system",
+          "segment": "runtime",
+          "first": 59,
+          "rows": 12,
+          "sha256": "618ccfddd9013bd941fb60a562ab25f0433893fb0d37555ade4f9ccdc12731d6"
+        },
+        {
+          "module": "sht20",
+          "segment": "core",
+          "first": 71,
+          "rows": 2,
+          "sha256": "792b34a52d4ca116bcd8a278813fa2fe164dab30fb186ca0fea19919b86e6780"
+        },
+        {
+          "module": "system",
+          "segment": "clock_close",
+          "first": 73,
+          "rows": 2,
+          "sha256": "f960d7a8e1c0e7f764edbbc176ad32df34b8ff5afbd782f127fb0b287311bbc4"
+        },
+        {
+          "module": "pmsa003",
+          "segment": "received",
+          "first": 75,
+          "rows": 1,
+          "sha256": "9b9ac50cc18d7078a9941628e8f92a3694f5f1b8c8b961fa0a41a62859c36036"
+        },
+        {
+          "module": "system",
+          "segment": "clock_anchor",
+          "first": 76,
+          "rows": 2,
+          "sha256": "d560c885630a5511ac50bed6981d2edec1b9186a4ad68f2006f4022eaea7053b"
+        },
+        {
+          "module": "system",
+          "segment": "location",
+          "first": 78,
+          "rows": 4,
+          "sha256": "0d7e1e7a66992d35564ff37ad430fc0efaa03155ab22746211c11e8059f2a256"
+        }
+      ]
     }
   ]
 }

@@ -1,0 +1,118 @@
+{
+  "$schema": "https://walkthru-earth.github.io/stac-opensensor/v0.1.0/registry.json",
+  "type": "OpenSensorScaleRegistry",
+  "scales": {
+    "who-2021-pm25": {
+      "source": "https://www.who.int/publications/i/item/9789240034228",
+      "unit": "ug/m3",
+      "period": "P1D",
+      "guideline": 15,
+      "steps": [
+        {
+          "upper": 15,
+          "label": {
+            "en": "Within the WHO guideline",
+            "ar": "ضمن إرشاد منظمة الصحة العالمية"
+          },
+          "color_hint": "C6EBA8"
+        },
+        {
+          "upper": 25,
+          "label": {
+            "en": "Within WHO interim target 4",
+            "ar": "ضمن الهدف المرحلي 4 لمنظمة الصحة العالمية"
+          },
+          "color_hint": "F5D75E"
+        },
+        {
+          "upper": 37.5,
+          "label": {
+            "en": "Within WHO interim target 3",
+            "ar": "ضمن الهدف المرحلي 3 لمنظمة الصحة العالمية"
+          },
+          "color_hint": "F2A14A"
+        },
+        {
+          "upper": 50,
+          "label": {
+            "en": "Within WHO interim target 2",
+            "ar": "ضمن الهدف المرحلي 2 لمنظمة الصحة العالمية"
+          },
+          "color_hint": "DC5A4A"
+        },
+        {
+          "upper": 75,
+          "label": {
+            "en": "Within WHO interim target 1",
+            "ar": "ضمن الهدف المرحلي 1 لمنظمة الصحة العالمية"
+          },
+          "color_hint": "9A3F8E"
+        },
+        {
+          "upper": null,
+          "label": {
+            "en": "Above every WHO target",
+            "ar": "فوق كل أهداف منظمة الصحة العالمية"
+          },
+          "color_hint": "5C1A33"
+        }
+      ]
+    },
+    "who-2021-pm10": {
+      "source": "https://www.who.int/publications/i/item/9789240034228",
+      "unit": "ug/m3",
+      "period": "P1D",
+      "guideline": 45,
+      "steps": [
+        {
+          "upper": 45,
+          "label": {
+            "en": "Within the WHO guideline",
+            "ar": "ضمن إرشاد منظمة الصحة العالمية"
+          },
+          "color_hint": "C6EBA8"
+        },
+        {
+          "upper": 50,
+          "label": {
+            "en": "Within WHO interim target 4",
+            "ar": "ضمن الهدف المرحلي 4 لمنظمة الصحة العالمية"
+          },
+          "color_hint": "F5D75E"
+        },
+        {
+          "upper": 75,
+          "label": {
+            "en": "Within WHO interim target 3",
+            "ar": "ضمن الهدف المرحلي 3 لمنظمة الصحة العالمية"
+          },
+          "color_hint": "F2A14A"
+        },
+        {
+          "upper": 100,
+          "label": {
+            "en": "Within WHO interim target 2",
+            "ar": "ضمن الهدف المرحلي 2 لمنظمة الصحة العالمية"
+          },
+          "color_hint": "DC5A4A"
+        },
+        {
+          "upper": 150,
+          "label": {
+            "en": "Within WHO interim target 1",
+            "ar": "ضمن الهدف المرحلي 1 لمنظمة الصحة العالمية"
+          },
+          "color_hint": "9A3F8E"
+        },
+        {
+          "upper": null,
+          "label": {
+            "en": "Above every WHO target",
+            "ar": "فوق كل أهداف منظمة الصحة العالمية"
+          },
+          "color_hint": "5C1A33"
+        }
+      ]
+    }
+  }
+}

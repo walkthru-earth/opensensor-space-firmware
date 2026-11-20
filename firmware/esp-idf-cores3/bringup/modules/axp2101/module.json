@@ -13,6 +13,10 @@
     "core": [
       {
         "name": "vbus_mv",
+        "title": "USB bus voltage",
+        "opensensor:title_i18n": {
+          "ar": "جهد ناقل USB"
+        },
         "unit": "mV",
         "roles": [
           "auxiliaryInformation"
@@ -23,6 +27,7 @@
           0,
           5500
         ],
+        "opensensor:group": "power",
         "firmware": {
           "type": "Int32",
           "unit": "mV",
@@ -33,6 +38,10 @@
       },
       {
         "name": "battery_mv",
+        "title": "Battery voltage",
+        "opensensor:title_i18n": {
+          "ar": "جهد البطارية"
+        },
         "unit": "mV",
         "roles": [
           "auxiliaryInformation"
@@ -43,6 +52,7 @@
           2500,
           4500
         ],
+        "opensensor:group": "power",
         "firmware": {
           "type": "Int32",
           "unit": "mV",
@@ -53,6 +63,10 @@
       },
       {
         "name": "battery_percent",
+        "title": "Battery charge",
+        "opensensor:title_i18n": {
+          "ar": "نسبة شحن البطارية"
+        },
         "unit": "%",
         "roles": [
           "auxiliaryInformation"
@@ -63,6 +77,7 @@
           0,
           100
         ],
+        "opensensor:group": "power",
         "firmware": {
           "type": "Int32",
           "unit": "%",
@@ -73,6 +88,10 @@
       },
       {
         "name": "charging_status",
+        "title": "Charging status",
+        "opensensor:title_i18n": {
+          "ar": "حالة الشحن"
+        },
         "unit": "{code}",
         "roles": [
           "auxiliaryInformation"
@@ -94,6 +113,7 @@
         ],
         "opensensor:property": "urn:walkthru-earth:property:battery_charging_status",
         "opensensor:aggregate": "mode",
+        "opensensor:group": "power",
         "firmware": {
           "type": "Int32",
           "unit": "code",
@@ -104,6 +124,10 @@
       },
       {
         "name": "battery_current_ma",
+        "title": "Battery current",
+        "opensensor:title_i18n": {
+          "ar": "تيار البطارية"
+        },
         "unit": "mA",
         "roles": [
           "auxiliaryInformation"
@@ -114,6 +138,7 @@
           "finite": true
         },
         "opensensor:aggregate": "mean",
+        "opensensor:group": "power",
         "firmware": {
           "type": "Int32",
           "unit": "mA",
@@ -124,6 +149,10 @@
       },
       {
         "name": "external_5v_enabled",
+        "title": "External 5 V output on",
+        "opensensor:title_i18n": {
+          "ar": "مخرج 5 فولت الخارجي يعمل"
+        },
         "unit": "{boolean}",
         "roles": [
           "auxiliaryInformation"
@@ -140,6 +169,7 @@
         ],
         "opensensor:property": "urn:walkthru-earth:property:external_5v_output_enabled",
         "opensensor:aggregate": "mode",
+        "opensensor:group": "power",
         "firmware": {
           "type": "Int32",
           "unit": "boolean",
@@ -150,6 +180,10 @@
       },
       {
         "name": "usb_output_enabled",
+        "title": "USB output on",
+        "opensensor:title_i18n": {
+          "ar": "مخرج USB يعمل"
+        },
         "unit": "{boolean}",
         "roles": [
           "auxiliaryInformation"
@@ -166,6 +200,7 @@
         ],
         "opensensor:property": "urn:walkthru-earth:property:usb_output_enabled",
         "opensensor:aggregate": "mode",
+        "opensensor:group": "power",
         "firmware": {
           "type": "Int32",
           "unit": "boolean",

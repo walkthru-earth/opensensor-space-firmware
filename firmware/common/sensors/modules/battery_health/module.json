@@ -12,6 +12,10 @@
     "core": [
       {
         "name": "battery_health_state",
+        "title": "Battery health",
+        "opensensor:title_i18n": {
+          "ar": "صحة البطارية"
+        },
         "unit": "{code}",
         "roles": [
           "auxiliaryInformation"
@@ -49,6 +53,7 @@
           "finite": true
         },
         "opensensor:aggregate": "mode",
+        "opensensor:group": "power",
         "firmware": {
           "type": "Int32",
           "unit": "code",
@@ -59,6 +64,10 @@
       },
       {
         "name": "battery_minutes_to_empty",
+        "title": "Battery time to empty",
+        "opensensor:title_i18n": {
+          "ar": "الوقت المتبقي للبطارية"
+        },
         "unit": "min",
         "roles": [
           "auxiliaryInformation"
@@ -73,6 +82,7 @@
           0,
           10080
         ],
+        "opensensor:group": "power",
         "firmware": {
           "type": "Int32",
           "unit": "min",

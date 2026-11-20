@@ -223,7 +223,7 @@ Every row a dated telemetry file gets is also fed to the builder. At finalize
 the read back that checks structure and CRC-32 also feeds a SHA-256 of the
 whole file through PSA, so the file is read once. After the Parquet rename and
 the `PARQUET READY` line the worker writes the STAC File Item of the canonical
-form of stac-opensensor commit `83787768cc8451109d48a03d4ef5493ffcd403dd` as
+form of stac-opensensor commit `204365f929e6f77bcaa6e70a0245c96cadc5c115` as
 `<stem>-<last>-<attempt>.json` beside the `.parquet` file, in the same folder.
 
 - It writes `<file>.json.partial` with `O_EXCL`, syncs, closes and renames it
@@ -241,8 +241,10 @@ form of stac-opensensor commit `83787768cc8451109d48a03d4ef5493ffcd403dd` as
   where `<path>` is below the output root.
 - A file that the profile gives no Item prints
   `PARQUET STAC result=skipped file=<path> reason=<r>` with `not-dated`,
-  `no-thing`, `no-rows`, `null-time`, `not-located`, `not-resolution-8` or
-  `fixed-many-cells`. Every `unsynced` file is `not-dated`.
+  `no-thing`, `bad-rotation`, `no-rows`, `null-time`, `not-located`,
+  `not-resolution-8`, `fixed-many-cells` or `wrong-window`. Every `unsynced`
+  file is `not-dated`. `wrong-window` means the HHMM of the file name is not
+  the start of the rotation window that holds its earliest row.
 - Any other failure prints one
   `PARQUET STAC result=failed file=<path> reason=<r> errno=<n>` line and
   removes the partial it created. Open, write, sync, close and rename failures

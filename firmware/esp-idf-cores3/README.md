@@ -2,7 +2,7 @@
 
 The current source is a pure **ESP-IDF 6.1** application, firmware identity
 **`idf-cores3-parquet-v6.33`**, with an **81-column** CoreS3 schema
-`cores3-telemetry-v6` and dictionary `cores3-telemetry-v7`. The original 77
+`cores3-telemetry-v6` and dictionary `cores3-telemetry-v8`. The original 77
 columns retain their order and types. Four nullable location fields follow,
 `h3_cell_id`, `h3_resolution`, `location_source` and the WKB Point `geometry`.
 Since v6.12 the two UTC instants are `event_time_utc_us` and
@@ -10,7 +10,7 @@ Since v6.12 the two UTC instants are `event_time_utc_us` and
 and every leaf carries Parquet `field_id` = its 1-based dictionary position
 (see [mobile migration](../../docs/shared/mobile-migration.md)). Each `FIELD`
 row ends with its LIVE key and its LIVE float decimals, so the dictionary
-SHA-256 `3b4d8500…` covers the LIVE key map and precision. `bringup/main.cpp` owns board setup, sensors, display and native
+SHA-256 `f4f81218…` covers the LIVE key map and precision. `bringup/main.cpp` owns board setup, sensors, display and native
 UART; `bringup/telemetry_logger.cpp` supplies the OSLogger adapter. M5Unified
 **0.3.0** and M5GFX **0.3.0** are native IDF components; there are no Arduino
 APIs or Arduino component in the application. Location uses the optional shared
@@ -184,7 +184,7 @@ Motivation: the BM8563 at `0x51` had never been written, so every "RTC read fail
 | Change | Effect |
 | --- | --- |
 | `set_clock()` gains a source; every host sync (serial, BLE, LAN) asks the **main task** to copy the anchor into the RTC in UTC at the next whole-second boundary (`service_rtc_write`, ≤ 60 ms late, forced after 5 s, read back) | serial `PARQUET RTC write=ok utc=…Z late_ms=…`; the storage worker never touches I²C |
-| `begin_logger()` seeds the anchor from the RTC before the first sample when `getVoltLow()` is false and the calendar decodes to 2020–2100 (`seed_clock_from_rtc`) | rows carry `clock_status = 2`, `clock_epoch = 1`, and go to the dated Hive tree from the first sample; `PARQUET TIME … source=rtc` on serial; otherwise `PARQUET RTC state=unusable reason=…` and the old `unsynced/` behaviour |
+| `begin_logger()` seeds the anchor from the RTC before the first sample when `getVoltLow()` is false and the calendar decodes to 2020–2100 (`seed_clock_from_rtc`). Current firmware also refuses an RTC value before the 2026-10-29 source floor of the [clock rule](../../docs/shared/time-and-location.md#clock-rule), which this image predates | rows carry `clock_status = 2`, `clock_epoch = 1`, and go to the dated Hive tree from the first sample; `PARQUET TIME … source=rtc` on serial; otherwise `PARQUET RTC state=unusable reason=…` and the old `unsynced/` behaviour |
 | A host sync on a device that already has an anchor logs the error of the clock it replaces: `PARQUET CLOCK transport=serial\|ble\|lan previous=rtc\|host skew_ms=…` | the only clock-accuracy evidence the device produces; record it in the bench file |
 | `status` JSON adds `clk` (anchor source 0/1/2) and `rtc` (chip state 0 unread / 1 in use / 2 unusable); footer `clock` metadata documents code 2; `kFirmware` → `-v6.2` | the phone should offer "set time" when `clk != 1`, not only when `utc == 0` ([protocol](../../docs/shared/ble-sync-protocol.md)) |
 | Device-health page shows `Clock: 2026-09-18 09:42:35Z host e1` (UTC, source, epoch) or `Clock: no UTC yet (RTC unset\|unusable)` | the device never renders local time; time zones are the reader's job |
@@ -261,7 +261,7 @@ A physical RST press makes this CoreS3 disappear and re-enumerate on macOS. The 
 6. microSD mount on the display-shared SPI bus, without formatting;
 7. PMSA003 framing, length and checksum on GPIO18 RX and GPIO17 TX.
 
-After bring-up, the UART parser continues draining the active PMS stream. Every 10 seconds the LCD and serial output refresh from the latest checksum-valid frame. The LCD has four pages: atmospheric and CF=1 PM1.0/PM2.5/PM10 mass values; all six particle-count thresholds with sensor and parser integrity; live SD, power, heap, PSRAM and uptime health; and Bluetooth. Swipe vertically or tap to move between pages. Page changes redraw immediately without changing the measurement cadence. While the board needs setup (a fixed Thing with no `location.cell`, advert flags bit 6), the footer of every page reads `Setup needed, open the OpenSensor app` in place of the swipe hint. It clears on the next redraw after a `SET_CONFIG` sets a cell or switches the Thing to moving.
+After bring-up, the UART parser continues draining the active PMS stream. The periodic refresh runs every 10 seconds. It redraws the LCD and prints the serial `MEAS` line from the latest checksum-valid frame. The LCD has four pages: atmospheric and CF=1 PM1.0/PM2.5/PM10 mass values; all six particle-count thresholds with sensor and parser integrity; live logging state, power, heap, PSRAM and uptime health; and Bluetooth. The two PM pages show measurements only while the row would store them, else the status (warming, stale, sensor error). Frame age appears only once a frame exists. Before the first frame they show a waiting message. While the reading is not valid both pages keep the parser failure counts, which are diagnostics, not measurements. Swipe vertically or tap to move between pages. A page change redraws only the LCD and leaves the periodic timer alone. A Bluetooth or LAN link change also redraws the LCD at once and restarts the 10-second timer, so the next `MEAS` line comes 10 seconds after it. While the board needs setup (a fixed Thing with no `location.cell`, advert flags bit 6), the footer of every page reads `Setup needed, open the OpenSensor app` in place of the swipe hint. It clears on the next redraw after a `SET_CONFIG` sets a cell or switches the Thing to moving.
 
 The scan excludes reserved I2C addresses `0x00` through `0x07`. Probing that range stopped the ESP32-S3 controller during the first hardware run; M5Unified's own scanner carries the same restriction.
 

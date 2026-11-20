@@ -55,6 +55,7 @@ To add a board or a new sensor set, start with
 | --- | --- | --- |
 | M5Stack CoreS3 with optional M134/PMSA003 | Native OSLogger adapter with a short native USB/SD/sensor/time readback. Proto 3 phone transfers and endurance remain pending. Historical Arduino radio evidence stays image-specific | [CoreS3 board docs](boards/m5stack-cores3/README.md), [trial](../firmware/esp-idf-cores3/README.md) |
 | ELECROW CrowPanel ESP32-S3 4.2" E-paper v1.2 with SEN63C | Native ESP-IDF logger with an e-paper dashboard. Host builds and contract tests pass, no hardware run is recorded yet | [CrowPanel board docs](boards/elecrow-crowpanel-epaper-42/README.md), [trial](../firmware/esp-idf-crowpanel-epaper/README.md) |
+| Waveshare ESP32-S3-ePaper-3.97 with SEN63C | Native ESP-IDF logger with a temporary bring-up screen and an IMU orientation hook. Flashed, booted and logged SEN63C rows on 2026-11-20. Panel visuals, orientation and sync remain unqualified | [ePaper-3.97 board docs](boards/waveshare-esp32-s3-epaper-397/README.md), [trial](../firmware/esp-idf-waveshare-epaper-397/AGENTS.md) |
 | Waveshare ESP32-S3-SIM7670G-4G V2 with PMS5003T | Native ESP-IDF logger and retained diagnostic with a short native USB/SD readback. Phone transfers and endurance remain pending. Historical Arduino evidence stays in its bench record | [Waveshare board docs](boards/waveshare-esp32-s3-sim7670g/README.md), [trial](../firmware/esp-idf-waveshare-sim7670g/README.md) |
 
 The eleven shared ESP-IDF components are OSCommon (encoding and the Parquet writer), OSSensors (sensor drivers),

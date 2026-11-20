@@ -50,6 +50,8 @@ tasks=(
   "coredump-read-test"
   "compile-dialect-test"
   "repro-paths-test"
+  # ESP-IDF Python build tools lock (#176)
+  "idf-python-lock-test"
   "stack-budget-test"
   "board-conditionals-test"
   "retired-names-test"
@@ -60,6 +62,7 @@ tasks=(
   "telemetry-contract-test --sanitize"
   "waveshare-contract-test --sanitize"
   "crowpanel-contract-test --sanitize"
+  "epaper397-contract-test --sanitize"
   "column-semantics-test"
   "board-template-check-test"
   "published-templates-test"

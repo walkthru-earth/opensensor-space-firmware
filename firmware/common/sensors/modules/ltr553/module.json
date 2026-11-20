@@ -16,6 +16,10 @@
     "core": [
       {
         "name": "light_ch0_raw",
+        "title": "Light, visible and infrared, raw",
+        "opensensor:title_i18n": {
+          "ar": "الضوء، المرئي وتحت الأحمر، خام"
+        },
         "unit": "{raw_count}",
         "roles": [
           "physicalMeasurement"
@@ -30,6 +34,7 @@
           0,
           65535
         ],
+        "opensensor:group": "light",
         "firmware": {
           "type": "Int32",
           "unit": "raw_count",
@@ -40,6 +45,10 @@
       },
       {
         "name": "light_ch1_raw",
+        "title": "Light, infrared, raw",
+        "opensensor:title_i18n": {
+          "ar": "الضوء، تحت الأحمر، خام"
+        },
         "unit": "{raw_count}",
         "roles": [
           "physicalMeasurement"
@@ -54,6 +63,7 @@
           0,
           65535
         ],
+        "opensensor:group": "light",
         "firmware": {
           "type": "Int32",
           "unit": "raw_count",
@@ -64,6 +74,10 @@
       },
       {
         "name": "proximity_raw",
+        "title": "Proximity, raw",
+        "opensensor:title_i18n": {
+          "ar": "القرب، خام"
+        },
         "unit": "{raw_count}",
         "roles": [
           "physicalMeasurement"
@@ -78,6 +92,7 @@
           0,
           2047
         ],
+        "opensensor:group": "light",
         "firmware": {
           "type": "Int32",
           "unit": "raw_count",
@@ -88,6 +103,10 @@
       },
       {
         "name": "light_status",
+        "title": "Light sensor status",
+        "opensensor:title_i18n": {
+          "ar": "حالة مستشعر الضوء"
+        },
         "unit": "{code}",
         "roles": [
           "qualityInformation"
@@ -117,16 +136,21 @@
         ],
         "opensensor:property": "urn:walkthru-earth:property:ambient_light_status",
         "opensensor:aggregate": "mode",
+        "opensensor:group": "light",
         "firmware": {
           "type": "Int32",
           "unit": "code",
           "validity": "always",
-          "live_key": "",
+          "live_key": "lst",
           "decimals": 0
         }
       },
       {
         "name": "proximity_status",
+        "title": "Proximity sensor status",
+        "opensensor:title_i18n": {
+          "ar": "حالة مستشعر القرب"
+        },
         "unit": "{code}",
         "roles": [
           "qualityInformation"
@@ -156,6 +180,7 @@
         ],
         "opensensor:property": "urn:walkthru-earth:property:proximity_status",
         "opensensor:aggregate": "mode",
+        "opensensor:group": "light",
         "firmware": {
           "type": "Int32",
           "unit": "code",

@@ -2,8 +2,11 @@
 
 `src/os_stac_item.*` builds the STAC File Item a board writes as `<file>.json`
 next to each finalized dated Parquet file (#142). It follows the canonical form
-of stac-opensensor commit `83787768cc8451109d48a03d4ef5493ffcd403dd`
+of stac-opensensor commit `204365f929e6f77bcaa6e70a0245c96cadc5c115`
 (`PROFILE.md` "Canonical File Item" and `scripts/canonical.mjs` `buildItem`).
+That `buildItem` adds two no Item rules. The rotation interval must be 600,
+900, 1800 or 3600 seconds, and the HHMM of the file name must be the start of
+the window that holds the earliest row.
 
 - Board neutral. It touches no storage, NVS, radio or board pins. A board opts
   in through `oslogger::Config::stac_columns`, a table built at compile time by

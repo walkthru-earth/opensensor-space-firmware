@@ -2,6 +2,34 @@
 
 Newest first. Versions follow section 7 of the [README](README.md).
 
+## 0.1.7, 2026-11-18
+
+- Display hints and the setup manifest of
+  [decision 0003](../decisions/0003-metadata-driven-apps.md) (#184). The
+  vendored stac-opensensor schemas and registry move to `07a4f21`, whose
+  template schema carries the setup manifest.
+- A module column may author `title`, `opensensor:title_i18n`,
+  `description`, `opensensor:description_i18n`, `opensensor:decimals`,
+  `opensensor:group`, a default `opensensor:scale` and
+  `classification:bitfields`. A class may author `title`, `description` and
+  `color_hint`. A bitfield needs a `bitmask` column, bits that do not overlap
+  and fit the column width, and class values that fit the bit length.
+- Every template column carries `opensensor:decimals`, authored or else
+  `firmware.decimals`. A named scale is copied from the vendored registry into
+  the template `opensensor:scales`, and its unit must equal the column unit.
+- A board gains `primary`, a `physicalMeasurement` column written to the
+  template `opensensor:primary`, and `setup`, `settings` and `config_keys`,
+  written to the template `firmware` block. Catalog steps carry no keys, board
+  steps must, and every declared key is used. A step or section may carry
+  `label` and `label_i18n`, and a board step must carry `label`. The setup
+  catalog is name, location, mobility, site, wifi, pairing and lan. The
+  settings catalog is location, site, wifi, pairing, lan, bonds and `sensor`,
+  the sensor identity card. Key names refuse the reserved
+  prefixes and secret parts, and no key is a dotted prefix of another. All three boards set `primary`, `setup` and
+  `settings`, Waveshare lists `sensor`, and none declares `config_keys` yet.
+- `desc` moves on every board. `dict`, `telemetry_fields.inc` and
+  `shipped.lock` do not move.
+
 ## 0.1.6, 2026-11-17
 
 - `tooling.flash_bytes` accepts 8 MiB (8388608) as well as 16 MiB

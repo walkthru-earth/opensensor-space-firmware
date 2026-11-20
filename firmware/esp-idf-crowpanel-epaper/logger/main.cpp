@@ -19,6 +19,7 @@
 #include <esp_heap_caps.h>
 #include <esp_psram.h>
 #include <esp_timer.h>
+#include <expected>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <freertos/semphr.h>
@@ -31,7 +32,11 @@
 #include <os_console.h>
 #include <os_logger.h>
 #include <os_sen6x.h>
+#include <os_stac_item.h>
 #include <power.h>
+#include <span>
+#include <string_view>
+#include <utility>
 #include <wifi_link.h>
 
 #ifndef CONFIG_SPIRAM
@@ -460,9 +465,15 @@ void collect(oslogger::Row &row, std::int64_t now, std::int64_t, void *) {
   sample_mono_us = now;
 }
 
-// No STAC File Item sidecar yet (#142). stac-item-test proves every board that
-// sets Config::stac_columns against a stac-opensensor example, and that repo
-// has no CrowPanel example. Opt in once it does.
+// The STAC File Item statistics columns (#142, #184), the numeric measurement
+// columns of the board template in template order. stac-item-test proves the
+// Item against the stac-opensensor CrowPanel example.
+constexpr auto kStatColumns =
+    opensensor::stac::stat_columns<opensensor::stac::stat_count(
+        kFields, std::span(kSemantics))>(kFields, std::span(kSemantics));
+static_assert(opensensor::stac::stat_columns_valid(kStatColumns, kFields,
+                                                   std::span(kSemantics)),
+              "every STAC statistics column must have a gate the Item reads");
 
 // OpenSensor BLE name prefix, so the board advertises OS-xxxx.
 constexpr char kBleNamePrefix[] = "OS-";
@@ -487,6 +498,8 @@ const oslogger::Config kLoggerConfig{
     .descriptor_sha256 = kDescriptorSha256,
     .template_href = kTemplateHref,
     .self_test_field = "pm25_mass_ug_m3",
+    .stac_columns = kStatColumns.data(),
+    .stac_column_count = kStatColumns.size(),
 };
 const oslogger::Hooks kHooks{
     .collect = collect,
@@ -790,7 +803,8 @@ ui::Model model_of(const UiFeed &f) {
 }
 
 // Panel settings live in their own NVS namespace, apart from `oscfg` and
-// `parquet`. The UI task alone reads and writes them after init_board.
+// `parquet`. The UI task alone reads and writes them after init_board. A
+// phone change reaches it through phone_pending.
 constexpr const char *kPanelNamespace = "ospanel";
 constexpr const char *kPanelKey = "ui";
 // A change is saved once the knob has rested this long, so turning through
@@ -802,6 +816,47 @@ constexpr std::int64_t kSaveRetryUs = 60000000;
 constexpr std::int64_t kRedrawSlackUs = 1000000;
 
 ui::Settings panel_settings;
+
+// The phone's panel and sen6x keys (#184), SET_CONFIG keys and GET_CONFIG
+// page 7. The storage worker checks a request into phone_draft. On commit it
+// adds the draft to phone_pending, which the UI task takes on its next pass
+// and saves like a knob change. shared_panel is what page 7 reads, the UI
+// task's settings with any change not yet taken on top.
+ui::PhoneDraft phone_draft;   // the storage worker only
+ui::PhoneDraft phone_pending; // feed_mutex
+ui::Settings shared_panel;    // feed_mutex once it exists
+
+void phone_begin() { phone_draft = ui::PhoneDraft{}; }
+
+std::expected<void, config::BoardKeyError> phone_stage(std::string_view key,
+                                                       std::string_view value) {
+  const auto staged = ui::set_phone_key(phone_draft, key, value);
+  if (staged)
+    return {};
+  return std::unexpected(staged.error() == ui::PhoneKeyError::Unknown
+                             ? config::BoardKeyError::Unknown
+                             : config::BoardKeyError::Value);
+}
+
+void phone_commit() {
+  xSemaphoreTake(feed_mutex, portMAX_DELAY);
+  ui::merge_phone_draft(phone_pending, phone_draft);
+  ui::apply_phone_draft(shared_panel, phone_draft);
+  xSemaphoreGive(feed_mutex);
+  phone_draft = ui::PhoneDraft{};
+}
+
+std::size_t phone_page(char *out, std::size_t size) {
+  xSemaphoreTake(feed_mutex, portMAX_DELAY);
+  const ui::Settings settings = shared_panel;
+  xSemaphoreGive(feed_mutex);
+  return ui::phone_page(std::span<char>(out, size), settings);
+}
+
+constexpr config::BoardKeys kBoardKeys{.begin = phone_begin,
+                                       .stage = phone_stage,
+                                       .commit = phone_commit,
+                                       .page = phone_page};
 
 SensorSettings sensor_settings_of(const ui::Settings &s) {
   return {.altitude_m = s.altitude_m,
@@ -927,9 +982,26 @@ void ui_task(void *) {
       wait = 0;
     }
     const auto now = esp_timer_get_time();
+    xSemaphoreTake(feed_mutex, portMAX_DELAY);
+    const ui::PhoneDraft phone = std::exchange(phone_pending, ui::PhoneDraft{});
+    xSemaphoreGive(feed_mutex);
+    // A phone change is saved and drawn like a knob change, but it does not
+    // wake the screen or count as a key for sleep.
+    if (phone != ui::PhoneDraft{}) {
+      const auto theme = panel_settings.theme;
+      ui::apply_phone_draft(panel_settings, phone, state.page);
+      save_due_us = now + kSaveAfterUs;
+      request_sensor(phone.fan_clean);
+      if (!state.asleep) {
+        forced = forced || panel_settings.theme != theme;
+        input = true;
+      }
+    }
     if (save_due_us != 0 && now >= save_due_us)
       save_due_us = save_panel_settings() == ESP_OK ? 0 : now + kSaveRetryUs;
     xSemaphoreTake(feed_mutex, portMAX_DELAY);
+    shared_panel = panel_settings;
+    ui::apply_phone_draft(shared_panel, phone_pending);
     const bool changed = feed.version != seen_version;
     if (changed)
       local = feed;
@@ -1099,6 +1171,7 @@ bool init_board() {
     return false;
   }
   load_panel_settings();
+  shared_panel = panel_settings;
   sensor_requests.settings = sensor_settings_of(panel_settings);
   control.wanted = sensor_requests.settings;
   const bool display_ok = start_display();
@@ -1127,14 +1200,18 @@ bool init_board() {
     opensensor::crowpanel::restore_history(*history,
                                            kLoggerConfig.output_directory);
   logging = oslogger::begin(kLoggerConfig, kHooks, mounted);
+  // The phone keys are applied by the UI task, so they are registered only
+  // once it runs, and before start_links so no link sees them change.
+  const bool ui_ok = display_ok && start_ui_task();
+  if (display_ok && !ui_ok)
+    oslog.println("OS ERROR operation=ui-task-create");
+  if (ui_ok)
+    config::set_board_keys(kBoardKeys);
   if (logging) {
     links_started = oslogger::start_links(display_ok);
     if (!links_started)
       oslog.println("OS ERROR operation=sync-start");
   }
-  const bool ui_ok = display_ok && start_ui_task();
-  if (display_ok && !ui_ok)
-    oslog.println("OS ERROR operation=ui-task-create");
   oslog.printf("OS READY logging=%u mounted=%u sample_ms=10000 display=%u "
                "sensor=%u\n",
                logging, mounted, ui_ok, snapshot.present);

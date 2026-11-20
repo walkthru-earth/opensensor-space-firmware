@@ -118,8 +118,8 @@ def check_file(path: Path, dictionary: dict, anchored: bool, compressed: bool, l
     footer_contract.check_document(footer, dictionary, "m5stack-cores3", compressed=compressed,
                                    rotation=900, row_groups=1)
     require(dictionary["schema"] == "cores3-telemetry-v6", "schema version")
-    require(dictionary["dictionary"] == "cores3-telemetry-v7",
-            "dictionary version tracks the field table bytes, now with location_source and geometry")
+    require(dictionary["dictionary"] == "cores3-telemetry-v8",
+            "dictionary version tracks the field table bytes, now with the light_status LIVE key")
     require(parquet.metadata.created_by == f"opensensor-space-firmware version 0.3 (build {dictionary['firmware']})",
             "firmware identity in created_by")
     group = parquet.metadata.row_group(0)
@@ -196,12 +196,20 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="m5-contract-") as temporary:
         directory = Path(temporary)
         executable = directory / "fixture"
+        # A pure header compiles alone, so it never leans on include order.
+        for header in (firmware / "power_registers.h",):
+            alone = directory / f"{header.stem}_alone.cpp"
+            alone.write_text(f'#include "{header.as_posix()}"\n')
+            subprocess.run(["clang++", CXX_STD, "-Wall", "-Wextra", "-Werror", "-fsyntax-only", str(alone)],
+                           check=True)
+        print("PASS power_registers.h compiles on its own", flush=True)
         command = ["clang++", CXX_STD, "-Wall", "-Wextra", "-Werror"]
         for include in (common, root / "firmware/common/logger/src",
                         root / "firmware/common/connectivity/src",
                         root / "firmware/common/runtime/src",
                         root / "firmware/common/gnss/src",
-                        root / "firmware/common/power/src"):
+                        root / "firmware/common/power/src",
+                        root / "firmware/common/sensors/src"):
             command += ["-I", str(include)]
         if args.sanitize:
             command += ["-fsanitize=address,undefined", "-fno-sanitize-recover=all"]

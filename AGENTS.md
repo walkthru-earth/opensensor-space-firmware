@@ -2,7 +2,7 @@
 
 General OpenSensor firmware for ESP32-S3 Things. Boards plug in sensors through
 logger hooks and a field dictionary, and air quality is the first sensor set.
-CoreS3, Waveshare V2 and the CrowPanel e-paper each have one active,
+CoreS3, Waveshare V2, the CrowPanel e-paper and the Waveshare ePaper-3.97 each have one active,
 self-contained native ESP-IDF application. Do not add Arduino APIs or an Arduino component. Shared code lives
 in `firmware/common/`. Device protocol and telemetry contracts live in
 `docs/shared/`. Open only the relevant file in `docs/README.md` after this one.
@@ -63,6 +63,7 @@ in `firmware/common/`. Device protocol and telemetry contracts live in
 | --- | --- |
 | CoreS3 pins, build, current bench evidence | `firmware/esp-idf-cores3/AGENTS.md`, `docs/boards/m5stack-cores3/README.md` |
 | CrowPanel e-paper pins, SEN63C wiring, UI, first flash | `firmware/esp-idf-crowpanel-epaper/AGENTS.md`, `docs/boards/elecrow-crowpanel-epaper-42/README.md` |
+| Waveshare ePaper-3.97 pins, SEN63C wiring, IMU orientation, first flash | `firmware/esp-idf-waveshare-epaper-397/AGENTS.md`, `docs/boards/waveshare-esp32-s3-epaper-397/README.md` |
 | Waveshare V2 pins, build, current bench evidence | `firmware/esp-idf-waveshare-sim7670g/AGENTS.md`, `docs/boards/waveshare-esp32-s3-sim7670g/README.md` |
 | Shared drivers, writer, settings, radio, logger | `firmware/common/AGENTS.md`, then its scoped `AGENTS.md` |
 | New ESP32-S3 board, logger hooks, sensor modules and plugin manifests | `docs/shared/board-porting.md`, `firmware/common/logger/README.md`, `docs/shared/plugins/README.md` |
@@ -160,7 +161,7 @@ in `firmware/common/`. Device protocol and telemetry contracts live in
   earlier dictionary. Parquet UTC columns (`*_utc_us`) use `TIMESTAMP(MICROS, UTC)` so
   files register in Iceberg v3 tables without rewrites. Do not switch them to
   NANOS, which maps only to v3 `timestamptz_ns` that Spark, Athena and Redshift
-  cannot read. LIVE `utc` stays nanoseconds.
+  cannot read. LIVE `utc` sends the same microseconds.
 - Our code is CC-BY-4.0 with Walkthru.Earth attribution. Third-party code keeps
   its own LICENSE, NOTICE and headers. When a dependency, vendored file or
   pinned version changes, update `THIRD_PARTY_NOTICES.md` from the linker maps.
@@ -184,8 +185,8 @@ write, run these commands in order.
 5. `pixi run backup --board <board> --port <port>`
 
 Confirm the backup in `backup/` is exactly the board's registered
-`tooling.flash_bytes`, **16,777,216 bytes** for CoreS3 and Waveshare V2 and
-**8,388,608 bytes** for the CrowPanel e-paper, and that this matches the full flash capacity reported by `flash-id`. The helpers
+`tooling.flash_bytes`, **16,777,216 bytes** for CoreS3, Waveshare V2 and the
+Waveshare ePaper-3.97 and **8,388,608 bytes** for the CrowPanel e-paper, and that this matches the full flash capacity reported by `flash-id`. The helpers
 support 8 MiB and 16 MiB. A board with another capacity extends the schema enum,
 `tools/boards.py` and the partition layouts in `tools/check_idf_target.py` first. The first four
 commands read flash/device state. `chip` can reset a running app on exit. Never
@@ -194,6 +195,9 @@ CoreS3 native USB readback must use esptool's default baud. 921600 corrupted a
 measured read. See the selected board's docs for recovery and power rules.
 The CrowPanel's first flash had an owner waiver for a full erase without a
 backup (2026-11-17), see its board docs. It covers that first flash only.
+The Waveshare ePaper-3.97 was written with esptool directly on 2026-11-20,
+because the helper refuses its factory backup, under an owner waiver for
+that round, see its board docs. The helper gate stays as it is.
 LAN OTA (#40) writes the inactive app slot over an authenticated LAN session,
 and activation rewrites the otadata boot selection (`esp_ota_set_boot_partition`).
 Images are not signed and rollback is off, so never claim either.

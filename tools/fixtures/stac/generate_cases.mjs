@@ -7,7 +7,7 @@
 // Run with Node from the repo root, against a stac-opensensor checkout at the
 // pinned commit with its npm dependencies installed (h3-js 4.5.0).
 //   node tools/fixtures/stac/generate_cases.mjs <stac-opensensor>/scripts/canonical.mjs tools/fixtures/stac > tools/fixtures/stac/cases.json
-// It refuses any canonical.mjs other than the one at commit 83787768.
+// It refuses any canonical.mjs other than the one at commit 204365f9.
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -17,10 +17,10 @@ const [canonicalPath, root] = process.argv.slice(2);
 if (!canonicalPath || !root)
   throw new Error("usage: generate_cases.mjs <canonical.mjs> <fixture dir>");
 const CANONICAL_SHA256 =
-  "98583cdb3c5b625f0d998e4650ee3a303c2ab4addd53f9486820c641182b9090";
+  "157821ff8dbc53331b4a035385594badb67ccbd3cb0cff294111049dca37c478";
 const actual = createHash("sha256").update(readFileSync(canonicalPath)).digest("hex");
 if (actual !== CANONICAL_SHA256)
-  throw new Error(`canonical.mjs is ${actual}, not the 83787768 bytes`);
+  throw new Error(`canonical.mjs is ${actual}, not the 204365f9 bytes`);
 const canonical = await import(pathToFileURL(resolve(canonicalPath)).href);
 const h3 = await import(
   pathToFileURL(join(resolve(canonicalPath), "../../node_modules/h3-js/dist/h3-js.es.js")).href
@@ -40,6 +40,10 @@ const BASES = {
   waveshare: {
     rows: "fixtures/thing=7c1e4b9a-3d52-4f86-a0b7-e9d2c5f81a46/data_0815_5e9d0c7b31a84f62b8d47a10c3e6f295_412-487-0.rows.json",
     template: "templates/waveshare-esp32-s3-sim7670g/a8605aafb6f76b794e9e7fb32927be6d203afeeb14527206c0e49c1eb0436809.json",
+  },
+  crowpanel: {
+    rows: "fixtures/thing=b4d9e2a7-5c31-4f08-9e6a-1a7c3f2d8e54/data_0900_c81d4e2f9a3b47d6b0e5f1a2c7d93e48_1-90-0.rows.json",
+    template: "templates/elecrow-crowpanel-epaper-42/e7279c4edbe87071e4a51889124a43d7ffcd1977c79c8575887ae35bdee10903.json",
   },
 };
 const load = (base) => {
@@ -64,6 +68,8 @@ const apply = (input, ops) => {
       input.file[op.key] = op.value;
     } else if (op.op === "thing") {
       input.footer.thing[op.key] = op.value;
+    } else if (op.op === "rotation") {
+      input.footer.file.rotation_interval_s = op.value;
     } else if (op.op === "truncate") {
       for (const name of Object.keys(input.rows))
         input.rows[name] = input.rows[name].slice(0, op.rows);
@@ -118,10 +124,20 @@ const CASES = [
   ["cores3-negative-readings", "cores3", [
     ...setEach("ambient_temperature_c", spread([-1.005, -2.675, -0.125, -40.5, 0.004999, -0.005], n.cores3)),
   ]],
+  // 13:00:00.1234 and 13:14:59.999999, both in the data_1300_ window.
   ["cores3-fraction-times", "cores3", [
-    { op: "set", column: "event_time_utc_us", rows: [0], value: 1792843200123400 },
-    { op: "set", column: "event_time_utc_us", rows: [89], value: 1792844099999999 },
+    { op: "set", column: "event_time_utc_us", rows: [0], value: 1792846800123400 },
+    { op: "set", column: "event_time_utc_us", rows: [89], value: 1792847699999999 },
   ]],
+  // HHMM names the window of the earliest row, never a later one.
+  ["cores3-row-before-window", "cores3", [
+    { op: "set", column: "event_time_utc_us", rows: [0], value: 1792846799999999 },
+  ]],
+  ["cores3-later-window-name", "cores3", [
+    { op: "file", key: "name", value: "data_1315_0f3a9c2e5b7d41e8a6c3f0b2d9e4a713_2881-2970-0.parquet" },
+  ]],
+  ["cores3-rotation-3600", "cores3", [{ op: "rotation", value: 3600 }]],
+  ["cores3-rotation-300", "cores3", [{ op: "rotation", value: 300 }]],
   ["cores3-moving", "cores3", [{ op: "thing", key: "mobility", value: "moving" }]],
   // Six cells around a missing centre make one polygon with a hole.
   ["waveshare-ring-hole", "waveshare", [...setEach("h3_cell_id", spread(ring, n.waveshare))]],
@@ -133,6 +149,11 @@ const CASES = [
   ["waveshare-revisit", "waveshare", [
     ...setEach("h3_cell_id", spread([ring[4], ring[1], ring[4], home, ring[1]], n.waveshare)),
   ]],
+  // The SEN6x gate passes on every row, then fails on every row.
+  ["crowpanel-gates-pass", "crowpanel", [{ op: "set", column: "sen6x_status", rows: "all", value: 4 }]],
+  ["crowpanel-gates-fail", "crowpanel", [{ op: "set", column: "sen6x_status", rows: "all", value: 1 }]],
+  ["crowpanel-no-cell", "crowpanel", [{ op: "set", column: "h3_cell_id", rows: "all", value: null }]],
+  ["crowpanel-moving", "crowpanel", [{ op: "thing", key: "mobility", value: "moving" }]],
   ["waveshare-fixed", "waveshare", [
     { op: "thing", key: "mobility", value: "fixed" },
     { op: "set", column: "h3_cell_id", rows: "all", value: home },
@@ -225,7 +246,7 @@ const itemIds = idNames.map((name) => [name, ITEM_ID.exec(name)?.[1] ?? null]);
 // One entry per line, so a regenerated file diffs by case.
 const list = (entries) => `[\n${entries.map((e) => JSON.stringify(e)).join(",\n")}\n]`;
 process.stdout.write(`{
-"source": ${JSON.stringify("stac-opensensor 83787768cc8451109d48a03d4ef5493ffcd403dd scripts/canonical.mjs")},
+"source": ${JSON.stringify("stac-opensensor 204365f929e6f77bcaa6e70a0245c96cadc5c115 scripts/canonical.mjs")},
 "canonical_sha256": ${JSON.stringify(CANONICAL_SHA256)},
 "h3_js": ${JSON.stringify(h3Version)},
 "cases": ${list(cases)},

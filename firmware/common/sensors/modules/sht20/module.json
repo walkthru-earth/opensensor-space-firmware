@@ -13,6 +13,10 @@
     "core": [
       {
         "name": "ambient_temperature_c",
+        "title": "Air temperature",
+        "opensensor:title_i18n": {
+          "ar": "درجة حرارة الهواء"
+        },
         "unit": "Cel",
         "roles": [
           "physicalMeasurement"
@@ -28,6 +32,7 @@
           -40,
           125
         ],
+        "opensensor:group": "climate",
         "firmware": {
           "type": "Float",
           "unit": "degC",
@@ -38,6 +43,10 @@
       },
       {
         "name": "relative_humidity_percent",
+        "title": "Relative humidity",
+        "opensensor:title_i18n": {
+          "ar": "الرطوبة النسبية"
+        },
         "unit": "%",
         "roles": [
           "physicalMeasurement"
@@ -53,6 +62,7 @@
           0,
           100
         ],
+        "opensensor:group": "climate",
         "firmware": {
           "type": "Float",
           "unit": "%",

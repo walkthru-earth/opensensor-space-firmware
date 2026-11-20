@@ -21,6 +21,10 @@
     "core": [
       {
         "name": "sen6x_status",
+        "title": "Environmental sensor status",
+        "opensensor:title_i18n": {
+          "ar": "حالة المستشعر البيئي"
+        },
         "unit": "{code}",
         "roles": [
           "qualityInformation"
@@ -29,27 +33,33 @@
           {
             "value": 0,
             "name": "missing",
-            "nodata": true
+            "nodata": true,
+            "title": "Sensor missing"
           },
           {
             "value": 1,
-            "name": "warming"
+            "name": "warming",
+            "title": "Warming up"
           },
           {
             "value": 2,
-            "name": "stale"
+            "name": "stale",
+            "title": "No fresh reading"
           },
           {
             "value": 3,
-            "name": "sensor-error"
+            "name": "sensor-error",
+            "title": "Sensor error"
           },
           {
             "value": 4,
-            "name": "valid"
+            "name": "valid",
+            "title": "Valid"
           }
         ],
         "opensensor:property": "urn:walkthru-earth:property:environmental_sensor_status",
         "opensensor:aggregate": "mode",
+        "opensensor:group": "device",
         "firmware": {
           "type": "Int32",
           "unit": "code",
@@ -60,6 +70,10 @@
       },
       {
         "name": "sen6x_device_status",
+        "title": "Environmental sensor status flags",
+        "opensensor:title_i18n": {
+          "ar": "أعلام حالة المستشعر البيئي"
+        },
         "unit": "{bitmask}",
         "roles": [
           "qualityInformation"
@@ -70,6 +84,89 @@
           "finite": true
         },
         "opensensor:aggregate": "mode",
+        "opensensor:group": "device",
+        "classification:bitfields": [
+          {
+            "offset": 4,
+            "length": 1,
+            "name": "fan-error",
+            "description": "Fan error",
+            "classes": [
+              {
+                "value": 0,
+                "name": "ok"
+              },
+              {
+                "value": 1,
+                "name": "set"
+              }
+            ]
+          },
+          {
+            "offset": 6,
+            "length": 1,
+            "name": "rht-error",
+            "description": "Humidity and temperature error",
+            "classes": [
+              {
+                "value": 0,
+                "name": "ok"
+              },
+              {
+                "value": 1,
+                "name": "set"
+              }
+            ]
+          },
+          {
+            "offset": 11,
+            "length": 1,
+            "name": "pm-error",
+            "description": "Particulate matter error",
+            "classes": [
+              {
+                "value": 0,
+                "name": "ok"
+              },
+              {
+                "value": 1,
+                "name": "set"
+              }
+            ]
+          },
+          {
+            "offset": 12,
+            "length": 1,
+            "name": "co2-error",
+            "description": "CO2 error",
+            "classes": [
+              {
+                "value": 0,
+                "name": "ok"
+              },
+              {
+                "value": 1,
+                "name": "set"
+              }
+            ]
+          },
+          {
+            "offset": 21,
+            "length": 1,
+            "name": "fan-speed-warning",
+            "description": "Fan speed out of range",
+            "classes": [
+              {
+                "value": 0,
+                "name": "ok"
+              },
+              {
+                "value": 1,
+                "name": "set"
+              }
+            ]
+          }
+        ],
         "firmware": {
           "type": "Int64",
           "unit": "bitmask",
@@ -80,6 +177,10 @@
       },
       {
         "name": "pm1_mass_ug_m3",
+        "title": "PM1 mass concentration",
+        "opensensor:title_i18n": {
+          "ar": "تركيز كتلة الجسيمات PM1"
+        },
         "unit": "ug/m3",
         "roles": [
           "physicalMeasurement"
@@ -96,6 +197,7 @@
           0,
           1000
         ],
+        "opensensor:group": "particulate",
         "firmware": {
           "type": "Float",
           "unit": "ug/m3",
@@ -106,6 +208,10 @@
       },
       {
         "name": "pm25_mass_ug_m3",
+        "title": "PM2.5 mass concentration",
+        "opensensor:title_i18n": {
+          "ar": "تركيز كتلة الجسيمات PM2.5"
+        },
         "unit": "ug/m3",
         "roles": [
           "physicalMeasurement"
@@ -122,6 +228,8 @@
           0,
           1000
         ],
+        "opensensor:group": "particulate",
+        "opensensor:scale": "who-2021-pm25",
         "firmware": {
           "type": "Float",
           "unit": "ug/m3",
@@ -132,6 +240,10 @@
       },
       {
         "name": "pm4_mass_ug_m3",
+        "title": "PM4 mass concentration",
+        "opensensor:title_i18n": {
+          "ar": "تركيز كتلة الجسيمات PM4"
+        },
         "unit": "ug/m3",
         "roles": [
           "physicalMeasurement"
@@ -147,6 +259,7 @@
           0,
           1000
         ],
+        "opensensor:group": "particulate",
         "firmware": {
           "type": "Float",
           "unit": "ug/m3",
@@ -157,6 +270,10 @@
       },
       {
         "name": "pm10_mass_ug_m3",
+        "title": "PM10 mass concentration",
+        "opensensor:title_i18n": {
+          "ar": "تركيز كتلة الجسيمات PM10"
+        },
         "unit": "ug/m3",
         "roles": [
           "physicalMeasurement"
@@ -173,6 +290,8 @@
           0,
           1000
         ],
+        "opensensor:group": "particulate",
+        "opensensor:scale": "who-2021-pm10",
         "firmware": {
           "type": "Float",
           "unit": "ug/m3",
@@ -183,6 +302,10 @@
       },
       {
         "name": "ambient_temperature_c",
+        "title": "Air temperature",
+        "opensensor:title_i18n": {
+          "ar": "درجة حرارة الهواء"
+        },
         "unit": "Cel",
         "roles": [
           "physicalMeasurement"
@@ -198,6 +321,7 @@
           -40,
           80
         ],
+        "opensensor:group": "climate",
         "firmware": {
           "type": "Float",
           "unit": "degC",
@@ -208,6 +332,10 @@
       },
       {
         "name": "relative_humidity_percent",
+        "title": "Relative humidity",
+        "opensensor:title_i18n": {
+          "ar": "الرطوبة النسبية"
+        },
         "unit": "%",
         "roles": [
           "physicalMeasurement"
@@ -223,6 +351,7 @@
           0,
           100
         ],
+        "opensensor:group": "climate",
         "firmware": {
           "type": "Float",
           "unit": "%",
@@ -233,6 +362,10 @@
       },
       {
         "name": "co2_ppm",
+        "title": "Carbon dioxide",
+        "opensensor:title_i18n": {
+          "ar": "ثاني أكسيد الكربون"
+        },
         "unit": "[ppm]",
         "roles": [
           "physicalMeasurement"
@@ -249,6 +382,7 @@
           380,
           32000
         ],
+        "opensensor:group": "gas",
         "firmware": {
           "type": "Int32",
           "unit": "ppm",

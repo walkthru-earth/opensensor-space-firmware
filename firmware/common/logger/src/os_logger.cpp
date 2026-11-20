@@ -269,6 +269,9 @@ char boot_text[33]{};
 char device_text[13]{};
 char thing_text[37]{};
 portMUX_TYPE clock_mutex = portMUX_INITIALIZER_UNLOCKED;
+// Guards the pair sd_state and worker_failed, so logging_view() never pairs a
+// new storage state with the failure flag of the previous one.
+portMUX_TYPE storage_mutex = portMUX_INITIALIZER_UNLOCKED;
 std::int64_t anchor_mono_us = 0, anchor_utc_ns = 0;
 std::int32_t clock_generation = 0;
 std::int32_t clock_source = kClockNone;
@@ -280,6 +283,8 @@ std::atomic<std::int32_t> rtc_state{0}; // 0 unread, 1 seeded, 2 unusable
 bool mounted = false;
 bool accepting = false;
 std::atomic<bool> archive_reset{false};
+// The outcome of that erase for the board screen, set by the storage worker.
+std::atomic<ArchiveErase> archive_erase{ArchiveErase::None};
 // begin() replaces this with the stored codec, or the default when nothing
 // usable is stored, before the worker starts.
 std::atomic<Codec> selected_codec{codec_store::kDefault};
@@ -970,6 +975,9 @@ void write_sidecar(const OutputFile &target, const char *ready,
                       ? stac::Mobility::Moving
                       : stac::Mobility::Fixed,
       .sample_interval_ms = config.sample_interval_ms,
+      // The value finalize_file() wrote to the footer. "parquet interval"
+      // finishes the open file before it changes this.
+      .rotation_interval_s = rotation_seconds.load(),
   };
   const stac::GeometryBuffers buffers{
       .points = stac_state->points,
@@ -1653,18 +1661,20 @@ const char *clock_source_name(std::int32_t source) {
   return opensensor::utc::source_name(source);
 }
 
-// Shared by `parquet time`, the BLE/LAN SET_TIME op and the boot-time RTC
-// seed. False for a bad epoch (before 2020 or after 2100, which also rejects
-// an RTC that was never written). Initial UTC, RTC upgrades and corrections
-// larger than two seconds start a new epoch; small refreshes keep the current
-// file. Captured rows keep their timestamps and exact anchors. `skew_ns`
-// receives new minus old estimate of the same monotonic instant, i.e. how far
-// the previous clock (RTC or earlier host) had drifted from this host.
+// Shared by `parquet time`, the BLE/LAN SET_TIME op, the network anchor and
+// the boot-time RTC seed. False for a bad epoch (before the source floor of
+// utc_clock.h or after 2100, which also rejects an RTC that was never
+// written). A move of more than a day against the current anchor is taken
+// but logged and kept out of the RTC (#173). Initial UTC, RTC upgrades and
+// corrections larger than two seconds start a new epoch; small refreshes keep
+// the current file. Captured rows keep their timestamps and exact anchors.
+// `skew_ns` receives new minus old estimate of the same monotonic instant, i.e.
+// how far the previous clock (RTC or earlier host) had drifted from this host.
 bool set_clock(std::int64_t seconds, std::int64_t mono, std::int32_t source,
                std::int64_t *skew_ns = nullptr,
                std::int32_t *previous = nullptr,
                std::uint32_t subsecond_us = 0) {
-  if (!opensensor::utc::supported_anchor(seconds, subsecond_us))
+  if (!opensensor::utc::accepted_anchor(seconds, subsecond_us))
     return false;
   const std::int64_t utc_ns = opensensor::utc::anchor_ns(seconds, subsecond_us);
   portENTER_CRITICAL(&clock_mutex);
@@ -1682,10 +1692,21 @@ bool set_clock(std::int64_t seconds, std::int64_t mono, std::int32_t source,
   clock_source = source;
   if (opensensor::utc::starts_new_epoch(previous_source, source, skew))
     ++clock_generation;
-  portEXIT_CRITICAL(&clock_mutex);
-  if (source == kClockHost || source == opensensor::utc::Network) {
+  // The RTC permission changes with the anchor, under the same lock, so
+  // service_rtc_write() never copies a jumped anchor through an older grant.
+  const bool jump = opensensor::utc::clock_jump(previous_source, skew);
+  if (jump) {
+    rtc_write_pending = false;
+  } else if (opensensor::utc::saves_to_rtc(previous_source, source, skew)) {
     rtc_write_requested_us = mono;
     rtc_write_pending = true;
+  }
+  portEXIT_CRITICAL(&clock_mutex);
+  if (jump) {
+    oslog.printf("PARQUET CLOCK jump=true previous=%s source=%s skew_s=%lld "
+                 "rtc=kept\n",
+                 clock_source_name(previous_source), clock_source_name(source),
+                 static_cast<long long>(skew / 1000000000));
   }
   return true;
 }
@@ -1723,22 +1744,26 @@ void seed_clock_from_rtc() {
 // Main-task half of a host sync: copies the anchor into the RTC. The chip
 // stores whole seconds, so the write waits for the anchor's next second
 // boundary (the 20 ms loop makes a 60 ms window reliable) and gives up
-// waiting after 5 s so a slow loop cannot postpone it forever.
+// waiting after 5 s so a slow loop cannot postpone it forever. The grant is
+// read and consumed under clock_mutex with the anchor it covers, so a clock
+// jump that lands meanwhile cancels it before any copy.
 void service_rtc_write(std::int64_t now) {
   if (!rtc_write_pending.load())
     return;
-  std::int64_t utc_anchor, mono_anchor;
+  bool due = false, overdue = false;
+  std::int64_t utc_ns = 0, fraction_ns = 0;
   portENTER_CRITICAL(&clock_mutex);
-  utc_anchor = anchor_utc_ns;
-  mono_anchor = anchor_mono_us;
+  if (rtc_write_pending.load()) {
+    utc_ns = opensensor::utc::estimate_ns(now, anchor_mono_us, anchor_utc_ns);
+    fraction_ns = utc_ns % 1000000000;
+    overdue = now - rtc_write_requested_us.load() > 5000000LL;
+    due = fraction_ns < 60000000LL || overdue;
+    if (due)
+      rtc_write_pending = false;
+  }
   portEXIT_CRITICAL(&clock_mutex);
-  const std::int64_t utc_ns =
-      opensensor::utc::estimate_ns(now, mono_anchor, utc_anchor);
-  const std::int64_t fraction_ns = utc_ns % 1000000000;
-  const bool overdue = now - rtc_write_requested_us.load() > 5000000LL;
-  if (fraction_ns >= 60000000LL && !overdue)
+  if (!due)
     return;
-  rtc_write_pending = false;
   if (!hooks.rtc_write) {
     oslog.println("PARQUET RTC write=skipped reason=absent");
     return;
@@ -2095,8 +2120,10 @@ void publish_storage(storage::State previous) {
     governor.write_failed(uptime_seconds());
     current = governor.state();
   }
+  portENTER_CRITICAL(&storage_mutex);
   sd_state = static_cast<std::uint8_t>(current);
   worker_failed = storage::alarm(current); // fail means "not writing"
+  portEXIT_CRITICAL(&storage_mutex);
   if (current == previous)
     return;
   const auto free_kib =
@@ -2567,8 +2594,11 @@ void storage_worker(void *) {
                  hooks.storage_remount ? "retry" : "none");
     if (hooks.storage_remount)
       governor.write_failed(uptime_seconds());
-    sd_state = static_cast<std::uint8_t>(governor.state());
+    const auto state = static_cast<std::uint8_t>(governor.state());
+    portENTER_CRITICAL(&storage_mutex);
+    sd_state = state;
     worker_failed = true; // fail means "not writing"
+    portEXIT_CRITICAL(&storage_mutex);
     publish_status();
   }
   std::size_t count = 0;
@@ -2584,10 +2614,14 @@ void storage_worker(void *) {
         ++dropped;
       } else {
         // A batch from another window can only leave RAM through a write.
-        // While the card cannot take it, the new row is the one dropped.
+        // While the card cannot take it, the new row is the one dropped. A
+        // commit that wrote the rows and then failed its finalize or free
+        // space read still left room, so the row is kept.
         if (!fits_batch(row, count) &&
-            (!storage_ready || !governor.writable() ||
-             !governed_commit(count, true))) {
+            !admit_unfitted_row(
+                storage_ready && governor.writable(),
+                [&] { return governed_commit(count, true); },
+                [&] { return fits_batch(row, count); })) {
           ++dropped;
           continue;
         }
@@ -2674,6 +2708,7 @@ void storage_worker(void *) {
         continue;
       }
       archive_reset = true;
+      archive_erase = ArchiveErase::Running;
       archive_session.close();
       writer_state->crc_cache.clear();
       std::uint32_t files_removed = 0, directories_removed = 0;
@@ -2707,6 +2742,7 @@ void storage_worker(void *) {
       buffered = open_rows = open_groups = 0;
       storage_ok = false;
       worker_failed = !erased;
+      archive_erase = erased ? ArchiveErase::Erased : ArchiveErase::Failed;
       xQueueReset(samples);
       xQueueReset(commands);
       parked.waiting = false;
@@ -2758,13 +2794,21 @@ void storage_worker(void *) {
         oslog.printf("OS CONFIG ok=0 key=%s\n", result.bad_key);
       std::memset(command.text, 0, sizeof(command.text));
     } else if (std::strcmp(command.text, "parquet status") == 0) {
+      // The deployment id the next footer writes: the open file's snapshot,
+      // else the first buffered row's, else the live owner setting.
+      const auto live = ::config::deployment_id();
+      const OutputFile &current = writer_state->telemetry;
+      const char *deployment = footer::next_deployment(
+          current.open() ? current.deployment.text.data() : nullptr,
+          count ? writer_state->rows[0].deployment.text.data() : nullptr,
+          live.text.data());
       oslog.printf(
           "PARQUET STATUS interval_s=%lu buffered=%u open_rows=%lu "
           "open_groups=%lu finalized=%lu "
           "dropped=%lu errors=%lu queue_peak=%lu failed=%s sd_state=%s "
           "sd_free_kib=%llu thing=%s "
-          "codec=%s schema=%s config=%s deployment=unknown "
-          "calibration=unknown\n",
+          "codec=%s schema=%s config=%s deployment=%s "
+          "calibration=%s\n",
           static_cast<unsigned long>(rotation_seconds.load()), unsigned(count),
           static_cast<unsigned long>(open_rows.load()),
           static_cast<unsigned long>(open_groups.load()),
@@ -2776,7 +2820,8 @@ void storage_worker(void *) {
           storage::state_name(governor.state()),
           static_cast<unsigned long long>(governor.free_bytes() / 1024),
           thing_text, codec_name(selected_codec), config.schema_name,
-          config.configuration_id);
+          config.configuration_id, footer::deployment_id(config, deployment),
+          config.calibration_id);
     } else if (std::strcmp(command.text, "parquet schema") == 0) {
       oslog.printf("PARQUET SCHEMA BEGIN schema=%s columns=%u sha256=%s "
                    "desc=%s desc_bytes=%u\n",
@@ -3642,5 +3687,20 @@ ClockView clock_view() {
   if (generation)
     view.utc_ns = utc_anchor + (esp_timer_get_time() - mono_anchor) * 1000;
   return view;
+}
+
+LoggingView logging_view() {
+  portENTER_CRITICAL(&storage_mutex);
+  const auto state = static_cast<storage::State>(sd_state.load());
+  const bool failed = worker_failed.load();
+  portEXIT_CRITICAL(&storage_mutex);
+  return {.stopped =
+              logging_stopped_reason({.started = accepting,
+                                      .archive_erase = archive_erase.load(),
+                                      .storage_ok = storage_ok.load(),
+                                      .failed = failed,
+                                      .sd_state = state}),
+          .sd_state = storage::state_name(state),
+          .dropped = dropped.load()};
 }
 } // namespace oslogger

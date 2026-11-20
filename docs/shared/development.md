@@ -23,6 +23,7 @@ pixi run cores3-build
 pixi run waveshare-build
 pixi run waveshare-build diagnostic
 pixi run crowpanel-build
+pixi run epaper397-build
 ```
 
 | Board adapter | Source | Configuration | Hardware scope |
@@ -30,6 +31,7 @@ pixi run crowpanel-build
 | [CoreS3](../../firmware/esp-idf-cores3/README.md) | `bringup/main.cpp` and board telemetry adapter | 16 MB flash, Quad PSRAM, USB Serial/JTAG console, native M5 components and SDSPI on existing SPI2 | Short native USB Parquet/SD/network UTC check passed; phone transfers/endurance pending; [image evidence](../boards/m5stack-cores3/bench-verified.md#board-1-first-native-esp-idf-flash-and-readback) |
 | [Waveshare V2](../../firmware/esp-idf-waveshare-sim7670g/README.md) | `logger/main.cpp` or `diagnostic/main.cpp`, board IO adapter | 16 MB flash, OPI PSRAM for logger, no PSRAM for diagnostic, UART0 console and one-bit SDMMC | Short native USB and SD readback of v2.15 on 2026-10-26, see the [bench record](../boards/waveshare-esp32-s3-sim7670g/bench-verified.md#main-689bb61-usb-reflash-thing-id-and-first-geo-footer-2026-10-26). Phone sync, GNSS fix, endurance and power-cut durability remain unqualified |
 | [CrowPanel e-paper](../../firmware/esp-idf-crowpanel-epaper/README.md) | `logger/main.cpp`, board IO adapter and `display/` UI | 8 MB flash, OPI PSRAM, UART0 console through the USB bridge, SDSPI on SPI3, SEN63C on I2C, UC8276C e-paper on SPI2 | Flashed and booted on 2026-11-17 with no SEN63C wired. Panel, keys, sensor readings, sync and durability remain unqualified, see the [bench record](../boards/elecrow-crowpanel-epaper-42/bench-verified.md) |
+| [Waveshare ePaper-3.97](../boards/waveshare-esp32-s3-epaper-397/README.md) | `logger/main.cpp`, board IO adapter and `display/` bring-up screen | 16 MB flash, OPI PSRAM, USB Serial/JTAG console, 4-bit SDMMC, SEN63C on I2C, SSD1677 e-paper on SPI3, QMI8658A accelerometer | Flashed, booted and logged SEN63C rows on 2026-11-20. Panel visuals, orientation, sync and durability remain unqualified, see the [bench record](../boards/waveshare-esp32-s3-epaper-397/bench-verified.md) |
 
 `tools/idf-dependencies.lock` pins ESP-IDF 6.1 and its exact source commit.
 Component manifests pin M5Unified **0.3.0**, M5GFX **0.3.0**, mDNS **1.15.1**
@@ -74,10 +76,11 @@ checkout's Python stays in that checkout.
 
 The wrapper still enforces the exact source commit for any `OS_IDF_PATH`. A venv
 links to the interpreter that created it, so each checkout owns one, and
-`tools/idf.sh` rebuilds it with the SDK's own `idf_tools.py install-python-env`
-when it is missing, its Python link is dangling, or its `pyvenv.cfg` home is
-not the Pixi Python of the current checkout. A new worktree needs no manual
-step. The venv path never reaches the image, `repro-paths` checks that.
+`tools/idf.sh` rebuilds it from the [committed lock](#idf-python-lock) when it is missing, its
+Python link is dangling, its `pyvenv.cfg` home is not the Pixi Python of the
+current checkout, or its packages differ from the lock. A new worktree needs
+no manual step. The venv path never reaches the image, `repro-paths` checks that.
+
 Each board owns its sdkconfig defaults, partitions and manifest dependencies.
 Sharing a download cache does not make a sibling board a dependency.
 
@@ -105,6 +108,7 @@ pixi run cores3-flash <checked-port> backup/m5stack-cores3-flash-<timestamp>.bin
 pixi run waveshare-flash <checked-port> backup/waveshare-sim7670g-v2-flash-<timestamp>.bin
 pixi run waveshare-flash <checked-port> backup/waveshare-sim7670g-v2-flash-<timestamp>.bin diagnostic
 pixi run crowpanel-flash <checked-port> backup/crowpanel-epaper-42-flash-<timestamp>.bin
+pixi run epaper397-flash <checked-port> backup/waveshare-epaper-397-flash-<timestamp>.bin
 ```
 
 Follow [the full identification/backup sequence](../../AGENTS.md#before-any-physical-flash-write)
@@ -119,6 +123,53 @@ never erase keys to work around an identity mismatch.
 If the checkout or managed environment moved and a tool reports an old
 interpreter path, run `pixi install` to reconcile it. Use `python -m esptool` /
 `python -m espefuse` through project tasks rather than stale entry-point shebangs.
+
+### IDF Python lock
+
+The SDK's own `idf_tools.py install-python-env` resolves its Python packages
+on each install against `espidf.constraints.v6.1.txt`, a file on the Espressif
+host that moves and carries no checksum. This repo does not run that step
+(#176). `tools/idf-python/idf<X.Y>_py<X.Y>.txt` pins every package of the venv,
+one file per ESP-IDF and Python minor version, with the exact version and the
+SHA-256 of each wheel for the two Pixi platforms. `tools/idf-env.sh` creates the
+venv with `python -m venv` and installs the lock with
+`pip install --require-hashes --no-deps`. pip resolves nothing and refuses any
+file whose hash is not in the lock. `pip check` then proves the set is complete.
+`IDF_PYTHON_CHECK_CONSTRAINTS=no` stops the SDK from asking for the constraints
+file on each `idf.py` run. The SDK still checks that every package its
+requirements name is installed.
+
+A release with no wheel for one of the platforms on the Pixi Python is pinned by
+the SHA-256 of its source archive and named in the lock's `from-source` header.
+On Python 3.15 that is `esptool`, which ships no wheel, and `pyyaml` and
+`tree-sitter`, whose wheels stop at 3.14. pip builds them without build
+isolation, so the build uses only the locked `setuptools` and downloads nothing
+unhashed. `pyyaml` falls back to pure Python, and `tree-sitter` needs the
+host C compiler.
+
+`pixi run idf-python-check` fails when the venv holds any package, or version,
+that the lock does not list. CI runs it after each board build and after the
+`repro-paths` check, and the release workflow runs it after each build, so a
+release installs the same set as CI. The CI SDK cache key hashes the lock, so a
+changed lock starts from an empty venv.
+
+The lock header records the SDK commit, the Python version, the SHA-256 of the
+SDK's `requirements.core.txt`, and the URL and SHA-256 of the constraints file
+it was resolved against. Refresh it after a change of `ESP_IDF_COMMIT` in
+`tools/idf-dependencies.lock` or of the Pixi Python, or to take package updates.
+
+```sh
+pixi run idf-setup          # the pinned SDK clone must exist
+pixi run idf-python-lock    # resolve with the SDK installer, look up PyPI hashes
+pixi run idf-python-lock-test
+pixi run idf-setup          # rebuilds this checkout's venv from the new lock
+```
+
+`idf-python-lock` runs the SDK installer in a temporary venv with a temporary
+`IDF_TOOLS_PATH`, so `~/.espressif` and the shared SDK are not touched. It then
+reads each package's files from PyPI and fails on a yanked release. Review the
+lock diff like any dependency bump, then build all three boards. A lock for an
+old SDK or Python is deleted, since `idf-python-lock-test` refuses stale files.
 
 ### LAN OTA and core dump readback
 
@@ -368,7 +419,9 @@ and by hand from the Actions tab (`workflow_dispatch`).
   `waveshare-build logger`, `waveshare-build diagnostic`, and the generic
   `connectivity-build-test` and `logger-build-test` fixtures. The SDK comes
   from the same `setup-idf.sh` path developers use, so CI builds exactly the
-  commit in `tools/idf-dependencies.lock`. The SDK and ccache caches are
+  commit in `tools/idf-dependencies.lock`. After each build
+  `idf-python-check` proves the IDF venv still matches the
+  [IDF Python lock](#idf-python-lock). The SDK and ccache caches are
   restored on every run but written only by pushes to `main`, and the SDK is
   saved from the cores3 leg alone, so pull requests never evict the `main`
   entries. `waveshare-psram-build` stays a manual SDK fixture. A
@@ -436,6 +489,7 @@ job name `CI result` stable. If a merge queue is enabled later, add a
 | Backup tooling | `backup-test` with offline fake esptool |
 | App signing or the tracked secrets guard | `release-sign-test`, `secrets-check-test` |
 | Release workflow | `release-workflow-test`, then `actionlint` and `zizmor` as in CI |
+| IDF Python lock or `tools/idf-env.sh` | `idf-python-lock-test`, `idf-setup`, `idf-python-check`, all three board builds |
 | CMake helpers, compile flags or `sdkconfig` defaults | `repro-paths-check`, `compile-dialect-test` |
 | Diagnostic or PSRAM configuration | `waveshare-build diagnostic`, `waveshare-psram-build` |
 
@@ -587,7 +641,8 @@ use throwaway keys in a temp dir and never touch `secrets/`.
 
 `.github/workflows/release.yml` runs when a `v*` tag is pushed. It builds the
 CoreS3 and Waveshare logger images with the same pinned SDK and build tasks as
-CI, with no cache. It then creates a **draft** release that holds the unsigned
+CI, with no cache. Its IDF venv comes from the same hashed lock, and
+`idf-python-check` runs after each build. It then creates a **draft** release that holds the unsigned
 app images, one SPDX SBOM per image from `esp-idf-sbom`, `SHA256SUMS` and a
 build provenance attestation for every file in `SHA256SUMS`. Assets are named
 `opensensor_cores3-bringup-<tag>.bin` and `opensensor_waveshare-logger-<tag>.bin`. CI never

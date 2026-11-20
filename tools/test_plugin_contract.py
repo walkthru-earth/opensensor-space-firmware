@@ -49,7 +49,7 @@ def rejects(action, expected: str, mutation: str) -> None:
 
 def scratch_copy(scratch: Path) -> Path:
     out = scratch / "repo"
-    for directory in (gate.PLUGINS, gate.STAC, gate.TEMPLATES, gate.COMMON_MODULES):
+    for directory in (gate.PLUGINS, gate.STAC, gate.SCALES.parent, gate.TEMPLATES, gate.COMMON_MODULES):
         shutil.copytree(ROOT / directory, out / directory)
     for path in (gate.MIGRATION, gate.WRITER, gate.SYSTEM_MODULE, gate.SENSOR_GLUE):
         (out / path).parent.mkdir(parents=True, exist_ok=True)
@@ -104,9 +104,11 @@ def older_release(lock: dict) -> dict:
 
 
 def with_history(change=None):
+    """Today's CoreS3 release alone, as an ordinary release, after a made up older one."""
     def apply(root: Path) -> None:
         def edit(lock: dict) -> None:
-            lock["releases"].insert(0, older_release(lock))
+            newest = {k: v for k, v in lock["releases"][-1].items() if k != "baseline"}
+            lock["releases"] = [older_release(lock), newest]
             if change:
                 change(lock)
         edit_json(CORES3 / gate.LOCK, edit)(root)
@@ -125,6 +127,15 @@ def main() -> None:
     print(f"PASS {len(headers)} generated module headers", flush=True)
     for line in examples:
         print(f"PASS example {line}", flush=True)
+
+    # setup_v, as the phone computes it. SHA-256 of the empty string starts
+    # e3 b0 c4 42, so the empty list proves the top bit is cleared.
+    gate.require(gate.setup_v([]) == 0x63B0C442, f"setup_v of no step is {gate.setup_v([]):#x}")
+    for path in sorted(ROOT.glob(gate.BOARD_GLOB)):
+        steps = [s["id"] for s in read(path).get("setup", [])]
+        value = gate.setup_v(steps)
+        gate.require(1 <= value <= 0x7FFFFFFF, f"{path.parent.name} setup_v {value} out of range")
+        print(f"PASS {path.parent.parent.name} setup_v {value} ({value:#010x}) over {steps}", flush=True)
 
     board = CORES3 / "board.json"
     lock = CORES3 / gate.LOCK
@@ -211,12 +222,105 @@ def main() -> None:
                "the column cap")
         mutate(scratch, lambda r: (r / board).unlink(), "has a board.json", "a board app without board.json")
 
+        # Display hints and the setup manifest (#184).
+        mutate(scratch, edit_json(PMSA003, lambda d: column(d, "core", "pms_status").update(title="Other")),
+               "template column", "a column title change")
+        mutate(scratch, edit_json(PMSA003, lambda d: column(d, "core", "pms_status")["classification:classes"][4]
+                                  .update(title="Good")), "template column", "a class title change")
+        mutate(scratch, edit_json(PMSA003, lambda d: column(d, "core", "pms_age_ms").update(
+            {"opensensor:decimals": 1})), "template column", "authored decimals the template lacks")
+        mutate(scratch, edit_json(PMSA003, lambda d: column(d, "core", "pms_age_ms").update(
+            {"opensensor:decimals": 10})), "schema", "authored decimals over 9")
+        mutate(scratch, edit_json(PMSA003, lambda d: column(d, "core", "pms_age_ms").update(
+            {"opensensor:group": "weather"})), "schema", "a group outside the vocabulary")
+        mutate(scratch, edit_json(PMSA003, lambda d: column(d, "core", "pms_age_ms").update(
+            {"classification:bitfields": [{"offset": 0, "length": 1, "classes": [{"value": 1, "name": "set"}]}]})),
+               "bit fields on a non", "bit fields on a column that is not a bitmask")
+        mutate(scratch, edit_json(IMU, lambda d: column(d, "core", "imu_fresh_mask")["classification:bitfields"]
+                                  [1].update(offset=0)), "bit fields overlap", "overlapping bit fields")
+        mutate(scratch, edit_json(IMU, lambda d: column(d, "core", "imu_fresh_mask")["classification:bitfields"]
+                                  [2].update(offset=40)), "outside Int32", "a bit field outside the column type")
+        mutate(scratch, edit_json(PMSA003, lambda d: column(d, "core", "pm25_atmospheric_ug_m3").update(
+            {"opensensor:scale": "who-2021-pm10x"})), "is not in", "a scale the registry does not hold")
+        mutate(scratch, edit_json(PMSA003, lambda d: column(d, "core", "pm1_atmospheric_ug_m3").update(
+            {"opensensor:scale": "who-2021-pm25"})), "template column", "a new scale on a column")
+        mutate(scratch, edit_json(board, lambda d: d.update(primary="pms_status")), "not a physicalMeasurement",
+               "a primary that is not a measurement")
+        mutate(scratch, edit_json(board, lambda d: d.update(primary="pm10_atmospheric_ug_m3")), "primary differs",
+               "a primary change")
+        mutate(scratch, edit_json(board, lambda d: d.pop("primary")), "no primary metric", "a board without a primary")
+        mutate(scratch, edit_json(IMU, lambda d: column(d, "core", "accel_x_g").pop("opensensor:title_i18n")),
+               "no Arabic title", "a column without an Arabic title")
+        mutate(scratch, edit_json(PMSA003, lambda d: column(d, "core", "pm1_cf1_ug_m3").update(unit="ug/m\u00b3")),
+               "not a plain ASCII UCUM code", "a superscript in a unit")
+        mutate(scratch, edit_json(board, lambda d: d["setup"].reverse()), "firmware setup differs",
+               "a setup reorder")
+        mutate(scratch, edit_json(board, lambda d: d["settings"].pop()), "firmware settings differs",
+               "a removed settings section")
+        mutate(scratch, edit_json(board, lambda d: d["setup"].append({"id": "find"})), "schema",
+               "an app owned step")
+        mutate(scratch, edit_json(board, lambda d: d["setup"].append({"id": "wifi"})), "setup id repeats",
+               "a repeated step")
+        mutate(scratch, edit_json(board, lambda d: d["settings"].append({"id": "name"})), "not a settings section",
+               "a setup only step in settings")
+        mutate(scratch, edit_json(board, lambda d: d["setup"].append({"id": "sensor"})), "not a setup step",
+               "a settings only section in setup")
+        mutate(scratch, edit_json(board, lambda d: d["setup"].append({"id": "panel"})), "lists no keys",
+               "a board step without keys")
+        panel = {"type": "enum", "values": ["light", "dark"], "applies": "immediately", "page": 7, "label": "Theme"}
+        mutate(scratch, edit_json(board, lambda d: d.update(config_keys={"panel.theme": panel},
+                                                            settings=[*d["settings"], {"id": "panel", "keys": ["panel.theme"]}])),
+               "has no label", "a board section without a label")
+        mutate(scratch, edit_json(board, lambda d: d["settings"][0].update(label="")), "schema", "an empty step label")
+        mutate(scratch, edit_json(board, lambda d: d["setup"][0].update(label_i18n={"AR": "x"})), "schema",
+               "a step label translation keyed by an upper case tag")
+        mutate(scratch, edit_json(board, lambda d: d["settings"][0].update(label="Place")), "firmware settings differs",
+               "a section label the template lacks")
+        mutate(scratch, edit_json(board, lambda d: d.update(config_keys={"panel.theme": panel},
+                                                            settings=[{**s, "keys": ["panel.theme"]} for s in d["settings"]])),
+               "lists keys", "an app step with keys")
+        mutate(scratch, edit_json(board, lambda d: d["settings"].append({"id": "panel", "label": "Display", "keys": ["panel.theme"]})),
+               "undeclared keys", "a step naming an undeclared key")
+        mutate(scratch, edit_json(board, lambda d: d.update(config_keys={"panel.theme": panel})), "in no setup step",
+               "a key no step shows")
+        mutate(scratch, edit_json(board, lambda d: d.update(config_keys={"panel.pin": dict(panel)},
+                                                            settings=[*d["settings"], {"id": "panel", "label": "Display", "keys": ["panel.pin"]}])),
+               "looks like a secret", "a secret key name")
+        mutate(scratch, edit_json(board, lambda d: d.update(
+            config_keys={"panel.display": panel, "panel.display.x": panel},
+            settings=[*d["settings"], {"id": "panel", "label": "Display", "keys": ["panel.display", "panel.display.x"]}])),
+               "dotted prefix", "a key that is a dotted prefix of another")
+        for prefix in ("ble", "wifi", "lan", "ntp", "location", "thing", "owner", "sensor"):
+            mutate(scratch, edit_json(board, lambda d, k=f"{prefix}.theme": d.update(
+                config_keys={k: panel}, settings=[*d["settings"], {"id": "panel", "label": "Display", "keys": [k]}])),
+                   "schema", f"a key under the reserved prefix {prefix}.")
+        mutate(scratch, edit_json(board, lambda d: d.update(config_keys={"panel.theme": {**panel, "page": 6}},
+                                                            settings=[*d["settings"], {"id": "panel", "label": "Display", "keys": ["panel.theme"]}])),
+               "schema", "a key on another page")
+        mutate(scratch, edit_json(board, lambda d: d.update(config_keys={"panel.sleep": {**panel, "type": "integer"}},
+                                                            settings=[*d["settings"], {"id": "panel", "label": "Display", "keys": ["panel.sleep"]}])),
+               "schema", "an integer key without a range")
+        mutate(scratch, edit_json(board, lambda d: d.update(config_keys={"panel.clean": {**panel, "applies": "action"}},
+                                                            settings=[*d["settings"], {"id": "panel", "label": "Display", "keys": ["panel.clean"]}])),
+               "schema", "an action that is not a boolean")
+        mutate(scratch, edit_json(board, lambda d: d.update(config_keys={"panel.theme": panel},
+                                                            settings=[*d["settings"], {"id": "panel", "label": "Display", "keys": ["panel.theme"]}])),
+               "firmware settings differs", "a new board key the template lacks")
+
         # The lock.
         mutate(scratch, replace_text(CORES3 / "telemetry_fields.inc", "// FIELD(", "//  FIELD("),
                "telemetry_fields.inc is", "a comment only edit of telemetry_fields.inc")
         mutate(scratch, lambda r: (r / lock).unlink(), "missing shipped.lock", "a missing lock")
-        mutate(scratch, edit_json(lock, lambda d: d["releases"][-1]["segments"][1].update(sha256="0" * 64)),
-               "segments differ from the board manifest", "an edited segment hash")
+        def edit_newest_hash(lock: dict) -> None:
+            # A baseline release may edit only the shipped segments it lists,
+            # so edit one of those to reach the manifest check.
+            newest = lock["releases"][-1]
+            listed = {(s["module"], s["segment"]) for s in newest.get("baseline", {}).get("segments", [])}
+            index = next((i for i, s in enumerate(newest["segments"]) if (s["module"], s["segment"]) in listed), 1)
+            newest["segments"][index].update(sha256="0" * 64)
+
+        mutate(scratch, edit_json(lock, edit_newest_hash), "segments differ from the board manifest",
+               "an edited segment hash")
         mutate(scratch, edit_json(lock, lambda d: d["releases"][-1]["segments"].pop()), "do not add up",
                "a removed lock segment")
         mutate(scratch, edit_json(lock, lambda d: d["releases"][-1]["segments"].insert(

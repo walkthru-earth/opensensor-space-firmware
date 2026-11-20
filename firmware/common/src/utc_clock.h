@@ -20,6 +20,17 @@ constexpr bool supported_anchor(std::int64_t seconds, std::uint32_t micros) {
          (seconds < kMaxEpochSeconds || micros == 0);
 }
 
+// No source may set the clock earlier than this source date (#173). It is the
+// same date as the phone floor in the app's SmartSyncPolicy, so an RTC that
+// lost its date, a stale serial value or a forged SNTP reply from years ago
+// cannot start a file. Move it forward in a release, never back.
+constexpr std::int64_t kAnchorFloorSeconds = 1793232000LL; // 2026-10-29 UTC
+
+// The check every new anchor passes, from any source.
+constexpr bool accepted_anchor(std::int64_t seconds, std::uint32_t micros) {
+  return supported_anchor(seconds, micros) && seconds >= kAnchorFloorSeconds;
+}
+
 constexpr std::int64_t anchor_ns(std::int64_t seconds, std::uint32_t micros) {
   return seconds * 1000000000LL + static_cast<std::int64_t>(micros) * 1000;
 }
@@ -51,6 +62,24 @@ constexpr bool starts_new_epoch(std::int32_t previous_source,
          (previous_source == Rtc &&
           (next_source == Host || next_source == Network)) ||
          skew_ns > kEpochDiscontinuityNs || skew_ns < -kEpochDiscontinuityNs;
+}
+
+// A move of more than one day against an anchor already held (#173). RTC
+// drift and phone or SNTP error are seconds or minutes, never days. The
+// logger still takes the anchor, so a wrong RTC can be corrected, but it
+// logs the jump and does not copy it to the RTC. A later anchor within a
+// day of it is not a jump, and that one is saved.
+constexpr std::int64_t kClockJumpNs = 86400LL * 1000000000LL;
+constexpr bool clock_jump(std::int32_t previous_source, std::int64_t skew_ns) {
+  return previous_source != None &&
+         (skew_ns > kClockJumpNs || skew_ns < -kClockJumpNs);
+}
+
+// Host and network anchors are copied to the RTC unless they are a jump.
+constexpr bool saves_to_rtc(std::int32_t previous_source,
+                            std::int32_t next_source, std::int64_t skew_ns) {
+  return (next_source == Host || next_source == Network) &&
+         !clock_jump(previous_source, skew_ns);
 }
 
 constexpr const char *source_name(std::int32_t source) {

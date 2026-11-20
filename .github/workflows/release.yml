@@ -60,6 +60,11 @@ jobs:
             project: firmware/esp-idf-crowpanel-epaper
             variant: logger
             app: opensensor_crowpanel
+          - name: epaper397-logger
+            task: epaper397-build
+            project: firmware/esp-idf-waveshare-epaper-397
+            variant: logger
+            app: opensensor_epaper397
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -79,6 +84,9 @@ jobs:
           pixi run "${task[@]}"
           # A build that rewrites a committed lock means the lock is stale.
           git diff --exit-code -- '*dependencies.lock'
+      # The release installs the same hashed IDF Python set as CI (#176).
+      - name: Check IDF Python packages against the lock
+        run: pixi run idf-python-check
       - name: Check OTA slot share
         env:
           NAME: ${{ matrix.name }}

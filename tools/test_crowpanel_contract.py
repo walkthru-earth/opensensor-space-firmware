@@ -125,6 +125,46 @@ def check_file(path: Path, dictionary: dict, anchored: bool, compressed: bool, l
     require(table.equals(other, check_metadata=False), "PyArrow/DuckDB values and nulls")
 
 
+def check_phone_keys(firmware: Path) -> None:
+    """board.json declares the page 7 keys display/settings.cpp parses (#184)."""
+    display = firmware.parent / "display"
+    header = (display / "settings.h").read_text()
+    source = (display / "settings.cpp").read_text()
+    block = re.search(r"kPhoneKeys\{(.*?)\};", header, re.S)
+    require(block is not None, "settings.h has no kPhoneKeys")
+    names = re.findall(r'"([a-z0-9_.]+)"', block.group(1))
+    keys = json.loads((firmware / "board.json").read_text())["config_keys"]
+    require(sorted(names) == sorted(keys), f"phone keys {names} differ from board.json {sorted(keys)}")
+
+    def listed(array: str) -> list[str]:
+        found = re.search(array + r"\{(.*?)\};", source, re.S)
+        require(found is not None, f"settings.cpp has no {array}")
+        # Every string literal counts, so a value with a dash or any other
+        # character can never slip past the comparison.
+        body = found.group(1)
+        values = re.findall(r'"((?:[^"\\]|\\.)*)"', body)
+        rest = re.sub(r'"((?:[^"\\]|\\.)*)"', "", body)
+        require(re.fullmatch(r"[\s,]*", rest) is not None,
+                f"{array} holds something other than string literals")
+        return values
+
+    for key, array in (("panel.theme", "kThemeKeys"), ("panel.refresh_s", "kRefreshKeys"),
+                       ("panel.start_page", "kStartKeys"), ("panel.sleep_s", "kSleepKeys")):
+        require(keys[key]["type"] == "enum" and keys[key]["values"] == listed(array),
+                f"{key} values differ from {array}")
+    constant = {name: int(value) for name, value in
+                re.findall(r"constexpr std::u?int16_t (k\w+) = (-?\d+);", header)}
+    require(keys["sen6x.altitude_m"]["values"] == {"min": 0, "max": constant["kAltitudeMaxM"]},
+            "sen6x.altitude_m range differs from kAltitudeMaxM")
+    require(keys["sen6x.temp_offset_dc"]["values"] == {"min": constant["kTempOffsetMinDc"],
+                                                       "max": constant["kTempOffsetMaxDc"]},
+            "sen6x.temp_offset_dc range differs from kTempOffsetMinDc and kTempOffsetMaxDc")
+    require(keys["sen6x.co2_asc"]["type"] == "boolean", "sen6x.co2_asc is a boolean")
+    require(keys["sen6x.fan_clean"] == {**keys["sen6x.fan_clean"], "type": "boolean", "applies": "action"},
+            "sen6x.fan_clean is an action")
+    print(f"PASS CrowPanel page 7 keys match board.json, {len(keys)} keys", flush=True)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sanitize", action="store_true")
@@ -134,6 +174,7 @@ def main() -> None:
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     firmware = FIRMWARE
+    check_phone_keys(firmware)
     common = root / "firmware/common"
     with tempfile.TemporaryDirectory(prefix="crowpanel-contract-") as temporary:
         directory = Path(temporary)

@@ -59,12 +59,12 @@
           "required": ["name", "roles", "opensensor:property", "opensensor:aggregate", "firmware"],
           "not": {"anyOf": [
             {"required": ["opensensor:field_id"]},
-            {"required": ["opensensor:scale"]},
-            {"required": ["title"]},
             {"required": ["type"]}
           ]},
           "properties": {
             "name": {"$ref": "#/definitions/name"},
+            "title": {"type": "string", "minLength": 1},
+            "description": {"type": "string", "minLength": 1},
             "unit": {"type": "string", "minLength": 1},
             "roles": {"$ref": "https://walkthru-earth.github.io/stac-opensensor/v0.1.0/profile.json#/definitions/column/properties/roles"},
             "cf:standard_name": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
@@ -77,15 +77,23 @@
                 "properties": {
                   "value": {"type": "integer"},
                   "name": {"type": "string", "minLength": 1},
-                  "nodata": {"const": true}
+                  "nodata": {"const": true},
+                  "title": {"type": "string", "minLength": 1},
+                  "description": {"type": "string", "minLength": 1},
+                  "color_hint": {"$ref": "https://walkthru-earth.github.io/stac-opensensor/v0.1.0/schema.json#/definitions/colorHint"}
                 },
                 "additionalProperties": false
               }
             },
+            "classification:bitfields": {
+              "type": "array",
+              "minItems": 1,
+              "items": {"$ref": "https://walkthru-earth.github.io/stac-opensensor/v0.1.0/profile.json#/definitions/bitfield"}
+            },
             "firmware": {"$ref": "#/definitions/firmware"}
           },
           "patternProperties": {
-            "^(?!opensensor:)(?!name$|unit$|roles$|cf:standard_name$|classification:classes$|firmware$)": false
+            "^(?!opensensor:)(?!name$|title$|description$|unit$|roles$|cf:standard_name$|classification:classes$|classification:bitfields$|firmware$)": false
           }
         }
       ]

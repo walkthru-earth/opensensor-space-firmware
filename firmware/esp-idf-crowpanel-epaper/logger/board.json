@@ -14,6 +14,188 @@
     "relative humidity",
     "low-cost sensor"
   ],
+  "primary": "pm25_mass_ug_m3",
+  "setup": [
+    {
+      "id": "name",
+      "req": false
+    },
+    {
+      "id": "mobility",
+      "req": false
+    },
+    {
+      "id": "location",
+      "req": true
+    },
+    {
+      "id": "site",
+      "req": false
+    },
+    {
+      "id": "wifi",
+      "req": false
+    },
+    {
+      "id": "sen6x",
+      "req": false,
+      "label": "Air sensor",
+      "label_i18n": {
+        "ar": "مستشعر الهواء"
+      },
+      "keys": [
+        "sen6x.altitude_m"
+      ]
+    }
+  ],
+  "settings": [
+    {
+      "id": "location"
+    },
+    {
+      "id": "site"
+    },
+    {
+      "id": "sen6x",
+      "label": "Air sensor",
+      "label_i18n": {
+        "ar": "مستشعر الهواء"
+      },
+      "keys": [
+        "sen6x.altitude_m",
+        "sen6x.co2_asc",
+        "sen6x.temp_offset_dc",
+        "sen6x.fan_clean"
+      ]
+    },
+    {
+      "id": "panel",
+      "label": "Display",
+      "label_i18n": {
+        "ar": "الشاشة"
+      },
+      "keys": [
+        "panel.theme",
+        "panel.refresh_s",
+        "panel.start_page",
+        "panel.sleep_s"
+      ]
+    },
+    {
+      "id": "wifi"
+    },
+    {
+      "id": "pairing"
+    },
+    {
+      "id": "lan"
+    },
+    {
+      "id": "bonds"
+    }
+  ],
+  "config_keys": {
+    "panel.theme": {
+      "type": "enum",
+      "values": [
+        "light",
+        "dark"
+      ],
+      "applies": "immediately",
+      "page": 7,
+      "label": "Theme",
+      "label_i18n": {
+        "ar": "المظهر"
+      }
+    },
+    "panel.refresh_s": {
+      "type": "enum",
+      "values": [
+        "10",
+        "30",
+        "60",
+        "300"
+      ],
+      "applies": "immediately",
+      "page": 7,
+      "label": "Screen refresh, seconds",
+      "label_i18n": {
+        "ar": "تحديث الشاشة بالثواني"
+      }
+    },
+    "panel.start_page": {
+      "type": "enum",
+      "values": [
+        "dashboard",
+        "last_viewed"
+      ],
+      "applies": "next boot",
+      "page": 7,
+      "label": "Start page",
+      "label_i18n": {
+        "ar": "صفحة البداية"
+      }
+    },
+    "panel.sleep_s": {
+      "type": "enum",
+      "values": [
+        "0",
+        "600",
+        "1800",
+        "3600"
+      ],
+      "applies": "immediately",
+      "page": 7,
+      "label": "Screen sleep, seconds, 0 never",
+      "label_i18n": {
+        "ar": "سكون الشاشة بالثواني، 0 أبدا"
+      }
+    },
+    "sen6x.co2_asc": {
+      "type": "boolean",
+      "applies": "immediately",
+      "page": 7,
+      "label": "CO2 self calibration",
+      "label_i18n": {
+        "ar": "المعايرة الذاتية لثاني أكسيد الكربون"
+      }
+    },
+    "sen6x.altitude_m": {
+      "type": "integer",
+      "values": {
+        "min": 0,
+        "max": 3000
+      },
+      "applies": "immediately",
+      "page": 7,
+      "label": "Altitude, metres",
+      "label_i18n": {
+        "ar": "الارتفاع بالأمتار"
+      }
+    },
+    "sen6x.temp_offset_dc": {
+      "type": "integer",
+      "values": {
+        "min": -100,
+        "max": 50
+      },
+      "applies": "immediately",
+      "page": 7,
+      "label": "Temperature offset, tenths of a degree",
+      "label_i18n": {
+        "ar": "إزاحة الحرارة بأعشار الدرجة"
+      }
+    },
+    "sen6x.fan_clean": {
+      "type": "boolean",
+      "applies": "action",
+      "page": 7,
+      "label": "Clean the fan",
+      "label_i18n": {
+        "ar": "تنظيف المروحة"
+      }
+    }
+  },
   "segments": [
     {
       "module": "system",

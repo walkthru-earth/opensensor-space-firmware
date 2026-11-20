@@ -80,7 +80,12 @@ pixi run crowpanel-flash <checked port> backup/crowpanel-epaper-42-flash-<stamp>
 - `self_test_field` is `pm25_mass_ug_m3`. The boot self test (#40) marks the
   running app valid only after that column holds a valid value within 180 s,
   so a board without a working SEN63C never passes it.
-- No STAC File Item sidecar yet. The app leaves `Config::stac_columns` unset,
-  because `stac-item-test` proves every board that writes the sidecar against a
-  stac-opensensor example and that repo has no CrowPanel example. Adding one is
-  a contract change in stac-opensensor first, then this board opts in.
+- The app writes the STAC File Item sidecar `<file>.json` next to each
+  finalized dated file that the profile gives an Item (#142). A file with no
+  H3 cell, no UTC time, no rows or no Thing id gets none, and the logger
+  prints `PARQUET STAC result=skipped` with the reason. The full list is in
+  [board porting](../../docs/shared/board-porting.md) step 8. It sets `Config::stac_columns` to the numeric
+  measurement columns of its template, PM1, PM2.5, PM4, PM10, temperature,
+  humidity and CO2. `stac-item-test` proves the Item equal to the
+  stac-opensensor CrowPanel example at `204365f9`, and the boot log adds
+  `PARQUET STAC sidecar=true columns=7 psram_bytes=<n>`.

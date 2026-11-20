@@ -13,6 +13,7 @@
 #include <numeric_sample.h>
 #include <os_logger_live.h>
 #include <pinned_uri.h>
+#include <pms_status.h>
 #include <span>
 #include <string_view>
 #include <utc_clock.h>
@@ -32,9 +33,11 @@ namespace contract {
 // ids 80 and 81. Still 81 leaves. This is the Thing field table baseline,
 // field ids are plain 1-based positions and append only from here (owner
 // answer to bridge question 36, 2026-10-26).
+// Dictionary v8 (#184) gives light_status the LIVE key lst. Columns are
+// unchanged from schema v6.
 constexpr std::int32_t kSchemaVersion = 6;
 constexpr const char *kSchemaName = "cores3-telemetry-v6";
-constexpr const char *kDictionaryVersion = "cores3-telemetry-v7";
+constexpr const char *kDictionaryVersion = "cores3-telemetry-v8";
 constexpr const char *kFirmware = "idf-cores3-parquet-v6.33";
 constexpr const char *kCreatedBy = "opensensor-space-firmware version 0.3";
 // Raw telemetry_fields.inc at a pinned commit on main (#89), so the bytes at
@@ -43,7 +46,7 @@ constexpr const char *kCreatedBy = "opensensor-space-firmware version 0.3";
 constexpr const char *kDictionaryUri =
     "https://raw.githubusercontent.com/walkthru-earth/"
     "opensensor-space-firmware/"
-    "093f2b8e45cd2b9e24e1324ad9fa2e6e20ad1d47/"
+    "73a7147ea4ee10ba4678b7f45fbd2bbcec2ade00/"
     "firmware/esp-idf-cores3/bringup/telemetry_fields.inc";
 static_assert(opensensor::pinned::names(kDictionaryUri,
                                         "firmware/esp-idf-cores3/bringup/"
@@ -195,6 +198,25 @@ enum PmsStatus : std::int32_t {
   kPmsSensorError = 3,
   kPmsValid = 4,
 };
+static_assert(kPmsMissing == int(plantower::Reading::Missing) &&
+              kPmsWarming == int(plantower::Reading::Warming) &&
+              kPmsStale == int(plantower::Reading::Stale) &&
+              kPmsSensorError == int(plantower::Reading::SensorError) &&
+              kPmsValid == int(plantower::Reading::Valid));
+// The one PMS status rule of this board (#165, #169). collect() writes it to
+// the row, and the screen and the MEAS line show it, so neither calls a value
+// valid that the row nulls. Warm-up runs from boot, the sensor is powered from
+// boot. `received_mono_us` is the last checksum-valid frame.
+[[nodiscard]] constexpr PmsStatus pms_status_of(bool present, std::int64_t now,
+                                                std::int64_t received_mono_us,
+                                                std::uint8_t sensor_error) {
+  return static_cast<PmsStatus>(plantower::classify(
+      {.present = present,
+       .warming = plantower::warming(now, 0, kPmsWarmupUs),
+       .age_ms = plantower::frame_age_ms(now, received_mono_us),
+       .sensor_error = sensor_error},
+      kPmsStaleAfterMs));
+}
 enum LightStatus : std::int32_t {
   kLightUnavailable = 0,
   kLightNotFresh = 1,
@@ -253,6 +275,18 @@ static_assert(
         opensensor::semantics::matches_legend(kClasses, "charging_status",
                                               kChargingStatusLegend),
     "telemetry_classes.inc and the status legends differ");
+// The pms_status class name, for the screen and the MEAS line.
+[[nodiscard]] constexpr std::string_view pms_status_name(PmsStatus status) {
+  const auto *entry =
+      std::find_if(std::begin(kClasses), std::end(kClasses),
+                   [status](const opensensor::semantics::Class &item) {
+                     return item.column == "pms_status" && item.value == status;
+                   });
+  return entry == std::end(kClasses) ? std::string_view{"unknown"}
+                                     : entry->name;
+}
+static_assert(pms_status_name(kPmsSensorError) == "sensor-error" &&
+              pms_status_name(kPmsValid) == "valid");
 // The clock sources this board writes, in code order. clock_status rows
 // must be exactly these, each named by opensensor::utc::source_name.
 static constexpr std::int64_t kClockSources[] = {kClockNone, kClockHost,
@@ -287,9 +321,9 @@ static constexpr std::string_view kTemplateKeywords[] = {
 constexpr const char *kTemplateHref =
     "https://raw.githubusercontent.com/walkthru-earth/"
     "opensensor-space-firmware/"
-    "bb618f32a8a9bfe6a633a22ad5e99d319d55d46b/"
+    "f64f5ed2e98470433ddf74bc982e276018c5f581/"
     "docs/shared/templates/m5stack-cores3/"
-    "3b4d8500a19f42c6743b0f7d725276c96ca14a0c249f613048603afbc3cfaff9.json";
+    "f4f81218dc80d1a8e6db043197a2f7180c4f075f9e8348df30eaceef44d68370.json";
 static_assert(opensensor::pinned::names_template(kTemplateHref,
                                                  "m5stack-cores3",
                                                  kDictionarySha256),

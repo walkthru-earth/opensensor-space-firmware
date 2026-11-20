@@ -275,6 +275,12 @@
         "*{anonymous}::ui_task(*"
       ]
     },
+    "os-epd": {
+      "about": "ePaper-3.97 bring-up display task. Draws the bring-up screen from the display feed and drives the SSD1677 panel over SPI.",
+      "entry": [
+        "*{anonymous}::display_task(*"
+      ]
+    },
     "esp_timer": {
       "about": "esp_timer task. Runs the worker watchdog supervisor.",
       "entry": [
@@ -319,7 +325,7 @@
       "tasks": {
         "parquet-sd": {
           "stack_bytes": 24576,
-          "measured": 11232,
+          "measured": 11264,
           "budget": 12416
         },
         "nimble_host": {
@@ -328,8 +334,8 @@
         },
         "os_ble_error": {
           "stack_bytes": 4096,
-          "measured": 2544,
-          "budget": 2816
+          "measured": 2576,
+          "budget": 2880
         },
         "os-lan": {
           "stack_bytes": 8192,
@@ -339,7 +345,7 @@
         "board": {
           "task_name": "cores3-board",
           "stack_bytes": 16384,
-          "measured": 4752,
+          "measured": 4768,
           "budget": 5248
         },
         "esp_timer": {
@@ -354,17 +360,17 @@
       "sections": {
         ".iram0.text": 129792,
         ".dram0.data": 37120,
-        ".dram0.bss": 61184,
-        ".flash.text": 1312768,
-        ".flash.rodata": 447232,
+        ".dram0.bss": 61440,
+        ".flash.text": 1320960,
+        ".flash.rodata": 471808,
         ".noinit": 256
       },
       "sections_measured": {
         ".iram0.text": 127031,
-        ".dram0.data": 36325,
-        ".dram0.bss": 59944,
-        ".flash.text": 1286882,
-        ".flash.rodata": 438420,
+        ".dram0.data": 36341,
+        ".dram0.bss": 60056,
+        ".flash.text": 1294822,
+        ".flash.rodata": 462356,
         ".noinit": 3
       }
     },
@@ -373,8 +379,8 @@
       "tasks": {
         "parquet-sd": {
           "stack_bytes": 24576,
-          "measured": 11104,
-          "budget": 12224
+          "measured": 11136,
+          "budget": 12288
         },
         "nimble_host": {
           "measured": 5840,
@@ -382,8 +388,8 @@
         },
         "os_ble_error": {
           "stack_bytes": 4096,
-          "measured": 2544,
-          "budget": 2816
+          "measured": 2576,
+          "budget": 2880
         },
         "os-lan": {
           "stack_bytes": 8192,
@@ -392,13 +398,13 @@
         },
         "os-gnss": {
           "stack_bytes": 4096,
-          "measured": 2656,
+          "measured": 2672,
           "budget": 2944
         },
         "board": {
           "task_name": "os-board",
           "stack_bytes": 12288,
-          "measured": 4800,
+          "measured": 4816,
           "budget": 5312
         },
         "esp_timer": {
@@ -413,17 +419,17 @@
       "sections": {
         ".iram0.text": 122624,
         ".dram0.data": 35072,
-        ".dram0.bss": 58112,
-        ".flash.text": 1175808,
-        ".flash.rodata": 399616,
+        ".dram0.bss": 58368,
+        ".flash.text": 1182464,
+        ".flash.rodata": 419584,
         ".noinit": 0
       },
       "sections_measured": {
         ".iram0.text": 120035,
-        ".dram0.data": 34164,
-        ".dram0.bss": 56904,
-        ".flash.text": 1152566,
-        ".flash.rodata": 391604,
+        ".dram0.data": 34180,
+        ".dram0.bss": 57016,
+        ".flash.text": 1159066,
+        ".flash.rodata": 411156,
         ".noinit": 0
       }
     },
@@ -445,7 +451,7 @@
         ".iram0.text": 57344,
         ".dram0.data": 14848,
         ".dram0.bss": 7424,
-        ".flash.text": 167936,
+        ".flash.text": 168192,
         ".flash.rodata": 65024,
         ".noinit": 0
       },
@@ -453,7 +459,7 @@
         ".iram0.text": 56131,
         ".dram0.data": 14392,
         ".dram0.bss": 7240,
-        ".flash.text": 164618,
+        ".flash.text": 164662,
         ".flash.rodata": 63620,
         ".noinit": 0
       }
@@ -463,8 +469,8 @@
       "tasks": {
         "parquet-sd": {
           "stack_bytes": 24576,
-          "measured": 11104,
-          "budget": 12224
+          "measured": 11136,
+          "budget": 12288
         },
         "nimble_host": {
           "measured": 5840,
@@ -472,8 +478,8 @@
         },
         "os_ble_error": {
           "stack_bytes": 4096,
-          "measured": 2544,
-          "budget": 2816
+          "measured": 2576,
+          "budget": 2880
         },
         "os-lan": {
           "stack_bytes": 8192,
@@ -483,13 +489,13 @@
         "board": {
           "task_name": "os-board",
           "stack_bytes": 12288,
-          "measured": 4704,
-          "budget": 5184
+          "measured": 4720,
+          "budget": 5248
         },
         "os-ui": {
           "stack_bytes": 8192,
-          "measured": 3280,
-          "budget": 3648
+          "measured": 3344,
+          "budget": 3712
         },
         "esp_timer": {
           "measured": 592,
@@ -503,18 +509,77 @@
       "sections": {
         ".iram0.text": 128000,
         ".dram0.data": 35072,
-        ".dram0.bss": 58624,
-        ".flash.text": 1203456,
-        ".flash.rodata": 404224,
+        ".dram0.bss": 58880,
+        ".flash.text": 1214208,
+        ".flash.rodata": 421632,
         ".noinit": 256
       },
       "sections_measured": {
         ".iram0.text": 125295,
-        ".dram0.data": 34241,
-        ".dram0.bss": 57336,
-        ".flash.text": 1179714,
-        ".flash.rodata": 396136,
+        ".dram0.data": 34257,
+        ".dram0.bss": 57480,
+        ".flash.text": 1190306,
+        ".flash.rodata": 413160,
         ".noinit": 3
+      }
+    },
+    "epaper397/logger": {
+      "build": "firmware/esp-idf-waveshare-epaper-397/build/logger",
+      "tasks": {
+        "parquet-sd": {
+          "stack_bytes": 24576,
+          "measured": 11136,
+          "budget": 12288
+        },
+        "nimble_host": {
+          "measured": 5840,
+          "budget": 6464
+        },
+        "os_ble_error": {
+          "stack_bytes": 4096,
+          "measured": 2576,
+          "budget": 2880
+        },
+        "os-lan": {
+          "stack_bytes": 8192,
+          "measured": 4832,
+          "budget": 5376
+        },
+        "board": {
+          "task_name": "os-board",
+          "stack_bytes": 12288,
+          "measured": 4720,
+          "budget": 5248
+        },
+        "os-epd": {
+          "stack_bytes": 6144,
+          "measured": 2320,
+          "budget": 2560
+        },
+        "esp_timer": {
+          "measured": 592,
+          "budget": 704
+        },
+        "sys_evt": {
+          "measured": 1040,
+          "budget": 1152
+        }
+      },
+      "sections": {
+        ".iram0.text": 127744,
+        ".dram0.data": 34560,
+        ".dram0.bss": 58368,
+        ".flash.text": 1161984,
+        ".flash.rodata": 399104,
+        ".noinit": 0
+      },
+      "sections_measured": {
+        ".iram0.text": 125195,
+        ".dram0.data": 33808,
+        ".dram0.bss": 57024,
+        ".flash.text": 1139186,
+        ".flash.rodata": 391104,
+        ".noinit": 0
       }
     }
   }

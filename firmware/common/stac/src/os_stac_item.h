@@ -15,7 +15,7 @@
 
 // The STAC File Item a board writes next to each finalized dated Parquet file
 // (#142). It follows the canonical form of the stac-opensensor profile at
-// commit 83787768 (PROFILE.md "Canonical File Item" and scripts/canonical.mjs
+// commit 204365f9 (PROFILE.md "Canonical File Item" and scripts/canonical.mjs
 // buildItem). The host gate stac-item-test proves the output equal to that
 // script's examples under its `differences` rules.
 //
@@ -228,11 +228,13 @@ enum class [[nodiscard]] ItemError : std::uint8_t {
   // The profile's no Item cases (canonical.mjs buildItem), in its order.
   NotDated,       // the name is not data_HHMM_<boot>_<first>-<last>-<n>
   NoThing,        // no Thing id
+  BadRotation,    // the rotation is not 600, 900, 1800 or 3600 seconds
   NoRows,         // the file has no rows
   NullTime,       // a row has no UTC time
   NotLocated,     // no row has a cell, a null or zero cell is unlocated
   NotResolution8, // a cell is invalid or not resolution 8
   FixedManyCells, // a fixed Thing file holds more than one cell
+  WrongWindow,    // HHMM is not the window of the earliest row
   // Board side failures.
   TimeRange,      // a UTC time is outside 1970 to 2099, see rfc3339()
   TooManyRows,    // more than kMaxRows rows
@@ -248,7 +250,7 @@ enum class [[nodiscard]] ItemError : std::uint8_t {
 // True for the cases where the profile says the file has no Item. The
 // logger reports them as skipped, not as failures.
 [[nodiscard]] constexpr bool no_item(ItemError error) {
-  return error <= ItemError::FixedManyCells;
+  return error <= ItemError::WrongWindow;
 }
 
 enum class Mobility : std::uint8_t { Fixed, Moving };
@@ -314,6 +316,7 @@ struct ItemFile {
   std::string_view thing; // footer thing.id
   Mobility mobility = Mobility::Fixed;
   std::uint32_t sample_interval_ms = 0;
+  std::uint32_t rotation_interval_s = 0; // footer file.rotation_interval_s
 };
 
 // Caller buffers for the outline, sized by kGeometryCapacity to hold any

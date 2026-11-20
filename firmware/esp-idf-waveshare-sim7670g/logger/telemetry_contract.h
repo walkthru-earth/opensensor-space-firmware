@@ -15,6 +15,7 @@
 #include <os_max17048.h>
 #include <pinned_uri.h>
 #include <pms_frame.h>
+#include <pms_status.h>
 #include <span>
 #include <string_view>
 #include <utc_clock.h>
@@ -58,6 +59,15 @@ constexpr const char *kConfigurationId = "waveshare-sim7670g-acquisition-v3";
 constexpr opensensor::battery::Thresholds kBatteryThresholds{};
 constexpr std::int64_t kPmsWarmupUs = 30000000;
 constexpr std::uint32_t kPmsStaleAfterMs = 5000;
+// The PMS5003T tail gates, the -10 to 60 Cel and 0 to 100 % ranges of
+// telemetry_semantics.inc (#169). They reject decoded values outside those
+// ranges, nothing more, and a real negative temperature stays valid. A PMSA003
+// or PMS5003 wired by mistake sends the counts above 5 and 10 um in these two
+// words. A count that decodes out of range stays null. A small count, or 65535
+// that decodes as -0.1 Cel, passes as a reading (pms5003t.md).
+constexpr std::int16_t kPmsTemperatureMinDeciC = -100;
+constexpr std::int16_t kPmsTemperatureMaxDeciC = 600;
+constexpr std::uint16_t kPmsHumidityMaxDeciPercent = 1000;
 constexpr const char *kConfiguration =
     "{\"sample_interval_ms\":10000,\"pms_warmup_us\":30000000,"
     "\"pms_stale_after_ms\":5000,\"pms_uart_rx\":1,\"pms_uart_tx\":2,"
@@ -206,7 +216,7 @@ struct PmsSnapshot {
 // time) counts as warming, so a row never reads valid before the window.
 [[nodiscard]] constexpr bool pms_warming(std::int64_t now,
                                          std::int64_t last_wake_mono_us) {
-  return now < last_wake_mono_us || now - last_wake_mono_us < kPmsWarmupUs;
+  return plantower::warming(now, last_wake_mono_us, kPmsWarmupUs);
 }
 enum PmsStatus : std::int32_t {
   kPmsMissing = 0,
@@ -363,7 +373,7 @@ static constexpr std::string_view kTemplateKeywords[] = {
 constexpr const char *kTemplateHref =
     "https://raw.githubusercontent.com/walkthru-earth/"
     "opensensor-space-firmware/"
-    "bb618f32a8a9bfe6a633a22ad5e99d319d55d46b/"
+    "f64f5ed2e98470433ddf74bc982e276018c5f581/"
     "docs/shared/templates/waveshare-esp32-s3-sim7670g/"
     "a8605aafb6f76b794e9e7fb32927be6d203afeeb14527206c0e49c1eb0436809.json";
 static_assert(opensensor::pinned::names_template(kTemplateHref,

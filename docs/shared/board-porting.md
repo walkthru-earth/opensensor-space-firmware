@@ -165,10 +165,12 @@ Use the Waveshare V2 files as the example.
    `desc` must equal the board headers. `pixi run published-templates-test`
    and `pixi run pinned-uris-test` check the published copy and the pins.
 6. Mobile. Add a newest-first entry to [mobile-migration.md](mobile-migration.md)
-   with the new board, `dict` and `desc`. Today the app shows LIVE only through
-   a reviewed profile for the board `dict`. Reading LIVE meaning from the
-   verified template is planned, see
-   [decision 0003](decisions/0003-metadata-driven-apps.md).
+   with the new board, `dict` and `desc`. An app build that supports
+   [decision 0003](decisions/0003-metadata-driven-apps.md) shows LIVE for any
+   template it has verified and reads labels, decimals, scales, the primary
+   column and the setup steps from it. An older build still shows LIVE only
+   for a reviewed board profile, so publishing a template alone does not turn
+   LIVE on there. Set `primary`, `setup` and `settings` in `board.json`.
 7. Uploader prefix. A dev upload goes to
    `<product>/dev/opensensor-space-firmware/<board>/<archive name>`. The
    `<board>` segment is whatever slug the board passes, and no code checks it
@@ -181,11 +183,13 @@ Use the Waveshare V2 files as the example.
    to each dated `data_HHMM_` file, with the data href `./<file>.parquet`. The
    File Item writer is built in `firmware/common/stac` ([#142](https://github.com/walkthru-earth/opensensor-space-firmware/issues/142)), and a board opts in
    through `Config::stac_columns`. A dated file still gets no sidecar when the
-   Thing id is empty, the file has no rows, a row has no UTC time, no row has
-   an H3 cell, a cell is not a valid resolution 8 cell, or a fixed Thing file
-   holds more than one cell. The logger prints `PARQUET STAC result=skipped`
-   with the reason. A build or write failure prints `result=failed` and leaves
-   the Parquet file as it is. Benchmark files get no sidecar. The decision
+   Thing id is empty, the rotation interval is not 600, 900, 1800 or 3600
+   seconds, the file has no rows, a row has no UTC time, no row has an H3
+   cell, a cell is not a valid resolution 8 cell, a fixed Thing file holds
+   more than one cell, or the HHMM of the file name is not the start of the
+   window that holds its earliest row. The logger prints
+   `PARQUET STAC result=skipped` with the reason. A build or write failure
+   prints `result=failed` and leaves the Parquet file as it is. Benchmark files get no sidecar. The decision
    also gives the board the Thing Collection, written from its own upload
    ledger, with the board as the only writer under `thing=<uuid>/` and owner
    only fields from setup config. That writer is decided and not built
@@ -195,5 +199,6 @@ Use the Waveshare V2 files as the example.
    work, over the uploader in [#144](https://github.com/walkthru-earth/opensensor-space-firmware/issues/144) and over BLE and LAN in [#143](https://github.com/walkthru-earth/opensensor-space-firmware/issues/143). Today
    both accept only `.parquet` names.
 9. Builds. Build every existing board and the new one, `pixi run cores3-build`,
-   `pixi run waveshare-build`, `pixi run crowpanel-build` and the new board
+   `pixi run waveshare-build`, `pixi run crowpanel-build`,
+   `pixi run epaper397-build` and the new board
    task, then run `pixi run gate`.

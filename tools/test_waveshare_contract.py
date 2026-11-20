@@ -157,6 +157,13 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="waveshare-contract-") as temporary:
         directory = Path(temporary)
         executable = directory / "fixture"
+        # A pure header compiles alone, so it never leans on include order.
+        for header in (common / "sensors/src/pms_status.h",):
+            alone = directory / f"{header.stem}_alone.cpp"
+            alone.write_text(f'#include "{header.as_posix()}"\n')
+            subprocess.run(["clang++", CXX_STD, "-Wall", "-Wextra", "-Werror", "-fsyntax-only", str(alone)],
+                           check=True)
+        print("PASS pms_status.h compiles on its own", flush=True)
         command = ["clang++", CXX_STD, "-Wall", "-Wextra", "-Werror"]
         for include in ("src", "sensors/src", "sensors/modules", "logger/src", "connectivity/src", "runtime/src",
                         "gnss/src", "power/src"):

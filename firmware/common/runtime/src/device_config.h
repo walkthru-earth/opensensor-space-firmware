@@ -156,8 +156,9 @@ struct PageInputs {
   std::uint64_t gnss_cell = 0; // fresh res 8 cell, zero prints ""
 };
 // Optional GET_CONFIG pages keep the legacy document and 480-byte cap intact.
-// 1 = location; 2 = NTP policy; 3/4 = one configured NTP server; 5 = owner
-// title, provider, url and thing.deployment_id; 6 = owner description.
+// 1 = location and the setup record; 2 = NTP policy; 3/4 = one configured NTP
+// server; 5 = owner title, provider, url and thing.deployment_id; 6 = owner
+// description; 7 = the board keys, {} on a board without them.
 std::size_t build_page(char *out, std::size_t size, std::uint8_t page,
                        const PageInputs &inputs = {});
 // True when two samples may share a file. Cell, resolution, country and
@@ -168,15 +169,18 @@ bool same_location(const LocationSettings &, const LocationSettings &);
 // Owner site configuration (#148). Free text the owner sets over SET_CONFIG for
 // the STAC Collection and the footer, kept in its own CRC-checked NVS record
 // `owner` beside `cfg`. Values are bounded UTF-8 without control characters.
-// An empty value clears the key. The board never prints these values, they
-// appear only in GET_CONFIG pages 5 and 6 and in the footer.
+// An empty value clears the key. The board never prints the free text, it
+// appears only in GET_CONFIG pages 5 and 6 and in the footer. The
+// thing.deployment_id slug also shows in `parquet status`.
 constexpr std::size_t kOwnerTitleMax = 64;
 constexpr std::size_t kOwnerDescriptionMax = 160;
 constexpr std::size_t kOwnerProviderMax = 64;
 constexpr std::size_t kOwnerUrlMax = 96;
 constexpr std::size_t kDeploymentIdMax = 32;
-// The highest GET_CONFIG page. Pages 5 and 6 hold the owner keys.
-constexpr std::uint8_t kLastConfigPage = 6;
+// The highest GET_CONFIG page. Pages 5 and 6 hold the owner keys, page 7 the
+// board keys.
+constexpr std::uint8_t kLastConfigPage = 7;
+constexpr std::uint8_t kBoardKeysPage = 7;
 
 enum class OwnerKey : std::uint8_t {
   Title,       // owner.title, the Collection title
@@ -230,6 +234,54 @@ struct SampleLabels {
 SampleLabels sample_labels();
 // True when both name the same deployment, the file split rule.
 bool same_deployment(const DeploymentId &, const DeploymentId &);
+
+// The setup record (decision 0003, #184). Bit i of `ack` marks step i of the
+// template firmware.setup done. `version` names that step list. It is the
+// first four bytes of SHA-256 over the ordered step ids joined by "\n", read
+// big endian with the top bit cleared, and 0 read as 1, so 0x63b0c442 for the
+// empty list (tools/plugin_contract.py setup_v). Both are 0 until a phone
+// writes the record. That {0, 0} is also its stored unset form, which a write
+// back may store and which loads with no warning, while SET_CONFIG refuses
+// version 0. It has its own CRC-checked NVS record `setup`
+// beside `cfg` and `owner`. GET_CONFIG page 1 reports it as thing.setup_v and
+// thing.setup_ack, and SET_CONFIG takes both keys together. The board never
+// reads the bits. Required steps stay derived from the config (setup_needed).
+constexpr std::uint32_t kSetupMax = 2147483647U;
+struct SetupRecord {
+  std::uint32_t version = 0; // thing.setup_v, 1 to kSetupMax, 0 while unset
+  std::uint32_t ack = 0;     // thing.setup_ack, 0 to kSetupMax
+  bool operator==(const SetupRecord &) const = default;
+};
+// A copy of the published record, safe from any task.
+SetupRecord setup_record();
+
+// Board keys (decision 0003, #184). A board may own SET_CONFIG keys that the
+// template firmware.config_keys declares by name and type. GET_CONFIG page 7
+// reads them back, nested by prefix with booleans as true or false. The
+// runtime keeps every key with a reserved prefix, ble., wifi., lan.,
+// location., thing., owner. and sensor., and ntp. too, so a board never sees
+// one. Only the storage worker calls these, one request at a time.
+enum class [[nodiscard]] BoardKeyError : std::uint8_t {
+  Unknown, // the board has no such key
+  Value,   // the value is outside the key's type
+};
+struct BoardKeys {
+  // Starts a request. The board clears its draft.
+  void (*begin)() = nullptr;
+  // Checks one key and its value into the draft. Live values stay as they are.
+  std::expected<void, BoardKeyError> (*stage)(std::string_view key,
+                                              std::string_view value) = nullptr;
+  // Hands the draft over once the rest of the request is saved. It cannot
+  // fail, the board stores the values itself.
+  void (*commit)() = nullptr;
+  // Writes page 7 and returns its length, 0 when it does not fit `size`.
+  std::size_t (*page)(char *out, std::size_t size) = nullptr;
+};
+// The board installs its keys before start_links. All four must be set, or
+// the board keeps none. The functions must have static lifetime.
+void set_board_keys(const BoardKeys &keys);
+// True for a key the runtime keeps, which no board may own.
+[[nodiscard]] bool reserved_key(std::string_view key);
 
 const char *pair_name(PairMode mode);
 // "fixed" or "moving", the SET_CONFIG and footer word.

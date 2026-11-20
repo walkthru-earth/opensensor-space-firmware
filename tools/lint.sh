@@ -62,7 +62,7 @@ options=(--language=c++ --enable=warning,style,performance,portability
   --inline-suppr --error-exitcode=1 --std=c++23 --max-configs=1
   '--suppress=*:*/vendor/lz4/*')
 # Shared sources cppcheck reads. The list is by hand, and the check below
-# fails when a tracked shared source is in neither list, so a new file cannot
+# fails when a tracked shared source is missing from it, so a new file cannot
 # skip cppcheck unnoticed.
 common_sources=(
   firmware/common/connectivity/src/ble_sync.cpp
@@ -103,49 +103,35 @@ common_sources=(
   firmware/common/runtime/src/log_persist.cpp
   firmware/common/runtime/src/power.cpp
   firmware/common/upload/src/os_upload_device.cpp
-)
-# Tracked shared sources cppcheck does not read yet. Each one has open
-# findings that need a source change of its own. Remove a line once its file
-# is clean and add the file to common_sources.
-common_excluded=(
-  # shadowFunction, argument capacity in FrameRing::attach
   firmware/common/connectivity/src/frame_ring.cpp
-  # variableScope, static project buffer
   firmware/common/connectivity/src/ota_lan.cpp
-  # useStlAlgorithm, two raw loops over the checks
   firmware/common/src/boot_self_test.cpp
-  # shadowFunction, argument owner in drop_owner, begin and handle
   firmware/common/src/ota_transfer.cpp
 )
 # Every tracked firmware/common .cpp in a src folder, vendor and tests aside,
-# is in exactly one of the two lists, and every listed file is tracked.
+# is in the list, and every listed file is tracked.
 tracked_list="$(git ls-files -- 'firmware/common/*.cpp' |
   grep -E '(^|/)src/[^/]+\.cpp$' | grep -Ev '/(vendor|tests)/' || true)"
 if [[ -z "${tracked_list}" ]]; then
   printf '!!! git listed no shared sources under firmware/common\n' >&2; exit 1
 fi
-known=" ${common_sources[*]} ${common_excluded[*]} "
+known=" ${common_sources[*]} "
 unlisted=()
 while IFS= read -r file; do
   if [[ "${known}" != *" ${file} "* ]]; then unlisted+=("${file}"); fi
 done <<<"${tracked_list}"
 if [[ ${#unlisted[@]} -gt 0 ]]; then
-  printf '!!! shared sources missing from the cppcheck lists in tools/lint.sh, %s\n' "${unlisted[*]}" >&2
+  printf '!!! shared sources missing from the cppcheck list in tools/lint.sh, %s\n' "${unlisted[*]}" >&2
   exit 1
 fi
 stale=()
-for file in "${common_sources[@]}" "${common_excluded[@]}"; do
+for file in "${common_sources[@]}"; do
   if [[ $'\n'"${tracked_list}"$'\n' != *$'\n'"${file}"$'\n'* ]]; then stale+=("${file}"); fi
 done
 if [[ ${#stale[@]} -gt 0 ]]; then
   printf '!!! tools/lint.sh lists shared sources git does not track, %s\n' "${stale[*]}" >&2
   exit 1
 fi
-for file in "${common_excluded[@]}"; do
-  if [[ " ${common_sources[*]} " == *" ${file} "* ]]; then
-    printf '!!! %s is in both cppcheck lists in tools/lint.sh\n' "${file}" >&2; exit 1
-  fi
-done
 cppcheck "${options[@]}" \
   ${board_other[@]+"${board_other[@]}"} \
   "${common_sources[@]}"

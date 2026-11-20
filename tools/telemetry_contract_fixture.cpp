@@ -1,4 +1,5 @@
 #include "../firmware/common/src/lz4_codec.h"
+#include "../firmware/esp-idf-cores3/bringup/power_registers.h"
 #include "../firmware/esp-idf-cores3/bringup/telemetry_contract.h"
 
 #include "board_template.h"
@@ -18,6 +19,81 @@
 using namespace telemetry;
 using namespace telemetry::contract;
 
+// CoreS3 power columns (#166). A failed register read leaves its column null,
+// never a fabricated 0, and a good read decodes as M5Unified did.
+namespace power_rows {
+using namespace telemetry::power;
+constexpr Byte ok(std::uint8_t value) { return {.ok = true, .value = value}; }
+constexpr Word14 ok14(std::int32_t mv) {
+  return {.ok = true,
+          .high = static_cast<std::uint8_t>(mv >> 8),
+          .low = static_cast<std::uint8_t>(mv & 0xFF)};
+}
+// Every read fails, as with a stuck bus. All five columns are null.
+constexpr Reading failed = decode(Registers{});
+static_assert(!failed.vbus_mv && !failed.battery_mv &&
+              !failed.battery_percent && !failed.external_5v &&
+              !failed.usb_output);
+// A normal row on USB with a charged cell and both outputs on.
+constexpr Reading normal =
+    decode({.status = ok(kVbusGood),
+            .vbus = ok14(5012),
+            .battery = ok14(4105),
+            .level = ok(87),
+            .port0 = ok(kExternal5vBit | kUsbOutputBit)});
+static_assert(normal.vbus_mv == 5012 && normal.battery_mv == 4105 &&
+              normal.battery_percent == 87 && normal.external_5v == true &&
+              normal.usb_output == true);
+// Each expander bit drives only its own output.
+constexpr Reading only_5v = decode({.status = {},
+                                    .vbus = {},
+                                    .battery = {},
+                                    .level = {},
+                                    .port0 = ok(kExternal5vBit)});
+constexpr Reading only_usb = decode({.status = {},
+                                     .vbus = {},
+                                     .battery = {},
+                                     .level = {},
+                                     .port0 = ok(kUsbOutputBit)});
+static_assert(only_5v.external_5v == true && only_5v.usb_output == false &&
+              only_usb.external_5v == false && only_usb.usb_output == true);
+// Real off states stay real values, not null.
+constexpr Reading off = decode({.status = ok(0),
+                                .vbus = {},
+                                .battery = ok14(3700),
+                                .level = ok(0),
+                                .port0 = ok(0)});
+static_assert(off.vbus_mv == 0 && off.battery_percent == 0 &&
+              off.external_5v == false && off.usb_output == false);
+// VBUS good but its ADC read failed, and an ADC near full scale.
+static_assert(!vbus_mv_of(ok(kVbusGood), {}));
+static_assert(vbus_mv_of(ok(kVbusGood), ok14(kAdcInvalidMin)) == 0 &&
+              vbus_mv_of(ok(kVbusGood), ok14(kAdcInvalidMin - 1)) ==
+                  kAdcInvalidMin - 1);
+// The status read failed, so VBUS is unknown even with a good ADC word.
+static_assert(!vbus_mv_of({}, ok14(5000)));
+// battery_mv outside its plausible range is null, the edges are kept.
+static_assert(!battery_mv_of(ok14(0)) &&
+              !battery_mv_of(ok14(kBatteryMinMv - 1)) &&
+              !battery_mv_of(ok14(kBatteryMaxMv + 1)) &&
+              battery_mv_of(ok14(kBatteryMinMv)) == kBatteryMinMv &&
+              battery_mv_of(ok14(kBatteryMaxMv)) == kBatteryMaxMv);
+// The fuel gauge byte above 100 (a negative int8) is null.
+static_assert(battery_percent_of(ok(100)) == 100 &&
+              !battery_percent_of(ok(101)) && !battery_percent_of(ok(0xFF)));
+// Only the 14 ADC bits count.
+static_assert(raw14({.ok = true, .high = 0xFF, .low = 0xFF}) == kAdcFullScale);
+// The battery gate is the plausible range telemetry_semantics.inc declares.
+constexpr const opensensor::semantics::Column *battery_semantics =
+    opensensor::semantics::find_column(kSemantics, "battery_mv");
+static_assert(
+    battery_semantics != nullptr &&
+    opensensor::semantics::decimal_value(battery_semantics->plausible_min) ==
+        kBatteryMinMv &&
+    opensensor::semantics::decimal_value(battery_semantics->plausible_max) ==
+        kBatteryMaxMv);
+} // namespace power_rows
+
 namespace {
 bool sink(void *context, const std::uint8_t *bytes, std::size_t count) {
   return std::fwrite(bytes, 1, count, static_cast<FILE *>(context)) == count;
@@ -28,35 +104,36 @@ namespace {
 // Every board LIVE key must be accepted by begin(), and a row with every LIVE
 // key valid at its widest real value must still fit one BLE JSON value.
 // Widest values a real producer writes while each key is valid. INT64
-// counters take INT64_MAX so no uptime horizon is assumed. `utc` is the
-// largest microsecond count whose nanosecond form fits INT64, 19 digits.
+// counters and the microsecond `utc` take INT64_MAX so no uptime or date
+// horizon is assumed, 19 digits.
 // Status codes are one digit and PMS words are u16.
 constexpr std::int64_t kI64 = std::numeric_limits<std::int64_t>::max();
-constexpr std::int64_t kUtcUs = kI64 / 1000; // 9223372036854775000 ns
 constexpr std::int64_t kU16 = 65535;
 // `imu_t` is BMI270 int16/512 + 23, so -41.0 is its widest. `vbus` and
 // `bat` are M5Unified int16_t mV. `chg` is ChargingStatus (0..2), mapped
 // from M5Unified getChargeState() in telemetry_logger.cpp. `t` and `rh`
 // have no producer yet (sht20_unresolved). They take a signed int16 deci
 // degree and 100.0 so a future sensor cannot push the row over silently.
+// `lst` is the LTR-553 status code, 0..4, so null is its widest.
 constexpr livewidest::Widest kWidest[] = {
-    {"seq", kI64, 0.0F},    {"mono", kI64, 0.0F},  {"utc", kUtcUs, 0.0F},
-    {"pms", 9, 0.0F},       {"c1", kU16, 0.0F},    {"c25", kU16, 0.0F},
-    {"c10", kU16, 0.0F},    {"pm1", kU16, 0.0F},   {"pm25", kU16, 0.0F},
-    {"pm10", kU16, 0.0F},   {"n03", kU16, 0.0F},   {"n05", kU16, 0.0F},
-    {"n1", kU16, 0.0F},     {"n25", kU16, 0.0F},   {"n5", kU16, 0.0F},
-    {"n10", kU16, 0.0F},    {"imu_t", 0, -41.0F},  {"als", kU16, 0.0F},
-    {"vbus", -32768, 0.0F}, {"bat", -32768, 0.0F}, {"pct", 100, 0.0F},
-    {"chg", 2, 0.0F},       {"t", 0, -3276.8F},    {"rh", 0, 100.0F},
+    {"seq", kI64, 0.0F},  {"mono", kI64, 0.0F},   {"utc", kI64, 0.0F},
+    {"pms", 9, 0.0F},     {"c1", kU16, 0.0F},     {"c25", kU16, 0.0F},
+    {"c10", kU16, 0.0F},  {"pm1", kU16, 0.0F},    {"pm25", kU16, 0.0F},
+    {"pm10", kU16, 0.0F}, {"n03", kU16, 0.0F},    {"n05", kU16, 0.0F},
+    {"n1", kU16, 0.0F},   {"n25", kU16, 0.0F},    {"n5", kU16, 0.0F},
+    {"n10", kU16, 0.0F},  {"imu_t", 0, -41.0F},   {"als", kU16, 0.0F},
+    {"lst", 4, 0.0F},     {"vbus", -32768, 0.0F}, {"bat", -32768, 0.0F},
+    {"pct", 100, 0.0F},   {"chg", 2, 0.0F},       {"t", 0, -3276.8F},
+    {"rh", 0, 100.0F},
 };
-// Measured 2026-10-26 with every declared key present, a one digit code or
+// Measured 2026-11-18 with every declared key present, a one digit code or
 // a 100 percent counted as null since null is wider, and each float at its
-// field's decimals (t prints two). The widest object is 333 bytes, 480 - 333 =
-// 147 bytes of headroom. The all-null object sent on overflow is 265 bytes. A
+// field's decimals (t prints two). The widest object is 344 bytes, 480 - 344 =
+// 136 bytes of headroom. The all-null object sent on overflow is 276 bytes. A
 // change here means a LIVE key, its widest value or its decimals changed,
 // update the numbers.
-constexpr std::size_t kWidestLiveBytes = 333;
-constexpr std::size_t kAllNullLiveBytes = 265;
+constexpr std::size_t kWidestLiveBytes = 344;
+constexpr std::size_t kAllNullLiveBytes = 276;
 void assert_live_keys(const oslogger::Field *table, std::size_t count) {
   const auto bytes = livewidest::measure(table, count, kWidest);
   const auto nulls = livewidest::all_null(table, count);
@@ -105,6 +182,29 @@ bool template_mode(const char *mode) {
   }
   return false;
 }
+
+// One PMS status rule for the row, the screen and the MEAS line (#165, #169).
+// Warm-up runs from boot. A frame silent for 2^32 ms plus 1 s is stale. The
+// old uint32 ms clock in main.cpp wrapped that age to 1 s, a fresh frame.
+constexpr std::int64_t kSilentUs = ((std::int64_t{1} << 32) + 1000) * 1000;
+static_assert(pms_status_of(false, 60000000, 0, 0) == kPmsMissing);
+static_assert(pms_status_of(true, kPmsWarmupUs - 1, kPmsWarmupUs - 2, 0) ==
+              kPmsWarming);
+static_assert(pms_status_of(true, kPmsWarmupUs - 1, 0, 3) == kPmsWarming);
+static_assert(pms_status_of(true, kPmsWarmupUs, kPmsWarmupUs - 100, 0) ==
+              kPmsValid);
+static_assert(pms_status_of(true, 60000000, 55000000, 0) == kPmsValid);
+static_assert(pms_status_of(true, 60000000, 54999000, 0) == kPmsStale);
+static_assert(pms_status_of(true, 60000000, 59000000, 3) == kPmsSensorError);
+static_assert(pms_status_of(true, 5000000 + kSilentUs, 5000000, 0) ==
+              kPmsStale);
+static_assert(static_cast<std::uint32_t>(kSilentUs / 1000) == 1000);
+static_assert(pms_status_name(kPmsMissing) == "missing" &&
+              pms_status_name(kPmsWarming) == "warming" &&
+              pms_status_name(kPmsStale) == "stale" &&
+              pms_status_name(kPmsSensorError) == "sensor-error" &&
+              pms_status_name(kPmsValid) == "valid" &&
+              pms_status_name(static_cast<PmsStatus>(9)) == "unknown");
 } // namespace
 
 int main(int argc, char **argv) {

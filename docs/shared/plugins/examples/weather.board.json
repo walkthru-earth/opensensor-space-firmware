@@ -4,6 +4,7 @@
   "board": "example-weather-s3",
   "schema": "example-weather-s3-telemetry-v1",
   "sample_interval_s": 10,
+  "primary": "air_temperature_c",
   "title": "Example weather Thing with Bosch Sensortec BME280 and Analog Devices MAX17048",
   "keywords": ["weather", "air temperature", "air pressure"],
   "segments": [

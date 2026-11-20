@@ -10,7 +10,7 @@ extension `schema.json` in `tools/stac_opensensor/v0.1.0`.
 
 Every file in `examples/`, `fixtures/`, `footers/` and `templates/` is a byte
 copy from [walkthru-earth/stac-opensensor](https://github.com/walkthru-earth/stac-opensensor)
-at commit `83787768cc8451109d48a03d4ef5493ffcd403dd`, at the same path.
+at commit `204365f929e6f77bcaa6e70a0245c96cadc5c115`, at the same path.
 Those files are CC-BY-4.0, Copyright (c) 2025-2026 Walkthru.Earth, the license of
 that repository. Never edit them here. Copy them again from a new pinned commit.
 
@@ -32,7 +32,7 @@ node tools/fixtures/stac/generate_cases.mjs \
   > tools/fixtures/stac/cases.json
 ```
 
-The generator refuses any `canonical.mjs` other than the 83787768 bytes and
+The generator refuses any `canonical.mjs` other than the 204365f9 bytes and
 any h3-js other than 4.5.0. The output is the same bytes on every run.
 
 ## Manifest
