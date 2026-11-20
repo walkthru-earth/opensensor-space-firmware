@@ -1,5 +1,7 @@
 // Renders the shared e-paper pages for synthetic scenarios to PBM files, at
-// each host size class and each rotation, under <out dir>/<size>/r<deg>/.
+// each host size class and each rotation, under <out dir>/<size>/r<deg>/ in
+// English and under <out dir>/ar/<size>/r<deg>/ in Egyptian Arabic, with the
+// same file names.
 // Each file is the frame as a person holding the device sees it, the
 // logical frame the pages draw. At r0 that is byte for byte the frame the
 // panel receives, at other rotations the Presenter turns it for the panel,
@@ -33,10 +35,14 @@
 #include "epaper_ui/strings.h"
 #include "epaper_ui/ui_model.h"
 #include "epaper_ui_host_profiles.h"
+#include "os_strings.h"
 
 using namespace opensensor::ui;
 
 namespace {
+
+// The language every scene draws in, set once per pass in main().
+constinit Language g_language = Language::English;
 
 constexpr float kNaN = std::numeric_limits<float>::quiet_NaN();
 
@@ -134,6 +140,7 @@ Status base_status() {
 int emit(const Target &t, const char *name, std::uint8_t page, const Model &m,
          const History &h) {
   auto b = std::make_unique<Buffer>(t);
+  set_language(g_language);
   render(b->canvas, page, m, h);
   const std::string path = t.dir + "/" + name + ".pbm";
   if (!write_pbm(path, b->canvas)) {
@@ -148,7 +155,9 @@ int emit_screen(const Target &t, const char *name, const UiState &ui,
                 const Settings &s, const SettingsInfo &info, const Model &m,
                 const History &h) {
   auto b = std::make_unique<Buffer>(t);
-  render_screen(b->canvas, ui, s, info, m, h);
+  Settings drawn = s;
+  drawn.language = g_language;
+  render_screen(b->canvas, ui, drawn, info, m, h);
   const std::string path = t.dir + "/" + name + ".pbm";
   if (!write_pbm(path, b->canvas)) {
     std::fprintf(stderr, "cannot write %s\n", path.c_str());
@@ -194,7 +203,9 @@ int scenes(const Target &target) {
     rc |= emit_dark(target, "dashboard-dark", kDashboardPage, m, *h);
     rc |= emit_dark(target, "chart-PM2.5-dark", 1, m, *h);
     for (std::uint8_t p = 1; p < kStatusPage; ++p) {
-      const std::string_view label = tr(info(kChartOrder[p - 1U]).label);
+      // Named by the English label in both languages.
+      const std::string_view label = opensensor::text::text(
+          opensensor::text::Lang::En, info(kChartOrder[p - 1U]).label);
       const std::string name =
           "chart-" + std::string(label == "CO₂" ? "co2" : label);
       rc |= emit(target, name.c_str(), p, m, *h);
@@ -237,8 +248,8 @@ int scenes(const Target &target) {
       fall_asleep(asleep_ui);
       rc |= emit_screen(target, "asleep-dark", asleep_ui, dark, info, m, *h);
     }
-    // Down seven times to Altitude, press to edit, one step up.
-    for (int i = 0; i < 7; ++i)
+    // Down eight times to Altitude, press to edit, one step up.
+    for (int i = 0; i < 8; ++i)
       static_cast<void>(handle(ui, s, info, Input::Down));
     static_cast<void>(handle(ui, s, info, Input::Press));
     static_cast<void>(handle(ui, s, info, Input::Up));
@@ -359,7 +370,7 @@ int scenes(const Target &target) {
     s.start_page = StartPage::LastViewed;
     UiState ui{.page = kStatusPage};
     static_cast<void>(handle(ui, s, info, Input::Menu));
-    for (int i = 0; i < 4; ++i)
+    for (int i = 0; i < 5; ++i)
       static_cast<void>(handle(ui, s, info, Input::Down));
     rc |= emit_screen(target, "settings-no-wifi-no-sensor", ui, s, info, m, *h);
   }
@@ -393,26 +404,38 @@ int main(int argc, char **argv) {
       {.name = "400x300", .profile = &host::kHost400x300},
       {.name = "800x480", .profile = &host::kHost800x480},
   }};
+  struct Pass {
+    Language language;
+    const char *prefix;
+  };
+  constexpr std::array<Pass, 2> kPasses{{
+      {.language = Language::English, .prefix = "/"},
+      {.language = Language::Arabic, .prefix = "/ar/"},
+  }};
   int rc = 0;
-  for (const Size &size : kSizes) {
-    if (!validate(*size.profile)) {
-      std::fprintf(stderr, "profile %s refused\n", size.name);
-      return 1;
-    }
-    for (const Rotation r :
-         {Rotation::R0, Rotation::R90, Rotation::R180, Rotation::R270}) {
-      const Target t{.dir = out + "/" + size.name + "/r" +
-                            std::to_string(90 * std::to_underlying(r)),
-                     .profile = size.profile,
-                     .rotation = r};
-      std::error_code ec;
-      std::filesystem::create_directories(t.dir, ec);
-      if (ec) {
-        std::fprintf(stderr, "cannot create %s\n", t.dir.c_str());
+  for (const Pass &pass : kPasses) {
+    g_language = pass.language;
+    for (const Size &size : kSizes) {
+      if (!validate(*size.profile)) {
+        std::fprintf(stderr, "profile %s refused\n", size.name);
         return 1;
       }
-      rc |= scenes(t);
+      for (const Rotation r :
+           {Rotation::R0, Rotation::R90, Rotation::R180, Rotation::R270}) {
+        const Target t{.dir = out + pass.prefix + size.name + "/r" +
+                              std::to_string(90 * std::to_underlying(r)),
+                       .profile = size.profile,
+                       .rotation = r};
+        std::error_code ec;
+        std::filesystem::create_directories(t.dir, ec);
+        if (ec) {
+          std::fprintf(stderr, "cannot create %s\n", t.dir.c_str());
+          return 1;
+        }
+        rc |= scenes(t);
+      }
     }
   }
+  set_language(Language::English);
   return rc;
 }

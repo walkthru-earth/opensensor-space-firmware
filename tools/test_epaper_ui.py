@@ -4,8 +4,10 @@ The component under firmware/common/epaper_ui/ is plain C++23 with no
 ESP-IDF, so the host compiles the same pages every e-paper board shows.
 Every run also renders every page for synthetic scenarios at each size
 class and rotation, and checks the 400x300 r0 frames, the CrowPanel's
-frames, against the sha256 goldens below. With --preview it writes PNGs of
-every frame to the ignored root artifacts/epaper-ui-preview/<size>/r<deg>/.
+frames, against the sha256 goldens below, and a few Arabic 400x300 r0
+frames against their own. With --preview it writes PNGs of every frame to
+the ignored root artifacts/epaper-ui-preview/<size>/r<deg>/, the Arabic ones
+under ar/<size>/r<deg>/.
 PNG encoding uses only the standard library. No device is accessed.
 
 A golden moves only with a deliberate change to what the CrowPanel shows.
@@ -32,13 +34,17 @@ COMPONENT = ROOT / "firmware/common/epaper_ui"
 LOGGER = ROOT / "firmware/esp-idf-crowpanel-epaper/logger"
 BOARD_DISPLAY = ROOT / "firmware/esp-idf-crowpanel-epaper/display"
 PREVIEW = ROOT / "artifacts/epaper-ui-preview"
-# Every source the component's CMakeLists.txt builds.
-SOURCES = sorted((COMPONENT / "src").glob("*.cpp"))
+# The shared text component, the string table, bidi and the Arabic fonts the
+# Latin fonts fall back to.
+TEXT = ROOT / "firmware/common/text/src"
+# Every source the two components' CMakeLists.txt build.
+SOURCES = sorted((COMPONENT / "src").glob("*.cpp")) + sorted(TEXT.glob("*.cpp"))
 # The size class whose r0 frames must not move.
 GOLDEN_DIR = "400x300/r0"
 # sha256 of each 400x300 r0 PBM, header and frame. The four settings popups
-# moved once when the Rotation row was added, every other frame is the one
-# the CrowPanel drew before the UI became shared.
+# moved when the Rotation row was added and again when the Language row was,
+# every other frame is the one the CrowPanel drew before the UI became
+# shared.
 GOLDEN = {
     "asleep-dark": "126b725c87cc81fadf7efd504174090c6fa87c82f162d6d5fbb9265f4ce91ca5",
     "asleep": "126b725c87cc81fadf7efd504174090c6fa87c82f162d6d5fbb9265f4ce91ca5",
@@ -65,21 +71,30 @@ GOLDEN = {
     "dashboard": "d893d0c6acfc764dedad63f56ade78314f5ea65497a9f79eb346fbcc288d93a6",
     "pairing-dark": "d93fc4c58df213a0f03ee4c668743837d1782e44f9f093cbd018f43774e5f6a9",
     "pairing": "30c93f6ca15036d4add6f5bf5b36a1c034bb85a421df628d4fc14a69d804970e",
-    "settings-edit-altitude": "e2a64d0e55e03a29b3f03f1924ef99b6ce1252f3159a82c82d80aa8dc23317bd",
-    "settings-no-wifi-no-sensor": "d4448a197034130c5fe74de353c66a8dd1667954b9e48edd071e4abe4560937f",
-    "settings-theme-dark": "347502007fcc1959d1544608ab5f3c5e4730bde3c12e1a66eca7c38e8843a34b",
-    "settings": "d4f94e0743bcbb6bc4d488147dd1c51088c0e765008ca328471582f050e64348",
+    "settings-edit-altitude": "a086ffb791d215ae139dbc2df4d0154a440aef164b329a39373571f4edb5184c",
+    "settings-no-wifi-no-sensor": "46ddc56238550e22841bbd93f97ed4d440f0f4ee968613702f0edd128757d4e2",
+    "settings-theme-dark": "3feef32b81b4ef8e2267260172293889f201e9657db4304b1a1f92648da1b155",
+    "settings": "74403a4ff4a1d08a05e9069491474dc8de364716f002ce8bc8118598b3018752",
     "status-dark": "a0af7f50991ae40ec3e62b30dd4659e90eecbcb6dfc177e888053abcad7bf5b2",
     "status-fault": "35f039edd6ce4d2d1e9f940d053149ab5632e18a728d0aaf9504b3b755ef96ae",
     "status-warming": "c71ce893885c2b861f6806d9bfa399eea86ae707c6cb9588e81ab65fb1d87373",
     "status": "00c8c182626ebd0c10d3e79fdda2757c7cc91449f4c9f36c5d9cf714dc059b5d",
+}
+# A few Arabic 400x300 r0 frames, one of each kind of page, so a change to
+# the bidi pass, the Arabic fonts or the mirroring shows up here.
+AR_GOLDEN_DIR = "ar/400x300/r0"
+AR_GOLDEN = {
+    "chart-PM2.5": "7ee1ba60ef7f43311ef59133f56efb08dc2e21b41d440995fd53b6b0d08814af",
+    "dashboard": "7870d88986f8054bb857bf484dbd8fd7aa516c674e1cdee455733a09829e729a",
+    "settings": "e87201533012041d7932bca04f9c08be77251384ce2848a135e25d15fd7d466a",
+    "status": "2c3c77122de04ab8a6e7bf5a43d7f273832df2a255970edf9ac6cf260bdc5ba5",
 }
 
 
 def compile_one(main: Path, out: Path, sanitize: bool) -> None:
     command = ["clang++", CXX_STD, "-Wall", "-Wextra", "-Werror",
                "-Wshadow", "-Wconversion", "-Wno-sign-conversion",
-               f"-I{COMPONENT / 'include'}", f"-I{LOGGER}", f"-I{BOARD_DISPLAY}", str(main), *[str(s) for s in SOURCES],
+               f"-I{COMPONENT / 'include'}", f"-I{TEXT}", f"-I{LOGGER}", f"-I{BOARD_DISPLAY}", str(main), *[str(s) for s in SOURCES],
                "-o", str(out)]
     if sanitize:
         command += ["-g", "-fsanitize=address,undefined",
@@ -142,7 +157,9 @@ def main() -> None:
         frames.mkdir()
         subprocess.run([str(preview), str(frames)], check=True,
                        stdout=subprocess.DEVNULL)
-        check_golden(frames / GOLDEN_DIR)
+        check_golden(frames / GOLDEN_DIR, GOLDEN, GOLDEN_DIR, every=True)
+        check_golden(frames / AR_GOLDEN_DIR, AR_GOLDEN, AR_GOLDEN_DIR,
+                     every=False)
         if not args.preview:
             return
         for pbm in sorted(frames.rglob("*.pbm")):
@@ -151,25 +168,29 @@ def main() -> None:
             out.parent.mkdir(parents=True, exist_ok=True)
             png_from_pbm(pbm, out, 1)
             # The zoomed copy only for the small class, 800 x 480 reads at 1x.
-            if args.scale > 1 and rel.parts[0] == "400x300":
+            if args.scale > 1 and "400x300" in rel.parts[:2]:
                 zoom = PREVIEW / f"x{args.scale}" / rel
                 zoom.parent.mkdir(parents=True, exist_ok=True)
                 png_from_pbm(pbm, zoom, args.scale)
             print(out)
 
 
-def check_golden(directory: Path) -> None:
+def check_golden(directory: Path, golden: dict[str, str], label: str,
+                 every: bool) -> None:
+    """Hash the frames in `directory` against `golden`. With `every` a frame
+    missing from `golden` fails too, without it only the named ones count."""
     got = {p.stem: hashlib.sha256(p.read_bytes()).hexdigest()
            for p in directory.glob("*.pbm")}
+    names = golden.keys() | got.keys() if every else golden.keys()
     failures = []
-    for name in sorted(GOLDEN.keys() | got.keys()):
-        want = GOLDEN.get(name)
+    for name in sorted(names):
+        want = golden.get(name)
         have = got.get(name)
         if want != have:
             failures.append(f"  {name}: want {want} got {have}")
     if failures:
-        raise SystemExit(f"{GOLDEN_DIR} frames moved:\n" + "\n".join(failures))
-    print(f"epaper ui goldens, {len(GOLDEN)} frames at {GOLDEN_DIR} match")
+        raise SystemExit(f"{label} frames moved:\n" + "\n".join(failures))
+    print(f"epaper ui goldens, {len(golden)} frames at {label} match")
 
 
 if __name__ == "__main__":
