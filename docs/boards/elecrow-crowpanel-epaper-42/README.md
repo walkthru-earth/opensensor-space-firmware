@@ -73,6 +73,7 @@ SCL. PM values appear after about 30 s of warm up and CO2 after about 24 s.
 | Start on | Dashboard, Last page | The page shown after a reset. |
 | Theme | Light, Dark | Light is black on white. Dark is white on black for every page, the popup and the pairing passkey. The sleeping screen stays light. A change does a full refresh. |
 | Rotation | 0°, 90°, 180°, 270° | Turns the picture clockwise. 90° and 270° use the portrait layout. The keys keep their meaning. A change does a full refresh. The board has no motion sensor, so there is no Auto. |
+| Language | English, عربي | Every page, the popup and the pairing screen in English or Egyptian Arabic. Arabic reads right to left and mirrors the popup, the status rows and the tiles. Numbers, units, sensor and protocol names stay in Latin script. A change does a full refresh. Set from the knob only, the phone has no key for it. |
 | Wi-Fi | status only | On, Off or Not set up. Wi-Fi is set up and switched from the phone app. |
 | Fan cleaning | Run now | Stops the measurement, runs the fan at full speed for 10 s, then starts again. Rows logged meanwhile hold null sensor values. |
 | CO2 calibration | On, Off | SEN63C automatic self calibration. Keep it on for a Thing in the field. |
