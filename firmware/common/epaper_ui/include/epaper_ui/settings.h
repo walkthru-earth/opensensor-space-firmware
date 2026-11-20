@@ -27,6 +27,7 @@
 #include "epaper_ui/orientation.h"
 #include "epaper_ui/pages.h"
 #include "epaper_ui/profile.h"
+#include "epaper_ui/strings.h"
 #include "epaper_ui/ui_model.h"
 
 namespace opensensor::ui {
@@ -65,6 +66,8 @@ struct Settings {
   SleepAfter sleep_after = SleepAfter::Off;
   Theme theme = Theme::Light;
   ScreenRotation rotation = ScreenRotation::R0;
+  // The language every page and the popup draw in.
+  Language language = Language::English;
   bool operator==(const Settings &) const = default;
 };
 
@@ -85,17 +88,19 @@ sleep_after_seconds(const Settings &s);
                                           const DisplayProfile &profile,
                                           Rotation sensed);
 
-// The NVS blob, version 2, 12 bytes, multi-byte fields little endian.
-//   0 version (2)        1 refresh            2 start_page
+// The NVS blob, version 3, 13 bytes, multi-byte fields little endian.
+//   0 version (3)        1 refresh            2 start_page
 //   3 last_page          4 co2_asc (0 or 1)   5..6 altitude_m (u16)
 //   7..8 temp_offset_dc (i16, two's complement)   9 sleep_after
 //   10 theme             11 rotation (ScreenRotation)
-// Version 1 is the same layout without byte 11. decode() still reads it,
-// keeps every field and gives rotation its default, and the next save
-// writes version 2 in place. An image that only knows version 1 reads a
-// version 2 blob as all defaults, going back is not supported.
-inline constexpr std::uint8_t kSettingsVersion = 2;
-inline constexpr std::size_t kSettingsBlobBytes = 12;
+//   12 language (0 English, 1 Arabic)
+// Version 2 is the same layout without byte 12 and version 1 without bytes
+// 11 and 12. decode() still reads both, keeps every field they hold and
+// gives the rest their defaults, English for the language, and the next
+// save writes version 3 in place. An image that knows only an older version
+// reads a version 3 blob as all defaults, going back is not supported.
+inline constexpr std::uint8_t kSettingsVersion = 3;
+inline constexpr std::size_t kSettingsBlobBytes = 13;
 using SettingsBlob = std::array<std::uint8_t, kSettingsBlobBytes>;
 
 [[nodiscard]] SettingsBlob encode(const Settings &s);
@@ -160,6 +165,7 @@ enum class Row : std::uint8_t {
   StartPage,
   Theme,
   Rotation,
+  Language,
   Wifi,
   FanCleaning,
   Co2Asc,
@@ -167,7 +173,7 @@ enum class Row : std::uint8_t {
   TempOffset,
   SleepAfter,
 };
-inline constexpr std::uint8_t kRowCount = 10;
+inline constexpr std::uint8_t kRowCount = 11;
 
 // Board state the popup shows and that decides what Press does.
 struct SettingsInfo {
@@ -198,6 +204,7 @@ enum class [[nodiscard]] Effect : std::uint8_t {
 // One input while the popup is open, or MENU to open it. Up and Down move the
 // selection and wrap. Press cycles a choice row and returns Changed. Rotation
 // cycles Auto, 0, 90, 180, 270 with a motion sensor and 0 to 270 without.
+// Language toggles English and Arabic.
 // Press on Altitude or TempOffset starts an edit, Up and Down then step and
 // clamp, Press keeps the value (Changed when it differs) and EXIT cancels.
 // Press on Wi-Fi does nothing. Press on FanCleaning returns FanClean only
@@ -228,23 +235,28 @@ struct Outcome {
 // nothing else. With the popup open the key goes to popup_input(). Otherwise
 // MENU opens the popup and every other key goes to navigate(). With
 // StartPage::LastViewed a page change updates last_page and returns Changed.
-// A theme or rotation change asks for a full refresh, a partial one would
-// leave the old frame ghosting under every pixel that flipped.
+// A theme, rotation or language change asks for a full refresh, a partial
+// one would leave the old frame ghosting under every pixel that flipped.
 [[nodiscard]] Outcome handle(UiState &ui, Settings &s,
                              const SettingsInfo &board, Input in);
 
-// The label and the value text of one row, as the popup draws them.
+// The label and the value text of one row, as the popup draws them. The
+// Language row names each language in itself, English and عربي, so a reader
+// of either finds it whatever the panel shows.
 [[nodiscard]] std::string_view row_label(Row r);
 [[nodiscard]] std::string_view row_value(std::span<char> buf, Row r,
                                          const Settings &s, const PopupState &p,
                                          const SettingsInfo &board);
 
-// The framed popup over whatever the canvas holds.
+// The framed popup over whatever the canvas holds, below the header rule
+// when the frame is short. In Arabic it mirrors, labels on the right and
+// values on the left.
 void render_settings(Canvas &c, const Settings &s, const PopupState &p,
                      const SettingsInfo &board);
 
-// The full frame for the state. The pairing screen wins over sleep and the
-// popup, so a passkey always shows. Asleep draws render_asleep(). Otherwise
+// The full frame for the state, in s.language, which it sets with
+// set_language() first. The pairing screen wins over sleep and the popup,
+// so a passkey always shows. Asleep draws render_asleep(). Otherwise
 // the page, with the popup over it when open. Theme::Dark inverts the whole
 // frame at the end, except the asleep screen, which always stays light.
 void render_screen(Canvas &c, const UiState &ui, const Settings &s,

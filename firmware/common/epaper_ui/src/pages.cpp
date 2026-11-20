@@ -8,11 +8,14 @@
 #include "epaper_ui/air_band.h"
 #include "epaper_ui/chart.h"
 #include "epaper_ui/strings.h"
+#include "os_text.h"
 
 namespace opensensor::ui {
 namespace {
 
-using Text = std::array<char, 48>;
+// Room for the longest line in either language, Arabic letters take two
+// bytes each.
+using Text = std::array<char, 64>;
 
 std::string_view view(const Text &t, int n) {
   if (n < 0)
@@ -20,26 +23,68 @@ std::string_view view(const Text &t, int n) {
   return {t.data(), std::min(static_cast<std::size_t>(n), t.size() - 1)};
 }
 
-// Draws `s` and cuts it with an ellipsis when it would pass `max_w` pixels.
-// The cut walks shape(), so it lands on a glyph boundary in any script.
+// A page is laid out left to right. In a right to left language every x a
+// page names mirrors across the frame and Left and Right swap, so the
+// reading starts at the right edge. Plots, sparklines and the time axis do
+// not mirror, time still runs left to right.
+[[nodiscard]] int mx(const Canvas &c, int x) {
+  return rtl() ? c.width() - x : x;
+}
+
+[[nodiscard]] Align ma(Align a) {
+  if (!rtl() || a == Align::Center)
+    return a;
+  return a == Align::Left ? Align::Right : Align::Left;
+}
+
+// Draws `s` from `x` with `align` and cuts it with an ellipsis when it would
+// pass `max_w` pixels. A left to right run cuts on a glyph boundary through
+// shape(), with the dots on its right. A right to left run cuts by its
+// reading order, the longest leading codepoints that fit, with the dots on
+// its left, where it ends.
 void text_fit(Canvas &c, const Font &f, int x, int y, std::string_view s,
-              int max_w) {
+              int max_w, Align align) {
   if (text_width(f, s) <= max_w) {
-    c.text(f, x, y, s);
+    c.text(f, x, y, s, align);
     return;
   }
   const std::string_view dots = tr(Str::Ellipsis);
   const int dots_w = text_width(f, dots);
+  const bool rtl_run = text::has_rtl(s);
   std::size_t keep = 0;
-  static_cast<void>(shape(f, s, [&](const ShapedGlyph &sg) {
-    const int adv = sg.glyph != nullptr ? sg.glyph->advance : 0;
-    if (sg.x + adv + dots_w > max_w)
-      return false;
-    keep = sg.end;
-    return true;
-  }));
-  const int drawn = c.text(f, x, y, s.substr(0, keep));
-  c.text(f, x + drawn, y, dots);
+  if (rtl_run) {
+    std::size_t pos = 0;
+    while (pos < s.size()) {
+      std::size_t next = pos;
+      static_cast<void>(next_codepoint(s, next));
+      if (text_width(f, s.substr(0, next)) + dots_w > max_w)
+        break;
+      keep = next;
+      pos = next;
+    }
+  } else {
+    static_cast<void>(shape(f, s, [&](const ShapedGlyph &sg) {
+      const int adv = sg.glyph != nullptr ? sg.glyph->advance : 0;
+      if (sg.x + adv + dots_w > max_w)
+        return false;
+      keep = sg.end;
+      return true;
+    }));
+  }
+  const std::string_view kept = s.substr(0, keep);
+  const int kw = text_width(f, kept);
+  int left = x;
+  if (align == Align::Right)
+    left = x - kw - dots_w;
+  else if (align == Align::Center)
+    left = x - (kw + dots_w) / 2;
+  if (rtl_run) {
+    c.text(f, left, y, dots);
+    c.text(f, left + dots_w, y, kept);
+  } else {
+    c.text(f, left, y, kept);
+    c.text(f, left + kw, y, dots);
+  }
 }
 
 // A small label box at the header's right, filled when `on`. Returns the
@@ -184,14 +229,19 @@ void tile(Canvas &c, Rect box, Metric metric, const Model &m,
   const Reading &r = m.now[index(metric)];
   const int x = box.x + tl.pad;
   const int right = box.right() - tl.pad;
-  c.text(fs.label, x, box.y + tl.label_dy, tr(mi.label));
-  c.text(fs.small, right, box.y + tl.label_dy, tr(mi.unit), Align::Right);
+  // In a right to left language the label and value start at the right and
+  // the unit and caption sit at the left.
+  const int start = rtl() ? right : x;
+  const int end = rtl() ? x : right;
+  c.text(fs.label, start, box.y + tl.label_dy, tr(mi.label), ma(Align::Left));
+  c.text(fs.small, end, box.y + tl.label_dy, tr(mi.unit), ma(Align::Right));
   Text t{};
-  c.text(fs.value, x, box.y + tl.value_dy, format_reading(t, metric, r));
+  c.text(fs.value, start, box.y + tl.value_dy, format_reading(t, metric, r),
+         ma(Align::Left));
   if (r.quality != Quality::Valid) {
     Text cap{};
-    c.text(fs.small, right, box.y + tl.value_dy,
-           not_valid_caption(r, m.status, cap), Align::Right);
+    c.text(fs.small, end, box.y + tl.value_dy,
+           not_valid_caption(r, m.status, cap), ma(Align::Right));
   }
   const Rect spark{x, box.y + tl.spark_dy, box.w - 2 * tl.pad, tl.spark_h};
   sparkline(c, spark, h.series(metric, Window::Recent), mi.zero_floor,
@@ -229,8 +279,8 @@ void page_number(Canvas &c, std::uint8_t page) {
   const int n = std::snprintf(t.data(), t.size(), "%u/%u",
                               static_cast<unsigned>(page) + 1,
                               static_cast<unsigned>(kPageCount));
-  c.text(l.fonts.small, c.width() - l.header.margin, l.page.page_number_y,
-         view(t, n), Align::Right);
+  c.text(l.fonts.small, mx(c, c.width() - l.header.margin),
+         l.page.page_number_y, view(t, n), ma(Align::Right));
 }
 
 void chart_page(Canvas &c, std::uint8_t page, const Model &m,
@@ -240,13 +290,29 @@ void chart_page(Canvas &c, std::uint8_t page, const Model &m,
   const FontSet &fs = l.fonts;
   const Metric metric = kChartOrder[page - 1U];
   const MetricInfo &mi = info(metric);
-  const int tw = c.text(fs.title, l.page.title.x, l.page.title.y, tr(mi.label));
+  const int tw = c.text(fs.title, mx(c, l.page.title.x), l.page.title.y,
+                        tr(mi.label), ma(Align::Left));
   Text sub{};
   const std::string_view unit = tr(mi.unit);
-  const int ns = std::snprintf(sub.data(), sub.size(), tr_fmt(Str::ChartSubFmt),
-                               static_cast<int>(unit.size()), unit.data());
-  c.text(fs.small, l.page.title.x + tw + cl.sub_gap, l.page.title.y,
-         view(sub, ns));
+  if (rtl()) {
+    // The unit is its own left to right run left of the words, so the bidi
+    // pass cannot turn "°C" or "%RH" around against the Arabic.
+    const int ns =
+        std::snprintf(sub.data(), sub.size(), tr_fmt(Str::ChartSubFmt), 0, "");
+    std::string_view words = view(sub, ns);
+    while (!words.empty() && words.back() == ' ')
+      words.remove_suffix(1);
+    const int right = c.width() - l.page.title.x - tw - cl.sub_gap;
+    const int ww = c.text(fs.small, right, l.page.title.y, words, Align::Right);
+    c.text(fs.small, right - ww - cl.sub_gap, l.page.title.y, unit,
+           Align::Right);
+  } else {
+    const int ns =
+        std::snprintf(sub.data(), sub.size(), tr_fmt(Str::ChartSubFmt),
+                      static_cast<int>(unit.size()), unit.data());
+    c.text(fs.small, l.page.title.x + tw + cl.sub_gap, l.page.title.y,
+           view(sub, ns));
+  }
   page_number(c, page);
 
   const Series s = h.series(metric, Window::Day);
@@ -269,10 +335,11 @@ void chart_page(Canvas &c, std::uint8_t page, const Model &m,
   }};
   int x = l.page.title.x;
   for (const auto &st : stats) {
-    const int nw = c.text(fs.small, x, cl.stats_y, tr(st.name));
+    const int nw =
+        c.text(fs.small, mx(c, x), cl.stats_y, tr(st.name), ma(Align::Left));
     Text t{};
-    c.text(fs.label, x + nw + cl.stat_gap, cl.stats_y,
-           format_reading(t, metric, st.r));
+    c.text(fs.label, mx(c, x + nw + cl.stat_gap), cl.stats_y,
+           format_reading(t, metric, st.r), ma(Align::Left));
     x += cl.stats_step;
   }
 
@@ -288,9 +355,9 @@ void chart_page(Canvas &c, std::uint8_t page, const Model &m,
 
 void row(Canvas &c, int y, Str name, std::string_view value) {
   const Layout &l = c.layout();
-  c.text(l.fonts.small, l.page.title.x, y, tr(name));
-  text_fit(c, l.fonts.label, l.status.value_x, y, value,
-           c.width() - l.status.value_x - l.header.margin);
+  c.text(l.fonts.small, mx(c, l.page.title.x), y, tr(name), ma(Align::Left));
+  text_fit(c, l.fonts.label, mx(c, l.status.value_x), y, value,
+           c.width() - l.status.value_x - l.header.margin, ma(Align::Left));
 }
 
 std::string_view link_word(Link l, Str waiting) {
@@ -319,9 +386,24 @@ constexpr std::array<StatusBit, 5> kStatusBits{{
     {.bit = 4, .name = Str::BitFan},
 }};
 
+// `n` bytes of `t`, cut back to the last whole UTF-8 codepoint when a
+// longer write was truncated there.
+std::string_view whole_codepoints(const Text &t, int n) {
+  auto len = static_cast<std::size_t>(
+      std::clamp(n, 0, static_cast<int>(t.size()) - 1));
+  if (n >= static_cast<int>(t.size()) - 1) {
+    while (len > 0 && (static_cast<unsigned char>(t[len - 1]) & 0xC0U) == 0x80U)
+      --len;
+    if (len > 0 && (static_cast<unsigned char>(t[len - 1]) & 0x80U) != 0)
+      --len;
+  }
+  return {t.data(), len};
+}
+
 std::string_view sensor_status_text(std::uint32_t bits, Text &t) {
   if (bits == 0)
     return tr(Str::SensorOk);
+  const std::string_view sep = tr(Str::ListSep);
   int n = 0;
   std::uint32_t known = 0;
   for (const auto &sb : kStatusBits) {
@@ -330,19 +412,21 @@ std::string_view sensor_status_text(std::uint32_t bits, Text &t) {
     if ((bits & mask) == 0)
       continue;
     const std::string_view name = tr(sb.name);
-    const int w = std::snprintf(
-        t.data() + n, t.size() - static_cast<std::size_t>(n), "%s%.*s",
-        n == 0 ? "" : ", ", static_cast<int>(name.size()), name.data());
+    const int w =
+        std::snprintf(t.data() + n, t.size() - static_cast<std::size_t>(n),
+                      "%.*s%.*s", n == 0 ? 0 : static_cast<int>(sep.size()),
+                      sep.data(), static_cast<int>(name.size()), name.data());
     if (w < 0 || n + w >= static_cast<int>(t.size()))
-      return view(t, static_cast<int>(t.size()) - 1);
+      return whole_codepoints(t, static_cast<int>(t.size()) - 1);
     n += w;
   }
   if ((bits & ~known) != 0) {
-    const int w = std::snprintf(
-        t.data() + n, t.size() - static_cast<std::size_t>(n), "%s0x%08X",
-        n == 0 ? "" : ", ", static_cast<unsigned>(bits & ~known));
+    const int w =
+        std::snprintf(t.data() + n, t.size() - static_cast<std::size_t>(n),
+                      "%.*s0x%08X", n == 0 ? 0 : static_cast<int>(sep.size()),
+                      sep.data(), static_cast<unsigned>(bits & ~known));
     if (w > 0)
-      n = std::min(n + w, static_cast<int>(t.size()) - 1);
+      return whole_codepoints(t, n + w);
   }
   return view(t, n);
 }
@@ -368,14 +452,15 @@ void footer(Canvas &c, int x, std::string_view text, Align align) {
   c.hline(0, l.page.footer_rule_y, c.width());
   const int max_w = align == Align::Left ? c.width() - x - l.header.margin
                                          : c.width() - 2 * l.header.margin;
-  static_cast<void>(
-      c.text_lines(l.fonts.small, x, l.page.footer_y, text, align, max_w));
+  static_cast<void>(c.text_lines(l.fonts.small, mx(c, x), l.page.footer_y, text,
+                                 ma(align), max_w));
 }
 
 void status_page(Canvas &c, std::uint8_t page, const Model &m) {
   const Layout &l = c.layout();
   const Status &st = m.status;
-  c.text(l.fonts.title, l.page.title.x, l.page.title.y, tr(Str::StatusTitle));
+  c.text(l.fonts.title, mx(c, l.page.title.x), l.page.title.y,
+         tr(Str::StatusTitle), ma(Align::Left));
   page_number(c, page);
   int y = l.status.top;
   const int step = l.status.step;
@@ -476,7 +561,7 @@ void pairing_page(Canvas &c, const Status &st) {
 }
 
 // One centred "name value" line of the sleeping screen, skipped when the
-// value is empty.
+// value is empty. In a right to left language the name is on the right.
 int asleep_line(Canvas &c, int y, Str name, std::string_view value) {
   if (value.empty())
     return y;
@@ -485,8 +570,13 @@ int asleep_line(Canvas &c, int y, Str name, std::string_view value) {
   const int nw = text_width(l.fonts.small, nm) + l.asleep.name_gap;
   const int vw = text_width(l.fonts.label, value);
   const int x = (c.width() - nw - vw) / 2;
-  c.text(l.fonts.small, x, y, nm);
-  c.text(l.fonts.label, x + nw, y, value);
+  if (rtl()) {
+    c.text(l.fonts.label, x, y, value);
+    c.text(l.fonts.small, x + vw + l.asleep.name_gap, y, nm);
+  } else {
+    c.text(l.fonts.small, x, y, nm);
+    c.text(l.fonts.label, x + nw, y, value);
+  }
   return y + l.asleep.line_step;
 }
 

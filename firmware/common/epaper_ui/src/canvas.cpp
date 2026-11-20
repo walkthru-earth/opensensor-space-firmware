@@ -5,15 +5,6 @@
 
 namespace opensensor::ui {
 
-const Glyph *find_glyph(const Font &font, std::uint32_t cp) {
-  const auto it = std::lower_bound(
-      font.glyphs.begin(), font.glyphs.end(), cp,
-      [](const Glyph &g, std::uint32_t value) { return g.codepoint < value; });
-  if (it == font.glyphs.end() || it->codepoint != cp)
-    return nullptr;
-  return &*it;
-}
-
 std::uint32_t next_codepoint(std::string_view utf8, std::size_t &pos) {
   constexpr std::uint32_t kReplacement = 0xFFFD;
   const auto byte = [&](std::size_t i) {
@@ -72,13 +63,21 @@ std::size_t line_break(const Font &font, std::string_view utf8, int max_w) {
   return brk;
 }
 
+int line_step(const Font &font, std::string_view utf8) {
+  const Font *fb = font.fallback;
+  if (fb == nullptr || !text::has_rtl(utf8))
+    return line_step(font);
+  return std::max(font.ascent, fb->ascent) +
+         std::max(font.descent, fb->descent);
+}
+
 int Canvas::text_lines(const Font &font, int x, int y, std::string_view utf8,
                        Align align, int max_w, Ink ink) {
   const std::size_t brk = line_break(font, utf8, max_w);
   text(font, x, y, utf8.substr(0, brk), align, ink);
   if (brk >= utf8.size())
     return 1;
-  text(font, x, y + line_step(font), utf8.substr(brk + 1), align, ink);
+  text(font, x, y + line_step(font, utf8), utf8.substr(brk + 1), align, ink);
   return 2;
 }
 
@@ -251,7 +250,7 @@ int Canvas::text(const Font &font, int x, int y, std::string_view utf8,
     if (g == nullptr)
       return true;
     const int stride = (g->width + 7) / 8;
-    const std::uint8_t *rows = font.bits + g->offset;
+    const std::uint8_t *rows = sg.font->bits + g->offset;
     const int ox = x + sg.x + g->x_offset;
     const int oy = y + g->y_offset;
     for (int r = 0; r < g->height; ++r) {

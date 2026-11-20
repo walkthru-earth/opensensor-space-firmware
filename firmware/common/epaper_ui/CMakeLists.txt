@@ -10,6 +10,7 @@ idf_component_register(
          "src/layout_400x300.cpp" "src/layout_300x400.cpp"
          "src/layout_800x480.cpp" "src/layout_480x800.cpp"
          "src/fonts_compact_gen.cpp" "src/fonts_large_gen.cpp"
-    INCLUDE_DIRS "include")
+    INCLUDE_DIRS "include"
+    REQUIRES text)
 os_pin_cxx_standard(${COMPONENT_LIB})
 os_map_source_paths(${COMPONENT_LIB})

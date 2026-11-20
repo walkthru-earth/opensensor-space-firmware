@@ -14,6 +14,7 @@
 // panel. The cost is a multiply by a member instead of a constant per pixel,
 // which is noise next to a refresh that takes seconds over SPI.
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -24,6 +25,7 @@
 #include "epaper_ui/geometry.h"
 #include "epaper_ui/layout.h"
 #include "epaper_ui/profile.h"
+#include "os_text.h"
 
 namespace opensensor::ui {
 
@@ -69,17 +71,18 @@ public:
   void dotted_vline(int x, int y, int h, int on = 1, int off = 2,
                     Ink ink = Ink::Black);
 
-  // UTF-8 text with its baseline at `y`, laid out by shape(). Codepoints the
-  // font lacks and malformed bytes are skipped. Returns the advance in
-  // pixels.
+  // UTF-8 text with its baseline at `y`, laid out by shape(), from `x` as
+  // its left edge whatever its direction. Codepoints neither the font nor
+  // its fallback holds are skipped. Returns the advance in pixels.
   int text(const Font &font, int x, int y, std::string_view utf8,
            Ink ink = Ink::Black);
   // The same, aligned on `x` as the left edge, centre or right edge.
   int text(const Font &font, int x, int y, std::string_view utf8, Align align,
            Ink ink = Ink::Black);
   // The same on one line when it fits `max_w`, else on two, broken at the
-  // last space that fits, the second line_step() lower. Returns the lines
-  // drawn. A line that still does not fit clips at the frame.
+  // last space that fits in reading order, the second line_step() lower.
+  // Returns the lines drawn. A line that still does not fit clips at the
+  // frame.
   int text_lines(const Font &font, int x, int y, std::string_view utf8,
                  Align align, int max_w, Ink ink = Ink::Black);
 
@@ -110,27 +113,77 @@ private:
 [[nodiscard]] std::uint32_t next_codepoint(std::string_view utf8,
                                            std::size_t &pos);
 
-// One glyph placed by shape(). `glyph` is null for a codepoint the font
-// lacks, it then takes no room. `x` is its pen position from the start of
-// the run, `end` the byte offset just past its codepoint.
+// One glyph placed by shape(). `glyph` is null for a codepoint neither the
+// font nor its fallback holds, it then takes no room, and `font` is the one
+// that holds it, whose bits the blitter reads. `x` is its pen position from
+// the left of the run. `end` is the byte offset just past its codepoint in a
+// left to right run, and 0 in a right to left one, where the glyphs come in
+// visual order.
 struct ShapedGlyph {
   const Glyph *glyph = nullptr;
+  const Font *font = nullptr;
   int x = 0;
   std::size_t end = 0;
 };
 
-// The one place text is laid out. It walks `utf8` left to right, one glyph
-// per codepoint, and calls `visit` with each placed glyph until `visit`
-// returns false. Returns the pen advance up to that point. Canvas::text,
-// text_width and the cut with ".." all go through it, so right to left runs,
-// contextual forms or ligatures change this function and nothing else.
+// The glyph for `cp` in `font`, else in its fallback. `used` is the font
+// that holds it, `font` itself when neither does.
+[[nodiscard]] inline const Glyph *
+find_glyph_or_fallback(const Font &font, std::uint32_t cp, const Font *&used) {
+  used = &font;
+  if (const Glyph *g = find_glyph(font, cp); g != nullptr)
+    return g;
+  if (font.fallback == nullptr)
+    return nullptr;
+  const Glyph *g = find_glyph(*font.fallback, cp);
+  if (g != nullptr)
+    used = font.fallback;
+  return g;
+}
+
+// The one place text is laid out, and Canvas::text, text_width and the cut
+// with ".." all go through it. A run with no right to left letter walks
+// `utf8` left to right, one glyph per codepoint. A run with one is shaped
+// into Arabic contextual forms and reordered to visual order by
+// text::to_visual() with a right to left base, on a stack line of
+// text::kMaxLine code points. A combining mark sits centred over the glyph
+// before it. Calls `visit` with each placed glyph, left to right on the
+// glass, until `visit` returns false, and returns the pen advance up to
+// that point.
 template <typename Visit>
 int shape(const Font &font, std::string_view utf8, Visit &&visit) {
   int pen = 0;
+  if (text::has_rtl(utf8)) {
+    std::array<char32_t, text::kMaxLine> line{};
+    const auto vis = text::to_visual(utf8, line, text::Direction::Rtl,
+                                     text::OnMalformed::Replace);
+    if (vis) {
+      int prev_x = 0;
+      int prev_adv = 0;
+      for (const char32_t cp : *vis) {
+        const Font *used = nullptr;
+        const Glyph *g = find_glyph_or_fallback(font, cp, used);
+        int x = pen;
+        if (g != nullptr && g->advance == 0)
+          x = prev_x + (prev_adv - g->width) / 2 - g->x_offset;
+        if (!visit(ShapedGlyph{.glyph = g, .font = used, .x = x, .end = 0}))
+          return pen;
+        if (g != nullptr && g->advance != 0) {
+          prev_x = pen;
+          prev_adv = g->advance;
+          pen += g->advance;
+        }
+      }
+      return pen;
+    }
+    // A line past kMaxLine falls through and draws in logical order.
+  }
   std::size_t pos = 0;
   while (pos < utf8.size()) {
-    const Glyph *g = find_glyph(font, next_codepoint(utf8, pos));
-    if (!visit(ShapedGlyph{.glyph = g, .x = pen, .end = pos}))
+    const Font *used = nullptr;
+    const Glyph *g =
+        find_glyph_or_fallback(font, next_codepoint(utf8, pos), used);
+    if (!visit(ShapedGlyph{.glyph = g, .font = used, .x = pen, .end = pos}))
       return pen;
     if (g != nullptr)
       pen += g->advance;
@@ -152,5 +205,9 @@ int shape(const Font &font, std::string_view utf8, Visit &&visit) {
 [[nodiscard]] constexpr int line_step(const Font &font) {
   return font.ascent + font.descent;
 }
+
+// The pitch for `utf8`, which takes the taller fallback's room when the
+// text holds a right to left letter. The same as line_step(font) otherwise.
+[[nodiscard]] int line_step(const Font &font, std::string_view utf8);
 
 } // namespace opensensor::ui

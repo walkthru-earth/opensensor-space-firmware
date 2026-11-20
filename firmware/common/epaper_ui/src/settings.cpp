@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "epaper_ui/strings.h"
+#include "os_strings.h"
 
 namespace opensensor::ui {
 namespace {
@@ -17,10 +18,10 @@ static constexpr std::array<std::uint32_t, 4> kSleepSeconds{0, 600, 1800, 3600};
 static constexpr std::array<Str, 4> kSleepNames{Str::Off, Str::After10min,
                                                 Str::After30min, Str::After1h};
 static constexpr std::array<Str, kRowCount> kRowLabels{
-    Str::LabelRefresh,   Str::LabelStartOn,  Str::LabelTheme,
-    Str::LabelRotation,  Str::LabelWifi,     Str::LabelFanCleaning,
-    Str::LabelCo2Asc,    Str::LabelAltitude, Str::LabelTempOffset,
-    Str::LabelSleepAfter};
+    Str::LabelRefresh,     Str::LabelStartOn,   Str::LabelTheme,
+    Str::LabelRotation,    Str::LabelLanguage,  Str::LabelWifi,
+    Str::LabelFanCleaning, Str::LabelCo2Asc,    Str::LabelAltitude,
+    Str::LabelTempOffset,  Str::LabelSleepAfter};
 // Indexed by ScreenRotation.
 static constexpr std::array<Str, 5> kRotationNames{
     Str::Rotate0, Str::Rotate90, Str::Rotate180, Str::Rotate270,
@@ -200,17 +201,22 @@ SettingsBlob encode(const Settings &s) {
       std::to_underlying(s.sleep_after),
       std::to_underlying(s.theme),
       std::to_underlying(s.rotation),
+      std::to_underlying(s.language),
   };
 }
 
 Settings decode(std::span<const std::uint8_t> blob, bool orientation_source) {
   Settings s = defaults(orientation_source);
-  // Version 1 is version 2 without the rotation byte, so one reader serves
-  // both and a version 1 blob ends before byte 11.
-  if (blob.empty() || (blob[0] != 1U && blob[0] != kSettingsVersion))
+  // Version 1 is version 3 without the rotation and language bytes and
+  // version 2 without the language byte, so one reader serves all three. An
+  // older blob is cut where its version ends, so a stray byte past it cannot
+  // set a field that version did not have.
+  if (blob.empty() || blob[0] < 1U || blob[0] > kSettingsVersion)
     return s;
   if (blob[0] == 1U)
     blob = blob.first(std::min<std::size_t>(blob.size(), 11));
+  else if (blob[0] == 2U)
+    blob = blob.first(std::min<std::size_t>(blob.size(), 12));
   const auto has = [&](std::size_t end) { return blob.size() >= end; };
   if (has(2) && blob[1] < kRefreshSeconds.size())
     s.refresh = static_cast<RefreshEvery>(blob[1]);
@@ -239,6 +245,8 @@ Settings decode(std::span<const std::uint8_t> blob, bool orientation_source) {
       (orientation_source ||
        blob[11] != std::to_underlying(ScreenRotation::Auto)))
     s.rotation = static_cast<ScreenRotation>(blob[11]);
+  if (has(13) && blob[12] <= std::to_underlying(Language::Arabic))
+    s.language = static_cast<Language>(blob[12]);
   return s;
 }
 
@@ -421,6 +429,10 @@ Effect popup_input(PopupState &p, Settings &s, const SettingsInfo &board,
   case Row::Rotation:
     s.rotation = next_rotation(s.rotation, board.orientation_source);
     return Effect::Changed;
+  case Row::Language:
+    s.language =
+        s.language == Language::English ? Language::Arabic : Language::English;
+    return Effect::Changed;
   case Row::Wifi:
     // Read only, the shared device config owns Wi-Fi.
     return Effect::None;
@@ -459,9 +471,10 @@ Outcome handle(UiState &ui, Settings &s, const SettingsInfo &board, Input in) {
   if (ui.popup.open || in == Input::Menu) {
     const Theme theme = s.theme;
     const ScreenRotation rotation = s.rotation;
+    const Language lang = s.language;
     out.effect = popup_input(ui.popup, s, board, in);
     out.full_refresh = out.effect == Effect::Closed || s.theme != theme ||
-                       s.rotation != rotation;
+                       s.rotation != rotation || s.language != lang;
   } else {
     if (ui.page >= kPageCount)
       ui.page = kDashboardPage;
@@ -506,6 +519,10 @@ std::string_view row_value(std::span<char> buf, Row r, const Settings &s,
     return i < kRotationNames.size() ? copy_into(buf, kRotationNames[i])
                                      : copy_into(buf, std::string_view{});
   }
+  case Row::Language:
+    return copy_into(buf, s.language == Language::Arabic
+                              ? text::text(text::Lang::ArEg, Str::LangArabic)
+                              : text::text(text::Lang::En, Str::LangEnglish));
   case Row::Wifi:
     if (!board.wifi_configured)
       return copy_into(buf, Str::WifiNotSetUp);
@@ -563,20 +580,30 @@ void render_settings(Canvas &c, const Settings &s, const PopupState &p,
   const PopupLayout &pl = c.layout().popup;
   const FontSet &fs = c.fonts();
   const int h = pl.height(kRowCount);
-  const Rect box{(c.width() - pl.w) / 2, (c.height() - h) / 2, pl.w, h};
+  // Centred, but never over the header rule, so its white margin starts a
+  // pixel below it.
+  const int top = c.layout().header.height + pl.margin + 1;
+  const Rect box{(c.width() - pl.w) / 2, std::max((c.height() - h) / 2, top),
+                 pl.w, h};
+  // Labels start at `lead` and values end at `trail`, swapped in a right to
+  // left language.
+  const bool mirror = rtl();
+  const Align lead_align = mirror ? Align::Right : Align::Left;
+  const int lead = mirror ? box.right() - pl.pad : box.x + pl.pad;
   // A white margin keeps the page under it from touching the frame.
   c.fill({box.x - pl.margin, box.y - pl.margin, box.w + 2 * pl.margin,
           box.h + 2 * pl.margin},
          Ink::White);
   c.rect(box);
   c.rect({box.x + 1, box.y + 1, box.w - 2, box.h - 2});
-  c.text(fs.title, box.x + pl.pad, box.y + pl.title_dy, tr(Str::SettingsTitle));
+  c.text(fs.title, lead, box.y + pl.title_dy, tr(Str::SettingsTitle),
+         lead_align);
   c.hline(box.x + pl.rule_inset, box.y + pl.head - pl.rule_dy,
           box.w - 2 * pl.rule_inset);
 
   const std::string_view down = tr(Str::ArrowDown);
   const std::string_view up = tr(Str::ArrowUp);
-  const int right = box.right() - pl.pad;
+  const int trail = mirror ? box.x + pl.pad : box.right() - pl.pad;
   for (std::uint8_t i = 0; i < kRowCount; ++i) {
     const auto r = static_cast<Row>(i);
     const int ry = box.y + pl.head + i * pl.row;
@@ -588,19 +615,22 @@ void render_settings(Canvas &c, const Settings &s, const PopupState &p,
     if (selected)
       c.fill(bar);
     const Ink ink = selected ? Ink::White : Ink::Black;
-    c.text(fs.label, box.x + pl.pad, base, row_label(r), ink);
+    c.text(fs.label, lead, base, row_label(r), lead_align, ink);
     std::array<char, 24> buf{};
     const std::string_view v = row_value(buf, r, s, p, board);
     if (!editing) {
-      c.text(fs.label, right, base, v, Align::Right, ink);
+      c.text(fs.label, trail, base, v, mirror ? Align::Left : Align::Right,
+             ink);
       continue;
     }
     // The value being edited sits in a white pill with the knob's arrows.
+    // The pill reads the same in both languages, down, value, up.
     const int vw = text_width(fs.label, v);
     const int aw = text_width(fs.label, down);
     const int pw = vw + 2 * aw + pl.pill_extra;
-    const Rect pill{right + pl.pill_overhang - pw, ry + pl.pill_dy, pw,
-                    pl.row - pl.pill_shrink};
+    const int pill_x =
+        mirror ? trail - pl.pill_overhang : trail + pl.pill_overhang - pw;
+    const Rect pill{pill_x, ry + pl.pill_dy, pw, pl.row - pl.pill_shrink};
     c.fill_round_rect(pill, Ink::White);
     c.text(fs.label, pill.x + pl.pill_gap, base, down);
     c.text(fs.label, pill.x + pl.pill_gap + aw + pl.pill_gap, base, v);
@@ -615,7 +645,7 @@ void render_settings(Canvas &c, const Settings &s, const PopupState &p,
   const int max_w = box.w - 2 * pl.pad;
   int hy = box.bottom() - pl.hint_dy;
   if (line_break(fs.small, hint, max_w) < hint.size())
-    hy -= line_step(fs.small);
+    hy -= line_step(fs.small, hint);
   static_cast<void>(
       c.text_lines(fs.small, c.width() / 2, hy, hint, Align::Center, max_w));
 }
@@ -623,6 +653,7 @@ void render_settings(Canvas &c, const Settings &s, const PopupState &p,
 void render_screen(Canvas &c, const UiState &ui, const Settings &s,
                    const SettingsInfo &board, const Model &model,
                    const History &history) {
+  set_language(s.language);
   if (ui.asleep && !model.status.pairing_passkey) {
     // E-paper rests mostly white, so sleep ignores the theme.
     render_asleep(c, model);

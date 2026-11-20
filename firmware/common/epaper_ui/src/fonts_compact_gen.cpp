@@ -970,11 +970,11 @@ constexpr Glyph k_hero_glyphs[] = {
     {0x0039, 2045, 36, 48, 2, -47, 40},
 };
 
-constexpr Font k_small{k_small_glyphs, k_small_bits, 13, 4};
-constexpr Font k_label{k_label_glyphs, k_label_bits, 14, 4};
-constexpr Font k_title{k_title_glyphs, k_title_bits, 18, 5};
-constexpr Font k_value{k_value_glyphs, k_value_bits, 28, 7};
-constexpr Font k_hero{k_hero_glyphs, k_hero_bits, 62, 16};
+constexpr Font k_small{k_small_glyphs, k_small_bits, 13, 4, &text::fonts::ar_body_s};
+constexpr Font k_label{k_label_glyphs, k_label_bits, 14, 4, &text::fonts::ar_body_s};
+constexpr Font k_title{k_title_glyphs, k_title_bits, 18, 5, &text::fonts::ar_heading_s};
+constexpr Font k_value{k_value_glyphs, k_value_bits, 28, 7, &text::fonts::ar_heading_s};
+constexpr Font k_hero{k_hero_glyphs, k_hero_bits, 62, 16, nullptr};
 }  // namespace
 
 const FontSet compact{k_small, k_label, k_title, k_value, k_hero};
