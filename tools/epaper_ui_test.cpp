@@ -1,8 +1,9 @@
-// Host tests for the CrowPanel e-paper UI, canvas clipping, UTF-8, history
-// rings, chart gaps, PM2.5 bands, reading quality, navigation, the refresh
-// cadence, the settings blob and popup, the theme, the sleeping screen and
-// the boot order of the chart history restore. Built and run
-// by tools/test_crowpanel_ui.py with sanitizers.
+// Host tests for the shared e-paper UI, canvas clipping, UTF-8, history
+// rings, chart gaps, PM2.5 bands, reading quality, navigation, the display
+// profile and refresh policy, rotation and the Presenter, the motion sensor
+// tracker, the settings blob and popup, the theme, the sleeping screen and
+// the CrowPanel's boot order of the chart history restore. Built and run by
+// tools/test_epaper_ui.py with sanitizers.
 
 #include <algorithm>
 #include <array>
@@ -14,18 +15,28 @@
 #include <optional>
 #include <span>
 #include <string_view>
+#include <utility>
 #include <vector>
 
-#include "air_band.h"
-#include "canvas.h"
-#include "chart.h"
-#include "history.h"
-#include "pages.h"
+#include "epaper_ui/air_band.h"
+#include "epaper_ui/canvas.h"
+#include "epaper_ui/chart.h"
+#include "epaper_ui/history.h"
+#include "epaper_ui/orientation.h"
+#include "epaper_ui/pages.h"
+#include "epaper_ui/panel.h"
+#include "epaper_ui/presenter.h"
+#include "epaper_ui/profile.h"
+#include "epaper_ui/settings.h"
+#include "epaper_ui/strings.h"
+#include "epaper_ui/ui_model.h"
+#include "epaper_ui_host_profiles.h"
 #include "restore_order.h"
-#include "settings.h"
-#include "ui_model.h"
 
 using namespace opensensor::ui;
+using opensensor::epd::Refresh;
+using opensensor::ui::host::kHost400x300;
+using opensensor::ui::host::kHost800x480;
 
 namespace {
 
@@ -42,10 +53,31 @@ void check(bool ok, const char *what, int line) {
 
 constexpr float kNaN = std::numeric_limits<float>::quiet_NaN();
 
+// The 400 x 300 class at R0, the frame most tests draw.
+constexpr int kWidth = 400;
+constexpr int kHeight = 300;
+constexpr std::size_t kFrameBytes = 15000;
+
+Canvas must(std::expected<Canvas, CanvasError> c) {
+  if (!c) {
+    std::fprintf(stderr, "FAIL canvas %s\n", to_string(c.error()));
+    std::exit(1);
+  }
+  return *c;
+}
+
+// A logical frame and its canvas. `bytes` holds logical_frame_bytes(), the
+// canvas uses its first bytes_for() bytes and the rest stays zero.
 struct Buffer {
-  std::array<std::uint8_t, kFrameBytes> bytes{};
-  Canvas canvas{bytes};
+  explicit Buffer(const DisplayProfile &p = kHost400x300,
+                  Rotation r = Rotation::R0)
+      : bytes(p.logical_frame_bytes()),
+        canvas(must(Canvas::create(bytes, p, r))) {}
+  std::vector<std::uint8_t> bytes;
+  Canvas canvas;
 };
+
+const FontSet &kFonts = fonts::compact;
 
 int ink_count(const Canvas &c, Rect r) {
   int n = 0;
@@ -111,18 +143,18 @@ void test_utf8_and_text() {
   CHECK(next_codepoint({truncated, 2}, pos) == 0xFFFD && pos == 1);
   pos = 0;
   CHECK(next_codepoint("\x80", pos) == 0xFFFD && pos == 1);
-  CHECK(find_glyph(fonts::label, 'A') != nullptr);
-  CHECK(find_glyph(fonts::hero, 'A') == nullptr);
-  CHECK(find_glyph(fonts::hero, '7') != nullptr);
-  CHECK(find_glyph(fonts::small, 0x00B3) != nullptr);
+  CHECK(find_glyph(kFonts.label, 'A') != nullptr);
+  CHECK(find_glyph(kFonts.hero, 'A') == nullptr);
+  CHECK(find_glyph(kFonts.hero, '7') != nullptr);
+  CHECK(find_glyph(kFonts.small, 0x00B3) != nullptr);
   auto b = std::make_unique<Buffer>();
-  const int adv = b->canvas.text(fonts::value, 10, 40, "12.4");
-  CHECK(adv == text_width(fonts::value, "12.4"));
+  const int adv = b->canvas.text(kFonts.value, 10, 40, "12.4");
+  CHECK(adv == text_width(kFonts.value, "12.4"));
   CHECK(adv > 0);
   CHECK(ink_count(b->canvas, {0, 0, 200, 60}) > 0);
   // Right aligned text ends at x.
   b->canvas.clear();
-  b->canvas.text(fonts::label, 200, 100, "ppm", Align::Right);
+  b->canvas.text(kFonts.label, 200, 100, "ppm", Align::Right);
   CHECK(ink_count(b->canvas, {201, 80, 50, 30}) == 0);
   CHECK(ink_count(b->canvas, {150, 80, 51, 30}) > 0);
 }
@@ -571,7 +603,11 @@ void test_chart() {
   }
   // An empty chart says so instead of drawing a line.
   b->canvas.clear();
-  line_chart(b->canvas, plot, {.ring = nan3, .start = 0, .restarts = {}}, {});
+  line_chart(b->canvas, plot, {.ring = nan3, .start = 0, .restarts = {}},
+             {.zero_floor = false,
+              .min_span = 0.0F,
+              .x_labels = {},
+              .empty_text = tr(Str::NoDataYet)});
   CHECK(ink_count(b->canvas, {plot.x + 100, plot.y + 30, 140, 40}) > 0);
 
   // widen() centres a narrow range, floors at 0 on request, and leaves a
@@ -626,7 +662,7 @@ void test_bands() {
   CHECK(pm25_band(225.5F).band == AirBand::Hazardous);
   CHECK(pm25_band(1000.0F).band == AirBand::Hazardous);
   for (const auto &row : kPm25Bands)
-    CHECK(text_width(fonts::label, row.word) + 16 < 200);
+    CHECK(text_width(kFonts.label, tr(row.word)) + 16 < 200);
 }
 
 void test_quality_and_format() {
@@ -678,9 +714,9 @@ void test_navigation() {
   CHECK(navigate(kDashboardPage, Input::Up).page == kStatusPage);
   CHECK(navigate(200, Input::Down).page == 1);
 
-  RefreshPolicy policy;
+  RefreshPolicy policy{kHost400x300.refresh};
   CHECK(policy.next(false, false) == Refresh::Full);
-  for (int i = 0; i < RefreshPolicy::kPartialsPerFull; ++i)
+  for (int i = 0; i < kHost400x300.refresh.partials_per_full; ++i)
     CHECK(policy.next(false, false) == Refresh::Partial);
   CHECK(policy.next(false, false) == Refresh::Full);
   CHECK(policy.next(false, false) == Refresh::Partial);
@@ -710,6 +746,7 @@ void test_render_all_pages() {
                  .uptime_s = 4'000'000'000U,
                  .firmware = "opensensor-crowpanel-a-very-long-identity-string",
                  .thing = "OS-ABCDEF",
+                 .sensor_model = "SEN63C",
                  .sensor_serial = "1234567890ABCDEF1234567890ABCDEF",
                  .sensor_fw = "2.0",
                  .sensor_status = 0xFFFFFFFFU,
@@ -741,7 +778,7 @@ void test_pairing_screen() {
   // The hero digits fill the middle band.
   CHECK(ink_count(first->canvas, {0, 126, kWidth, 64}) > 2000);
   // 000042 is wider than 42 would be alone.
-  CHECK(text_width(fonts::hero, "000042") > 3 * text_width(fonts::hero, "42"));
+  CHECK(text_width(kFonts.hero, "000042") > 3 * text_width(kFonts.hero, "42"));
   m.status.pairing_passkey = 999999U;
   m.status.device_name = {};
   render(b->canvas, kStatusPage, m, *h);
@@ -767,7 +804,9 @@ void test_settings_blob() {
   CHECK(!sleep_after_seconds(d));
   CHECK(start_page(d) == kDashboardPage);
   CHECK(d.co2_asc && d.altitude_m == 0 && d.temp_offset_dc == 0);
-  CHECK(d.theme == Theme::Light);
+  CHECK(d.theme == Theme::Light && d.rotation == ScreenRotation::R0);
+  CHECK(defaults(false) == d);
+  CHECK(defaults(true).rotation == ScreenRotation::Auto);
 
   const SettingsBlob db = encode(d);
   CHECK(db[0] == kSettingsVersion);
@@ -780,9 +819,10 @@ void test_settings_blob() {
                    .altitude_m = 2950,
                    .temp_offset_dc = -73,
                    .sleep_after = SleepAfter::H1,
-                   .theme = Theme::Dark};
+                   .theme = Theme::Dark,
+                   .rotation = ScreenRotation::R270};
   const SettingsBlob b = encode(s);
-  CHECK(b.size() == 11 && b[10] == 1);
+  CHECK(b.size() == 12 && b[0] == 2 && b[10] == 1 && b[11] == 3);
   // Explicit little endian, independent of the host.
   CHECK(b[5] == (2950 & 0xFF) && b[6] == (2950 >> 8));
   CHECK(b[7] == 0xB7 && b[8] == 0xFF); // -73 as two's complement.
@@ -804,7 +844,7 @@ void test_settings_blob() {
   // Empty, a bad version and a short blob.
   CHECK(decode({}) == d);
   SettingsBlob bad = b;
-  bad[0] = 2;
+  bad[0] = 3;
   CHECK(decode(bad) == d);
   bad[0] = 0;
   CHECK(decode(bad) == d);
@@ -817,16 +857,47 @@ void test_settings_blob() {
   // One byte of a two byte field is not enough.
   const std::vector<std::uint8_t> half(b.begin(), b.begin() + 6);
   CHECK(decode(half).altitude_m == 0);
-  // A blob saved before the theme existed, ten bytes, keeps every older field
-  // and gives Light.
-  const std::vector<std::uint8_t> old(b.begin(), b.begin() + 10);
+  // A version 1 blob saved before the theme existed, ten bytes, keeps every
+  // older field and gives Light and the default rotation.
+  std::vector<std::uint8_t> old(b.begin(), b.begin() + 10);
+  old[0] = 1;
   Settings want_old = s;
   want_old.theme = Theme::Light;
+  want_old.rotation = ScreenRotation::R0;
   CHECK(decode(old) == want_old);
-  // A longer blob reads its first eleven bytes.
+  // A version 1 blob of eleven bytes migrates. Every field stays and the
+  // rotation is the board default, Auto only with a motion sensor.
+  std::vector<std::uint8_t> v1(b.begin(), b.begin() + 11);
+  v1[0] = 1;
+  Settings want_v1 = s;
+  want_v1.rotation = ScreenRotation::R0;
+  CHECK(decode(v1) == want_v1);
+  want_v1.rotation = ScreenRotation::Auto;
+  CHECK(decode(v1, true) == want_v1);
+  // Version 1 never had byte 11, a stray one is not read.
+  v1.push_back(2);
+  want_v1.rotation = ScreenRotation::R0;
+  CHECK(decode(v1) == want_v1);
+  // The migrated settings save as version 2 and read back the same.
+  CHECK(decode(encode(want_v1)) == want_v1);
+  // A longer blob reads its first twelve bytes.
   std::vector<std::uint8_t> longer(b.begin(), b.end());
   longer.push_back(0xEE);
   CHECK(decode(longer) == s);
+  // Every rotation survives the round trip, Auto only with a sensor.
+  for (const ScreenRotation r : {ScreenRotation::R0, ScreenRotation::R90,
+                                 ScreenRotation::R180, ScreenRotation::R270}) {
+    Settings t{};
+    t.rotation = r;
+    CHECK(decode(encode(t)).rotation == r);
+    CHECK(decode(encode(t), true).rotation == r);
+  }
+  {
+    Settings t{};
+    t.rotation = ScreenRotation::Auto;
+    CHECK(decode(encode(t), true).rotation == ScreenRotation::Auto);
+    CHECK(decode(encode(t), false).rotation == ScreenRotation::R0);
+  }
 
   // Each field out of range falls back on its own, the rest still decode.
   const auto out_of_range = [&](std::size_t at, std::uint8_t v) {
@@ -844,6 +915,9 @@ void test_settings_blob() {
   CHECK(out_of_range(10, 2).theme == Theme::Light);
   CHECK(out_of_range(10, 0xFF).theme == Theme::Light);
   CHECK(out_of_range(10, 2).sleep_after == SleepAfter::H1);
+  CHECK(out_of_range(11, 5).rotation == ScreenRotation::R0);
+  CHECK(out_of_range(11, 0xFF).rotation == ScreenRotation::R0);
+  CHECK(out_of_range(11, 5).theme == Theme::Dark);
   SettingsBlob hi = b;
   hi[5] = (3001 & 0xFF);
   hi[6] = (3001 >> 8);
@@ -909,9 +983,9 @@ void test_popup_rows() {
   // The display rows sit together, Theme right after Start on.
   {
     constexpr std::array<Row, kRowCount> kOrder{
-        Row::Refresh,  Row::StartPage,   Row::Theme,
-        Row::Wifi,     Row::FanCleaning, Row::Co2Asc,
-        Row::Altitude, Row::TempOffset,  Row::SleepAfter};
+        Row::Refresh,    Row::StartPage,   Row::Theme,  Row::Rotation,
+        Row::Wifi,       Row::FanCleaning, Row::Co2Asc, Row::Altitude,
+        Row::TempOffset, Row::SleepAfter};
     PopupState p = opened();
     Settings s{};
     for (const Row want : kOrder) {
@@ -920,6 +994,34 @@ void test_popup_rows() {
     }
     CHECK(p.selected == Row::Refresh);
     CHECK(row_label(Row::Theme) == "Theme");
+    CHECK(row_label(Row::Rotation) == "Rotation");
+  }
+  // Rotation cycles 0, 90, 180, 270 without a motion sensor, and Auto first
+  // with one.
+  {
+    std::array<char, 24> buf{};
+    PopupState p = at(Row::Rotation);
+    Settings s{};
+    CHECK(value_of(Row::Rotation, s, p, kAllThere, buf) == "0°");
+    for (const std::string_view want : {"90°", "180°", "270°", "0°"}) {
+      CHECK(popup_input(p, s, kAllThere, Input::Press) == Effect::Changed);
+      CHECK(value_of(Row::Rotation, s, p, kAllThere, buf) == want);
+    }
+    CHECK(s.rotation == ScreenRotation::R0);
+    SettingsInfo moving = kAllThere;
+    moving.orientation_source = true;
+    Settings m = defaults(true);
+    CHECK(value_of(Row::Rotation, m, p, moving, buf) == "Auto");
+    for (const std::string_view want : {"0°", "90°", "180°", "270°", "Auto"}) {
+      CHECK(popup_input(p, m, moving, Input::Press) == Effect::Changed);
+      CHECK(value_of(Row::Rotation, m, p, moving, buf) == want);
+    }
+    CHECK(m.rotation == ScreenRotation::Auto);
+    // A stored Auto on a board without a sensor steps on to 0.
+    Settings stray{};
+    stray.rotation = ScreenRotation::Auto;
+    CHECK(popup_input(p, stray, kAllThere, Input::Press) == Effect::Changed);
+    CHECK(stray.rotation == ScreenRotation::R0);
   }
   // Theme toggles Light and Dark.
   {
@@ -1170,10 +1272,15 @@ void test_ui_handle() {
     const Outcome sleep = handle(ui, s, info, Input::Press);
     CHECK(sleep.effect == Effect::Changed && !sleep.full_refresh);
     // The RefreshPolicy turns that request into a full refresh.
-    RefreshPolicy policy;
+    RefreshPolicy policy{kHost400x300.refresh};
     static_cast<void>(policy.next(false, false));
     CHECK(policy.next(false, false) == Refresh::Partial);
     CHECK(policy.next(dark.page_changed, dark.full_refresh) == Refresh::Full);
+    // A rotation change asks for a full refresh too.
+    ui.popup.selected = Row::Rotation;
+    const Outcome turned = handle(ui, s, info, Input::Press);
+    CHECK(turned.effect == Effect::Changed && turned.full_refresh);
+    CHECK(s.rotation == ScreenRotation::R90 && ui.popup.open);
   }
   // Last viewed tracks the page, Dashboard leaves last_page alone.
   {
@@ -1511,6 +1618,569 @@ void test_restore_order() {
   }
 }
 
+constexpr std::array<Rotation, 4> kRotations{Rotation::R0, Rotation::R90,
+                                             Rotation::R180, Rotation::R270};
+
+void test_profile() {
+  CHECK(validate(kHost400x300).has_value());
+  CHECK(validate(kHost800x480).has_value());
+  CHECK(kHost400x300.frame_bytes() == kFrameBytes);
+  CHECK(kHost400x300.logical_frame_bytes() == 15200);
+  CHECK(kHost800x480.frame_bytes() == 48000);
+  CHECK(kHost800x480.logical_frame_bytes() == 48000);
+  const auto refused = [](DisplayProfile p, ProfileError want) {
+    const auto r = validate(p);
+    return !r.has_value() && r.error() == want;
+  };
+  DisplayProfile p = kHost400x300;
+  p.width = 404;
+  CHECK(refused(p, ProfileError::BadSize));
+  p = kHost400x300;
+  p.height = 0;
+  CHECK(refused(p, ProfileError::BadSize));
+  p = kHost400x300;
+  p.depth = ColorDepth::Grey4;
+  CHECK(refused(p, ProfileError::UnsupportedDepth));
+  p = kHost400x300;
+  p.rotated_layout = nullptr;
+  CHECK(refused(p, ProfileError::NoLayout));
+  p = kHost400x300;
+  p.layout = &kLayout800x480;
+  CHECK(refused(p, ProfileError::LayoutMismatch));
+  p = kHost400x300;
+  p.rotated_layout = &kLayout400x300;
+  CHECK(refused(p, ProfileError::LayoutMismatch));
+  p = kHost400x300;
+  p.font_scale = FontScale::Large;
+  CHECK(refused(p, ProfileError::LayoutMismatch));
+  p = kHost400x300;
+  p.refresh.partial = false;
+  p.refresh.partial_window = true;
+  CHECK(refused(p, ProfileError::BadRefreshCaps));
+  p = kHost400x300;
+  p.refresh.partials_per_full = 0;
+  CHECK(refused(p, ProfileError::BadRefreshCaps));
+
+  // Every layout table matches the size and font scale it is named for.
+  CHECK(kLayout400x300.width == 400 && kLayout400x300.height == 300);
+  CHECK(kLayout300x400.width == 300 && kLayout300x400.height == 400);
+  CHECK(kLayout800x480.width == 800 && kLayout800x480.height == 480);
+  CHECK(kLayout480x800.width == 480 && kLayout480x800.height == 800);
+  CHECK(&kLayout400x300.fonts.hero == &fonts::compact.hero);
+  CHECK(&kLayout480x800.fonts.hero == &fonts::large.hero);
+
+  // The canvas takes its size from the profile and the rotation.
+  std::vector<std::uint8_t> frame(kHost400x300.logical_frame_bytes());
+  for (const Rotation r : kRotations) {
+    const auto c = Canvas::create(frame, kHost400x300, r);
+    CHECK(c.has_value());
+    if (!c)
+      continue;
+    const bool tall = swaps_axes(r);
+    CHECK(c->width() == (tall ? 300 : 400) &&
+          c->height() == (tall ? 400 : 300));
+    CHECK(c->stride() == (tall ? 38 : 50));
+    CHECK(&c->layout() == (tall ? &kLayout300x400 : &kLayout400x300));
+  }
+  CHECK(Canvas::bytes_for(kHost400x300, Rotation::R90) == 15200);
+  CHECK(Canvas::bytes_for(kHost400x300, Rotation::R180) == 15000);
+  std::vector<std::uint8_t> short_frame(15100);
+  const auto too_short =
+      Canvas::create(short_frame, kHost400x300, Rotation::R90);
+  CHECK(!too_short && too_short.error() == CanvasError::FrameSize);
+  CHECK(Canvas::create(short_frame, kHost400x300, Rotation::R0).has_value());
+  DisplayProfile grey = kHost400x300;
+  grey.depth = ColorDepth::Grey4;
+  const auto bad = Canvas::create(frame, grey);
+  CHECK(!bad && bad.error() == CanvasError::BadProfile);
+}
+
+// The policy never asks for a mode the caps lack, whatever the inputs.
+void test_policy_caps() {
+  for (int bits = 0; bits < 8; ++bits) {
+    RefreshCaps caps{.fast = (bits & 1) != 0,
+                     .partial = (bits & 2) != 0,
+                     .partial_window = (bits & 4) != 0,
+                     .full_ms = 0,
+                     .fast_ms = 0,
+                     .partial_ms = 0,
+                     .partials_per_full = 5};
+    RefreshPolicy policy{caps};
+    CHECK(policy.next(false, false) == Refresh::Full);
+    int run = 0;
+    for (int i = 0; i < 200; ++i) {
+      const bool page = i % 7 == 3;
+      const bool forced = i % 23 == 11;
+      const Refresh m = policy.next(page, forced);
+      CHECK(m != Refresh::Fast || caps.fast);
+      CHECK(m != Refresh::Partial || caps.partial);
+      if (forced)
+        CHECK(m == Refresh::Full);
+      // A page change is never Partial, the old page would ghost. It is
+      // Fast where the panel has it, unless the partial run is due a Full.
+      if (page)
+        CHECK(m == Refresh::Full || (caps.fast && m == Refresh::Fast));
+      if (page && !forced && run == 0 && !caps.partial)
+        CHECK(m == (caps.fast ? Refresh::Fast : Refresh::Full));
+      run = m == Refresh::Partial ? run + 1 : 0;
+      CHECK(run <= caps.partials_per_full);
+    }
+  }
+  // Without partial, plain updates are Fast where the panel has it.
+  RefreshPolicy fast_only{{.fast = true}};
+  CHECK(fast_only.next(false, false) == Refresh::Full);
+  CHECK(fast_only.next(false, false) == Refresh::Fast);
+  RefreshPolicy full_only{{}};
+  CHECK(full_only.next(false, false) == Refresh::Full);
+  CHECK(full_only.next(false, false) == Refresh::Full);
+}
+
+// Panel bit (x, y) of a frame in the profile's convention.
+bool panel_bit(std::span<const std::uint8_t> f, const DisplayProfile &p, int x,
+               int y) {
+  const auto i =
+      static_cast<std::size_t>(y) * static_cast<std::size_t>(p.stride()) +
+      static_cast<std::size_t>(x / 8);
+  return (f[i] & (0x80U >> (x % 8))) != 0;
+}
+
+// Where logical (lx, ly) lands on the panel, the mapping orientation.h
+// describes, written out pixel by pixel.
+std::pair<int, int> on_panel(const DisplayProfile &p, Rotation r, int lx,
+                             int ly) {
+  switch (r) {
+  case Rotation::R0:
+    return {lx, ly};
+  case Rotation::R90:
+    return {p.width - 1 - ly, lx};
+  case Rotation::R180:
+    return {p.width - 1 - lx, p.height - 1 - ly};
+  case Rotation::R270:
+    return {ly, p.height - 1 - lx};
+  }
+  return {0, 0};
+}
+
+void test_rotate() {
+  for (const DisplayProfile *p : {&kHost400x300, &kHost800x480}) {
+    std::vector<std::uint8_t> panel(p->frame_bytes());
+    for (const Rotation r : kRotations) {
+      Buffer b(*p, r);
+      Canvas &c = b.canvas;
+      // A scatter of pixels, the corners and the top left text, so a wrong
+      // turn or mirror shows.
+      std::uint32_t seed = 7;
+      for (int i = 0; i < 4000; ++i) {
+        seed = seed * 1664525U + 1013904223U;
+        c.pixel(static_cast<int>((seed >> 8) %
+                                 static_cast<std::uint32_t>(c.width())),
+                static_cast<int>((seed >> 20) %
+                                 static_cast<std::uint32_t>(c.height())));
+      }
+      c.pixel(0, 0);
+      c.pixel(c.width() - 1, c.height() - 1);
+      static_cast<void>(c.text(c.fonts().label, 4, 30, "Rotation"));
+      std::fill(panel.begin(), panel.end(), std::uint8_t{0xA5});
+      rotate_frame(b.bytes, *p, r, panel);
+      bool every = true;
+      int ink = 0;
+      for (int ly = 0; ly < c.height(); ++ly)
+        for (int lx = 0; lx < c.width(); ++lx) {
+          const auto [px, py] = on_panel(*p, r, lx, ly);
+          const bool want = c.get(lx, ly) == Ink::Black;
+          ink += want ? 1 : 0;
+          every = every && panel_bit(panel, *p, px, py) == want;
+        }
+      CHECK(every);
+      CHECK(ink > 3000);
+      // Every panel byte was written, the 0xA5 fill is gone where the
+      // drawn frame is white.
+      int panel_ink = 0;
+      for (int y = 0; y < p->height; ++y)
+        for (int x = 0; x < p->width; ++x)
+          panel_ink += panel_bit(panel, *p, x, y) ? 1 : 0;
+      CHECK(panel_ink == ink);
+      // R0 is the drawn frame byte for byte.
+      if (r == Rotation::R0)
+        CHECK(std::equal(panel.begin(), panel.end(), b.bytes.begin()));
+    }
+  }
+  // A short buffer is left alone.
+  std::vector<std::uint8_t> small(10, 0x5A);
+  std::vector<std::uint8_t> logical(kHost400x300.logical_frame_bytes());
+  rotate_frame(logical, kHost400x300, Rotation::R90, small);
+  CHECK(small[0] == 0x5A && small[9] == 0x5A);
+}
+
+void test_changed_window() {
+  std::vector<std::uint8_t> a(kFrameBytes);
+  std::vector<std::uint8_t> b(kFrameBytes);
+  CHECK(changed_window(a, b, kHost400x300).w == 0);
+  // One pixel at (13, 7) is the byte holding it.
+  b[7 * 50 + 1] = 0x04;
+  Rect w = changed_window(a, b, kHost400x300);
+  CHECK(w.x == 8 && w.y == 7 && w.w == 8 && w.h == 1);
+  // A second one widens it to whole bytes.
+  b[120 * 50 + 49] = 0x01;
+  w = changed_window(a, b, kHost400x300);
+  CHECK(w.x == 8 && w.y == 7 && w.w == 392 && w.h == 114);
+  CHECK(w.x % 8 == 0 && w.w % 8 == 0);
+  CHECK(changed_window(a, std::span<const std::uint8_t>{b}.first(10),
+                       kHost400x300)
+            .w == 0);
+}
+
+// A Panel for the host. It keeps what it was asked to show.
+struct FakePanel {
+  std::vector<std::uint8_t> glass;
+  Refresh last_mode = Refresh::Full;
+  Rect last_window{};
+  int shows = 0;
+  bool fail = false;
+  std::expected<void, opensensor::epd::Error>
+  show(std::span<const std::uint8_t> frame, Refresh mode, Rect window) {
+    if (fail)
+      return std::unexpected(opensensor::epd::Error::Spi);
+    glass.assign(frame.begin(), frame.end());
+    last_mode = mode;
+    last_window = window;
+    ++shows;
+    return {};
+  }
+  void sleep() {}
+};
+static_assert(opensensor::epd::Panel<FakePanel>);
+
+void test_presenter() {
+  for (const DisplayProfile *p : {&kHost400x300, &kHost800x480}) {
+    std::vector<std::uint8_t> logical(p->logical_frame_bytes());
+    std::vector<std::uint8_t> panel_buf(p->frame_bytes());
+    std::vector<std::uint8_t> shown(p->frame_bytes());
+    std::vector<std::uint8_t> short_buf(p->frame_bytes() - 1);
+    const auto refused = Presenter::create(*p, logical, short_buf, shown);
+    CHECK(!refused && refused.error() == PresenterError::BufferSize);
+    const auto short_logical = Presenter::create(
+        *p, std::span{logical}.first(p->frame_bytes() - 1), panel_buf, shown);
+    CHECK(!short_logical &&
+          short_logical.error() == PresenterError::BufferSize);
+    auto made = Presenter::create(*p, logical, panel_buf, shown);
+    CHECK(made.has_value());
+    if (!made)
+      continue;
+    Presenter &pr = *made;
+    FakePanel glass;
+    const Rect whole{0, 0, p->width, p->height};
+    const auto draw = [&](Rotation r, int dots) {
+      Canvas c = must(pr.canvas(r));
+      c.clear();
+      static_cast<void>(c.text(c.fonts().title, 10, 60, "Air"));
+      for (int i = 0; i < dots; ++i)
+        c.pixel(20 + 3 * i, 100);
+    };
+    // The first frame is Full over the whole panel.
+    draw(Rotation::R0, 1);
+    CHECK(pr.compose());
+    Plan plan = pr.plan(false, false);
+    CHECK(plan.mode == Refresh::Full && plan.window == whole);
+    CHECK(pr.present(glass, plan).has_value());
+    CHECK(std::equal(glass.glass.begin(), glass.glass.end(),
+                     pr.panel_frame().begin()));
+    // The same picture again needs no refresh.
+    draw(Rotation::R0, 1);
+    CHECK(!pr.compose());
+    // A small change is Partial, windowed where the profile allows it.
+    draw(Rotation::R0, 2);
+    CHECK(pr.compose());
+    plan = pr.plan(false, false);
+    CHECK(plan.mode == Refresh::Partial);
+    if (p->refresh.partial_window)
+      CHECK(plan.window.y == 100 && plan.window.h == 1 && plan.window.x == 16 &&
+            plan.window.w == 8);
+    else
+      CHECK(plan.window == whole);
+    CHECK(pr.present(glass, plan).has_value());
+    // A failed show keeps the old frame as the one on the glass.
+    glass.fail = true;
+    draw(Rotation::R0, 3);
+    CHECK(pr.compose());
+    plan = pr.plan(false, false);
+    CHECK(!pr.present(glass, plan).has_value());
+    glass.fail = false;
+    draw(Rotation::R0, 2);
+    CHECK(!pr.compose());
+    // A turn always differs and is always Full over the whole panel, even
+    // when the turned picture happened to match.
+    draw(Rotation::R180, 2);
+    CHECK(pr.compose());
+    plan = pr.plan(false, false);
+    CHECK(plan.mode == Refresh::Full && plan.window == whole);
+    CHECK(pr.present(glass, plan).has_value());
+    draw(Rotation::R180, 2);
+    CHECK(!pr.compose());
+    draw(Rotation::R90, 2);
+    CHECK(pr.compose());
+    CHECK(pr.plan(false, false).mode == Refresh::Full);
+    // A page change on a panel with Fast is Fast.
+    CHECK(pr.present(glass, {.mode = Refresh::Full, .window = whole})
+              .has_value());
+    draw(Rotation::R90, 9);
+    CHECK(pr.compose());
+    CHECK(pr.plan(true, false).mode ==
+          (p->refresh.fast ? Refresh::Fast : Refresh::Full));
+  }
+}
+
+// One accelerometer reading for a device turned `deg` clockwise from upright
+// in its own plane, tipped `tilt` of the way towards lying flat, in the
+// sensor axes of `axes`. Reads up, away from the ground.
+Gravity reading(SensorAxes axes, float deg, float tilt = 0.0F) {
+  const float rad = deg / 57.29578F;
+  // Upright pull is panel down. Turning the device by deg clockwise makes
+  // the pull come from the panel's left, so in panel axes the pull is
+  // (-sin, cos). The reading is the negative, scaled by how upright it is.
+  const float upright = std::sqrt(1.0F - tilt * tilt);
+  const float right = std::sin(rad) * upright;
+  const float down = -std::cos(rad) * upright;
+  Gravity g{};
+  const auto put = [&g](Axis a, float v) {
+    switch (a) {
+    case Axis::PosX:
+      g.x = v;
+      break;
+    case Axis::NegX:
+      g.x = -v;
+      break;
+    case Axis::PosY:
+      g.y = v;
+      break;
+    case Axis::NegY:
+      g.y = -v;
+      break;
+    case Axis::PosZ:
+      g.z = v;
+      break;
+    case Axis::NegZ:
+      g.z = -v;
+      break;
+    }
+  };
+  put(axes.right, right);
+  put(axes.down, down);
+  // The third axis takes the tilt. Any axis not used above.
+  const bool x_used = axes.right == Axis::PosX || axes.right == Axis::NegX ||
+                      axes.down == Axis::PosX || axes.down == Axis::NegX;
+  const bool y_used = axes.right == Axis::PosY || axes.right == Axis::NegY ||
+                      axes.down == Axis::PosY || axes.down == Axis::NegY;
+  if (!x_used)
+    g.x = tilt;
+  else if (!y_used)
+    g.y = tilt;
+  else
+    g.z = tilt;
+  return g;
+}
+
+void test_orientation() {
+  const SensorAxes axes{};
+  // Upright keeps R0, each quarter turn held for 2 s turns the picture.
+  {
+    OrientationTracker t{axes};
+    CHECK(t.update(reading(axes, 0.0F), 0) == Rotation::R0);
+    CHECK(t.update(reading(axes, 90.0F), 100) == Rotation::R0);
+    CHECK(t.update(reading(axes, 90.0F), 2099) == Rotation::R0);
+    CHECK(t.update(reading(axes, 90.0F), 2100) == Rotation::R90);
+    CHECK(t.current() == Rotation::R90);
+    for (std::uint32_t ms = 3000; ms <= 5000; ms += 500)
+      static_cast<void>(t.update(reading(axes, 180.0F), ms));
+    CHECK(t.current() == Rotation::R180);
+    for (std::uint32_t ms = 6000; ms <= 8000; ms += 500)
+      static_cast<void>(t.update(reading(axes, 270.0F), ms));
+    CHECK(t.current() == Rotation::R270);
+    for (std::uint32_t ms = 9000; ms <= 11000; ms += 500)
+      static_cast<void>(t.update(reading(axes, 0.0F), ms));
+    CHECK(t.current() == Rotation::R0);
+  }
+  // Jitter around 45 degrees never turns it, from either side.
+  {
+    OrientationTracker t{axes};
+    bool stayed = true;
+    for (std::uint32_t i = 0; i < 400; ++i) {
+      const float deg = 45.0F + ((i % 2) != 0 ? 8.0F : -8.0F) +
+                        static_cast<float>(i % 5) - 2.0F;
+      stayed = stayed && t.update(reading(axes, deg), i * 50) == Rotation::R0;
+    }
+    CHECK(stayed);
+    OrientationTracker u{axes, Rotation::R90};
+    stayed = true;
+    for (std::uint32_t i = 0; i < 400; ++i) {
+      const float deg = 45.0F + ((i % 2) != 0 ? 8.0F : -8.0F);
+      stayed = stayed && u.update(reading(axes, deg), i * 50) == Rotation::R90;
+    }
+    CHECK(stayed);
+    // Held at 59 degrees, inside the band, it stays. At 61 it turns.
+    for (std::uint32_t i = 0; i < 100; ++i)
+      static_cast<void>(t.update(reading(axes, 59.0F), 30000 + i * 100));
+    CHECK(t.current() == Rotation::R0);
+    for (std::uint32_t i = 0; i <= 25; ++i)
+      static_cast<void>(t.update(reading(axes, 61.0F), 50000 + i * 100));
+    CHECK(t.current() == Rotation::R90);
+  }
+  // A candidate that flickers away restarts its 2 s.
+  {
+    OrientationTracker t{axes};
+    static_cast<void>(t.update(reading(axes, 90.0F), 0));
+    static_cast<void>(t.update(reading(axes, 90.0F), 1500));
+    static_cast<void>(t.update(reading(axes, 10.0F), 1600));
+    CHECK(t.update(reading(axes, 90.0F), 1700) == Rotation::R0);
+    CHECK(t.update(reading(axes, 90.0F), 3600) == Rotation::R0);
+    CHECK(t.update(reading(axes, 90.0F), 3700) == Rotation::R90);
+    // Two candidates in turn never add up.
+    OrientationTracker u{axes};
+    for (std::uint32_t i = 0; i < 40; ++i)
+      static_cast<void>(
+          u.update(reading(axes, (i % 2) != 0 ? 90.0F : 270.0F), i * 100));
+    CHECK(u.current() == Rotation::R0);
+  }
+  // Flat on a table, or no reading, keeps the rotation and drops the
+  // candidate.
+  {
+    OrientationTracker t{axes, Rotation::R270};
+    for (std::uint32_t i = 0; i < 100; ++i)
+      CHECK(t.update(reading(axes, static_cast<float>(i * 37 % 360), 0.95F),
+                     i * 100) == Rotation::R270);
+    CHECK(t.update(Gravity{0.0F, 0.0F, 1.0F}, 20000) == Rotation::R270);
+    CHECK(t.update(Gravity{0.0F, 0.0F, -1.0F}, 20100) == Rotation::R270);
+    CHECK(t.update(Gravity{}, 20200) == Rotation::R270);
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    CHECK(t.update(Gravity{nan, 0.0F, 0.0F}, 20300) == Rotation::R270);
+    static_cast<void>(t.update(reading(axes, 0.0F), 21000));
+    static_cast<void>(t.update(std::nullopt, 22000));
+    CHECK(t.update(reading(axes, 0.0F), 23500) == Rotation::R270);
+    static_cast<void>(t.update(reading(axes, 0.0F, 0.95F), 24000));
+    CHECK(t.update(reading(axes, 0.0F), 25000) == Rotation::R270);
+    CHECK(t.update(reading(axes, 0.0F), 27000) == Rotation::R0);
+    // Tipped back a little, still upright enough, it still reads.
+    OrientationTracker u{axes};
+    static_cast<void>(u.update(reading(axes, 180.0F, 0.6F), 0));
+    CHECK(u.update(reading(axes, 180.0F, 0.6F), 2000) == Rotation::R180);
+  }
+  // A clock that wraps still measures the hold.
+  {
+    OrientationTracker t{axes};
+    const std::uint32_t start = 0xFFFFFFFFU - 999U;
+    static_cast<void>(t.update(reading(axes, 270.0F), start));
+    CHECK(t.update(reading(axes, 270.0F), start + 1999U) == Rotation::R0);
+    CHECK(t.update(reading(axes, 270.0F), start + 2000U) == Rotation::R270);
+  }
+  // The mounting maps sensor axes to the panel. A sensor turned on the board
+  // reads the same turn of the device the same way.
+  for (const SensorAxes mounted :
+       {SensorAxes{.right = Axis::NegY, .down = Axis::PosX},
+        SensorAxes{.right = Axis::PosZ, .down = Axis::NegX},
+        SensorAxes{.right = Axis::NegX, .down = Axis::NegZ}}) {
+    for (const auto [deg, want] :
+         {std::pair{90.0F, Rotation::R90}, std::pair{180.0F, Rotation::R180},
+          std::pair{270.0F, Rotation::R270}}) {
+      OrientationTracker t{mounted};
+      static_cast<void>(t.update(reading(mounted, deg), 0));
+      CHECK(t.update(reading(mounted, deg), 2000) == want);
+      // The default axes read the same gravity as a different turn.
+      OrientationTracker wrong{axes};
+      static_cast<void>(wrong.update(reading(mounted, deg), 0));
+      static_cast<void>(wrong.update(reading(mounted, deg), 2000));
+      CHECK(wrong.current() != want || mounted.right == Axis::PosX);
+    }
+  }
+}
+
+void test_effective_rotation() {
+  DisplayProfile p = kHost400x300;
+  Settings s{};
+  CHECK(effective_rotation(s, p, Rotation::R180) == Rotation::R0);
+  s.rotation = ScreenRotation::R90;
+  CHECK(effective_rotation(s, p, Rotation::R180) == Rotation::R90);
+  // A board mounted upside down turns every setting by 180.
+  p.mount = Rotation::R180;
+  s.rotation = ScreenRotation::R0;
+  CHECK(effective_rotation(s, p, Rotation::R0) == Rotation::R180);
+  s.rotation = ScreenRotation::R270;
+  CHECK(effective_rotation(s, p, Rotation::R0) == Rotation::R90);
+  // Auto without a sensor is the mount, with one it is what the sensor says.
+  s.rotation = ScreenRotation::Auto;
+  CHECK(effective_rotation(s, p, Rotation::R90) == Rotation::R180);
+  p.orientation.present = true;
+  CHECK(effective_rotation(s, p, Rotation::R90) == Rotation::R90);
+  s.rotation = ScreenRotation::R90;
+  CHECK(effective_rotation(s, p, Rotation::R90) == Rotation::R270);
+}
+
+void test_line_break() {
+  const Font &f = kFonts.small;
+  constexpr std::string_view text = "Turn to choose, press to change";
+  CHECK(line_break(f, text, 1000) == text.size());
+  const int whole = text_width(f, text);
+  CHECK(line_break(f, text, whole) == text.size());
+  const std::size_t cut = line_break(f, text, whole - 1);
+  CHECK(cut < text.size() && text[cut] == ' ');
+  CHECK(text_width(f, text.substr(0, cut)) <= whole - 1);
+  // No space that fits, it stays one line.
+  CHECK(line_break(f, "Unbreakable", 5) ==
+        std::string_view{"Unbreakable"}.size());
+  CHECK(line_break(f, "", 5) == 0);
+  // Two lines draw one step apart, one line draws as text() does.
+  Buffer a;
+  Buffer b;
+  CHECK(a.canvas.text_lines(f, 10, 40, text, Align::Left, whole) == 1);
+  static_cast<void>(b.canvas.text(f, 10, 40, text, Align::Left));
+  CHECK(a.bytes == b.bytes);
+  a.canvas.clear();
+  CHECK(a.canvas.text_lines(f, 10, 40, text, Align::Left, whole / 2 + 20) == 2);
+  CHECK(ink_count(a.canvas, {0, 40 + 2, kWidth, line_step(f)}) > 0);
+}
+
+// Every page, the popup and the asleep screen at every rotation of both
+// size classes. The header rule spans the logical width each time and no
+// drawing escapes the logical frame.
+void test_render_rotations() {
+  auto h = std::make_unique<History>();
+  for (std::uint32_t t = 0; t < 3600; t += 10)
+    h->push(t, all(static_cast<float>(t % 300)));
+  Model m{};
+  for (std::size_t i = 0; i < kMetricCount; ++i)
+    m.now[i] = {.value = 1234.5F, .quality = Quality::Valid, .warm_left_s = 0};
+  m.status.utc_s = 1795437120;
+  m.status.thing = "OS-7F3A2C";
+  m.status.device_name = "OS-7F3A2C";
+  m.status.sensor_model = "SEN63C";
+  m.status.firmware = "opensensor-crowpanel-a-very-long-identity-string";
+  m.status.sensor_present = true;
+  for (const DisplayProfile *p : {&kHost400x300, &kHost800x480}) {
+    for (const Rotation r : kRotations) {
+      Buffer b(*p, r);
+      Canvas &c = b.canvas;
+      const std::size_t used = Canvas::bytes_for(*p, r);
+      const int rule_y = c.layout().header.height;
+      for (std::uint8_t page = 0; page < kPageCount; ++page) {
+        UiState ui{.page = page};
+        Settings s{};
+        render_screen(c, ui, s, kAllThere, m, *h);
+        CHECK(ink_count(c, {0, rule_y, c.width(), 1}) == c.width());
+        static_cast<void>(handle(ui, s, kAllThere, Input::Menu));
+        for (std::uint8_t row = 0; row < kRowCount; ++row) {
+          ui.popup.selected = static_cast<Row>(row);
+          render_screen(c, ui, s, kAllThere, m, *h);
+        }
+        fall_asleep(ui);
+        render_screen(c, ui, s, kAllThere, m, *h);
+        CHECK(ink_count(c, {0, 0, c.width(), c.height()}) > 300);
+      }
+      // Nothing past the frame this rotation uses.
+      CHECK(std::all_of(b.bytes.begin() + static_cast<std::ptrdiff_t>(used),
+                        b.bytes.end(), [](std::uint8_t v) { return v == 0; }));
+    }
+  }
+}
+
 } // namespace
 
 int main() {
@@ -1531,6 +2201,15 @@ int main() {
   test_render_settings_and_sleep();
   test_theme();
   test_restore_order();
-  std::printf("crowpanel ui, %d checks passed\n", g_checks);
+  test_profile();
+  test_policy_caps();
+  test_rotate();
+  test_changed_window();
+  test_presenter();
+  test_orientation();
+  test_effective_rotation();
+  test_line_break();
+  test_render_rotations();
+  std::printf("epaper ui, %d checks passed\n", g_checks);
   return 0;
 }

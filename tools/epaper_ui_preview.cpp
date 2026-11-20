@@ -1,23 +1,38 @@
-// Renders the CrowPanel pages for synthetic scenarios to PBM files, the same
-// 1 bit frames the panel receives. tools/test_crowpanel_ui.py turns them into
-// PNGs under the board's ignored artifacts/ui-preview/. Names ending in
-// -dark are the same scenes with Theme::Dark.
+// Renders the shared e-paper pages for synthetic scenarios to PBM files, at
+// each host size class and each rotation, under <out dir>/<size>/r<deg>/.
+// Each file is the frame as a person holding the device sees it, the
+// logical frame the pages draw. At r0 that is byte for byte the frame the
+// panel receives, at other rotations the Presenter turns it for the panel,
+// which the host test checks pixel by pixel. tools/test_epaper_ui.py hashes
+// the 400x300/r0 frames against the CrowPanel goldens and turns all of them
+// into PNGs under the ignored root artifacts/epaper-ui-preview/. Names ending
+// in -dark are the same scenes with Theme::Dark.
 //
-// Usage: crowpanel-ui-preview <out dir>
+// Usage: epaper-ui-preview <out dir>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
+#include <expected>
+#include <filesystem>
 #include <limits>
 #include <memory>
+#include <span>
 #include <string>
+#include <utility>
+#include <vector>
 
-#include "canvas.h"
-#include "history.h"
-#include "pages.h"
-#include "settings.h"
-#include "ui_model.h"
+#include "epaper_ui/canvas.h"
+#include "epaper_ui/history.h"
+#include "epaper_ui/orientation.h"
+#include "epaper_ui/pages.h"
+#include "epaper_ui/profile.h"
+#include "epaper_ui/settings.h"
+#include "epaper_ui/strings.h"
+#include "epaper_ui/ui_model.h"
+#include "epaper_ui_host_profiles.h"
 
 using namespace opensensor::ui;
 
@@ -25,18 +40,38 @@ namespace {
 
 constexpr float kNaN = std::numeric_limits<float>::quiet_NaN();
 
-struct Buffer {
-  std::array<std::uint8_t, kFrameBytes> bytes{};
-  Canvas canvas{bytes};
+// Where the frames of one size class and rotation go.
+struct Target {
+  std::string dir;
+  const DisplayProfile *profile = nullptr;
+  Rotation rotation;
 };
 
-bool write_pbm(const std::string &path, const Buffer &b) {
+Canvas must(std::expected<Canvas, CanvasError> c) {
+  if (!c) {
+    std::fprintf(stderr, "canvas %s\n", to_string(c.error()));
+    std::exit(1);
+  }
+  return *c;
+}
+
+// A logical frame for the target, white.
+struct Buffer {
+  explicit Buffer(const Target &t)
+      : bytes(t.profile->logical_frame_bytes()),
+        canvas(must(Canvas::create(bytes, *t.profile, t.rotation))) {}
+  std::vector<std::uint8_t> bytes;
+  Canvas canvas;
+};
+
+bool write_pbm(const std::string &path, const Canvas &c) {
   std::FILE *f = std::fopen(path.c_str(), "wb");
   if (f == nullptr)
     return false;
-  std::fprintf(f, "P4\n%d %d\n", kWidth, kHeight);
-  const bool ok =
-      std::fwrite(b.bytes.data(), 1, b.bytes.size(), f) == b.bytes.size();
+  std::fprintf(f, "P4\n%d %d\n", c.width(), c.height());
+  const auto bytes = c.frame().first(static_cast<std::size_t>(c.stride()) *
+                                     static_cast<std::size_t>(c.height()));
+  const bool ok = std::fwrite(bytes.data(), 1, bytes.size(), f) == bytes.size();
   return std::fclose(f) == 0 && ok;
 }
 
@@ -87,6 +122,7 @@ Status base_status() {
           .uptime_s = 86400 + 3 * 3600 + 17 * 60,
           .firmware = "opensensor-crowpanel 0.1.0",
           .thing = "OS-7F3A2C",
+          .sensor_model = "SEN63C",
           .sensor_serial = "A1B2C3D4E5F60718",
           .sensor_fw = "2.0",
           .sensor_status = 0U,
@@ -95,12 +131,12 @@ Status base_status() {
           .device_name = "OS-7F3A2C"};
 }
 
-int emit(const std::string &dir, const char *name, std::uint8_t page,
-         const Model &m, const History &h) {
-  auto b = std::make_unique<Buffer>();
+int emit(const Target &t, const char *name, std::uint8_t page, const Model &m,
+         const History &h) {
+  auto b = std::make_unique<Buffer>(t);
   render(b->canvas, page, m, h);
-  const std::string path = dir + "/" + name + ".pbm";
-  if (!write_pbm(path, *b)) {
+  const std::string path = t.dir + "/" + name + ".pbm";
+  if (!write_pbm(path, b->canvas)) {
     std::fprintf(stderr, "cannot write %s\n", path.c_str());
     return 1;
   }
@@ -108,13 +144,13 @@ int emit(const std::string &dir, const char *name, std::uint8_t page,
   return 0;
 }
 
-int emit_screen(const std::string &dir, const char *name, const UiState &ui,
+int emit_screen(const Target &t, const char *name, const UiState &ui,
                 const Settings &s, const SettingsInfo &info, const Model &m,
                 const History &h) {
-  auto b = std::make_unique<Buffer>();
+  auto b = std::make_unique<Buffer>(t);
   render_screen(b->canvas, ui, s, info, m, h);
-  const std::string path = dir + "/" + name + ".pbm";
-  if (!write_pbm(path, *b)) {
+  const std::string path = t.dir + "/" + name + ".pbm";
+  if (!write_pbm(path, b->canvas)) {
     std::fprintf(stderr, "cannot write %s\n", path.c_str());
     return 1;
   }
@@ -124,22 +160,22 @@ int emit_screen(const std::string &dir, const char *name, const UiState &ui,
 
 // The page through render_screen() with the dark theme, as the panel draws
 // it once Theme is set to Dark.
-int emit_dark(const std::string &dir, const char *name, std::uint8_t page,
+int emit_dark(const Target &t, const char *name, std::uint8_t page,
               const Model &m, const History &h) {
   Settings s{};
   s.theme = Theme::Dark;
-  return emit_screen(dir, name, UiState{.page = page}, s, SettingsInfo{}, m, h);
+  return emit_screen(t, name, UiState{.page = page}, s, SettingsInfo{}, m, h);
 }
 
-} // namespace
+// The Rotation setting that shows this target's rotation, so the popup
+// names the turn the frame is drawn at.
+ScreenRotation setting_for(Rotation r) {
+  return static_cast<ScreenRotation>(std::to_underlying(r));
+}
 
-int main(int argc, char **argv) {
-  if (argc != 2) {
-    std::fprintf(stderr, "usage: %s <out dir>\n", argv[0]);
-    return 2;
-  }
-  const std::string dir = argv[1];
+int scenes(const Target &target) {
   int rc = 0;
+  const bool moving = target.profile->orientation.present;
 
   // A full day, now is 20:00 after the cooking spike.
   {
@@ -154,39 +190,40 @@ int main(int argc, char **argv) {
     Model m{};
     m.status = base_status();
     fill_now(m, last, end);
-    rc |= emit(dir, "dashboard", kDashboardPage, m, *h);
-    rc |= emit_dark(dir, "dashboard-dark", kDashboardPage, m, *h);
-    rc |= emit_dark(dir, "chart-PM2.5-dark", 1, m, *h);
+    rc |= emit(target, "dashboard", kDashboardPage, m, *h);
+    rc |= emit_dark(target, "dashboard-dark", kDashboardPage, m, *h);
+    rc |= emit_dark(target, "chart-PM2.5-dark", 1, m, *h);
     for (std::uint8_t p = 1; p < kStatusPage; ++p) {
+      const std::string_view label = tr(info(kChartOrder[p - 1U]).label);
       const std::string name =
-          "chart-" + std::string(info(kChartOrder[p - 1U]).label == "CO₂"
-                                     ? "co2"
-                                     : info(kChartOrder[p - 1U]).label);
-      rc |= emit(dir, name.c_str(), p, m, *h);
+          "chart-" + std::string(label == "CO₂" ? "co2" : label);
+      rc |= emit(target, name.c_str(), p, m, *h);
     }
-    rc |= emit(dir, "status", kStatusPage, m, *h);
-    rc |= emit_dark(dir, "status-dark", kStatusPage, m, *h);
+    rc |= emit(target, "status", kStatusPage, m, *h);
+    rc |= emit_dark(target, "status-dark", kStatusPage, m, *h);
 
     // The same day with bad air right now.
     std::array<float, kMetricCount> bad = last;
     bad[index(Metric::Pm25)] = 142.6F;
     h->push(end + 10, bad);
     fill_now(m, bad, end + 10);
-    rc |= emit(dir, "dashboard-bad-air", kDashboardPage, m, *h);
+    rc |= emit(target, "dashboard-bad-air", kDashboardPage, m, *h);
 
     // The settings popup over the dashboard, then editing the altitude.
     const SettingsInfo info{.wifi_configured = true,
                             .wifi_on = true,
                             .sensor_present = true,
-                            .fan_cleaning = false};
-    Settings s{};
+                            .fan_cleaning = false,
+                            .orientation_source = moving};
+    Settings s = defaults(moving);
+    s.rotation = setting_for(target.rotation);
     s.refresh = RefreshEvery::S30;
     s.altitude_m = 300;
     s.temp_offset_dc = -15;
     s.sleep_after = SleepAfter::M30;
     UiState ui{};
     static_cast<void>(handle(ui, s, info, Input::Menu));
-    rc |= emit_screen(dir, "settings", ui, s, info, m, *h);
+    rc |= emit_screen(target, "settings", ui, s, info, m, *h);
     // Down twice to Theme and press, the popup now draws dark.
     {
       UiState dark_ui = ui;
@@ -194,20 +231,22 @@ int main(int argc, char **argv) {
       for (int i = 0; i < 2; ++i)
         static_cast<void>(handle(dark_ui, dark, info, Input::Down));
       static_cast<void>(handle(dark_ui, dark, info, Input::Press));
-      rc |= emit_screen(dir, "settings-theme-dark", dark_ui, dark, info, m, *h);
+      rc |= emit_screen(target, "settings-theme-dark", dark_ui, dark, info, m,
+                        *h);
       UiState asleep_ui = dark_ui;
       fall_asleep(asleep_ui);
-      rc |= emit_screen(dir, "asleep-dark", asleep_ui, dark, info, m, *h);
+      rc |= emit_screen(target, "asleep-dark", asleep_ui, dark, info, m, *h);
     }
-    for (int i = 0; i < 6; ++i)
+    // Down seven times to Altitude, press to edit, one step up.
+    for (int i = 0; i < 7; ++i)
       static_cast<void>(handle(ui, s, info, Input::Down));
     static_cast<void>(handle(ui, s, info, Input::Press));
     static_cast<void>(handle(ui, s, info, Input::Up));
-    rc |= emit_screen(dir, "settings-edit-altitude", ui, s, info, m, *h);
+    rc |= emit_screen(target, "settings-edit-altitude", ui, s, info, m, *h);
 
     // The screen asleep after 30 minutes idle.
     fall_asleep(ui);
-    rc |= emit_screen(dir, "asleep", ui, s, info, m, *h);
+    rc |= emit_screen(target, "asleep", ui, s, info, m, *h);
   }
 
   // Just booted, 12 s in, no clock, PM and CO2 still warming.
@@ -232,9 +271,9 @@ int main(int argc, char **argv) {
     m.status.uptime_s = 12;
     m.status.sensor_status = std::nullopt;
     fill_now(m, v, 12);
-    rc |= emit(dir, "dashboard-warming", kDashboardPage, m, *h);
-    rc |= emit(dir, "chart-warming", 1, m, *h);
-    rc |= emit(dir, "status-warming", kStatusPage, m, *h);
+    rc |= emit(target, "dashboard-warming", kDashboardPage, m, *h);
+    rc |= emit(target, "chart-warming", 1, m, *h);
+    rc |= emit(target, "status-warming", kStatusPage, m, *h);
   }
 
   // Two hours in, the sensor dropped out for 15 minutes and is back, the SD
@@ -259,9 +298,9 @@ int main(int argc, char **argv) {
     m.status.sensor_status = (1U << 21) | (1U << 4);
     fill_now(m, v, 5 * 60);
     m.now[index(Metric::Co2)] = quality_for(Metric::Co2, std::nullopt, 300U);
-    rc |= emit(dir, "dashboard-gap", kDashboardPage, m, *h);
-    rc |= emit(dir, "chart-gap", 1, m, *h);
-    rc |= emit(dir, "status-fault", kStatusPage, m, *h);
+    rc |= emit(target, "dashboard-gap", kDashboardPage, m, *h);
+    rc |= emit(target, "chart-gap", 1, m, *h);
+    rc |= emit(target, "status-fault", kStatusPage, m, *h);
   }
 
   // Two earlier boots read back from the card, then 50 minutes of this
@@ -287,10 +326,10 @@ int main(int argc, char **argv) {
     m.status = base_status();
     m.status.uptime_s = end;
     fill_now(m, v, end);
-    rc |= emit(dir, "dashboard-restart", kDashboardPage, m, *h);
-    rc |= emit(dir, "chart-restart", 1, m, *h);
-    rc |= emit_dark(dir, "chart-restart-dark", 1, m, *h);
-    rc |= emit_dark(dir, "dashboard-restart-dark", kDashboardPage, m, *h);
+    rc |= emit(target, "dashboard-restart", kDashboardPage, m, *h);
+    rc |= emit(target, "chart-restart", 1, m, *h);
+    rc |= emit_dark(target, "chart-restart-dark", 1, m, *h);
+    rc |= emit_dark(target, "dashboard-restart-dark", kDashboardPage, m, *h);
   }
 
   // No sensor on the bus at all.
@@ -304,23 +343,25 @@ int main(int argc, char **argv) {
     std::ranges::fill(
         m.now,
         Reading{.value = 0.0F, .quality = Quality::Absent, .warm_left_s = 0});
-    rc |= emit(dir, "dashboard-no-sensor", kDashboardPage, m, *h);
-    rc |= emit(dir, "chart-empty", 2, m, *h);
+    rc |= emit(target, "dashboard-no-sensor", kDashboardPage, m, *h);
+    rc |= emit(target, "chart-empty", 2, m, *h);
 
     // Settings on a Thing with no Wi-Fi set up and no sensor, the Wi-Fi row
     // selected, over the status page.
     const SettingsInfo info{.wifi_configured = false,
                             .wifi_on = false,
                             .sensor_present = false,
-                            .fan_cleaning = false};
-    Settings s{};
+                            .fan_cleaning = false,
+                            .orientation_source = moving};
+    Settings s = defaults(moving);
+    s.rotation = setting_for(target.rotation);
     s.co2_asc = false;
     s.start_page = StartPage::LastViewed;
     UiState ui{.page = kStatusPage};
     static_cast<void>(handle(ui, s, info, Input::Menu));
-    for (int i = 0; i < 3; ++i)
+    for (int i = 0; i < 4; ++i)
       static_cast<void>(handle(ui, s, info, Input::Down));
-    rc |= emit_screen(dir, "settings-no-wifi-no-sensor", ui, s, info, m, *h);
+    rc |= emit_screen(target, "settings-no-wifi-no-sensor", ui, s, info, m, *h);
   }
 
   // A phone pairs. The passkey here is a fixed example, never a real one.
@@ -330,8 +371,48 @@ int main(int argc, char **argv) {
     m.status = base_status();
     m.status.ble = Link::Connected;
     m.status.pairing_passkey = 123456U;
-    rc |= emit(dir, "pairing", kDashboardPage, m, *h);
-    rc |= emit_dark(dir, "pairing-dark", kDashboardPage, m, *h);
+    rc |= emit(target, "pairing", kDashboardPage, m, *h);
+    rc |= emit_dark(target, "pairing-dark", kDashboardPage, m, *h);
+  }
+  return rc;
+}
+
+} // namespace
+
+int main(int argc, char **argv) {
+  if (argc != 2) {
+    std::fprintf(stderr, "usage: %s <out dir>\n", argv[0]);
+    return 2;
+  }
+  const std::string out = argv[1];
+  struct Size {
+    const char *name;
+    const DisplayProfile *profile;
+  };
+  constexpr std::array<Size, 2> kSizes{{
+      {.name = "400x300", .profile = &host::kHost400x300},
+      {.name = "800x480", .profile = &host::kHost800x480},
+  }};
+  int rc = 0;
+  for (const Size &size : kSizes) {
+    if (!validate(*size.profile)) {
+      std::fprintf(stderr, "profile %s refused\n", size.name);
+      return 1;
+    }
+    for (const Rotation r :
+         {Rotation::R0, Rotation::R90, Rotation::R180, Rotation::R270}) {
+      const Target t{.dir = out + "/" + size.name + "/r" +
+                            std::to_string(90 * std::to_underlying(r)),
+                     .profile = size.profile,
+                     .rotation = r};
+      std::error_code ec;
+      std::filesystem::create_directories(t.dir, ec);
+      if (ec) {
+        std::fprintf(stderr, "cannot create %s\n", t.dir.c_str());
+        return 1;
+      }
+      rc |= scenes(t);
+    }
   }
   return rc;
 }
