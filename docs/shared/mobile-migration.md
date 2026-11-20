@@ -9,6 +9,22 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## SD DMA buffer kept after a failed mount (fix/168-sd-buffer-kept, issue #168)
+
+**No wire, column, LIVE key or `GET_CONFIG` change.** Every board now keeps its
+4 KiB internal DMA SD buffer for the whole boot, also when the boot mount
+fails. Before, a board that booted without a card freed it, and a card inserted
+after radios started could fail to mount with no clear reason.
+
+**What the app can observe.** A card inserted after boot is meant to move the
+storage state from retry to ready on the next probe, as a reinserted card
+already does. That still needs a CoreS3 bench run. Logs gain `dma_buffer=0|1`
+on `OS TF` and a once only `reason=dma_buffer_unavailable` line when a remount
+fails without the buffer. CrowPanel also logs a once only
+`reason=spi_bus_unavailable` line when its SD SPI bus could not start.
+
+**What the app must do.** Nothing.
+
 ## WHO step labels from stac-opensensor 204365f (vendor/stac-scales-204365f)
 
 **Every board moves its `desc`. Needs app update and a matched reflash of all

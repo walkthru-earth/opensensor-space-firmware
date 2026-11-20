@@ -102,7 +102,12 @@ identity/batch candidate semantics retain the existing dictionary contract.
 
 Both variants reserve a heap-owned **4 KiB internal DMA transfer buffer** before
 mounting TF and lend it to ESP-IDF for **eight-sector chunks**. The single card
-owner retains it for the mount; failed mounts release it. This prevents
+owner keeps it for the whole boot, also after a failed mount. When the boot
+reserved it, a card inserted after radios start is meant to mount with it.
+That still needs a board run (#168). Both variants report `dma_buffer=0|1` in
+`OS TF`. Only the logger remounts, so only the logger logs `OS TF
+remount=false reason=dma_buffer_unavailable`, once, on the first failed
+remount after the reservation failed. This prevents
 per-transfer DMA allocation when FatFs buffers live in PSRAM. The logger's
 shared connectivity prefers PSRAM for Wi-Fi/lwIP packets and uses **sixteen
 static RX and eight static TX DMA buffers**, **32 dynamic RX buffers** and

@@ -188,7 +188,13 @@ const oslogger::Hooks kHooks{
         },
     .storage_cluster_bytes = [](void *) { return board::cluster_bytes(); },
     .storage_volume_serial = [](void *) { return board::volume_serial(); },
-    .storage_remount = [](void *) { return board::remount_card(); },
+    .storage_remount =
+        [](void *) {
+          const bool ok = board::remount_card();
+          if (!ok && board::sd_buffer_unavailable_once())
+            oslog.println("OS TF remount=false reason=dma_buffer_unavailable");
+          return ok;
+        },
     .gnss_fix = [](opensensor::gnss::Fix &fix,
                    void *) { return opensensor::gnss::latest(fix); },
 };
@@ -237,10 +243,11 @@ bool init_board() {
   const bool sensor_ready = board::start_sensor();
   const bool mounted = board::mount_card();
   storage_mounted = mounted;
-  oslog.printf("OS TF mounted=%u size_bytes=%llu sensor_ready=%u "
+  oslog.printf("OS TF mounted=%u size_bytes=%llu dma_buffer=%u sensor_ready=%u "
                "clk=%d cmd=%d d0=%d width=1 format_attempted=false\n",
                mounted, static_cast<unsigned long long>(board::card_bytes()),
-               sensor_ready, kSdClk, kSdCmd, kSdData0);
+               board::sd_buffer_reserved(), sensor_ready, kSdClk, kSdCmd,
+               kSdData0);
   if (const auto gnss = opensensor::gnss::start(kGnss); !gnss)
     oslog.printf("OS ERROR operation=gnss-start reason=%u\n",
                  static_cast<unsigned>(std::to_underlying(gnss.error())));
