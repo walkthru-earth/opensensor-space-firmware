@@ -2,9 +2,12 @@
 // for this screen, each lit cell one filled square.
 #include "bringup_screen.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <numeric>
+#include <optional>
 #include <string_view>
 
 namespace opensensor::bringup {
@@ -19,10 +22,10 @@ struct Glyph {
 
 // 15 characters, '#' lit, anything else dark.
 consteval std::uint16_t rows(std::string_view s) {
-  std::uint16_t out = 0;
-  for (char c : s)
-    out = static_cast<std::uint16_t>((out << 1) | (c == '#' ? 1 : 0));
-  return out;
+  return std::accumulate(
+      s.begin(), s.end(), std::uint16_t{0}, [](std::uint16_t out, char c) {
+        return static_cast<std::uint16_t>((out << 1) | (c == '#' ? 1 : 0));
+      });
 }
 
 static constexpr std::array<Glyph, 35> kGlyphs{{
@@ -64,10 +67,8 @@ static constexpr std::array<Glyph, 35> kGlyphs{{
 }};
 
 std::uint16_t glyph_bits(char c) {
-  for (const Glyph &g : kGlyphs)
-    if (g.c == c)
-      return g.bits;
-  return 0;
+  const auto *found = std::ranges::find(kGlyphs, c, &Glyph::c);
+  return found == kGlyphs.end() ? std::uint16_t{0} : found->bits;
 }
 
 class Painter {
@@ -75,10 +76,7 @@ public:
   explicit Painter(std::span<std::uint8_t, kFrameBytes> frame)
       : frame_(frame) {}
 
-  void clear() {
-    for (auto &b : frame_)
-      b = 0;
-  }
+  void clear() { std::ranges::fill(frame_, std::uint8_t{0}); }
 
   // Clipped to the panel.
   void fill(int x, int y, int w, int h) {
@@ -124,10 +122,10 @@ private:
 };
 
 struct Box {
-  const char *label;
-  const char *unit;
+  const char *label = "";
+  const char *unit = "";
   std::optional<float> value;
-  int decimals;
+  int decimals = 0;
 };
 
 void draw_box(Painter &p, int x, int y, int w, int h, const Box &box) {
