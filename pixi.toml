@@ -144,6 +144,13 @@ crowpanel-contract-test = "python tools/test_crowpanel_contract.py"
 # Destructive: requires the checked port and exact full-backup file.
 crowpanel-flash = "firmware/esp-idf-crowpanel-epaper/flash.sh"
 
+# --- Waveshare ESP32-S3-ePaper-3.97 with the SEN63C ---
+epaper397-setup = "firmware/esp-idf-waveshare-epaper-397/setup.sh"
+epaper397-build = "firmware/esp-idf-waveshare-epaper-397/build.sh"
+epaper397-contract-test = "python tools/test_epaper397_contract.py"
+# Destructive: requires the checked port and exact full-backup file.
+epaper397-flash = "firmware/esp-idf-waveshare-epaper-397/flash.sh"
+
 # --- host code quality ---
 # tools/fmt.sh lists the sources once for both tasks and fails when it finds none.
 fmt = "bash tools/fmt.sh"

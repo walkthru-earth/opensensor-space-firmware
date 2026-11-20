@@ -62,6 +62,7 @@ tasks=(
   "telemetry-contract-test --sanitize"
   "waveshare-contract-test --sanitize"
   "crowpanel-contract-test --sanitize"
+  "epaper397-contract-test --sanitize"
   "column-semantics-test"
   "board-template-check-test"
   "published-templates-test"
