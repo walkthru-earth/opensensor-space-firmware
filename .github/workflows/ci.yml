@@ -134,6 +134,9 @@ jobs:
           - name: bench-stall-crowpanel
             task: crowpanel-build
             bench: stall
+          - name: bench-stall-epaper397
+            task: epaper397-build
+            bench: stall
     env:
       IDF_CCACHE_ENABLE: "1"
       CCACHE_MAXSIZE: 500M
