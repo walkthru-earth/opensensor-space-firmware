@@ -3,10 +3,8 @@
 // Driver for the 400x300 UC8276C panel on the ELECROW CrowPanel ESP32-S3
 // 4.2 inch board v1.2. ESP-IDF only, the rest of display/ is host portable.
 //
-// Ported from the epd_ssd1683 component of github.com/yharby/bible-eink
-// (CC-BY-4.0, Walkthru.Earth), which was proven on the same board. That
-// driver also handles the SSD1683 of board v1.0. This one detects it and
-// refuses it, no v1.0 board has been checked here.
+// Board v1.0 has an SSD1683 instead. This driver detects it and refuses it,
+// no v1.0 board has been checked here.
 //
 // One task owns the panel. Calls are not serialised.
 

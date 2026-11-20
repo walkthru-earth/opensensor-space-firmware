@@ -3,9 +3,8 @@
 Run with `pixi run crowpanel-fonts`. Writes
 firmware/esp-idf-crowpanel-epaper/display/fonts_gen.cpp and a preview PNG
 under the board's ignored artifacts/ui-preview/. The output is committed, so a
-firmware build needs no Python. The glyph table format follows the owner's
-bible-eink generator (CC-BY-4.0, Walkthru.Earth), rows MSB first and padded to
-a byte, set bit is black.
+firmware build needs no Python. Glyph rows are MSB first and padded to a
+byte, set bit is black.
 """
 
 from __future__ import annotations
