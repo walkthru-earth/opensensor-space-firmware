@@ -700,6 +700,55 @@ void log_power() {
                power->vbus_good, power->battery_present, mv.data(),
                percent.data());
 }
+
+// QMI8658 orientation evidence. The raw axes go with every quarter turn
+// change and every 30 s, so the owner test can map the IMU axes to the
+// panel from these lines alone.
+constexpr std::int64_t kImuLogUs = 30000000;
+struct ImuLog {
+  bool logged = false;
+  std::optional<std::uint8_t> turn;
+  std::int64_t next_us = 0;
+};
+constinit ImuLog imu_log{};
+
+void log_turn(const board::Accel &a, std::optional<std::uint8_t> turn) {
+  std::array<char, 8> quarter{};
+  std::snprintf(quarter.data(), quarter.size(), "%s", "null");
+  if (turn)
+    std::snprintf(quarter.data(), quarter.size(), "%u",
+                  static_cast<unsigned>(*turn));
+  oslog.printf("OS IMU ax=%d ay=%d az=%d quarter=%s\n", a.x, a.y, a.z,
+               quarter.data());
+}
+
+void start_orientation() {
+  const auto info = board::start_imu();
+  oslog.printf("OS IMU chip=qmi8658 found=%u addr=0x%02x who_am_i=0x%02x "
+               "revision=0x%02x range_g=2 odr_hz=3 mode=low-power gyro=off "
+               "error=%s\n",
+               info.has_value(), board::kImuAddress, info ? info->who_am_i : 0,
+               info ? info->revision : 0,
+               info ? "none" : board::to_string(info.error()));
+}
+
+void poll_orientation(std::int64_t now) {
+  const auto read = board::poll_orientation(now);
+  if (!read)
+    return;
+  if (!*read) {
+    if (imu_log.logged || now >= imu_log.next_us)
+      oslog.printf("OS IMU error=%s\n", board::to_string(read->error()));
+    imu_log = {
+        .logged = false, .turn = std::nullopt, .next_us = now + kImuLogUs};
+    return;
+  }
+  const auto turn = board::quarter_turn(**read);
+  if (imu_log.logged && turn == imu_log.turn && now < imu_log.next_us)
+    return;
+  log_turn(**read, turn);
+  imu_log = {.logged = true, .turn = turn, .next_us = now + kImuLogUs};
+}
 } // namespace
 
 bool init_board() {
@@ -712,7 +761,7 @@ bool init_board() {
   opensensor::log::report_coredump();
   oslog.printf("OS BOARD waveshare-esp32-s3-epaper-397 firmware=%s "
                "sensor=SEN63C display=ssd1677-800x480 battery=tg28 "
-               "rtc=pcf85063 console=usb-serial-jtag\n",
+               "rtc=pcf85063 imu=qmi8658 console=usb-serial-jtag\n",
                kFirmware);
   const bool psram_ok =
       esp_psram_is_initialized() && esp_psram_get_size() == 8 * 1024 * 1024;
@@ -732,6 +781,7 @@ bool init_board() {
   // The PMIC first, the panel supply hangs off it.
   log_power();
   log_scan("internal", board::Bus::Internal);
+  start_orientation();
   const bool display_ok = start_display();
   const bool bus_ok = board::start_sensor_bus(Sen6x::kAddress);
   board::sensor_delay_ms(nullptr, Sen6x::kPowerUpMs);
@@ -769,6 +819,7 @@ bool init_board() {
 void poll_board() {
   const auto now = esp_timer_get_time();
   poll_sensor(now);
+  poll_orientation(now);
   if (logging)
     oslogger::poll();
   poll_feed(esp_timer_get_time());

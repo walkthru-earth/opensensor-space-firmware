@@ -5,6 +5,7 @@
 #include <driver/gpio.h>
 #include <driver/i2c_master.h>
 #include <driver/sdmmc_host.h>
+#include <esp_timer.h>
 #include <esp_vfs_fat.h>
 #include <fat_volume.h>
 #include <freertos/FreeRTOS.h>
@@ -29,6 +30,13 @@ esp_err_t sensor_error = ESP_OK;
 i2c_master_bus_handle_t internal_bus = nullptr;
 i2c_master_dev_handle_t pmic = nullptr;
 i2c_master_dev_handle_t rtc = nullptr;
+i2c_master_dev_handle_t imu = nullptr;
+bool imu_ready = false;
+std::int64_t imu_next_us = 0;
+// The board task writes, any task reads. Low byte the quarter turn or
+// kNoTurn, the rest the esp_timer microseconds of the read.
+constexpr std::uint8_t kNoTurn = 0xFF;
+std::atomic<std::uint64_t> orientation_cache{kNoTurn};
 
 sdmmc_card_t *card = nullptr;
 opensensor::storage::SdTransferBuffer sd_transfer_buffer;
@@ -49,6 +57,48 @@ constexpr std::uint8_t kBatteryPercent = 0xA4;
 } // namespace pmic_reg
 constexpr std::uint8_t kAldo3Bit = 1U << 2;
 constexpr std::uint8_t kAldo3_3v3 = (3300 - 500) / 100;
+
+// QMI8658A registers, datasheet rev A section 5.
+namespace imu_reg {
+constexpr std::uint8_t kWhoAmI = 0x00; // reads 0x05, REVISION follows
+constexpr std::uint8_t kCtrl1 = 0x02;  // bit 6 auto increment, bit 5 big endian
+constexpr std::uint8_t kCtrl2 = 0x03;  // bits 6:4 range, bits 3:0 rate
+constexpr std::uint8_t kCtrl7 = 0x08;  // bit 0 accel, bit 1 gyro
+constexpr std::uint8_t kAxLow = 0x35;  // AX_L to AZ_H, two's complement
+constexpr std::uint8_t kResetResult = 0x4D; // 0x80 once a reset is done
+constexpr std::uint8_t kReset = 0x60;
+} // namespace imu_reg
+constexpr std::uint8_t kImuWhoAmI = 0x05;
+constexpr std::uint8_t kImuResetDone = 0x80;
+// Table 5.9 lists 0xB0 as the soft reset value, as does the vendor library.
+constexpr std::uint8_t kImuResetValue = 0xB0;
+constexpr std::uint8_t kImuCtrl1 = 1U << 6; // auto increment, little endian
+constexpr std::uint8_t kImuCtrl2 = 0x0F;    // +-2 g, 3 Hz low power
+constexpr std::uint8_t kImuCtrl7 = 1U << 0; // accelerometer only
+constexpr std::int64_t kImuPollUs = 500000; // about 2 Hz
+constexpr std::int64_t kImuStaleUs = 1500000;
+
+std::expected<void, ImuError> imu_write(std::uint8_t reg, std::uint8_t value) {
+  const std::array<std::uint8_t, 2> frame{reg, value};
+  if (i2c_master_transmit(imu, frame.data(), frame.size(), kI2cTimeoutMs) !=
+      ESP_OK)
+    return std::unexpected(ImuError::I2c);
+  return {};
+}
+
+std::expected<void, ImuError> imu_read(std::uint8_t reg,
+                                       std::span<std::uint8_t> out) {
+  if (i2c_master_transmit_receive(imu, &reg, 1, out.data(), out.size(),
+                                  kI2cTimeoutMs) != ESP_OK)
+    return std::unexpected(ImuError::I2c);
+  return {};
+}
+
+void store_orientation(std::optional<std::uint8_t> turn, std::int64_t now_us) {
+  const auto stamp = static_cast<std::uint64_t>(now_us < 0 ? 0 : now_us);
+  orientation_cache.store((stamp << 8) | turn.value_or(kNoTurn),
+                          std::memory_order_relaxed);
+}
 
 // PCF85063 registers.
 namespace rtc_reg {
@@ -246,6 +296,91 @@ std::size_t scan(Bus bus, std::span<std::uint8_t> found) {
     ++count;
   }
   return count;
+}
+
+const char *to_string(ImuError e) {
+  switch (e) {
+  case ImuError::NotStarted:
+    return "not-started";
+  case ImuError::I2c:
+    return "i2c";
+  case ImuError::WrongChip:
+    return "wrong-chip";
+  case ImuError::ResetTimeout:
+    return "reset-timeout";
+  }
+  return "unknown";
+}
+
+std::expected<ImuInfo, ImuError> start_imu() {
+  imu_ready = false;
+  if (!internal_bus)
+    return std::unexpected(ImuError::NotStarted);
+  if (!imu)
+    imu = add_device(internal_bus, kImuAddress, kInternalI2cHz);
+  if (!imu)
+    return std::unexpected(ImuError::NotStarted);
+  std::array<std::uint8_t, 2> id{};
+  if (const auto read = imu_read(imu_reg::kWhoAmI, id); !read)
+    return std::unexpected(read.error());
+  if (id[0] != kImuWhoAmI)
+    return std::unexpected(ImuError::WrongChip);
+  if (const auto reset = imu_write(imu_reg::kReset, kImuResetValue); !reset)
+    return std::unexpected(reset.error());
+  // The datasheet allows 15 ms. Poll up to about 100 ms for the done flag.
+  std::array<std::uint8_t, 1> done{};
+  for (int i = 0; i < 10 && done[0] != kImuResetDone; ++i) {
+    vTaskDelay(pdMS_TO_TICKS(10) + 1);
+    if (!imu_read(imu_reg::kResetResult, done))
+      done[0] = 0;
+  }
+  if (done[0] != kImuResetDone)
+    return std::unexpected(ImuError::ResetTimeout);
+  // Sensors off while the range and rate change, then the accelerometer on.
+  static constexpr std::array<std::array<std::uint8_t, 2>, 4> kSetup{{
+      {imu_reg::kCtrl7, 0},
+      {imu_reg::kCtrl1, kImuCtrl1},
+      {imu_reg::kCtrl2, kImuCtrl2},
+      {imu_reg::kCtrl7, kImuCtrl7},
+  }};
+  for (const auto &[reg, value] : kSetup)
+    if (const auto wrote = imu_write(reg, value); !wrote)
+      return std::unexpected(wrote.error());
+  imu_ready = true;
+  return ImuInfo{.who_am_i = id[0], .revision = id[1]};
+}
+
+std::expected<Accel, ImuError> read_accel() {
+  if (!imu_ready)
+    return std::unexpected(ImuError::NotStarted);
+  std::array<std::uint8_t, 6> raw{};
+  if (const auto read = imu_read(imu_reg::kAxLow, raw); !read)
+    return std::unexpected(read.error());
+  const auto word = [&raw](std::size_t i) {
+    return static_cast<std::int16_t>(
+        static_cast<std::uint16_t>(raw[i] | (raw[i + 1] << 8)));
+  };
+  return Accel{.x = word(0), .y = word(2), .z = word(4)};
+}
+
+std::optional<std::expected<Accel, ImuError>>
+poll_orientation(std::int64_t now_us) {
+  if (!imu_ready || now_us < imu_next_us)
+    return std::nullopt;
+  imu_next_us = now_us + kImuPollUs;
+  const auto accel = read_accel();
+  store_orientation(accel ? quarter_turn(*accel) : std::nullopt, now_us);
+  return accel;
+}
+
+std::optional<std::uint8_t> read_orientation() {
+  const std::uint64_t cached =
+      orientation_cache.load(std::memory_order_relaxed);
+  const auto turn = static_cast<std::uint8_t>(cached & 0xFF);
+  const auto stamp = static_cast<std::int64_t>(cached >> 8);
+  if (turn > 3 || esp_timer_get_time() - stamp > kImuStaleUs)
+    return std::nullopt;
+  return turn;
 }
 
 const char *to_string(PmicError e) {
