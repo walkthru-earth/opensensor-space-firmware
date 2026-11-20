@@ -74,6 +74,9 @@ tasks=(
   # CrowPanel e-paper dashboard on host and its baked fonts
   "crowpanel-ui-test"
   "crowpanel-fonts-test"
+  # Shared text, Arabic shaping and bidi, strings and baked Arabic fonts
+  "text-test"
+  "text-fonts-test"
   # Battery health states and thresholds
   "battery-health-test"
   # Uploader signer, STS, policy, ledger and session on fakes (#81)
