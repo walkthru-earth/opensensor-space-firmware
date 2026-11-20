@@ -263,7 +263,10 @@ void test_string_table() {
     if (kKeepLtr[i]) {
       assert(en == ar);
     } else {
-      assert(has_rtl(ar));
+      // ListSep is the Arabic comma alone, a common separator in bidi
+      // terms, so it holds no strong right to left letter.
+      assert(has_rtl(ar) || id == StringId::ListSep);
+      assert(en != ar);
       assert(direction(Lang::ArEg, id) == Direction::Rtl);
     }
     if (conversions(en) != conversions(ar)) {
