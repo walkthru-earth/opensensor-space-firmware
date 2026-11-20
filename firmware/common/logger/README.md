@@ -118,9 +118,11 @@ and degraded write. Full finalizes the open file and raises
 scaling. Full and retry stop normal card writes but retain a bounded RAM batch. New
 rows drop when that batch is full or a partition/window change cannot be committed.
 Retry follows any write, close,
-rename or mount failure and probes on a 10 s to 10 min backoff, remounting through
-the optional `storage_remount` hook. Boards supply `storage_free_bytes`,
-`storage_cluster_bytes` and `storage_remount`; `firmware/common/src/fat_volume.h`
+rename or mount failure, or a failed card status check, and probes on a 10 s to 10 min backoff, remounting through
+the optional `storage_remount` hook. While the card may take rows, the worker
+calls the optional `storage_present` hook about every 5 s with the bus lock held,
+so a pulled card goes to retry before the next batch commit. Boards supply `storage_free_bytes`,
+`storage_cluster_bytes`, `storage_remount` and `storage_present`; `firmware/common/src/fat_volume.h`
 has the FatFs helpers. STATUS carries `sd_state` (0 to 3). RAM batches can be lost on reset;
 footerless completed row groups need explicit host recovery. fsync is not proof
 of power-cut durability.

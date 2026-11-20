@@ -195,6 +195,7 @@ const oslogger::Hooks kHooks{
             oslog.println("OS TF remount=false reason=dma_buffer_unavailable");
           return ok;
         },
+    .storage_present = [](void *) { return board::card_present(); },
     .gnss_fix = [](opensensor::gnss::Fix &fix,
                    void *) { return opensensor::gnss::latest(fix); },
 };

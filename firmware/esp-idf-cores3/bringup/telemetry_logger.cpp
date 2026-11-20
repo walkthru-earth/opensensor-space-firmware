@@ -284,6 +284,7 @@ bool begin_logger(bool sd_mounted) {
       .storage_cluster_bytes = [](void *) { return sd_cluster_bytes(); },
       .storage_volume_serial = [](void *) { return sd_volume_serial(); },
       .storage_remount = [](void *) { return remount_sd(); },
+      .storage_present = [](void *) { return sd_present(); },
       .rtc_read = rtc_read,
       .rtc_write = rtc_write,
   };

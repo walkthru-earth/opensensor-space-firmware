@@ -30,6 +30,9 @@ bool sd_buffer_reserved();
 bool sd_buffer_unavailable_once();
 std::uint32_t cluster_bytes(); // 0 when unknown
 std::uint32_t volume_serial(); // FAT volume serial, 0 when unknown
+// Storage worker only, under the logger bus lock. False once the card stops
+// answering SD CMD13, as a pulled card does.
+bool card_present();
 bool storage_free_bytes(std::uint64_t &free_bytes);
 std::uint64_t card_bytes();
 std::uint64_t storage_total_bytes();

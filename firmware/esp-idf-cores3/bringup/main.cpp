@@ -898,6 +898,9 @@ bool telemetry::remount_sd() {
 std::uint32_t telemetry::sd_cluster_bytes() {
   return opensensor::storage::fat_cluster_bytes(sd_card);
 }
+bool telemetry::sd_present() {
+  return opensensor::storage::card_answers(sd_card);
+}
 std::uint32_t telemetry::sd_volume_serial() {
   return opensensor::storage::fat_volume_serial(sd_card);
 }

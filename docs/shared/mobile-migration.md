@@ -9,6 +9,21 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## A pulled card shows as not logging within about 5 s (#165, fix/165-card-presence)
+
+**What changed.** While the card may take rows, the storage worker now asks it
+for its status (SD CMD13) about every 5 s on CoreS3, Waveshare and CrowPanel.
+A card that does not answer is a write failure. `sd_state` goes to 3 (retry)
+and `fail` to 1 before the next batch commit, and the log shows
+`PARQUET ERROR operation=card-status action=retry`. Before, a card pulled in
+Ready still read as ready until the next write. Recovery is unchanged. The
+retry probe remounts the card once it is back.
+
+**Why.** #165 asks that pulling the card shows not logging within one screen
+refresh.
+
+**What the app must do.** Nothing new. Read `sd_state` and `fail` as before.
+
 ## SD DMA buffer kept after a failed mount (fix/168-sd-buffer-kept, issue #168)
 
 **No wire, column, LIVE key or `GET_CONFIG` change.** Every board now keeps its

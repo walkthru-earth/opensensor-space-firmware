@@ -362,9 +362,9 @@
       "sections_measured": {
         ".iram0.text": 127031,
         ".dram0.data": 36341,
-        ".dram0.bss": 60056,
-        ".flash.text": 1294842,
-        ".flash.rodata": 462388,
+        ".dram0.bss": 60072,
+        ".flash.text": 1295022,
+        ".flash.rodata": 462404,
         ".noinit": 3
       }
     },
@@ -421,8 +421,8 @@
       "sections_measured": {
         ".iram0.text": 120035,
         ".dram0.data": 34180,
-        ".dram0.bss": 57016,
-        ".flash.text": 1159166,
+        ".dram0.bss": 57032,
+        ".flash.text": 1159278,
         ".flash.rodata": 411220,
         ".noinit": 0
       }
@@ -511,8 +511,8 @@
       "sections_measured": {
         ".iram0.text": 125295,
         ".dram0.data": 34257,
-        ".dram0.bss": 57480,
-        ".flash.text": 1190450,
+        ".dram0.bss": 57496,
+        ".flash.text": 1190502,
         ".flash.rodata": 413272,
         ".noinit": 3
       }
