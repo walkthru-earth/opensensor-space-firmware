@@ -9,6 +9,53 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## Waveshare ESP32-S3-ePaper-3.97 board with the SEN63C (feat/waveshare-epaper-397)
+
+**A new board. Needs app update to bundle its template, no change for the
+other three boards.** The new board is `waveshare-esp32-s3-epaper-397`, the
+Waveshare ESP32-S3-ePaper-3.97 (SKU 33810) with a Sensirion SEN63C on the
+GPIO43/44 sensor bus. CoreS3, Waveshare V2 and CrowPanel do not change.
+
+**What changed.**
+
+- Firmware `idf-epaper397-parquet-v0.1`, schema and dictionary
+  `waveshare-epaper-397-telemetry-v1`, dict digest
+  `a19c450b6fc5bc4bb76e9b52e03aa75bee05cd3c1505d961771279366c820439`, desc
+  digest `5ef08e04a98cc572a350914b10ae554e85a2823ac923e8c0037b7d376e93f3ac`.
+  The template is in
+  [`templates/waveshare-esp32-s3-epaper-397/`](templates/waveshare-esp32-s3-epaper-397/)
+  and listed in [`templates/index.json`](templates/index.json).
+- 39 columns in the same order and with the same names as the CrowPanel
+  table. The SEN63C columns are `sen6x_status`, `sen6x_device_status`,
+  `pm1_mass_ug_m3`, `pm25_mass_ug_m3`, `pm4_mass_ug_m3`, `pm10_mass_ug_m3`,
+  `ambient_temperature_c`, `relative_humidity_percent` and `co2_ppm`.
+- `clock_status` gains the class `rtc` (code 2) for rows anchored by the
+  onboard PCF85063 RTC. `none` 0, `host` 1 and `network` 3 keep their
+  CrowPanel codes. The codes come from the template
+  `classification:classes`, never from a table in the app.
+- LIVE keys `seq`, `mono`, `utc`, `sen`, `m1`, `m25`, `m4`, `m10`, `t`, `rh`
+  and `co2`, the same keys, decimals and null rules as the CrowPanel.
+- No STAC File Item sidecar on this board yet, so its dated files have no
+  `<file>.json` next to them.
+- The board advertises `OS-xxxx` and speaks proto 3 like the others. It has
+  no settings screen yet, and the e-paper shows a bring-up screen only.
+- New boot log lines, all prefixed `OS`. `OS BOARD
+  waveshare-esp32-s3-epaper-397 firmware=idf-epaper397-parquet-v0.1 ...`,
+  `OS PMIC bus ...`, `OS PMIC chip=tg28 ...`, `OS POWER ...`,
+  `OS I2C scan bus=... count=... addresses=...`, `OS DISPLAY ready=...
+  panel=ssd1677 ...` and `OS DISPLAY refresh=... ok=... ms=... error=...`.
+  The `OS SEN6X ...`, `OS TF mounted=...` and `OS READY ...` lines match the
+  CrowPanel ones, and `OS TF` reports `bus=sdmmc`.
+
+**Why.** A second e-paper air quality Thing with 16 MB flash, 8 MB PSRAM, a
+battery charger and a real time clock that keeps UTC across power loss.
+
+**What the app must do.** Bundle the new template and show LIVE for this
+board once it verifies, with no per board LIVE profile
+([decision 0003](decisions/0003-metadata-driven-apps.md)). Read labels,
+units, scales and `clock_status` classes from the template, as for the
+CrowPanel. Read the columns by name when it opens a file from this board.
+
 ## WHO step labels from stac-opensensor 204365f (vendor/stac-scales-204365f)
 
 **Every board moves its `desc`. Needs app update and a matched reflash of all
