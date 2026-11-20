@@ -494,8 +494,10 @@ Task definitions in `pixi.toml` own exact commands and sanitizer defaults. The
 archive, transport, settings, logger and geometry host fixtures compile actual
 implementation code against platform fakes. `logger-directory-test` includes
 FatFs mount-root handling through `stat`, since `mkdir` at the mounted root can
-return `EINVAL`. `sd-transfer-buffer-test` covers the 4 KiB internal DMA buffer
-reservation, failed-mount release/retry and lifetime, rather than SD timing.
+return `EINVAL`. `sd-transfer-buffer-test` reuses the 4 KiB internal DMA buffer
+under simulated DMA heap pressure and checks the once only unavailable report
+and its lifetime. It mounts nothing. That a card inserted after radios start
+mounts with the kept buffer stays board qualification.
 
 The LAN task owns non-blocking socket IO. The storage worker services samples
 between bounded ring/credit waits and consumes copied requests serially.

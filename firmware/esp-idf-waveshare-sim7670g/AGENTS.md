@@ -29,7 +29,8 @@ pinned ESP-IDF toolchain, component manifests and partition files. Never borrow 
   field change. `tools/waveshare_collect_reference.h` is the pre-module
   collect, and `waveshare-contract-test` keeps both byte identical row for row.
 - Reserve the heap-owned 4 KiB internal DMA SD transfer buffer before radios
-  and retain it while mounted. Shared connectivity prefers PSRAM for packet/TCP
+  and keep it for the whole boot, also after a failed mount (#168). Shared
+  connectivity prefers PSRAM for packet/TCP
   memory and bounds static Wi-Fi DMA buffers; the diagnostic excludes radios
   and PSRAM. Source/host validation does not qualify this board's native IO.
 - GPIO38 RGB is a board-local startup/card/sensor indicator. Camera, modem

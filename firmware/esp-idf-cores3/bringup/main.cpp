@@ -309,10 +309,10 @@ void report_rtc_imu_touch() {
                static_cast<unsigned>(M5.Touch.getCount()));
 }
 
-// SDSPI attach and FAT mount on the M5GFX-owned bus. Never formats. A
-// remount keeps the DMA buffer: once radios run, internal DMA memory may be
-// too fragmented to reserve it again.
-esp_err_t mount_sd(bool keep_buffer) {
+// SDSPI attach and FAT mount on the M5GFX-owned bus. Never formats. The DMA
+// buffer stays reserved after a failed mount: once radios run, internal DMA
+// memory may be too fragmented to reserve it again (#168).
+esp_err_t mount_sd() {
   // M5GFX owns SPI2 initialization, power and the startup SPI-mode handshake.
   // GPIO35 is shared LCD DC/SD MISO; finish display DMA/transactions before
   // attaching SDSPI. Never independently initialize or free the shared bus.
@@ -337,11 +337,7 @@ esp_err_t mount_sd(bool keep_buffer) {
   device.gpio_cs = static_cast<gpio_num_t>(kSdCs);
   const esp_vfs_fat_sdmmc_mount_config_t mount =
       opensensor::storage::archive_mount_config();
-  const esp_err_t result =
-      esp_vfs_fat_sdspi_mount("/sd", &host, &device, &mount, &sd_card);
-  if (result != ESP_OK && !keep_buffer)
-    sd_transfer_buffer.release();
-  return result;
+  return esp_vfs_fat_sdspi_mount("/sd", &host, &device, &mount, &sd_card);
 }
 
 bool report_sd() {
@@ -359,7 +355,7 @@ bool report_sd() {
                   "format_attempted=false");
     return false;
   }
-  const esp_err_t result = mount_sd(false);
+  const esp_err_t result = mount_sd();
   if (result != ESP_OK) {
     oslog.printf("DIAG sd mounted=false status=missing_or_mount_failed "
                  "error=%d format_attempted=false\n",
@@ -894,7 +890,10 @@ bool telemetry::remount_sd() {
   if (sd_card && esp_vfs_fat_sdcard_unmount("/sd", sd_card) != ESP_OK)
     return false;
   sd_card = nullptr;
-  return mount_sd(true) == ESP_OK;
+  const esp_err_t result = mount_sd();
+  if (result != ESP_OK && sd_transfer_buffer.report_unavailable())
+    oslog.println("DIAG sd remount=false status=dma_buffer_unavailable");
+  return result == ESP_OK;
 }
 std::uint32_t telemetry::sd_cluster_bytes() {
   return opensensor::storage::fat_cluster_bytes(sd_card);

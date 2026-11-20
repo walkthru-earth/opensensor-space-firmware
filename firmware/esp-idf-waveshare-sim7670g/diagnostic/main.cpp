@@ -45,10 +45,10 @@ void init_board() {
   const bool sensor_ready = board::start_sensor();
   const bool mounted = board::mount_card();
   opensensor::console::printf(
-      "OS TF mounted=%u size_bytes=%llu sensor_ready=%u "
+      "OS TF mounted=%u size_bytes=%llu dma_buffer=%u sensor_ready=%u "
       "clk=%d cmd=%d d0=%d width=1 format_attempted=false\n",
       mounted, static_cast<unsigned long long>(board::card_bytes()),
-      sensor_ready, kSdClk, kSdCmd, kSdData0);
+      board::sd_buffer_reserved(), sensor_ready, kSdClk, kSdCmd, kSdData0);
   last_report_ms = static_cast<std::uint32_t>(esp_timer_get_time() / 1000);
 }
 

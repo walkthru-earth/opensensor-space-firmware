@@ -34,7 +34,8 @@ Mount storage before `begin(config, hooks, sd_mounted)`. Use the shared
 [`archive_mount_config()`](../../firmware/common/src/fat_volume.h) and
 [`archive_files.h`](../../firmware/common/src/archive_files.h) descriptor budget,
 including four persistent archive readers. Reserve the 4 KiB internal DMA SD
-transfer buffer before radios and keep it alive while mounted. Then call
+transfer buffer before radios and keep it for the whole boot, also when the
+mount fails, so a card inserted later still mounts. Then call
 `start_links(display_detected)` once and `poll()` on every main-loop pass.
 OSLogger alone accesses files after startup. OSConnectivity alone initializes
 radios, the LAN task writes sockets, and the NimBLE host sends BLE responses.
