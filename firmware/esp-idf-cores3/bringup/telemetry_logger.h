@@ -36,6 +36,8 @@ PmsReading pms_reading(bool present, std::int64_t now_us,
 bool remount_sd();
 std::uint32_t sd_cluster_bytes(); // 0 when unknown
 std::uint32_t sd_volume_serial(); // FAT volume serial, 0 when unknown
+// False once the card stops answering SD CMD13, as a pulled card does.
+bool sd_present();
 bool sd_free_bytes(std::uint64_t &free_bytes);
 // Call on every application loop; takes one snapshot when the 10s deadline is
 // due.

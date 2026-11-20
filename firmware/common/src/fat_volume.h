@@ -69,6 +69,13 @@ inline std::uint32_t fat_volume_serial(sdmmc_card_t *card) {
   return static_cast<std::uint32_t>(serial);
 }
 
+// True when `card` still answers SEND_STATUS (SD CMD13). A pulled card fails
+// it. It reads no sector and never touches FatFs. The caller serializes card
+// access.
+inline bool card_answers(sdmmc_card_t *card) {
+  return card && sdmmc_get_status(card) == ESP_OK;
+}
+
 // Fresh free space of the volume at `base`. FatFs keeps the free cluster
 // count current as files grow; a remount re-reads it after an external edit.
 inline bool fat_free_bytes(const char *base, std::uint64_t &free_bytes) {

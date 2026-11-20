@@ -8,6 +8,8 @@ namespace {
 bool reject_allocations = false;
 unsigned allocations = 0, releases = 0;
 void *active = nullptr;
+template <typename T>
+concept Releasable = requires(T &buffer) { buffer.release(); };
 } // namespace
 
 void *heap_caps_malloc(std::size_t bytes, std::uint32_t caps) {
@@ -35,23 +37,54 @@ int main() {
   static_assert(!std::is_copy_constructible_v<Buffer>);
   static_assert(!std::is_copy_assignable_v<Buffer>);
   static_assert(Buffer::kBytes == Buffer::kSectors * 512);
+  // No board can drop the reservation, so a failed mount keeps it (#168).
+  static_assert(!Releasable<Buffer>);
+  // A buffer reuse test under simulated DMA heap pressure. It does not mount
+  // anything. That a card inserted after radios start mounts with the kept
+  // buffer is board qualification (#168).
   {
+    // Once reserved, the buffer is reused when the heap refuses new DMA
+    // memory, as after radios start.
+    Buffer buffer;
+    assert(buffer.reserve());
+    void *reserved = buffer.data();
+    reject_allocations = true; // radios now hold the DMA heap
+    assert(buffer.reserve() && buffer.data() == reserved);
+    assert(!buffer.report_unavailable()); // reserved, nothing to report
+    assert(buffer.reserve() && buffer.data() == reserved);
+    assert(allocations == 1 && releases == 0);
+    reject_allocations = false;
+  }
+  assert(!active && allocations == 1 && releases == 1);
+  {
+    // A boot that could not reserve reports it once, retries quietly and
+    // takes the buffer when memory allows.
     Buffer buffer;
     reject_allocations = true;
     assert(!buffer.reserve() && !buffer.data());
-    assert(allocations == 1 && releases == 0);
+    assert(buffer.report_unavailable());
+    assert(!buffer.reserve());
+    assert(!buffer.report_unavailable());
     reject_allocations = false;
-    assert(buffer.reserve());
-    void *reserved = buffer.data();
-    reject_allocations = true; // Wi-Fi load cannot allocate another DMA buffer.
-    assert(buffer.reserve() && buffer.data() == reserved);
-    assert(allocations == 2);
-    buffer.release(); // The board releases its reservation if mount fails.
-    assert(!buffer.data() && releases == 1);
-    buffer.release();
-    assert(releases == 1);
-    reject_allocations = false;
-    assert(buffer.reserve()); // Retrying a failed mount can reserve again.
+    assert(buffer.reserve() && buffer.data());
+    assert(!buffer.report_unavailable());
+    assert(allocations == 4 && releases == 1);
   }
-  assert(!active && allocations == 3 && releases == 2);
+  assert(!active && allocations == 4 && releases == 2);
+  {
+    // A mount that failed before it tried to reserve, such as a bus setup
+    // failure, does not use up the one unavailable report.
+    Buffer buffer;
+    assert(!buffer.report_unavailable());
+    reject_allocations = true;
+    assert(!buffer.reserve());
+    assert(buffer.report_unavailable());
+    assert(!buffer.report_unavailable());
+    reject_allocations = false;
+  }
+  assert(allocations == 5 && releases == 2);
+  {
+    Buffer never_reserved; // ends without freeing anything
+  }
+  assert(releases == 2);
 }

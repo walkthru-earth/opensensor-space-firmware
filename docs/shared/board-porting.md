@@ -20,6 +20,7 @@ Descriptors, identity strings and callback contexts must outlive the services.
 | `Hooks::collect` | Sensor acquisition into a zero-initialized row | Main loop only. The runtime supplies clock, identity and standard counters |
 | Storage hooks | `storage_total_bytes`, `storage_used_bytes`, `storage_free_bytes`, `storage_cluster_bytes` | Worker only with bus lock held. Free-space failure returns false and unknown cluster size returns zero |
 | `Hooks::storage_remount` | Optional unmount/remount of the board-owned card | Worker only with bus lock held and no file open. Never format. Without this hook automatic remount recovery is unavailable |
+| `Hooks::storage_present` | Optional card status check, SD CMD13 through `opensensor::storage::card_answers()` | Worker only with bus lock held, about every 5 s while the card may take rows. Never touch the filesystem. False moves the card to retry, so a pulled card stops showing as logging before the next batch commit (#165). Without this hook a pulled card is found only at the next write |
 | `Hooks::lock_bus`, `unlock_bus` | Both callbacks or neither | Borrow an existing bus mutex or let OSLogger create one. Complete display DMA before releasing a shared bus |
 | `Hooks::rtc_read`, `rtc_write` | Optional UTC-second read/write with validation and verified write readback | Main loop only. Reject unset, invalid or voltage-low RTC data. Without RTC, UTC stays null until a real host/network anchor |
 | `report_battery(state, mv)` | Optional battery state from `opensensor::battery::Monitor` in `firmware/common/power` | Main loop only, normally from `collect`. Prints one `POWER STATE` line per change and raises one emergency close of the open file per discharge, run only by the storage worker with bounded retries. Only ok or external power re-arms it. Never resets or sleeps |
@@ -33,7 +34,8 @@ Mount storage before `begin(config, hooks, sd_mounted)`. Use the shared
 [`archive_mount_config()`](../../firmware/common/src/fat_volume.h) and
 [`archive_files.h`](../../firmware/common/src/archive_files.h) descriptor budget,
 including four persistent archive readers. Reserve the 4 KiB internal DMA SD
-transfer buffer before radios and keep it alive while mounted. Then call
+transfer buffer before radios and keep it for the whole boot, also when the
+mount fails, so a card inserted later still mounts. Then call
 `start_links(display_detected)` once and `poll()` on every main-loop pass.
 OSLogger alone accesses files after startup. OSConnectivity alone initializes
 radios, the LAN task writes sockets, and the NimBLE host sends BLE responses.

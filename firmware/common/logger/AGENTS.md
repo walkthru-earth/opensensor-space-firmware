@@ -65,7 +65,7 @@ initialization and each board's schema/provenance remain in its own trial.
   state.
 - The SD space governor never deletes. A full card pauses and alarms; space
   returning or a successful probe resumes. Keep its logic pure in
-  `storage_governor.h`; boards only supply the free, cluster and remount hooks.
+  `storage_governor.h`; boards only supply the free, cluster, remount and presence hooks.
 - Startup archive scans must not print each filename. Retain a bounded summary
   so offline startup does not depend on a USB reader draining archive output.
   Explicit serial `parquet list` still emits entries and its END marker. It

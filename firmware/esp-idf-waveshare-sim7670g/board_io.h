@@ -23,8 +23,16 @@ bool mount_card();
 // Storage worker only, under the logger bus lock. Unmount and mount again so
 // a reinserted card or space freed elsewhere is seen. Never formats.
 bool remount_card();
+// True while the SD DMA buffer is reserved. Once reserved it stays, also with
+// no card, so a card inserted later can mount after radios start (#168).
+bool sd_buffer_reserved();
+// True once, the first time no buffer is reserved when a remount fails.
+bool sd_buffer_unavailable_once();
 std::uint32_t cluster_bytes(); // 0 when unknown
 std::uint32_t volume_serial(); // FAT volume serial, 0 when unknown
+// Storage worker only, under the logger bus lock. False once the card stops
+// answering SD CMD13, as a pulled card does.
+bool card_present();
 bool storage_free_bytes(std::uint64_t &free_bytes);
 std::uint64_t card_bytes();
 std::uint64_t storage_total_bytes();

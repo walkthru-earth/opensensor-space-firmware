@@ -195,7 +195,9 @@ bool rtc_registers(std::uint8_t reg, std::span<std::uint8_t> out) {
 
 // A remount keeps the DMA buffer reserved: once radios run, internal DMA
 // memory may be too fragmented to reserve it again.
-bool mount(bool keep_buffer) {
+// The DMA buffer stays reserved after a failed mount, so a card inserted
+// later still mounts once radios have fragmented internal DMA memory (#168).
+bool mount() {
   if (card)
     return true;
   sdmmc_host_t host = SDMMC_HOST_DEFAULT();
@@ -224,11 +226,8 @@ bool mount(bool keep_buffer) {
   const esp_err_t result =
       esp_vfs_fat_sdmmc_mount("/sd", &host, &slot, &config, &created);
   // The IDF mount helper releases its host and FAT resources on failure.
-  if (result != ESP_OK) {
-    if (!keep_buffer)
-      sd_transfer_buffer.release();
+  if (result != ESP_OK)
     return false;
-  }
   card = created;
   mounted.store(true, std::memory_order_release);
   return true;
@@ -526,18 +525,23 @@ bool rtc_write(std::int64_t seconds, void *) {
          readback - seconds <= 1;
 }
 
-bool mount_card() { return mount(false); }
+bool mount_card() { return mount(); }
+bool sd_buffer_reserved() { return sd_transfer_buffer.data() != nullptr; }
+bool sd_buffer_unavailable_once() {
+  return sd_transfer_buffer.report_unavailable();
+}
 bool remount_card() {
   if (card && esp_vfs_fat_sdcard_unmount("/sd", card) != ESP_OK)
     return false;
   card = nullptr;
   mounted.store(false, std::memory_order_release);
-  return mount(true);
+  return mount();
 }
 bool card_mounted() { return mounted.load(std::memory_order_acquire); }
 std::uint32_t cluster_bytes() {
   return opensensor::storage::fat_cluster_bytes(card);
 }
+bool card_present() { return opensensor::storage::card_answers(card); }
 std::uint32_t volume_serial() {
   return opensensor::storage::fat_volume_serial(card);
 }

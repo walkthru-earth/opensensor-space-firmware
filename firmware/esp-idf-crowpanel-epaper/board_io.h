@@ -47,10 +47,22 @@ bool mount_card();
 // Storage worker only. Unmount and mount again so a reinserted card or space
 // freed elsewhere is seen. Never formats.
 bool remount_card();
+// True while the SD DMA buffer is reserved. Once reserved it stays, also with
+// no card, so a card inserted later can mount after radios start (#168).
+bool sd_buffer_reserved();
+// True once, the first time a remount fails after the buffer reservation
+// failed. A mount that stopped before reserving does not count.
+bool sd_buffer_unavailable_once();
+// Storage worker only. True once, the first time a remount fails because the
+// SPI3 card bus could not be set up.
+bool sd_bus_unavailable_once();
 // Any task. True while a card is mounted.
 bool card_mounted();
 std::uint32_t cluster_bytes(); // 0 when unknown
 std::uint32_t volume_serial(); // FAT volume serial, 0 when unknown
+// Storage worker only, under the logger bus lock. False once the card stops
+// answering SD CMD13, as a pulled card does.
+bool card_present();
 bool storage_free_bytes(std::uint64_t &free_bytes);
 // Any task. The last value storage_free_bytes read, 0 before the first.
 std::uint64_t cached_free_bytes();

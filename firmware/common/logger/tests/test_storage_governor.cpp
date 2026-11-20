@@ -176,6 +176,30 @@ void recheck_resume_then_failed_commit() {
   assert(!g.recheck_due(1000) && !g.probe_due(70) && g.probe_due(71));
 }
 
+void presence_check_schedule() {
+  static_assert(kPresenceSeconds == 5);
+  // Writable states ask once the interval has passed, and not before.
+  assert(presence_due(State::Ready, true, 5, 0));
+  assert(presence_due(State::Degraded, true, 12, 7));
+  assert(!presence_due(State::Ready, true, 4, 0));
+  assert(!presence_due(State::Degraded, true, 11, 7));
+  // An unmounted card, Full and Retry never ask.
+  assert(!presence_due(State::Ready, false, 100, 0));
+  assert(!presence_due(State::Full, true, 100, 0));
+  assert(!presence_due(State::Retry, true, 100, 0));
+  // A failed answer is a write failure. Ready then stops writing and the
+  // Retry probe owns recovery.
+  Governor g;
+  g.configure(64 * GiB);
+  g.observe_free(1 * GiB, 0);
+  assert(g.state() == State::Ready && g.writable());
+  assert(presence_due(g.state(), true, 5, 0));
+  g.write_failed(5);
+  assert(g.state() == State::Retry && !g.writable() && alarm(g.state()));
+  assert(!presence_due(g.state(), true, 10, 5));
+  assert(!g.probe_due(14) && g.probe_due(15));
+}
+
 void names_are_stable() {
   assert(std::strcmp(state_name(State::Ready), "ready") == 0);
   assert(std::strcmp(state_name(State::Degraded), "degraded") == 0);
@@ -200,6 +224,7 @@ int main() {
   full_card_probe();
   remount_partial_scan();
   recheck_resume_then_failed_commit();
+  presence_check_schedule();
   names_are_stable();
   return 0;
 }

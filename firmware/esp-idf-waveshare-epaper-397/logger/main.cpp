@@ -516,7 +516,14 @@ const oslogger::Hooks kHooks{
         },
     .storage_cluster_bytes = [](void *) { return board::cluster_bytes(); },
     .storage_volume_serial = [](void *) { return board::volume_serial(); },
-    .storage_remount = [](void *) { return board::remount_card(); },
+    .storage_remount =
+        [](void *) {
+          const bool ok = board::remount_card();
+          if (!ok && board::sd_buffer_unavailable_once())
+            oslog.println("OS TF remount=false reason=dma_buffer_unavailable");
+          return ok;
+        },
+    .storage_present = [](void *) { return board::card_present(); },
     .rtc_read = board::rtc_read,
     .rtc_write = board::rtc_write,
 };
@@ -1336,11 +1343,13 @@ bool init_board() {
     control.next_poll_us = esp_timer_get_time() + kSensorPollUs;
   }
   const bool mounted = board::mount_card();
-  oslog.printf("OS TF mounted=%u size_bytes=%llu bus=sdmmc width=4 clk=%d "
-               "cmd=%d d0=%d d1=%d d2=%d d3=%d format_attempted=false\n",
+  oslog.printf("OS TF mounted=%u size_bytes=%llu dma_buffer=%u bus=sdmmc "
+               "width=4 clk=%d cmd=%d d0=%d d1=%d d2=%d d3=%d "
+               "format_attempted=false\n",
                mounted, static_cast<unsigned long long>(board::card_bytes()),
-               board::kSdClk, board::kSdCmd, board::kSdData0, board::kSdData1,
-               board::kSdData2, board::kSdData3);
+               board::sd_buffer_reserved(), board::kSdClk, board::kSdCmd,
+               board::kSdData0, board::kSdData1, board::kSdData2,
+               board::kSdData3);
   logging = oslogger::begin(kLoggerConfig, kHooks, mounted);
   const bool ui_ok = display_ok && start_ui_task();
   if (display_ok && !ui_ok)
