@@ -5,15 +5,15 @@
       "dict": "f4f81218dc80d1a8e6db043197a2f7180c4f075f9e8348df30eaceef44d68370",
       "href": "m5stack-cores3/f4f81218dc80d1a8e6db043197a2f7180c4f075f9e8348df30eaceef44d68370.json"
     },
+    "5ef08e04a98cc572a350914b10ae554e85a2823ac923e8c0037b7d376e93f3ac": {
+      "board": "waveshare-esp32-s3-epaper-397",
+      "dict": "a19c450b6fc5bc4bb76e9b52e03aa75bee05cd3c1505d961771279366c820439",
+      "href": "waveshare-esp32-s3-epaper-397/a19c450b6fc5bc4bb76e9b52e03aa75bee05cd3c1505d961771279366c820439.json"
+    },
     "8a01863d48a935e15f3cff3623df00b6aea1ffbeded036a65de80b3affce6634": {
       "board": "waveshare-esp32-s3-sim7670g",
       "dict": "a8605aafb6f76b794e9e7fb32927be6d203afeeb14527206c0e49c1eb0436809",
       "href": "waveshare-esp32-s3-sim7670g/a8605aafb6f76b794e9e7fb32927be6d203afeeb14527206c0e49c1eb0436809.json"
-    },
-    "d4a78524071619569f5592d0df058f25e7b3de2350bd0018ce08aa173b374f37": {
-      "board": "waveshare-esp32-s3-epaper-397",
-      "dict": "a19c450b6fc5bc4bb76e9b52e03aa75bee05cd3c1505d961771279366c820439",
-      "href": "waveshare-esp32-s3-epaper-397/a19c450b6fc5bc4bb76e9b52e03aa75bee05cd3c1505d961771279366c820439.json"
     },
     "fe3097b4ca313128e82c15578607accd61e788030f0e2108a7282ffd8f9d7c5c": {
       "board": "elecrow-crowpanel-epaper-42",
@@ -24,7 +24,7 @@
   "templates": {
     "a19c450b6fc5bc4bb76e9b52e03aa75bee05cd3c1505d961771279366c820439": {
       "board": "waveshare-esp32-s3-epaper-397",
-      "desc": "d4a78524071619569f5592d0df058f25e7b3de2350bd0018ce08aa173b374f37",
+      "desc": "5ef08e04a98cc572a350914b10ae554e85a2823ac923e8c0037b7d376e93f3ac",
       "href": "waveshare-esp32-s3-epaper-397/a19c450b6fc5bc4bb76e9b52e03aa75bee05cd3c1505d961771279366c820439.json",
       "schema": "waveshare-epaper-397-telemetry-v1"
     },

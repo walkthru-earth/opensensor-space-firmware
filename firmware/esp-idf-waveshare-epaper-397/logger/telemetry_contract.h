@@ -36,7 +36,7 @@ constexpr const char *kBoard = "waveshare-esp32-s3-epaper-397";
 constexpr const char *kDictionaryUri =
     "https://raw.githubusercontent.com/walkthru-earth/"
     "opensensor-space-firmware/"
-    "9b1baebb62509349596f3d02f4cbd864133310d8/"
+    "4261fa62738696d264c29f0fcfd493f844d9b725/"
     "firmware/esp-idf-waveshare-epaper-397/logger/telemetry_fields.inc";
 static_assert(
     opensensor::pinned::names(kDictionaryUri,

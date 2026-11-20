@@ -409,7 +409,7 @@ inline constexpr char kTemplateJson[] =
     "d\":39,\"opensensor:aggregate\":\"mode\",\"opensensor:decimals\":0,\"opens"
     "ensor:group\":\"location\"}]}},\"links\":[{\"rel\":\"describedby\",\"href"
     "\":\"https://raw.githubusercontent.com/walkthru-earth/opensensor-space-fir"
-    "mware/9b1baebb62509349596f3d02f4cbd864133310d8/firmware/esp-idf-waveshare-"
+    "mware/4261fa62738696d264c29f0fcfd493f844d9b725/firmware/esp-idf-waveshare-"
     "epaper-397/logger/telemetry_fields.inc\",\"type\":\"text/plain\",\"title\""
     ":\"Firmware column dictionary\",\"file:checksum\":\"1220a19c450b6fc5bc4bb7"
     "6e9b52e03aa75bee05cd3c1505d961771279366c820439\"}],\"firmware\":{\"schema"
