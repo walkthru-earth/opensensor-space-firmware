@@ -65,6 +65,29 @@ static_assert(!window_ok({.x = 4, .y = 0, .w = 8, .h = 1}));
 static_assert(!window_ok({.x = 792, .y = 0, .w = 16, .h = 1}));
 static_assert(!window_ok({.x = 0, .y = 0, .w = 0, .h = 0}));
 
+// Data entry mode 0x01 counts RAM y down, so frame row r lives at RAM row
+// kH - 1 - r. Every write starts at the RAM row of the window's top frame
+// row and stops at the RAM row of its bottom one. Full and partial writes
+// share this map, so a partial window lands exactly where a full frame puts
+// the same rows. Before 2026-11-21 the partial path started at RAM row y
+// instead, which shifted each window up by 2y + h - kH rows on the glass.
+struct RamRows {
+  unsigned start = 0; // 0x45 start and the 0x4F origin, the top frame row.
+  unsigned end = 0;   // 0x45 end, the bottom frame row.
+};
+constexpr RamRows ram_rows(const Rect &w) {
+  return {.start = kH - 1 - static_cast<unsigned>(w.y),
+          .end = kH - 1 - static_cast<unsigned>(w.bottom() - 1)};
+}
+static_assert(ram_rows(kAll).start == kH - 1 && ram_rows(kAll).end == 0);
+// A window keeps its frame rows, wherever it sits.
+static_assert(ram_rows({.x = 0, .y = 100, .w = 8, .h = 370}).start ==
+              ram_rows(kAll).start - 100);
+static_assert(ram_rows({.x = 0, .y = 100, .w = 8, .h = 370}).end ==
+              ram_rows(kAll).start - 469);
+static_assert(ram_rows({.x = 0, .y = 479, .w = 8, .h = 1}).start == 0);
+static_assert(ram_rows({.x = 0, .y = 479, .w = 8, .h = 1}).end == 0);
+
 } // namespace
 
 std::expected<void, Error> Ssd1677::wait_idle(int timeout_ms) {
@@ -205,12 +228,16 @@ std::expected<void, Error> Ssd1677::init_mode(State mode) {
   if (mode == State::Full)
     if (auto r = cmd(0x3C, {0x01}); !r) // Border waveform.
       return r;
+  static constexpr RamRows kRows = ram_rows(kAll);
   static constexpr std::array<Reg, 5> kWindow{{
       {.cmd = 0x11, .len = 1, .data = {0x01}}, // X increment, Y decrement.
       {.cmd = 0x44, .len = 4, .data = {0x00, 0x00, lo(kW - 1), hi(kW - 1)}},
-      {.cmd = 0x45, .len = 4, .data = {lo(kH - 1), hi(kH - 1), 0x00, 0x00}},
+      {.cmd = 0x45,
+       .len = 4,
+       .data = {lo(kRows.start), hi(kRows.start), lo(kRows.end),
+                hi(kRows.end)}},
       {.cmd = 0x4E, .len = 2, .data = {0x00, 0x00}},
-      {.cmd = 0x4F, .len = 2, .data = {0x00, 0x00}},
+      {.cmd = 0x4F, .len = 2, .data = {lo(kRows.start), hi(kRows.start)}},
   }};
   for (const Reg &reg : kWindow)
     if (auto r = cmd(reg.cmd, std::span{reg.data}.first(reg.len)); !r)
@@ -242,10 +269,11 @@ Ssd1677::show_whole(std::span<const std::uint8_t> frame, State mode) {
   if (state_ != mode)
     if (auto r = init_mode(mode); !r)
       return r;
+  constexpr RamRows rows = ram_rows(kAll);
   for (const std::uint8_t reg : {std::uint8_t{0x24}, std::uint8_t{0x26}}) {
     if (auto r = cmd(0x4E, {0x00, 0x00}); !r)
       return r;
-    if (auto r = cmd(0x4F, {0x00, 0x00}); !r)
+    if (auto r = cmd(0x4F, {lo(rows.start), hi(rows.start)}); !r)
       return r;
     if (auto r = write_ram(reg, frame, kAll); !r)
       return r;
@@ -257,28 +285,35 @@ Ssd1677::show_whole(std::span<const std::uint8_t> frame, State mode) {
 }
 
 // The demo's EPD_Display_Partial. Only a hardware reset, so RAM 0x26 keeps
-// the base image, then the window and 0x24.
+// the base image, then the window and 0x24. The demo sends the window rows
+// as frame rows, which is right only for a window centred on the panel, so
+// the rows here go through ram_rows() like the full frame does. The data
+// entry mode is sent again so the row order never rests on what the reset
+// left in 0x11.
 std::expected<void, Error>
 Ssd1677::show_window(std::span<const std::uint8_t> frame, const Rect &w) {
   const auto x = static_cast<unsigned>(w.x);
-  const auto y = static_cast<unsigned>(w.y);
-  // First pixel of the last byte, and the last row.
+  // First pixel of the last byte.
   const unsigned x_end = x + static_cast<unsigned>(w.w) - 8;
-  const unsigned y_end = y + static_cast<unsigned>(w.h) - 1;
+  const RamRows rows = ram_rows(w);
   hw_reset();
   state_ = State::Partial;
   if (auto r = cmd(0x18, {0x80}); !r)
     return r;
   if (auto r = cmd(0x3C, {0x80}); !r)
     return r;
+  if (auto r = cmd(0x11, {0x01}); !r) // X increment, Y decrement.
+    return r;
   if (auto r = cmd(0x44, {lo(x), hi(x), lo(x_end), hi(x_end)}); !r)
     return r;
-  if (auto r = cmd(0x45, {lo(y_end), hi(y_end), lo(y), hi(y)}); !r)
+  if (auto r = cmd(
+          0x45, {lo(rows.start), hi(rows.start), lo(rows.end), hi(rows.end)});
+      !r)
     return r;
-  auto origin = [this, x, y]() -> std::expected<void, Error> {
+  auto origin = [this, x, rows]() -> std::expected<void, Error> {
     if (auto r = cmd(0x4E, {lo(x), hi(x)}); !r)
       return r;
-    return cmd(0x4F, {lo(y), hi(y)});
+    return cmd(0x4F, {lo(rows.start), hi(rows.start)});
   };
   if (auto r = origin(); !r)
     return r;
