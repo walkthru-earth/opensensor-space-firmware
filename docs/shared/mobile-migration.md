@@ -9,6 +9,36 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## Shared e-paper UI on the Waveshare ePaper-3.97
+
+**Log lines only, no app change.** The ePaper-3.97 replaces its bring-up
+screen with the shared e-paper UI the CrowPanel runs. No column, LIVE key,
+response, config key, version, dictionary or digest changes. CoreS3,
+Waveshare V2 and CrowPanel do not change.
+
+**What changed.**
+
+- `OS BOARD waveshare-esp32-s3-epaper-397 ...` ends with `keys=<0|1>`, as on
+  the CrowPanel.
+- `OS DISPLAY ready=... panel=ssd1677 ...` now reads `screen=ui
+  history_bytes=<n>` where it read `screen=bringup`. `OS DISPLAY refresh=`
+  can now also report `partial`.
+- New `OS PANEL settings operation=<load|save> error=<n> refresh_s=...
+  start_page=... sleep_s=... altitude_m=... co2_asc=... temp_offset_dc=...
+  theme=<light|dark> rotation=<0|90|180|270|auto>` on each settings load and
+  save, and `OS PANEL rotation=<0|90|180|270> source=<auto|setting>` each time
+  the shown rotation changes.
+- New `OS ERROR operation=ui-task-create` and `OS ERROR
+  operation=display-show error=... mode=...`, the CrowPanel lines.
+- The board declares no `panel.*` or `sen6x.*` phone keys yet, so
+  `GET_CONFIG` page 7 stays empty on this board.
+
+**Why.** The board gets the dashboard, charts, status page and settings
+popup, and its accelerometer turns the picture when Rotation is Auto.
+
+**What the app must do.** Nothing. A log viewer that matches `screen=bringup`
+should match `screen=ui` instead.
+
 ## Waveshare ESP32-S3-ePaper-3.97 board with the SEN63C (feat/waveshare-epaper-397)
 
 **A new board. Needs app update to bundle its template, no change for the

@@ -19,16 +19,27 @@ trial's settings or pins.
   the 4-bit SDMMC card (CLK16, CMD17, D0 15, D1 7, D2 8, D3 18). The SHTC3
   (0x70) and the ES8311 codec (0x18) stay untouched. The SEN63C needs
   external 10 k pull-ups to 3V3.
-- The display task (`os-epd`, core 1) alone owns SPI3 and the panel
-  (`display/epd_ssd1677.*`). It switches the panel supply on TG28 ALDO3
-  through `board::panel_power`. `display/bringup_screen.*` is a temporary
-  screen until the shared e-paper UI lands. Do not grow it into a UI, and do
-  not touch the CrowPanel display code or create a common UI component here.
+- The UI task (`os-ui`, core 1, 8 KiB) alone owns SPI3, the panel
+  (`display/epd_ssd1677.*`, an `epd::Panel`), the chart history, the three
+  PSRAM frames, the orientation tracker and the `ospanel/ui` settings blob
+  after `init_board`. The driver switches the panel supply on TG28 ALDO3
+  through `board::panel_power`. The pages, the refresh policy and the tracker
+  are the shared `firmware/common/epaper_ui`. Board specific values go in
+  `display/display_profile.h`, never in the shared component, and
+  `pixi run epaper-ui-test` holds that profile to the host 800 x 480 one.
+- The keys are GPIO 4 Up, 6 Down, 5 Press and 0 (BOOT) Menu, from the
+  Waveshare demo cited in `board_io.h`. There is no Exit key. A 10 ms
+  esp_timer scan debounces them into a queue for the UI task.
 - The QMI8658A runs the accelerometer only, 3 Hz low power, gyro off. The
-  board task polls it about every 500 ms and `board::read_orientation()`
-  returns the quarter turn for any task. The UI owns hysteresis. The axis
-  table `kImuToPanel` is provisional until the owner test in the board README
-  passes. The board must keep logging when the IMU does not answer.
+  board task polls it about every 500 ms and caches the quarter turn
+  (`board::read_orientation()`) and the raw counts (`board::last_accel()`)
+  for any task. Under Rotation Auto the UI task feeds the cached counts to
+  the shared tracker, which owns hysteresis and the 2 s stability window. The
+  UI task never reads the I2C bus. The axis table `kImuToPanel` is
+  provisional until the owner test in the board README passes. The board must
+  keep logging when the IMU does not answer.
+- No phone `config_keys` yet. Adding them moves the desc digest and needs the
+  pinned URI commit steps in `docs/shared/templates/README.md`.
 - The PCF85063 is the RTC hook. UTC stays null until it holds a set time or a
   host or network anchor arrives. Location starts unset, H3 res 8 only.
 - Sensor collection is the module table in `logger/sensor_modules.h` from
