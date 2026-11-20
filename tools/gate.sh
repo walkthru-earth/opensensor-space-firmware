@@ -99,6 +99,7 @@ tasks=(
   # Logger lifecycle, storage and persistence
   "debug-log-test"
   "coredump-report-test"
+  "flash-volume-test"
   "logger-work-queue-test"
   "logger-watchdog-test"
   "logger-bench-stall-test"

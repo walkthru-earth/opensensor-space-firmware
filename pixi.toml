@@ -201,6 +201,7 @@ crowpanel-fonts-test = "python tools/crowpanel_gen_fonts.py --check"
 battery-health-test = "python tools/test_battery_health.py --sanitize"
 upload-test = "python tools/test_upload.py --sanitize"
 coredump-report-test = "python tools/test_coredump_report.py --sanitize"
+flash-volume-test = "python tools/test_flash_volume.py --sanitize"
 connectivity-build-test = "tools/build_connectivity_fixture.sh"
 # Fixture dialect check on crafted compiler databases, and every SDK fixture calls it (#45).
 compile-dialect-test = "python tools/test_compile_dialect.py"
