@@ -10,6 +10,7 @@
 #include <fat_volume.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <numeric>
 #include <sd_transfer_buffer.h>
 #include <sdmmc_cmd.h>
 #include <utc_clock.h>
@@ -37,6 +38,11 @@ std::int64_t imu_next_us = 0;
 // kNoTurn, the rest the esp_timer microseconds of the read.
 constexpr std::uint8_t kNoTurn = 0xFF;
 std::atomic<std::uint64_t> orientation_cache{kNoTurn};
+// The board task writes, any task reads. The raw x, y and z of the last read
+// as 16 bits each from bit 0, and bit 48 set when that read succeeded. Its
+// age is the orientation_cache stamp, both are stored by the same poll.
+constexpr std::uint64_t kAccelValid = 1ULL << 48;
+std::atomic<std::uint64_t> accel_cache{0};
 
 sdmmc_card_t *card = nullptr;
 opensensor::storage::SdTransferBuffer sd_transfer_buffer;
@@ -369,6 +375,13 @@ poll_orientation(std::int64_t now_us) {
     return std::nullopt;
   imu_next_us = now_us + kImuPollUs;
   const auto accel = read_accel();
+  const auto bits = [](std::int16_t v) {
+    return static_cast<std::uint64_t>(static_cast<std::uint16_t>(v));
+  };
+  accel_cache.store(accel ? kAccelValid | bits(accel->x) |
+                                (bits(accel->y) << 16) | (bits(accel->z) << 32)
+                          : 0,
+                    std::memory_order_relaxed);
   store_orientation(accel ? quarter_turn(*accel) : std::nullopt, now_us);
   return accel;
 }
@@ -381,6 +394,19 @@ std::optional<std::uint8_t> read_orientation() {
   if (turn > 3 || esp_timer_get_time() - stamp > kImuStaleUs)
     return std::nullopt;
   return turn;
+}
+
+std::optional<Accel> last_accel() {
+  const std::uint64_t cached = accel_cache.load(std::memory_order_relaxed);
+  const auto stamp = static_cast<std::int64_t>(
+      orientation_cache.load(std::memory_order_relaxed) >> 8);
+  if ((cached & kAccelValid) == 0 || esp_timer_get_time() - stamp > kImuStaleUs)
+    return std::nullopt;
+  const auto word = [cached](int shift) {
+    return static_cast<std::int16_t>(
+        static_cast<std::uint16_t>((cached >> shift) & 0xFFFF));
+  };
+  return Accel{.x = word(0), .y = word(16), .z = word(32)};
 }
 
 const char *to_string(PmicError e) {
@@ -537,5 +563,24 @@ std::uint64_t storage_total_bytes() {
 std::uint64_t storage_used_bytes() {
   refresh_capacity();
   return cached_used_bytes;
+}
+
+bool start_keys() {
+  const auto mask = std::accumulate(
+      kKeys.begin(), kKeys.end(), std::uint64_t{0},
+      [](std::uint64_t bits, int key) { return bits | (1ULL << key); });
+  const gpio_config_t pins{.pin_bit_mask = mask,
+                           .mode = GPIO_MODE_INPUT,
+                           .pull_up_en = GPIO_PULLUP_ENABLE,
+                           .pull_down_en = GPIO_PULLDOWN_DISABLE,
+                           .intr_type = GPIO_INTR_DISABLE};
+  return gpio_config(&pins) == ESP_OK;
+}
+std::uint8_t keys_held() {
+  std::uint8_t held = 0;
+  for (std::size_t i = 0; i < kKeys.size(); ++i)
+    if (gpio_get_level(static_cast<gpio_num_t>(kKeys[i])) == 0)
+      held = static_cast<std::uint8_t>(held | (1U << i));
+  return held;
 }
 } // namespace board

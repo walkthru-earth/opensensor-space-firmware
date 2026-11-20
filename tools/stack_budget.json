@@ -270,15 +270,9 @@
       ]
     },
     "os-ui": {
-      "about": "CrowPanel e-paper UI task. Renders the dashboard from the UI feed and drives the UC8276C panel over SPI.",
+      "about": "E-paper UI task on the CrowPanel and the ePaper-3.97. Renders the shared dashboard from the UI feed and drives the board's panel over SPI.",
       "entry": [
         "*{anonymous}::ui_task(*"
-      ]
-    },
-    "os-epd": {
-      "about": "ePaper-3.97 bring-up display task. Draws the bring-up screen from the display feed and drives the SSD1677 panel over SPI.",
-      "entry": [
-        "*{anonymous}::display_task(*"
       ]
     },
     "esp_timer": {
@@ -551,10 +545,10 @@
           "measured": 4720,
           "budget": 5248
         },
-        "os-epd": {
-          "stack_bytes": 6144,
-          "measured": 2320,
-          "budget": 2560
+        "os-ui": {
+          "stack_bytes": 8192,
+          "measured": 3344,
+          "budget": 3712
         },
         "esp_timer": {
           "measured": 592,
@@ -568,17 +562,17 @@
       "sections": {
         ".iram0.text": 127744,
         ".dram0.data": 34560,
-        ".dram0.bss": 58368,
-        ".flash.text": 1161984,
-        ".flash.rodata": 399104,
+        ".dram0.bss": 58880,
+        ".flash.text": 1195776,
+        ".flash.rodata": 436224,
         ".noinit": 0
       },
       "sections_measured": {
         ".iram0.text": 125195,
-        ".dram0.data": 33808,
-        ".dram0.bss": 57024,
-        ".flash.text": 1139186,
-        ".flash.rodata": 391104,
+        ".dram0.data": 33872,
+        ".dram0.bss": 57504,
+        ".flash.text": 1172254,
+        ".flash.rodata": 427600,
         ".noinit": 0
       }
     }

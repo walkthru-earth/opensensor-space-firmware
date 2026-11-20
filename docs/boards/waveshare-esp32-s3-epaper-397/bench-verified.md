@@ -78,7 +78,30 @@ Open findings from this boot.
 - The IMU to panel axis map is provisional. The owner test in the board
   README confirms or fixes it.
 
-Not shown yet. The panel content and its orientation on the glass, partial
-refresh, the IMU lines on device, battery operation, the RTC set and kept
+## Shared e-paper UI, 2026-11-20, built only
+
+- The bring-up screen is gone. The panel runs the shared
+  `firmware/common/epaper_ui` pages at the 800 x 480 layout with the Large
+  fonts, through the `epd::Ssd1677` panel driver, the four GPIO keys and the
+  `ospanel/ui` settings blob. Rotation Auto feeds the cached accelerometer
+  read to the shared orientation tracker.
+- Built only, never flashed. The app image built from the working tree before
+  these commits is 1,760,368 bytes (0x1adc70), 67,472 bytes more than the IMU
+  hook image, with 72% of the 6 MiB slot free. Rebuild from the merged commit
+  before flashing, the App version then names that commit.
+- The dict and desc digests are unchanged. `os-ui` measures 3,344 bytes
+  static worst case in its 8 KiB stack.
+- `pixi run epaper-ui-test` holds the board profile to the host 800 x 480
+  profile and checks that the tracker, fed the board's raw axes, settles on
+  the rotation that `board::quarter_turn()` implies for each of the four
+  poses, and keeps the last one while the device lies flat. This proves the
+  host logic only, not the axis table on the real board.
+- The SSD1677 partial window refresh and its ms are not measured. The
+  profile keeps `full_ms=2531` from the first boot and 0 for the unmeasured
+  fast and partial times.
+
+Not shown yet. The UI pages, keys and settings popup on the glass, the
+picture turning with the device under Auto, partial refresh, the IMU lines on
+device, battery operation, the RTC set and kept
 across a power cut, SEN63C values against a reference, BLE and LAN sync, OTA,
 endurance and power-cut durability.

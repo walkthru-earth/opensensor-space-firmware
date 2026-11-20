@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "display/display_profile.h"
 #include "display_profile.h"
 #include "epaper_ui/air_band.h"
 #include "epaper_ui/canvas.h"
@@ -1780,6 +1781,56 @@ void test_crowpanel_profile() {
   CHECK(validate(board).has_value());
 }
 
+// The ePaper-3.97 profile is the host 800 x 480 one apart from its measured
+// full refresh and its motion sensor, so the 800 x 480 previews are the
+// frames it sends.
+void test_epaper397_profile() {
+  const DisplayProfile &board = opensensor::epaper397::kDisplayProfile;
+  const DisplayProfile &host = kHost800x480;
+  CHECK(board.width == host.width && board.height == host.height);
+  CHECK(board.depth == host.depth);
+  CHECK(board.frame_bytes() == host.frame_bytes());
+  CHECK(board.logical_frame_bytes() == host.logical_frame_bytes());
+  CHECK(board.font_scale == host.font_scale);
+  CHECK(board.layout == host.layout);
+  CHECK(board.rotated_layout == host.rotated_layout);
+  CHECK(board.mount == host.mount);
+  CHECK(board.refresh.fast && board.refresh.partial &&
+        board.refresh.partial_window);
+  CHECK(board.refresh.full_ms == 2531);
+  CHECK(board.refresh.fast_ms == 0 && board.refresh.partial_ms == 0);
+  CHECK(board.refresh.partials_per_full == 20);
+  CHECK(board.orientation.present);
+  CHECK(validate(board).has_value());
+  // The tracker reads board::kImuToPanel, the table the board's own
+  // quarter_turn() logs with. A device turned clockwise by q quarters shows
+  // the picture turned back by q, so each pose the board logs as quarter q
+  // settles on R(4 - q).
+  struct Pose {
+    std::int16_t x;
+    std::int16_t y;
+  };
+  constexpr std::array<Pose, 4> kPoses{
+      {{0, -16384}, {-16384, 0}, {0, 16384}, {16384, 0}}};
+  for (std::size_t q = 0; q < kPoses.size(); ++q) {
+    const board::Accel a{.x = kPoses[q].x, .y = kPoses[q].y, .z = 0};
+    CHECK(board::quarter_turn(a) == q);
+    OrientationTracker t{board.orientation.axes, board.mount};
+    const Gravity up{.x = static_cast<float>(a.x),
+                     .y = static_cast<float>(a.y),
+                     .z = static_cast<float>(a.z)};
+    for (std::uint32_t ms = 0; ms <= 2500; ms += 500)
+      static_cast<void>(t.update(up, ms));
+    CHECK(t.current() == static_cast<Rotation>((4 - q) % 4));
+  }
+  // Lying flat keeps the picture where it is.
+  OrientationTracker flat{board.orientation.axes, Rotation::R90};
+  for (std::uint32_t ms = 0; ms <= 2500; ms += 500)
+    static_cast<void>(
+        flat.update(Gravity{.x = 0.0F, .y = 0.0F, .z = 16384.0F}, ms));
+  CHECK(flat.current() == Rotation::R90);
+}
+
 void test_profile() {
   CHECK(validate(kHost400x300).has_value());
   CHECK(validate(kHost800x480).has_value());
@@ -2363,6 +2414,7 @@ int main() {
   test_restore_order();
   test_profile();
   test_crowpanel_profile();
+  test_epaper397_profile();
   test_policy_caps();
   test_rotate();
   test_changed_window();

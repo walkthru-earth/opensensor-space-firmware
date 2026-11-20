@@ -1,10 +1,4 @@
-// SSD1677 controller states, tracked in `state`.
-//   Off      supply off or controller in deep sleep. The way out is a RST
-//            pulse and a full register init.
-//   Full     initialised for the full waveform.
-//   Fast     initialised for the fast waveform, temperature forced to 0x6A.
-//   Partial  after a partial refresh, which leaves a window and border
-//            setting that Full and Fast must init over again.
+// SSD1677 controller states are tracked in `state_`, see the header.
 //
 // RAM 0x24 holds the new image and 0x26 the previous one. A set RAM bit is
 // white, the opposite of the frame, so every write inverts.
@@ -37,30 +31,43 @@ constexpr spi_host_device_t kHost = SPI3_HOST;
 constexpr int kSpiHz = 20 * 1000 * 1000;
 constexpr std::size_t kChunk = 4096; // Also the bus max_transfer_sz.
 
-// A full refresh measured about 3 s in the demo. A reset settles in well
+// A full refresh measured 2531 ms on the owner unit. A reset settles in well
 // under a second.
 constexpr int kRefreshTimeoutMs = 10000;
 constexpr int kResetTimeoutMs = 2000;
 
-enum class State : std::uint8_t { Off, Full, Fast, Partial };
-
-struct Driver {
-  spi_device_handle_t dev = nullptr;
-  std::uint8_t *chunk = nullptr; // Internal DMA RAM, kChunk bytes.
-  State state = State::Off;
-  bool started = false;
-  bool powered = false;
-  bool bus_owned = false;
-  bool base_valid = false;
-};
-constinit Driver driver{};
+// The panel size for register arguments.
+constexpr unsigned kW = kWidth;
+constexpr unsigned kH = kHeight;
 
 void delay_ms(int ms) {
   const TickType_t ticks = pdMS_TO_TICKS(ms);
   vTaskDelay(ticks > 0 ? ticks : 1);
 }
 
-std::expected<void, Error> wait_idle(int timeout_ms) {
+spi_device_handle_t handle(void *dev) {
+  return static_cast<spi_device_handle_t>(dev);
+}
+
+constexpr std::uint8_t lo(unsigned v) { return static_cast<std::uint8_t>(v); }
+constexpr std::uint8_t hi(unsigned v) {
+  return static_cast<std::uint8_t>(v >> 8);
+}
+
+// A window the controller can take, inside the panel and byte aligned in x.
+constexpr bool window_ok(const Rect &w) {
+  return w.x >= 0 && w.y >= 0 && w.w > 0 && w.h > 0 && w.x % 8 == 0 &&
+         w.w % 8 == 0 && w.right() <= kWidth && w.bottom() <= kHeight;
+}
+constexpr Rect kAll{.x = 0, .y = 0, .w = kWidth, .h = kHeight};
+static_assert(window_ok(kAll));
+static_assert(!window_ok({.x = 4, .y = 0, .w = 8, .h = 1}));
+static_assert(!window_ok({.x = 792, .y = 0, .w = 16, .h = 1}));
+static_assert(!window_ok({.x = 0, .y = 0, .w = 0, .h = 0}));
+
+} // namespace
+
+std::expected<void, Error> Ssd1677::wait_idle(int timeout_ms) {
   // The demo waits 100 ms before it looks at BUSY, the controller may not
   // have raised it yet right after a command.
   delay_ms(100);
@@ -78,12 +85,13 @@ std::expected<void, Error> wait_idle(int timeout_ms) {
   return {};
 }
 
-std::expected<void, Error> transmit(std::span<const std::uint8_t> bytes) {
+std::expected<void, Error>
+Ssd1677::transmit(std::span<const std::uint8_t> bytes) {
   spi_transaction_t t{};
   t.length = bytes.size() * 8;
   t.tx_buffer = bytes.data();
   gpio_set_level(kCs, 0);
-  const esp_err_t result = spi_device_polling_transmit(driver.dev, &t);
+  const esp_err_t result = spi_device_polling_transmit(handle(dev_), &t);
   gpio_set_level(kCs, 1);
   if (result != ESP_OK)
     return std::unexpected(Error::Spi);
@@ -92,48 +100,45 @@ std::expected<void, Error> transmit(std::span<const std::uint8_t> bytes) {
 
 // Command byte, then up to kChunk data bytes, both staged in the DMA buffer
 // so nothing is read from flash or PSRAM by the SPI DMA.
-std::expected<void, Error> cmd(std::uint8_t c,
-                               std::span<const std::uint8_t> data = {}) {
-  driver.chunk[0] = c;
+std::expected<void, Error> Ssd1677::cmd(std::uint8_t c,
+                                        std::span<const std::uint8_t> data) {
+  chunk_[0] = c;
   gpio_set_level(kDc, 0);
-  if (auto r = transmit({driver.chunk, 1}); !r)
+  if (auto r = transmit({chunk_, 1}); !r)
     return r;
   if (data.empty())
     return {};
   for (std::size_t i = 0; i < data.size(); ++i)
-    driver.chunk[i] = data[i];
+    chunk_[i] = data[i];
   gpio_set_level(kDc, 1);
-  return transmit({driver.chunk, data.size()});
+  return transmit({chunk_, data.size()});
 }
 
-std::expected<void, Error> cmd(std::uint8_t c,
-                               std::initializer_list<std::uint8_t> data) {
+std::expected<void, Error>
+Ssd1677::cmd(std::uint8_t c, std::initializer_list<std::uint8_t> data) {
   return cmd(c, std::span<const std::uint8_t>{data.begin(), data.size()});
-}
-
-constexpr std::uint8_t lo(unsigned v) { return static_cast<std::uint8_t>(v); }
-constexpr std::uint8_t hi(unsigned v) {
-  return static_cast<std::uint8_t>(v >> 8);
 }
 
 // Writes the rows of `window` from `frame` into RAM register `reg`,
 // inverted, in kChunk transfers. The controller address counters must
 // already point at the window's first byte.
-std::expected<void, Error> write_ram(std::uint8_t reg,
-                                     std::span<const std::uint8_t> frame,
-                                     const Window &window) {
+std::expected<void, Error>
+Ssd1677::write_ram(std::uint8_t reg, std::span<const std::uint8_t> frame,
+                   const Rect &window) {
   if (auto r = cmd(reg); !r)
     return r;
   gpio_set_level(kDc, 1);
-  const std::size_t row_bytes = window.w / 8;
-  const std::size_t first = window.x / 8;
+  const auto row_bytes = static_cast<std::size_t>(window.w / 8);
+  const auto first = static_cast<std::size_t>(window.x / 8);
+  const auto top = static_cast<std::size_t>(window.y);
+  const auto bottom = static_cast<std::size_t>(window.bottom());
   std::size_t fill = 0;
-  for (std::size_t y = window.y; y < std::size_t{window.y} + window.h; ++y) {
+  for (std::size_t y = top; y < bottom; ++y) {
     const auto row = frame.subspan(y * kStride + first, row_bytes);
     for (const std::uint8_t byte : row) {
-      driver.chunk[fill++] = static_cast<std::uint8_t>(~byte);
+      chunk_[fill++] = static_cast<std::uint8_t>(~byte);
       if (fill == kChunk) {
-        if (auto r = transmit({driver.chunk, fill}); !r)
+        if (auto r = transmit({chunk_, fill}); !r)
           return r;
         fill = 0;
       }
@@ -141,10 +146,10 @@ std::expected<void, Error> write_ram(std::uint8_t reg,
   }
   if (fill == 0)
     return {};
-  return transmit({driver.chunk, fill});
+  return transmit({chunk_, fill});
 }
 
-void hw_reset() {
+void Ssd1677::hw_reset() {
   gpio_set_level(kRst, 1);
   delay_ms(50);
   gpio_set_level(kRst, 0);
@@ -153,19 +158,22 @@ void hw_reset() {
   delay_ms(50);
 }
 
-std::expected<void, Error> power_on() {
-  if (driver.powered)
+std::expected<void, Error> Ssd1677::power_on() {
+  if (powered_)
     return {};
-  if (!board::panel_power(true))
-    return std::unexpected(Error::PanelPower);
-  driver.powered = true;
+  if (const auto on = board::panel_power(true); !on) {
+    ESP_LOGE(kTag, "panel supply on failed, pmic %s",
+             board::to_string(on.error()));
+    return std::unexpected(Error::NotReady);
+  }
+  powered_ = true;
   // The rail feeds the panel through Q3 and Q2, let it settle.
   delay_ms(10);
   return {};
 }
 
 // Reset and full screen window, the demo's EPD_Init and EPD_Init_Fast.
-std::expected<void, Error> init_mode(State mode) {
+std::expected<void, Error> Ssd1677::init_mode(State mode) {
   if (auto r = power_on(); !r)
     return r;
   if (mode == State::Fast)
@@ -189,7 +197,7 @@ std::expected<void, Error> init_mode(State mode) {
       {.cmd = 0x0C, .len = 5, .data = {0xAE, 0xC7, 0xC3, 0xC0, 0x80}},
       {.cmd = 0x01,
        .len = 3,
-       .data = {lo(kHeight - 1), hi(kHeight - 1), 0x02}}, // Gate lines.
+       .data = {lo(kH - 1), hi(kH - 1), 0x02}}, // Gate lines.
   }};
   for (const Reg &reg : kBooster)
     if (auto r = cmd(reg.cmd, std::span{reg.data}.first(reg.len)); !r)
@@ -199,12 +207,8 @@ std::expected<void, Error> init_mode(State mode) {
       return r;
   static constexpr std::array<Reg, 5> kWindow{{
       {.cmd = 0x11, .len = 1, .data = {0x01}}, // X increment, Y decrement.
-      {.cmd = 0x44,
-       .len = 4,
-       .data = {0x00, 0x00, lo(kWidth - 1), hi(kWidth - 1)}},
-      {.cmd = 0x45,
-       .len = 4,
-       .data = {lo(kHeight - 1), hi(kHeight - 1), 0x00, 0x00}},
+      {.cmd = 0x44, .len = 4, .data = {0x00, 0x00, lo(kW - 1), hi(kW - 1)}},
+      {.cmd = 0x45, .len = 4, .data = {lo(kH - 1), hi(kH - 1), 0x00, 0x00}},
       {.cmd = 0x4E, .len = 2, .data = {0x00, 0x00}},
       {.cmd = 0x4F, .len = 2, .data = {0x00, 0x00}},
   }};
@@ -221,11 +225,11 @@ std::expected<void, Error> init_mode(State mode) {
     if (auto r = cmd(0x1A, {0x6A}); !r) // Fast waveform, about 1.5 s.
       return r;
   }
-  driver.state = mode;
+  state_ = mode;
   return {};
 }
 
-std::expected<void, Error> update(std::uint8_t sequence) {
+std::expected<void, Error> Ssd1677::update(std::uint8_t sequence) {
   if (auto r = cmd(0x22, {sequence}); !r)
     return r;
   if (auto r = cmd(0x20); !r)
@@ -233,12 +237,11 @@ std::expected<void, Error> update(std::uint8_t sequence) {
   return wait_idle(kRefreshTimeoutMs);
 }
 
-std::expected<void, Error> show_whole(std::span<const std::uint8_t> frame,
-                                      State mode) {
-  if (driver.state != mode)
+std::expected<void, Error>
+Ssd1677::show_whole(std::span<const std::uint8_t> frame, State mode) {
+  if (state_ != mode)
     if (auto r = init_mode(mode); !r)
       return r;
-  static constexpr Window kAll{.x = 0, .y = 0, .w = kWidth, .h = kHeight};
   for (const std::uint8_t reg : {std::uint8_t{0x24}, std::uint8_t{0x26}}) {
     if (auto r = cmd(0x4E, {0x00, 0x00}); !r)
       return r;
@@ -249,30 +252,33 @@ std::expected<void, Error> show_whole(std::span<const std::uint8_t> frame,
   }
   if (auto r = update(mode == State::Full ? 0xF7 : 0xD7); !r)
     return r;
-  driver.base_valid = true;
+  base_valid_ = true;
   return {};
 }
 
 // The demo's EPD_Display_Partial. Only a hardware reset, so RAM 0x26 keeps
 // the base image, then the window and 0x24.
-std::expected<void, Error> show_window(std::span<const std::uint8_t> frame,
-                                       const Window &w) {
-  const unsigned x_end = w.x + w.w - 8; // First pixel of the last byte.
-  const unsigned y_end = w.y + w.h - 1;
+std::expected<void, Error>
+Ssd1677::show_window(std::span<const std::uint8_t> frame, const Rect &w) {
+  const auto x = static_cast<unsigned>(w.x);
+  const auto y = static_cast<unsigned>(w.y);
+  // First pixel of the last byte, and the last row.
+  const unsigned x_end = x + static_cast<unsigned>(w.w) - 8;
+  const unsigned y_end = y + static_cast<unsigned>(w.h) - 1;
   hw_reset();
-  driver.state = State::Partial;
+  state_ = State::Partial;
   if (auto r = cmd(0x18, {0x80}); !r)
     return r;
   if (auto r = cmd(0x3C, {0x80}); !r)
     return r;
-  if (auto r = cmd(0x44, {lo(w.x), hi(w.x), lo(x_end), hi(x_end)}); !r)
+  if (auto r = cmd(0x44, {lo(x), hi(x), lo(x_end), hi(x_end)}); !r)
     return r;
-  if (auto r = cmd(0x45, {lo(y_end), hi(y_end), lo(w.y), hi(w.y)}); !r)
+  if (auto r = cmd(0x45, {lo(y_end), hi(y_end), lo(y), hi(y)}); !r)
     return r;
-  auto origin = [&w]() -> std::expected<void, Error> {
-    if (auto r = cmd(0x4E, {lo(w.x), hi(w.x)}); !r)
+  auto origin = [this, x, y]() -> std::expected<void, Error> {
+    if (auto r = cmd(0x4E, {lo(x), hi(x)}); !r)
       return r;
-    return cmd(0x4F, {lo(w.y), hi(w.y)});
+    return cmd(0x4F, {lo(y), hi(y)});
   };
   if (auto r = origin(); !r)
     return r;
@@ -286,56 +292,26 @@ std::expected<void, Error> show_window(std::span<const std::uint8_t> frame,
   return write_ram(0x26, frame, w);
 }
 
-void release() {
-  if (driver.dev) {
-    spi_bus_remove_device(driver.dev);
-    driver.dev = nullptr;
+void Ssd1677::release() {
+  if (dev_) {
+    spi_bus_remove_device(handle(dev_));
+    dev_ = nullptr;
   }
-  if (driver.bus_owned) {
+  if (bus_owned_) {
     spi_bus_free(kHost);
-    driver.bus_owned = false;
+    bus_owned_ = false;
   }
-  if (driver.chunk) {
-    heap_caps_free(driver.chunk);
-    driver.chunk = nullptr;
+  if (chunk_) {
+    heap_caps_free(chunk_);
+    chunk_ = nullptr;
   }
-  if (driver.powered && board::panel_power(false))
-    driver.powered = false;
+  if (powered_ && board::panel_power(false))
+    powered_ = false;
 }
 
-} // namespace
-
-const char *to_string(Error e) {
-  switch (e) {
-  case Error::NotStarted:
-    return "not-started";
-  case Error::PanelPower:
-    return "panel-power";
-  case Error::Gpio:
-    return "gpio";
-  case Error::SpiBus:
-    return "spi-bus";
-  case Error::SpiDevice:
-    return "spi-device";
-  case Error::NoMemory:
-    return "no-memory";
-  case Error::BusyTimeout:
-    return "busy-timeout";
-  case Error::Spi:
-    return "spi";
-  case Error::BadFrame:
-    return "bad-frame";
-  case Error::BadWindow:
-    return "bad-window";
-  case Error::NoBase:
-    return "no-base";
-  }
-  return "unknown";
-}
-
-std::expected<void, Error> init() {
-  if (driver.started)
-    return {};
+std::expected<void, Error> Ssd1677::begin() {
+  if (started_)
+    return std::unexpected(Error::AlreadyStarted);
   if (auto r = power_on(); !r)
     return r;
   const gpio_config_t outputs{
@@ -358,9 +334,9 @@ std::expected<void, Error> init() {
   }
   gpio_set_level(kCs, 1);
   gpio_set_level(kRst, 1);
-  driver.chunk = static_cast<std::uint8_t *>(
+  chunk_ = static_cast<std::uint8_t *>(
       heap_caps_malloc(kChunk, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
-  if (!driver.chunk) {
+  if (!chunk_) {
     release();
     return std::unexpected(Error::NoMemory);
   }
@@ -375,73 +351,75 @@ std::expected<void, Error> init() {
     release();
     return std::unexpected(Error::SpiBus);
   }
-  driver.bus_owned = true;
+  bus_owned_ = true;
   spi_device_interface_config_t device{};
   device.mode = 0;
   device.clock_speed_hz = kSpiHz;
   device.spics_io_num = -1;
   device.queue_size = 1;
-  if (spi_bus_add_device(kHost, &device, &driver.dev) != ESP_OK) {
+  spi_device_handle_t dev = nullptr;
+  if (spi_bus_add_device(kHost, &device, &dev) != ESP_OK) {
     release();
     return std::unexpected(Error::SpiDevice);
   }
-  driver.state = State::Off;
-  driver.base_valid = false;
-  driver.started = true;
+  dev_ = dev;
+  state_ = State::Off;
+  base_valid_ = false;
+  started_ = true;
   return {};
 }
 
-std::expected<void, Error> show(std::span<const std::uint8_t> frame,
-                                Refresh refresh, std::optional<Window> window) {
-  if (!driver.started)
-    return std::unexpected(Error::NotStarted);
+std::expected<void, Error> Ssd1677::show(std::span<const std::uint8_t> frame,
+                                         Refresh mode, Rect window) {
+  if (!started_)
+    return std::unexpected(Error::NotReady);
   if (frame.size() != kFrameBytes)
     return std::unexpected(Error::BadFrame);
+  if (mode == Refresh::Partial && !window_ok(window))
+    return std::unexpected(Error::BadWindow);
+  // No base in controller RAM after begin(), sleep() or an error. A partial
+  // now would refresh against stale RAM, so the frame goes out whole with
+  // the clean waveform instead.
+  if (mode == Refresh::Partial && !base_valid_)
+    mode = Refresh::Full;
   std::expected<void, Error> result;
-  switch (refresh) {
+  switch (mode) {
   case Refresh::Full:
     result = show_whole(frame, State::Full);
     break;
   case Refresh::Fast:
     result = show_whole(frame, State::Fast);
     break;
-  case Refresh::Partial: {
-    if (!window || window->w == 0 || window->h == 0 || window->x % 8 != 0 ||
-        window->w % 8 != 0 || window->x + window->w > kWidth ||
-        window->y + window->h > kHeight)
-      return std::unexpected(Error::BadWindow);
-    if (!driver.base_valid)
-      return std::unexpected(Error::NoBase);
-    if (auto r = power_on(); !r)
-      return r;
-    result = show_window(frame, *window);
+  case Refresh::Partial:
+    result = power_on();
+    if (result)
+      result = show_window(frame, window);
     break;
-  }
   }
   if (!result) {
     // The controller state is unknown, start from a reset next time.
-    driver.state = State::Off;
-    driver.base_valid = false;
+    state_ = State::Off;
+    base_valid_ = false;
   }
   return result;
 }
 
-void sleep() {
-  if (!driver.started)
+void Ssd1677::sleep() {
+  if (!started_)
     return;
-  if (driver.state != State::Off && cmd(0x10, {0x01})) // Deep sleep.
+  if (state_ != State::Off && cmd(0x10, {0x01})) // Deep sleep.
     delay_ms(10);
   // Low pins before the supply drops, so nothing back powers the panel.
   gpio_set_level(kRst, 0);
   gpio_set_level(kCs, 0);
   gpio_set_level(kDc, 0);
   delay_ms(10);
-  if (driver.powered && board::panel_power(false))
-    driver.powered = false;
-  else if (driver.powered)
+  if (powered_ && board::panel_power(false))
+    powered_ = false;
+  else if (powered_)
     ESP_LOGW(kTag, "panel supply stayed on");
-  driver.state = State::Off;
-  driver.base_valid = false;
+  state_ = State::Off;
+  base_valid_ = false;
 }
 
 } // namespace opensensor::epd

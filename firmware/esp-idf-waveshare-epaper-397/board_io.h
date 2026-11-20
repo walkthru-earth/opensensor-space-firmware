@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -6,7 +7,7 @@
 #include <span>
 
 // This adapter owns the two I2C buses, the TG28 PMIC, the PCF85063 RTC, the
-// QMI8658 accelerometer and the 4-bit SDMMC card of the Waveshare
+// QMI8658 accelerometer, the keys and the 4-bit SDMMC card of the Waveshare
 // ESP32-S3-ePaper-3.97 (SKU 33810). The SSD1677 panel on SPI3 belongs to the
 // display task through opensensor::epd, which switches its supply here. Shared
 // services borrow hooks, nothing here is board-neutral.
@@ -37,6 +38,29 @@ inline constexpr int kSdData0 = 15;
 inline constexpr int kSdData1 = 7;
 inline constexpr int kSdData2 = 8;
 inline constexpr int kSdData3 = 18;
+// Keys, active low with the internal pull-ups. Up, Down and Press are the
+// three user keys, BOOT is the boot key. Source:
+// waveshareteam/ESP32-S3-ePaper-3.97 at
+// 1ce1c42421c4690aa3a7eef7354599ce00163f59,
+// ESP-IDF/08_ESP32-S3_e-Paper-3.97/components/button_bsp/button_bsp.c, which
+// names them Button_Up 4, Button_Function 5, Button_Down 6 and Boot 0, all
+// active 0 with pull-ups. The PWR side key sits on the TG28 PMIC, not on a
+// GPIO, so it stays with the PMIC. GPIO0 is a strapping pin read only at
+// reset, reading it as an input afterwards is safe.
+inline constexpr int kKeyUp = 4;
+inline constexpr int kKeyPress = 5;
+inline constexpr int kKeyDown = 6;
+inline constexpr int kKeyBoot = 0;
+
+// Configures the keys as inputs with pull-ups.
+bool start_keys();
+// In ui::Input order, Up, Down, Press, Menu. BOOT is Menu. There is no Exit
+// key, the shared UI needs none, Menu closes the settings popup and cancels
+// an edit, and the pages wrap.
+inline constexpr std::array<int, 4> kKeys{kKeyUp, kKeyDown, kKeyPress,
+                                          kKeyBoot};
+// Bit i is set while key kKeys[i] is held. Any task.
+std::uint8_t keys_held();
 
 // I2C_NUM_1 at kSensorI2cHz and the SEN63C bound at `address`. Board task
 // only.
@@ -168,6 +192,11 @@ poll_orientation(std::int64_t now_us);
 // last read failed, the device lies flat or the value is older than 1.5 s.
 // The UI applies its own hysteresis and stability window.
 [[nodiscard]] std::optional<std::uint8_t> read_orientation();
+// Any task. The last accelerometer read poll_orientation cached, under the
+// same rules as read_orientation() but kept while the device lies flat. The
+// display task feeds it to the shared orientation tracker, so the UI never
+// touches the I2C bus.
+[[nodiscard]] std::optional<Accel> last_accel();
 
 // PCF85063 RTC as UTC seconds since 1970. False while the oscillator stop
 // flag is set, the clock is stopped, in 12 hour mode, or out of range.
