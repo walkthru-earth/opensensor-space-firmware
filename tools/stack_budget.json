@@ -275,6 +275,12 @@
         "*{anonymous}::ui_task(*"
       ]
     },
+    "os-epd": {
+      "about": "ePaper-3.97 bring-up display task. Draws the bring-up screen from the display feed and drives the SSD1677 panel over SPI.",
+      "entry": [
+        "*{anonymous}::display_task(*"
+      ]
+    },
     "esp_timer": {
       "about": "esp_timer task. Runs the worker watchdog supervisor.",
       "entry": [
@@ -515,6 +521,65 @@
         ".flash.text": 1190306,
         ".flash.rodata": 413160,
         ".noinit": 3
+      }
+    },
+    "epaper397/logger": {
+      "build": "firmware/esp-idf-waveshare-epaper-397/build/logger",
+      "tasks": {
+        "parquet-sd": {
+          "stack_bytes": 24576,
+          "measured": 11136,
+          "budget": 12288
+        },
+        "nimble_host": {
+          "measured": 5840,
+          "budget": 6464
+        },
+        "os_ble_error": {
+          "stack_bytes": 4096,
+          "measured": 2576,
+          "budget": 2880
+        },
+        "os-lan": {
+          "stack_bytes": 8192,
+          "measured": 4832,
+          "budget": 5376
+        },
+        "board": {
+          "task_name": "os-board",
+          "stack_bytes": 12288,
+          "measured": 4720,
+          "budget": 5248
+        },
+        "os-epd": {
+          "stack_bytes": 6144,
+          "measured": 2320,
+          "budget": 2560
+        },
+        "esp_timer": {
+          "measured": 592,
+          "budget": 704
+        },
+        "sys_evt": {
+          "measured": 1040,
+          "budget": 1152
+        }
+      },
+      "sections": {
+        ".iram0.text": 127744,
+        ".dram0.data": 34560,
+        ".dram0.bss": 58368,
+        ".flash.text": 1161984,
+        ".flash.rodata": 399104,
+        ".noinit": 0
+      },
+      "sections_measured": {
+        ".iram0.text": 125195,
+        ".dram0.data": 33808,
+        ".dram0.bss": 57024,
+        ".flash.text": 1139186,
+        ".flash.rodata": 391104,
+        ".noinit": 0
       }
     }
   }
