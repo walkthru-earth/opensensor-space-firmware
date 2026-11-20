@@ -29,16 +29,20 @@ struct Font {
   const std::uint8_t *bits = nullptr;
   int ascent = 0;  // Ink extent of the baked set above the baseline.
   int descent = 0; // And below it, marks included.
+  // The font that draws a code point this one lacks, or null. The e-paper
+  // UI's Latin fonts name the Arabic font of their size here.
+  const Font *fallback = nullptr;
 };
 
 // The glyph for `cp`, or nullptr when the font lacks it.
 [[nodiscard]] const Glyph *find_glyph(const Font &font, std::uint32_t cp);
 
 namespace fonts {
-// 400x300 panels.
+// 400x300 panels, in os_arabic_fonts_s_gen.cpp.
 extern const Font ar_body_s;    // Body and row text.
 extern const Font ar_heading_s; // Page titles.
-// 800x480 panels, about 1.6 times the small sizes.
+// 800x480 panels, about 1.6 times the small sizes, in
+// os_arabic_fonts_l_gen.cpp.
 extern const Font ar_body_l;
 extern const Font ar_heading_l;
 } // namespace fonts

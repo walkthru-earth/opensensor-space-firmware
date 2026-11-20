@@ -27,7 +27,7 @@ manifests in that source tree. Only ESP32-S3 is hardware verified.
 | LZ4 library | [`firmware/common/vendor/lz4`](firmware/common/vendor/lz4) | 1.11.0 | BSD-2-Clause, see [`LICENSE`](firmware/common/vendor/lz4/LICENSE) | Copyright (c) Yann Collet (source headers), Copyright (c) 2011-2020, Yann Collet (`LICENSE`) |
 | esp-nimble host patch | [`firmware/common/vendor/esp-nimble`](firmware/common/vendor/esp-nimble) | backport of esp-nimble `d7061976e9` and `79316193f9` onto `139cada` | Apache-2.0, see [`LICENSE`](firmware/common/vendor/esp-nimble/LICENSE) and [`NOTICE`](firmware/common/vendor/esp-nimble/NOTICE) | Copyright 2015-2022 The Apache Software Foundation, modifications Copyright 2017-2022 Espressif Systems (Shanghai) CO., LTD. |
 | Inter typeface | [`firmware/common/epaper_ui/vendor/inter`](firmware/common/epaper_ui/vendor/inter) | 4.1, baked into glyph bitmaps in `fonts_compact_gen.cpp` and `fonts_large_gen.cpp` | SIL OFL 1.1, see [`OFL.txt`](firmware/common/epaper_ui/vendor/inter/OFL.txt) | Copyright (c) 2016 The Inter Project Authors |
-| Cairo typeface | [`firmware/common/text/vendor/cairo`](firmware/common/text/vendor/cairo) | 3.130, baked into glyph bitmaps in `os_arabic_fonts_gen.cpp` | SIL OFL 1.1, see [`OFL.txt`](firmware/common/text/vendor/cairo/OFL.txt) | Copyright 2009 The Cairo Project Authors |
+| Cairo typeface | [`firmware/common/text/vendor/cairo`](firmware/common/text/vendor/cairo) | 3.130, baked into glyph bitmaps in `os_arabic_fonts_s_gen.cpp` and `os_arabic_fonts_l_gen.cpp` | SIL OFL 1.1, see [`OFL.txt`](firmware/common/text/vendor/cairo/OFL.txt) | Copyright 2009 The Cairo Project Authors |
 
 Notes
 

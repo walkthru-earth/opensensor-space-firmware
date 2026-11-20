@@ -210,7 +210,7 @@ epaper-fonts-test = "python tools/epaper_gen_fonts.py --check"
 # Shared text component, UTF-8, Arabic shaping, bidi and the en and ar_EG
 # string table on host with sanitizers. text-fonts rebakes the Arabic glyphs
 # the string table needs from the vendored Cairo, and text-fonts-test fails
-# when the committed os_arabic_fonts_gen.cpp is stale.
+# when a committed os_arabic_fonts_*_gen.cpp is stale.
 text-test = "python tools/test_text.py --sanitize"
 text-fonts = "python tools/gen_arabic_fonts.py"
 text-fonts-test = "python tools/gen_arabic_fonts.py --check"

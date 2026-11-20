@@ -1,8 +1,9 @@
 #pragma once
 
 // The UI string table, English and Egyptian Arabic. Rows live in
-// os_strings.inc. The tables are constexpr arrays of string literals, so they
-// sit in flash and every entry is NUL terminated for snprintf.
+// os_strings.inc, and the e-paper UI's Str is this StringId. The tables are
+// constexpr arrays of string literals, so they sit in flash and every entry
+// is NUL terminated for snprintf.
 
 #include <array>
 #include <cstddef>
@@ -22,6 +23,7 @@ enum class StringId : std::uint16_t {
 #include "os_strings.inc"
 #undef OS_TEXT
 #undef OS_TEXT_LTR
+  Count, // Not a string, the number of rows.
 };
 
 inline constexpr std::size_t kStringCount = 0
@@ -31,6 +33,7 @@ inline constexpr std::size_t kStringCount = 0
 #undef OS_TEXT
 #undef OS_TEXT_LTR
     ;
+static_assert(kStringCount == std::to_underlying(StringId::Count));
 
 inline constexpr std::array<const char *, kStringCount> kEn{
 #define OS_TEXT(id, en, ar) en,

@@ -3,10 +3,12 @@
 Run with `pixi run text-fonts`. Reads the string table in
 firmware/common/text/src/os_strings.inc, shapes every Egyptian Arabic string
 the same way os_text.cpp does, and bakes exactly the presentation forms that
-come out, plus the Arabic marks, punctuation and digits. Writes
-firmware/common/text/src/os_arabic_fonts_gen.cpp and a preview PNG under the
-ignored artifacts/text-fonts/. The output is committed, so a firmware build
-needs no Python. `--check` fails when the committed output is stale.
+come out, plus the Arabic marks, punctuation and digits. Writes one source
+per size class, firmware/common/text/src/os_arabic_fonts_s_gen.cpp for the
+400 x 300 class and os_arabic_fonts_l_gen.cpp for 800 x 480, so an image
+links only the sizes its font set names, and a preview PNG under the ignored
+artifacts/text-fonts/. The output is committed, so a firmware build needs no
+Python. `--check` fails when the committed output is stale.
 
 Glyph rows are MSB first and padded to a byte, a set bit is black, the same
 layout as the board fonts. Glyphs are rendered at 8 times the size and box
@@ -27,7 +29,6 @@ ROOT = Path(__file__).resolve().parents[1]
 TEXT = ROOT / "firmware/common/text"
 TTF = TEXT / "vendor/cairo/CairoVariable.ttf"
 STRINGS = TEXT / "src/os_strings.inc"
-OUT = TEXT / "src/os_arabic_fonts_gen.cpp"
 PREVIEW = ROOT / "artifacts/text-fonts/arabic.png"
 
 SUPERSAMPLE = 8
@@ -60,6 +61,13 @@ SPECS = [
     Spec("ar_body_l", 26, 600),
     Spec("ar_heading_l", 34, 700),
 ]
+
+# One generated source per size class, named by the spec suffix.
+CLASSES = ("s", "l")
+
+
+def out_path(size_class: str) -> Path:
+    return TEXT / f"src/os_arabic_fonts_{size_class}_gen.cpp"
 
 # ---- Strings and shaping, a port of os_text.cpp ---------------------------
 
@@ -154,11 +162,17 @@ def shape(text: str) -> list[int]:
     return out
 
 
+def arabic_block(c: int) -> bool:
+    """Arabic and its presentation forms. Everything else, Latin, digits,
+    units and subscripts, comes from the board's Latin fonts."""
+    return 0x0600 <= c <= 0x06FF or 0xFB50 <= c <= 0xFDFF or 0xFE70 <= c <= 0xFEFF
+
+
 def charset(rows) -> list[int]:
     need = set(ALWAYS)
     for _, keep_ltr, _, ar in rows:
         if not keep_ltr:
-            need.update(c for c in shape(ar) if c >= 0x0600)
+            need.update(c for c in shape(ar) if arabic_block(c))
     return sorted(need)
 
 
@@ -249,7 +263,7 @@ def emit(results) -> str:
     for spec, (ascent, descent, _, _) in results:
         out.append(
             f"const Font {spec.name}{{k_{spec.name}_glyphs, k_{spec.name}_bits, "
-            f"{ascent}, {descent}}};"
+            f"{ascent}, {descent}, nullptr}};"
         )
     out.append("}  // namespace opensensor::text::fonts")
     out.append("// clang-format on")
@@ -296,18 +310,23 @@ def preview(results, rows, path: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true",
-                        help="fail when the committed os_arabic_fonts_gen.cpp differs")
+                        help="fail when a committed os_arabic_fonts_*_gen.cpp differs")
     args = parser.parse_args()
     rows = read_strings()
     cps = charset(rows)
     results = [(s, render(s, cps)) for s in SPECS]
-    text = emit(results)
+    outputs = {
+        out_path(c): emit([r for r in results if r[0].name.endswith(f"_{c}")])
+        for c in CLASSES
+    }
     if args.check:
-        if not OUT.exists() or OUT.read_text(encoding="utf-8") != text:
-            raise SystemExit(f"{OUT.relative_to(ROOT)} is stale, run pixi run text-fonts")
+        for path, text in outputs.items():
+            if not path.exists() or path.read_text(encoding="utf-8") != text:
+                raise SystemExit(f"{path.relative_to(ROOT)} is stale, run pixi run text-fonts")
         print(f"arabic fonts match the generator, {len(cps)} glyphs per size")
         return
-    OUT.write_text(text, encoding="utf-8")
+    for path, text in outputs.items():
+        path.write_text(text, encoding="utf-8")
     preview(results, rows, PREVIEW)
     total = 0
     for spec, (ascent, descent, glyphs, bitmap) in results:

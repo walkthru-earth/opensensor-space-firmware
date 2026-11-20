@@ -88,7 +88,8 @@ common_sources=(
   firmware/common/power/src/os_battery_health.cpp
   firmware/common/text/src/os_text.cpp
   firmware/common/text/src/os_text_font.cpp
-  firmware/common/text/src/os_arabic_fonts_gen.cpp
+  firmware/common/text/src/os_arabic_fonts_s_gen.cpp
+  firmware/common/text/src/os_arabic_fonts_l_gen.cpp
   firmware/common/upload/src/os_upload_sigv4.cpp
   firmware/common/upload/src/os_upload_sts.cpp
   firmware/common/upload/src/os_upload_policy.cpp

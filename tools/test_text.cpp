@@ -251,8 +251,8 @@ void test_string_table() {
   static_assert(text(Lang::En, StringId::Brand) == "OpenSensor");
   static_assert(text(Lang::ArEg, StringId::MetricPm25) == "PM2.5");
   static_assert(direction(Lang::ArEg, StringId::MetricPm25) == Direction::Ltr);
-  static_assert(direction(Lang::ArEg, StringId::Status) == Direction::Rtl);
-  static_assert(direction(Lang::En, StringId::Status) == Direction::Ltr);
+  static_assert(direction(Lang::ArEg, StringId::StatusTitle) == Direction::Rtl);
+  static_assert(direction(Lang::En, StringId::StatusTitle) == Direction::Ltr);
   std::size_t arabic_glyphs = 0;
   for (std::size_t i = 0; i < kStringCount; ++i) {
     const auto id = static_cast<StringId>(i);
@@ -271,9 +271,13 @@ void test_string_table() {
       assert(false);
     }
     // Every Arabic code point the shaped line needs is baked in every size.
+    // The rest, Latin, digits and units, comes from the board's Latin fonts.
     const Cps v = visual(ar, direction(Lang::ArEg, id));
     for (const char32_t c : v) {
-      if (c < 0x0600)
+      const bool arabic = (c >= 0x0600 && c <= 0x06FF) ||
+                          (c >= 0xFB50 && c <= 0xFDFF) ||
+                          (c >= 0xFE70 && c <= 0xFEFF);
+      if (!arabic)
         continue;
       ++arabic_glyphs;
       for (const Font *f : kFonts) {
