@@ -35,8 +35,9 @@ GPIO43/44 sensor bus. CoreS3, Waveshare V2 and CrowPanel do not change.
   `classification:classes`, never from a table in the app.
 - LIVE keys `seq`, `mono`, `utc`, `sen`, `m1`, `m25`, `m4`, `m10`, `t`, `rh`
   and `co2`, the same keys, decimals and null rules as the CrowPanel.
-- No STAC File Item sidecar on this board yet, so its dated files have no
-  `<file>.json` next to them.
+- The board writes the STAC File Item sidecar `<file>.json` next to each
+  finalized dated file, the same as the CrowPanel, and logs
+  `PARQUET STAC sidecar=true ...` at boot.
 - The board advertises `OS-xxxx` and speaks proto 3 like the others. It has
   no settings screen yet, and the e-paper shows a bring-up screen only.
 - New boot log lines, all prefixed `OS`. `OS BOARD
@@ -46,6 +47,12 @@ GPIO43/44 sensor bus. CoreS3, Waveshare V2 and CrowPanel do not change.
   panel=ssd1677 ...` and `OS DISPLAY refresh=... ok=... ms=... error=...`.
   The `OS SEN6X ...`, `OS TF mounted=...` and `OS READY ...` lines match the
   CrowPanel ones, and `OS TF` reports `bus=sdmmc`.
+- `OS BOARD` carries `imu=qmi8658`. The board logs
+  `OS IMU chip=qmi8658 found=... addr=0x6b ... error=...` once at boot, then
+  `OS IMU ax=... ay=... az=... quarter=<0..3|null>` on each quarter turn
+  change and every 30 s, and `OS IMU error=...` when a read fails. These are
+  log lines only. No column, LIVE key or response changes. The firmware hook
+  `board::read_orientation()` feeds the on device UI, not the phone.
 
 **Why.** A second e-paper air quality Thing with 16 MB flash, 8 MB PSRAM, a
 battery charger and a real time clock that keeps UTC across power loss.
