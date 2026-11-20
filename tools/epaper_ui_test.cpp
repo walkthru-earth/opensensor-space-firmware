@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "display_profile.h"
 #include "epaper_ui/air_band.h"
 #include "epaper_ui/canvas.h"
 #include "epaper_ui/chart.h"
@@ -1621,6 +1622,28 @@ void test_restore_order() {
 constexpr std::array<Rotation, 4> kRotations{Rotation::R0, Rotation::R90,
                                              Rotation::R180, Rotation::R270};
 
+// The CrowPanel's own profile is the host 400 x 300 one, field by field, so
+// the golden frames in tools/test_epaper_ui.py are the frames it sends.
+void test_crowpanel_profile() {
+  const DisplayProfile &board = opensensor::crowpanel::kDisplayProfile;
+  const DisplayProfile &host = kHost400x300;
+  CHECK(board.width == host.width && board.height == host.height);
+  CHECK(board.depth == host.depth);
+  CHECK(board.refresh.fast == host.refresh.fast);
+  CHECK(board.refresh.partial == host.refresh.partial);
+  CHECK(board.refresh.partial_window == host.refresh.partial_window);
+  CHECK(board.refresh.full_ms == host.refresh.full_ms);
+  CHECK(board.refresh.fast_ms == host.refresh.fast_ms);
+  CHECK(board.refresh.partial_ms == host.refresh.partial_ms);
+  CHECK(board.refresh.partials_per_full == host.refresh.partials_per_full);
+  CHECK(board.font_scale == host.font_scale);
+  CHECK(board.layout == host.layout);
+  CHECK(board.rotated_layout == host.rotated_layout);
+  CHECK(board.mount == host.mount);
+  CHECK(board.orientation.present == host.orientation.present);
+  CHECK(validate(board).has_value());
+}
+
 void test_profile() {
   CHECK(validate(kHost400x300).has_value());
   CHECK(validate(kHost800x480).has_value());
@@ -2202,6 +2225,7 @@ int main() {
   test_theme();
   test_restore_order();
   test_profile();
+  test_crowpanel_profile();
   test_policy_caps();
   test_rotate();
   test_changed_window();

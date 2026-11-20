@@ -28,7 +28,13 @@ Never borrow a sibling trial's settings.
   run yet. It is read only on the card and NVS, bounded to 24 h of rows and
   about 8 s, and logs one `OS HISTORY` line. A failure only leaves the charts
   empty, it never stops logging. Limits are in the board README.
-- The settings popup (`display/settings.*`) is pure UI state. The UI task
+- Pages, charts, fonts, the settings popup and the refresh policy are the
+  shared `firmware/common/epaper_ui` component, see its AGENTS.md. This board
+  keeps only its driver (`display/epd_uc8276c.*`) and its
+  `display/display_profile.h`, which must stay equal to the host 400 x 300
+  profile so the golden frames are the frames it sends. A UI change goes in
+  the shared component and reaches every e-paper board.
+- The settings popup is pure UI state. The UI task
   saves it as a versioned blob in NVS namespace `ospanel` key `ui` and hands
   altitude, CO2 self calibration, temperature offset and fan cleaning to the
   board task through `sensor_requests` under the feed mutex. Only the board
@@ -50,5 +56,5 @@ Never borrow a sibling trial's settings.
 - The BLE passkey shows on the panel while a phone pairs. Never put it, the
   device PIN, a Wi-Fi PSK or the LAN token in logs, artifacts or docs.
 - Contract changes require `crowpanel-contract-test --sanitize` and
-  `crowpanel-ui-test`. Writer and runtime changes also require the shared
+  `epaper-ui-test`. Writer and runtime changes also require the shared
   gates, all three board builds and real readback proportional to the change.

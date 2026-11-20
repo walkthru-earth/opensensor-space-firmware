@@ -26,7 +26,7 @@ namespace opensensor::epd {
 namespace {
 
 constexpr const char *kTag = "epd";
-constexpr std::size_t kBytes = ui::kFrameBytes;
+constexpr std::size_t kBytes = kFrameBytes;
 // Under the 4096 B bus max_transfer_sz, word aligned.
 constexpr std::size_t kChunk = 4092;
 
@@ -60,31 +60,7 @@ spi_device_handle_t handle(void *dev) {
 
 } // namespace
 
-const char *to_string(Error e) {
-  switch (e) {
-  case Error::NotReady:
-    return "not-ready";
-  case Error::AlreadyStarted:
-    return "already-started";
-  case Error::Gpio:
-    return "gpio";
-  case Error::SpiBus:
-    return "spi-bus";
-  case Error::SpiDevice:
-    return "spi-device";
-  case Error::NoMemory:
-    return "no-memory";
-  case Error::UnsupportedController:
-    return "unsupported-controller";
-  case Error::BusyTimeout:
-    return "busy-timeout";
-  case Error::Spi:
-    return "spi";
-  }
-  return "unknown";
-}
-
-std::expected<void, Error> Panel::wait_idle(int timeout_ms) {
+std::expected<void, Error> Uc8276c::wait_idle(int timeout_ms) {
   // BUSY is low while the controller works. A full refresh takes a few
   // seconds, a 10 ms poll costs nothing next to that.
   const std::int64_t end =
@@ -101,8 +77,8 @@ std::expected<void, Error> Panel::wait_idle(int timeout_ms) {
   return {};
 }
 
-std::expected<void, Error> Panel::send(bool data,
-                                       std::span<const std::uint8_t> bytes) {
+std::expected<void, Error> Uc8276c::send(bool data,
+                                         std::span<const std::uint8_t> bytes) {
   gpio_set_level(pin(pins_.dc), data ? 1 : 0);
   while (!bytes.empty()) {
     const std::size_t n = bytes.size() < kChunk ? bytes.size() : kChunk;
@@ -116,8 +92,8 @@ std::expected<void, Error> Panel::send(bool data,
   return {};
 }
 
-std::expected<void, Error> Panel::cmd(std::uint8_t c,
-                                      std::span<const std::uint8_t> data) {
+std::expected<void, Error> Uc8276c::cmd(std::uint8_t c,
+                                        std::span<const std::uint8_t> data) {
   // A DMA transfer must not read from flash, so the command byte sits on the
   // stack and short data is copied there too.
   std::array<std::uint8_t, 8> buf{};
@@ -132,7 +108,8 @@ std::expected<void, Error> Panel::cmd(std::uint8_t c,
   return send(true, std::span{buf}.first(data.size()));
 }
 
-std::expected<void, Error> Panel::luts(std::span<const std::uint8_t, 35> lut) {
+std::expected<void, Error>
+Uc8276c::luts(std::span<const std::uint8_t, 35> lut) {
   std::array<std::uint8_t, 42> reg{};
   for (std::size_t i = 0; i < 5; ++i) {
     std::memcpy(reg.data(), lut.subspan(i * 7, 7).data(), 7);
@@ -144,7 +121,7 @@ std::expected<void, Error> Panel::luts(std::span<const std::uint8_t, 35> lut) {
   return {};
 }
 
-void Panel::hw_reset() {
+void Uc8276c::hw_reset() {
   gpio_set_level(pin(pins_.rst), 0);
   delay_ms(20);
   gpio_set_level(pin(pins_.rst), 1);
@@ -152,7 +129,7 @@ void Panel::hw_reset() {
 }
 
 // Reset and register init, out of Deep. Leaves the booster off.
-std::expected<void, Error> Panel::init() {
+std::expected<void, Error> Uc8276c::init() {
   struct Reg {
     std::uint8_t cmd = 0;
     std::uint8_t len = 0;
@@ -180,7 +157,7 @@ std::expected<void, Error> Panel::init() {
   return luts(kLutFull);
 }
 
-std::expected<void, Error> Panel::wake() {
+std::expected<void, Error> Uc8276c::wake() {
   const bool from_deep = state_ == State::Deep;
   if (from_deep) {
     if (auto r = init(); !r)
@@ -194,7 +171,7 @@ std::expected<void, Error> Panel::wake() {
   return wait_idle(1000);
 }
 
-std::expected<void, Error> Panel::refresh(Mode mode) {
+std::expected<void, Error> Uc8276c::refresh(Mode mode) {
   if (auto r = luts(mode == Mode::Partial ? kLutPart : kLutFull); !r)
     return r;
   // Plane 0x10 is the old frame, 0x13 the new. A set bit is black here, the
@@ -218,7 +195,7 @@ std::expected<void, Error> Panel::refresh(Mode mode) {
 // Deep sleep is only entered from power off, so a booster that is still on
 // goes off first. A failed power off still sends 0x07, the next show()
 // resets either way. The reset loses panel RAM, so the next show() is full.
-void Panel::enter_deep() {
+void Uc8276c::enter_deep() {
   if (state_ == State::On && cmd(0x02))
     static_cast<void>(wait_idle(1000));
   static constexpr std::array<std::uint8_t, 1> kCheck{0xA5};
@@ -227,7 +204,7 @@ void Panel::enter_deep() {
   have_prev_ = false;
 }
 
-std::expected<void, Error> Panel::begin(const Pins &p) {
+std::expected<void, Error> Uc8276c::begin(const Pins &p) {
   if (started_)
     return std::unexpected(Error::AlreadyStarted);
   started_ = true;
@@ -332,9 +309,17 @@ std::expected<void, Error> Panel::begin(const Pins &p) {
   return {};
 }
 
-std::expected<void, Error> Panel::show(Frame frame, Mode mode) {
+std::expected<void, Error> Uc8276c::show(std::span<const std::uint8_t> frame,
+                                         Refresh requested, Rect window) {
   if (!ready_)
     return std::unexpected(Error::NotReady);
+  if (frame.size() != kBytes)
+    return std::unexpected(Error::BadFrame);
+  if (window != Rect{.x = 0, .y = 0, .w = kWidth, .h = kHeight})
+    return std::unexpected(Error::BadWindow);
+  if (requested == Refresh::Fast)
+    return std::unexpected(Error::Unsupported);
+  Mode mode = requested == Refresh::Partial ? Mode::Partial : Mode::Full;
   auto result = wake();
   if (!result) {
     // A failed reset is already Deep, a failed power on is parked there.
@@ -370,7 +355,7 @@ std::expected<void, Error> Panel::show(Frame frame, Mode mode) {
   return result;
 }
 
-void Panel::sleep() {
+void Uc8276c::sleep() {
   if (!ready_ || state_ == State::Deep)
     return;
   enter_deep();

@@ -28,7 +28,7 @@
 // oslogger::begin(), so no storage worker shares the card yet, and before the
 // UI task that owns `history` starts. Logs one "OS HISTORY" line.
 
-#include "history.h"
+#include "epaper_ui/history.h"
 
 namespace opensensor::crowpanel {
 

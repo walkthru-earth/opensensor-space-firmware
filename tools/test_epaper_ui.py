@@ -26,8 +26,11 @@ from host_cxx import CXX_STD
 
 ROOT = Path(__file__).resolve().parent.parent
 COMPONENT = ROOT / "firmware/common/epaper_ui"
-# Only the header only restore_order.h is used from the CrowPanel logger/.
+# Two header only files come from the CrowPanel, restore_order.h from its
+# logger/ and display_profile.h from its display/, which the test holds
+# equal to the host 400 x 300 profile.
 LOGGER = ROOT / "firmware/esp-idf-crowpanel-epaper/logger"
+BOARD_DISPLAY = ROOT / "firmware/esp-idf-crowpanel-epaper/display"
 PREVIEW = ROOT / "artifacts/epaper-ui-preview"
 # Every source the component's CMakeLists.txt builds.
 SOURCES = sorted((COMPONENT / "src").glob("*.cpp"))
@@ -76,7 +79,7 @@ GOLDEN = {
 def compile_one(main: Path, out: Path, sanitize: bool) -> None:
     command = ["clang++", CXX_STD, "-Wall", "-Wextra", "-Werror",
                "-Wshadow", "-Wconversion", "-Wno-sign-conversion",
-               f"-I{COMPONENT / 'include'}", f"-I{LOGGER}", str(main), *[str(s) for s in SOURCES],
+               f"-I{COMPONENT / 'include'}", f"-I{LOGGER}", f"-I{BOARD_DISPLAY}", str(main), *[str(s) for s in SOURCES],
                "-o", str(out)]
     if sanitize:
         command += ["-g", "-fsanitize=address,undefined",

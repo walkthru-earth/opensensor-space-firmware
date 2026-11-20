@@ -100,7 +100,7 @@ move in lockstep (owner decision 14). Portolan adoption comes later.
 
 1. **CrowPanel air bands.** The CrowPanel screen colours PM2.5 with the US
    EPA 2024 AQI bands in
-   `firmware/esp-idf-crowpanel-epaper/display/air_band.h`, applied to the
+   `firmware/common/epaper_ui/include/epaper_ui/air_band.h`, applied to the
    live value. The stac-opensensor scales and the app use WHO 2021 guideline
    and interim targets, and each scale now carries a `period`, `P1D` for the
    WHO PM2.5 and PM10 scales, so neither is meant for a single live value.
