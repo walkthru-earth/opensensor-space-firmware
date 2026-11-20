@@ -58,6 +58,10 @@ struct Config {
   const char *output_directory = "/sd/output";
   // Optional legacy archive root; no board path is assumed.
   const char *legacy_directory = nullptr;
+  // Optional archive root on the internal flash volume for a board without a
+  // card (decision record 0004), "/flash/output" when the board mounted it.
+  // nullptr when the board has no such volume. Nothing is written there yet.
+  const char *fallback_directory = nullptr;
   // codec-test copies live here, outside the listed and synced archive.
   const char *benchmark_directory = "/sd/bench";
   // Sync service tuning; nullptr keeps the shared defaults.

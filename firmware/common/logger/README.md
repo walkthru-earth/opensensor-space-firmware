@@ -32,6 +32,11 @@ bus mutex callbacks, or use the engine's `lock_bus`/`unlock_bus` around shared
 transactions; complete display DMA before unlocking. No filesystem mounting,
 formatting, peripheral or controller initialization happens here. Output defaults
 to `/sd/output`; `legacy_directory` is opt-in for previous archives.
+`fallback_directory` names the archive root on the internal flash volume, set to
+`/flash/output` by a board built with `CONFIG_OS_LOGGER_FLASH_FALLBACK` whose
+boot mount succeeded (decision record 0004). `begin()` rejects a root that is
+not absolute, is longer than 31 bytes or overlaps the card archive or the
+codec-test root. The logger does not write there yet.
 
 `Config::sample_interval_ms` sets the sample period and the footer
 `acquisition.sample_interval_ms`. The default is 10 s, which both boards keep.

@@ -3166,6 +3166,20 @@ bool path_within(const char *path, const char *root) {
          (path[length] == '\0' || path[length] == '/');
 }
 
+// True when the optional flash fallback root is unset, or an absolute path of
+// at most 31 bytes that neither holds nor sits below the card archive or the
+// codec-test root.
+bool fallback_root_valid(const Config &configuration) {
+  const char *root = configuration.fallback_directory;
+  if (!root)
+    return true;
+  return root[0] == '/' && std::strlen(root) <= 31 &&
+         !path_within(root, configuration.output_directory) &&
+         !path_within(configuration.output_directory, root) &&
+         !path_within(root, configuration.benchmark_directory) &&
+         !path_within(configuration.benchmark_directory, root);
+}
+
 // True for a SHA-256 digest as 64 lowercase hex characters.
 bool sha256_hex(const char *text) {
   return text && std::strlen(text) == 64 &&
@@ -3368,6 +3382,7 @@ bool begin(const Config &configuration, const Hooks &board_hooks,
       std::strlen(config.benchmark_directory) > 31 ||
       path_within(config.benchmark_directory, config.output_directory) ||
       path_within(config.output_directory, config.benchmark_directory) ||
+      !fallback_root_valid(config) ||
       !cadence::valid_sample_interval(config.sample_interval_ms) ||
       !config.deployment_id || !config.deployment_id[0] ||
       !config.calibration_id || !config.calibration_id[0] ||
