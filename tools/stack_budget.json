@@ -52,12 +52,41 @@
       ]
     },
     {
-      "about": "FatFs disk I/O goes to the SD card driver, which calls the host transaction hook.",
+      "about": "FatFs disk I/O goes to the SD card driver, which calls the host transaction hook, or to the wear levelling driver of the internal flash volume.",
       "from": [
         "ff_disk_*"
       ],
       "to": [
-        "ff_sdmmc_*"
+        "ff_sdmmc_*",
+        "ff_wl_*"
+      ]
+    },
+    {
+      "about": "The wear levelling API calls its WL_Flash instance through virtual methods, and WL_Flash reaches the flash partition through Flash_Access.",
+      "from": [
+        "wl_mount",
+        "wl_unmount",
+        "wl_erase_range",
+        "wl_write",
+        "wl_read",
+        "wl_size",
+        "wl_sector_size"
+      ],
+      "to": [
+        "WL_Flash::*",
+        "WL_Ext_Perf::*",
+        "WL_Ext_Safe::*"
+      ]
+    },
+    {
+      "from": [
+        "WL_Flash::*",
+        "WL_Ext_Perf::*",
+        "WL_Ext_Safe::*"
+      ],
+      "to": [
+        "Partition::*",
+        "SPI_Flash::*"
       ]
     },
     {
