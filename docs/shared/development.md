@@ -432,7 +432,9 @@ and by hand from the Actions tab (`workflow_dispatch`).
   entries. `waveshare-psram-build` stays a manual SDK fixture. A
   `bench-stall` leg compiles the CoreS3 and Waveshare logger bench images
   with `OS_BENCH=stall`, so the `CONFIG_OS_LOGGER_BENCH_STALL` code keeps
-  building. It only compiles them and has no size or slot check.
+  building. A `bench-delta` leg does the same with `OS_BENCH=delta` for the
+  `CONFIG_OS_LOGGER_DELTA_INTEGERS` switch (#135). They only compile them and
+  have no size or slot check.
 - Each board job uploads its `idf.py size --format json2` report and
   `os-build-sha256.json` as the `size-<board>` artifact, and the ELF, map and
   `flash_args` as `firmware-<board>`. Both are kept 90 days for `main` builds
@@ -497,12 +499,13 @@ job name `CI result` stable. If a merge queue is enabled later, add a
 | Changed area | Additional Pixi tasks |
 | --- | --- |
 | Writer, codec, footer or schema | `parquet-test --sanitize`, `reader-test`, `waveshare-contract-test --sanitize` |
+| Host compactor or DR 0002 measurements | `compact-test --sanitize`, `compact measure` on a local tree |
 | Plantower, LTR553 or MAX17048 | `pms-frame-test`, `ltr553-test`, `max17048-test` |
 | Battery health or logger power hooks | `battery-health-test`, `logger-power-test`, `waveshare-contract-test --sanitize` |
 | Disconnects, LAN rings or BLE policy | `disconnect-test`, `frame-ring-test`, `ble-policy-test`, `ble-advert-test`, `ble-sync-test`, `lan-concurrency-bench` |
 | Settings, time or location | `config-test`, `network-time-test`, `location-test`, `logger-provision-test` |
 | Logs and persistence | `debug-log-test`, `disconnect-test` |
-| Logger queues and lifecycle | `logger-build-test`, `logger-work-queue-test`, `logger-watchdog-test`, `logger-codec-store-test`, `logger-rotation-test`, `logger-footer-test`, `logger-directory-test`, `logger-archive-reset-test` |
+| Logger queues and lifecycle | `logger-build-test`, `logger-work-queue-test`, `logger-watchdog-test`, `logger-codec-store-test`, `logger-encoding-test`, `logger-rotation-test`, `logger-footer-test`, `logger-directory-test`, `logger-archive-reset-test` |
 | Storage governor, CRC cache or DMA buffer | `storage-governor-test`, `crc-cache-test`, `sd-transfer-buffer-test` |
 | Backup tooling | `backup-test` with offline fake esptool |
 | App signing or the tracked secrets guard | `release-sign-test`, `secrets-check-test` |

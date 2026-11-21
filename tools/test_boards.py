@@ -712,15 +712,16 @@ def check_shell(directory: Path) -> None:
         expect(run(root, env, "build-idf-board.sh", *arguments), 2, text, f"build-idf-board.sh {arguments}")
     # OS_DRY_CONTINUE lets the dry run go past dependencies.env and the lz4
     # pins. A diagnostic variant has no digest check, so the bench refusal is next.
-    stall = {**env, "OS_BENCH": "stall", "OS_DRY_CONTINUE": "1"}
     refused = 0
-    for board in every:
-        for variant in board.variants[1:]:
-            result = subprocess.run(["bash", str(root / "tools/build-idf-board.sh"), board.slug, variant], env=stall,
-                                    capture_output=True, text=True, check=False)
-            expect(result, 2, f"OS_BENCH=stall needs the logger runtime of the telemetry app, not {variant}",
-                   f"build-idf-board.sh {board.slug} {variant} with OS_BENCH=stall")
-            refused += 1
+    for bench in ("stall", "delta"):
+        bench_env = {**env, "OS_BENCH": bench, "OS_DRY_CONTINUE": "1"}
+        for board in every:
+            for variant in board.variants[1:]:
+                result = subprocess.run(["bash", str(root / "tools/build-idf-board.sh"), board.slug, variant],
+                                        env=bench_env, capture_output=True, text=True, check=False)
+                expect(result, 2, f"OS_BENCH={bench} needs the logger runtime of the telemetry app, not {variant}",
+                       f"build-idf-board.sh {board.slug} {variant} with OS_BENCH={bench}")
+                refused += 1
     require(refused > 0, "some board has a diagnostic variant to refuse a bench build")
 
     # flash-idf-board.sh. /dev/null passes the character device test and is

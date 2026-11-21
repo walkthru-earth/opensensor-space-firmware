@@ -161,7 +161,8 @@ cppcheck "${options[@]}" \
 # with.
 cppcheck "${options[@]}" -DCONFIG_SPIRAM=1 -DCONFIG_OS_LOGGER_FLASH_FALLBACK=1 \
   "${board_telemetry[@]}"
-# The bench only parquet bench-stall branch is off in every shipped image, so
-# check os_logger.cpp once more with it on (CONFIG_OS_LOGGER_BENCH_STALL).
-cppcheck "${options[@]}" -DCONFIG_OS_LOGGER_BENCH_STALL=1 \
+# The bench only parquet bench-stall branch and the DELTA integer switch (#135)
+# are off in every shipped image, so check os_logger.cpp once more with both on
+# (CONFIG_OS_LOGGER_BENCH_STALL, CONFIG_OS_LOGGER_DELTA_INTEGERS).
+cppcheck "${options[@]}" -DCONFIG_OS_LOGGER_BENCH_STALL=1 -DCONFIG_OS_LOGGER_DELTA_INTEGERS=1 \
   firmware/common/logger/src/os_logger.cpp

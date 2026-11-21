@@ -42,6 +42,7 @@ tasks=(
   "bench-power-cut-test"
   "analyze-discharge-test"
   "size-survey-test"
+  "compact-test --sanitize"
   "size-report-test"
   "ota-slot-check-test"
   # LAN OTA rules, boot self test and core dump readback (#40)
@@ -109,6 +110,7 @@ tasks=(
   "logger-watchdog-test"
   "logger-bench-stall-test"
   "logger-codec-store-test"
+  "logger-encoding-test"
   "logger-status-test"
   "logger-rotation-test"
   "logger-footer-test"

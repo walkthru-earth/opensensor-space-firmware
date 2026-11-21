@@ -32,7 +32,11 @@ case "${OS_BENCH:-}" in
     build_dir="${build_dir}-bench-stall"
     target="${target} bench=stall"
     printf 'flashing a BENCH image with parquet bench-stall, restore a shipped build afterwards\n' >&2 ;;
-  *) printf 'unknown OS_BENCH: %s (expected stall)\n' "${OS_BENCH}" >&2; exit 2 ;;
+  delta)
+    build_dir="${build_dir}-bench-delta"
+    target="${target} bench=delta"
+    printf 'flashing a BENCH image that writes DELTA_BINARY_PACKED integers, restore a shipped build afterwards\n' >&2 ;;
+  *) printf 'unknown OS_BENCH: %s (expected stall or delta)\n' "${OS_BENCH}" >&2; exit 2 ;;
 esac
 if [[ ! -f "${build_dir}/os-build-target.txt" ]] || [[ "$(cat "${build_dir}/os-build-target.txt")" != "${target}" ]]; then
   printf 'build and verify the selected native firmware first\n' >&2; exit 2

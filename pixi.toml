@@ -59,6 +59,9 @@ rebuild-partial-test = "python tools/test_rebuild_partial.py"
 # Device file sizes, footers and host encoding/compaction variants, see docs/shared/parquet-small-files.md.
 size-survey = "python tools/parquet_size_survey.py"
 size-survey-test = "python tools/test_parquet_size_survey.py"
+# Host compactor prototype, dated Hive tree to LZ4_RAW Parquet V2 under a separate prefix (#136, DR 0002).
+compact = "python tools/compact_archive.py"
+compact-test = "python tools/test_compact_archive.py"
 # CI image size table, falls back to absolute sizes on a malformed baseline (#45).
 size-report-test = "python tools/test_size_report.py"
 # Fail closed when an app image uses more than its share of the smallest app slot (#45).
@@ -118,6 +121,7 @@ logger-watchdog-test = "python tools/test_logger_watchdog.py --sanitize"
 # Bench only parquet bench-stall parser, deadline and default-off guard (#49).
 logger-bench-stall-test = "python tools/test_logger_bench_stall.py --sanitize"
 logger-codec-store-test = "python tools/test_logger_codec_store.py --sanitize"
+logger-encoding-test = "python tools/test_logger_encoding.py --sanitize"
 debug-log-test = "python tools/test_debug_log.py"
 owner-pin = "python tools/owner_pin.py"
 provision-usb = "python tools/provision_usb.py"
