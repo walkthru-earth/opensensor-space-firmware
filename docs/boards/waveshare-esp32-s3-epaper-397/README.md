@@ -192,6 +192,37 @@ full backup (`pixi run backup --board epaper397 --port <checked port>`) and
 use `pixi run epaper397-flash <checked port> <backup>`. That backup holds the
 OpenSensor partition table, so the NVS check passes.
 
+## Settings storage fault
+
+NVS holds the Thing id, the pairing PIN, Wi-Fi and the board settings. When it
+does not start, the ePaper-3.97 records no data and starts no radio. The panel
+shows "Settings storage error" in English and Arabic with the code. The board
+has no LED, so if PSRAM, the PMIC bus or the panel fails too, only the serial
+line remains. The serial console prints this line at boot and again every 30
+seconds.
+
+```text
+OS ERROR operation=nvs-init error=<code> logging=false
+```
+
+To recover, follow these steps in order.
+
+1. Read the serial line with `pixi run monitor <checked port> 115200` and note
+   the code.
+2. Never erase the flash or the NVS partition. That destroys the Thing id and
+   the owner's settings.
+3. Run the [identification and backup sequence](../../../AGENTS.md#before-any-physical-flash-write),
+   then flash the current release with `pixi run epaper397-flash <checked port> <backup>`.
+   The helper writes the bootloader, partition table, OTA data and app, never NVS.
+4. If the line still appears after the reflash, or the helper refuses the
+   backup, stop and contact the owner with the serial capture and the backup.
+
+| Code | ESP-IDF name | Meaning |
+| --- | --- | --- |
+| 4365 (0x110d) | `ESP_ERR_NVS_NO_FREE_PAGES` | NVS has no free page. Contact the owner. |
+| 4368 (0x1110) | `ESP_ERR_NVS_NEW_VERSION_FOUND` | A newer firmware wrote NVS. Flash the current release. |
+| 261 (0x105) | `ESP_ERR_NOT_FOUND` | The partition table has no NVS. The helper refuses such a backup. Contact the owner. |
+
 ## Stack and heap budgets
 
 `pixi run stack-budget --image epaper397/logger --path` prints each task's

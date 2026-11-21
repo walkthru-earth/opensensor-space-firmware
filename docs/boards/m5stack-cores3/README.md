@@ -35,6 +35,35 @@ and copies each file to the card once one is Ready, see [decision record 0004](.
 `firmware/esp-idf-cores3/sdkconfig.defaults` enables it. It holds roughly 19
 hours of the CoreS3 schema. Nothing is proven on the bench yet.
 
+## Settings storage fault
+
+NVS holds the Thing id, the pairing PIN, Wi-Fi and the board settings. When it
+does not start, the CoreS3 records no data and starts no radio. The screen
+shows "Settings storage error" in red with the code, and the board does nothing
+else. The serial console prints this line at boot and again every 30 seconds.
+
+```text
+DIAG ERROR operation=nvs-init error=<code> erased=false
+```
+
+To recover, follow these steps in order.
+
+1. Read the serial line with `pixi run monitor <checked port> 115200` and note
+   the code.
+2. Never erase the flash or the NVS partition. That destroys the Thing id and
+   the owner's settings.
+3. Run the [identification and backup sequence](../../../AGENTS.md#before-any-physical-flash-write),
+   then flash the current release with `pixi run cores3-flash <checked port> <backup>`.
+   The helper writes the bootloader, partition table, OTA data and app, never NVS.
+4. If the line still appears after the reflash, or the helper refuses the
+   backup, stop and contact the owner with the serial capture and the backup.
+
+| Code | ESP-IDF name | Meaning |
+| --- | --- | --- |
+| 4365 (0x110d) | `ESP_ERR_NVS_NO_FREE_PAGES` | NVS has no free page. Contact the owner. |
+| 4368 (0x1110) | `ESP_ERR_NVS_NEW_VERSION_FOUND` | A newer firmware wrote NVS. Flash the current release. |
+| 261 (0x105) | `ESP_ERR_NOT_FOUND` | The partition table has no NVS. The helper refuses such a backup. Contact the owner. |
+
 ## Stack and heap budgets
 
 Task stacks are sized from two numbers, the method of issue #37. The static worst case comes from
