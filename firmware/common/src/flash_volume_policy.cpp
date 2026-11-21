@@ -58,7 +58,15 @@ mount_flash_policy(const FlashOps &ops, std::span<char, kFlashLineBytes> line) {
   line[0] = '\0';
   std::size_t used = 0;
 
-  const auto first = ops.mount(ops.context, false);
+  auto first = ops.mount(ops.context, false);
+  if (!first && std::to_underlying(first.error()) == kEspFail) {
+    // A first ESP_FAIL can be transient, for example a brownout during the
+    // previous unmount. Retry once without a format, so a transient fault
+    // never spends the one format. The retry's own code decides below.
+    append(line, used, "OS FLASH ERROR operation=mount err=%s retry=1\n",
+           ops.error_name(first.error()));
+    first = ops.mount(ops.context, false);
+  }
   if (first) {
     const FlashVolume volume = mounted(ops, *first, false);
     append_success(line, used, volume);

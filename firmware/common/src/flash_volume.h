@@ -5,7 +5,8 @@
 // The partition labelled "spiffs" is mounted through wear levelling at
 // "/flash". It is formatted at most once in the life of the board. The first
 // format records `osflash/formatted` = 1 in NVS, and after that a failed
-// mount is an error that leaves the volume off. Owner data on the volume is
+// mount is an error that leaves the volume off. A first ESP_FAIL is retried
+// once without a format, so a transient fault never spends the format. Owner data on the volume is
 // never formatted away by a later boot.
 //
 // The policy below is pure and board neutral. The ESP-IDF mount, the NVS flag
@@ -25,8 +26,8 @@ inline constexpr char kFlashPartitionLabel[] = "spiffs";
 inline constexpr char kFlashArchiveDirectory[] = "/flash/output";
 inline constexpr char kFlashFlagNamespace[] = "osflash";
 inline constexpr char kFlashFlagKey[] = "formatted";
-// Room for an ERROR line and the mount line, below the 256 byte
-// DebugLog::printf stack buffer.
+// Room for the retry line, an ERROR line and the mount line, below the 256
+// byte DebugLog::printf stack buffer.
 inline constexpr std::size_t kFlashLineBytes = 224;
 // ESP_FAIL, the code the FAT mount returns when f_mount fails. Only this
 // failure can be cured by a format. flash_volume.cpp checks the value.

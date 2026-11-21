@@ -81,6 +81,9 @@ std::expected<std::int32_t, st::FlashMountCode> fail(std::int32_t code) {
   return std::unexpected(static_cast<st::FlashMountCode>(code));
 }
 
+// The line a first ESP_FAIL leaves before the retry.
+#define RETRY "OS FLASH ERROR operation=mount err=ESP_FAIL retry=1\n"
+
 std::string_view text(const std::array<char, st::kFlashLineBytes> &line) {
   return line.data();
 }
@@ -102,58 +105,94 @@ void mounts_without_format() {
 }
 
 void formats_once_and_sets_flag() {
-  FakeDevice device{.mounts = {fail(st::kEspFail), ok(2)}};
+  FakeDevice device{
+      .mounts = {fail(st::kEspFail), fail(st::kEspFail), ok(2)}};
   std::array<char, st::kFlashLineBytes> line{};
   const auto volume = run(device, line);
   assert(volume);
   assert(volume->wl_handle == 2);
   assert(volume->formatted);
-  assert((device.format_args == std::vector<bool>{false, true}));
+  assert((device.format_args == std::vector<bool>{false, false, true}));
   assert(device.saves == 1);
   assert(device.flag && *device.flag == 1);
-  assert(text(line) == "OS FLASH mount ok=1 label=spiffs total=4063232 "
-                       "free=4059136 formatted=1\n");
+  assert(text(line) == RETRY "OS FLASH mount ok=1 label=spiffs total=4063232 "
+                             "free=4059136 formatted=1\n");
 
   // The next boot that fails to mount never formats again.
-  device.mounts = {fail(st::kEspFail)};
+  device.mounts = {fail(st::kEspFail), fail(st::kEspFail)};
   device.format_args.clear();
   const auto again = run(device, line);
   assert(!again && again.error() == st::FlashMountError::AlreadyFormatted);
-  assert(device.format_args == std::vector<bool>{false});
+  assert((device.format_args == std::vector<bool>{false, false}));
   assert(device.saves == 1);
-  assert(text(line) == "OS FLASH mount ok=0 err=ESP_FAIL formatted_flag=1\n");
+  assert(text(line) ==
+         RETRY "OS FLASH mount ok=0 err=ESP_FAIL formatted_flag=1\n");
+}
+
+// A transient first failure is retried without a format, so it never spends
+// the one format (carry-over item 1). The flag is not read.
+void transient_failure_retries_without_format() {
+  FakeDevice device{.mounts = {fail(st::kEspFail), ok(3)}};
+  std::array<char, st::kFlashLineBytes> line{};
+  const auto volume = run(device, line);
+  assert(volume);
+  assert(volume->wl_handle == 3);
+  assert(!volume->formatted);
+  assert((device.format_args == std::vector<bool>{false, false}));
+  assert(device.loads == 0);
+  assert(device.saves == 0);
+  assert(device.flag && *device.flag == 0);
+  assert(text(line) == RETRY "OS FLASH mount ok=1 label=spiffs total=4063232 "
+                             "free=4059136 formatted=0\n");
+}
+
+// The retry's own code decides. A retry that fails in a way a format cannot
+// cure never formats.
+void retry_failure_code_decides() {
+  FakeDevice device{.mounts = {fail(st::kEspFail), fail(kEspErrNoMem)}};
+  std::array<char, st::kFlashLineBytes> line{};
+  const auto volume = run(device, line);
+  assert(!volume && volume.error() == st::FlashMountError::NotFormattable);
+  assert((device.format_args == std::vector<bool>{false, false}));
+  assert(device.saves == 0);
+  assert(text(line) ==
+         RETRY "OS FLASH mount ok=0 err=ESP_ERR_NO_MEM formatted_flag=0\n");
 }
 
 void flag_set_refuses_format() {
-  FakeDevice device{.mounts = {fail(st::kEspFail)}, .flag = std::uint8_t{1}};
+  FakeDevice device{.mounts = {fail(st::kEspFail), fail(st::kEspFail)},
+                    .flag = std::uint8_t{1}};
   std::array<char, st::kFlashLineBytes> line{};
   const auto volume = run(device, line);
   assert(!volume && volume.error() == st::FlashMountError::AlreadyFormatted);
-  assert(device.format_args == std::vector<bool>{false});
+  assert((device.format_args == std::vector<bool>{false, false}));
   assert(device.saves == 0);
-  assert(text(line) == "OS FLASH mount ok=0 err=ESP_FAIL formatted_flag=1\n");
+  assert(text(line) ==
+         RETRY "OS FLASH mount ok=0 err=ESP_FAIL formatted_flag=1\n");
 }
 
 void other_flag_value_is_not_set() {
-  FakeDevice device{.mounts = {fail(st::kEspFail), ok(1)},
-                    .flag = std::uint8_t{7}};
+  FakeDevice device{
+      .mounts = {fail(st::kEspFail), fail(st::kEspFail), ok(1)},
+      .flag = std::uint8_t{7}};
   std::array<char, st::kFlashLineBytes> line{};
   const auto volume = run(device, line);
   assert(volume && volume->formatted);
-  assert((device.format_args == std::vector<bool>{false, true}));
+  assert((device.format_args == std::vector<bool>{false, false, true}));
   assert(device.saves == 1);
 }
 
 void unreadable_flag_never_formats() {
-  FakeDevice device{.mounts = {fail(st::kEspFail)},
+  FakeDevice device{.mounts = {fail(st::kEspFail), fail(st::kEspFail)},
                     .flag = std::unexpected(st::FlashFlagError::ReadFailed)};
   std::array<char, st::kFlashLineBytes> line{};
   const auto volume = run(device, line);
   assert(!volume && volume.error() == st::FlashMountError::FlagUnreadable);
-  assert(device.format_args == std::vector<bool>{false});
+  assert((device.format_args == std::vector<bool>{false, false}));
   assert(device.saves == 0);
-  assert(text(line) == "OS FLASH ERROR operation=flag-read\n"
-                       "OS FLASH mount ok=0 err=ESP_FAIL formatted_flag=1\n");
+  assert(text(line) == RETRY "OS FLASH ERROR operation=flag-read\n"
+                             "OS FLASH mount ok=0 err=ESP_FAIL "
+                             "formatted_flag=1\n");
 }
 
 void missing_partition_never_formats() {
@@ -173,23 +212,26 @@ void missing_partition_never_formats() {
 }
 
 void failed_format_keeps_flag_clear() {
-  FakeDevice device{.mounts = {fail(st::kEspFail), fail(kEspErrNoMem)}};
+  FakeDevice device{.mounts = {fail(st::kEspFail), fail(st::kEspFail),
+                               fail(kEspErrNoMem)}};
   std::array<char, st::kFlashLineBytes> line{};
   const auto volume = run(device, line);
   assert(!volume && volume.error() == st::FlashMountError::FormatFailed);
-  assert((device.format_args == std::vector<bool>{false, true}));
+  assert((device.format_args == std::vector<bool>{false, false, true}));
   assert(device.saves == 0);
   assert(device.flag && *device.flag == 0);
   assert(text(line) ==
-         "OS FLASH mount ok=0 err=ESP_ERR_NO_MEM formatted_flag=0\n");
+         RETRY "OS FLASH mount ok=0 err=ESP_ERR_NO_MEM formatted_flag=0\n");
 }
 
 void flag_save_failure_keeps_volume() {
-  FakeDevice device{.mounts = {fail(st::kEspFail), ok(0)}, .save_fails = true};
+  FakeDevice device{
+      .mounts = {fail(st::kEspFail), fail(st::kEspFail), ok(0)},
+      .save_fails = true};
   std::array<char, st::kFlashLineBytes> line{};
   const auto volume = run(device, line);
   assert(volume && volume->formatted);
-  assert(text(line) == "OS FLASH ERROR operation=flag-save\n"
+  assert(text(line) == RETRY "OS FLASH ERROR operation=flag-save\n"
                        "OS FLASH mount ok=1 label=spiffs total=4063232 "
                        "free=4059136 formatted=1\n");
 }
@@ -206,8 +248,9 @@ void unknown_space_reports_zero() {
 
 void longest_lines_fit() {
   // Two lines with the widest numbers still end in '\n' inside the buffer.
-  FakeDevice device{.mounts = {fail(st::kEspFail), ok(0)},
-                    .save_fails = true,
+  FakeDevice device{
+      .mounts = {fail(st::kEspFail), fail(st::kEspFail), ok(0)},
+      .save_fails = true,
                     .space = st::FlashSpace{.total_bytes = UINT64_MAX,
                                             .free_bytes = UINT64_MAX}};
   std::array<char, st::kFlashLineBytes> line{};
@@ -223,6 +266,8 @@ void longest_lines_fit() {
 int main() {
   mounts_without_format();
   formats_once_and_sets_flag();
+  transient_failure_retries_without_format();
+  retry_failure_code_decides();
   flag_set_refuses_format();
   other_flag_value_is_not_set();
   unreadable_flag_never_formats();

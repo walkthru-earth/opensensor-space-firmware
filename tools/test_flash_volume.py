@@ -24,7 +24,8 @@ def main() -> None:
             command += ["-fsanitize=address,undefined", "-fno-sanitize-recover=all"]
         subprocess.run(command, check=True)
         subprocess.run([str(executable)], check=True)
-    print("flash volume mount without format, one format then flag, flag set or "
+    print("flash volume mount without format, transient failure retried, "
+          "one format then flag, flag set or "
           "unreadable refuses format, unformattable errors, failed format, "
           "flag save failure, unknown space and line width passed")
 

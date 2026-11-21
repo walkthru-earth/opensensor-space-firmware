@@ -33,8 +33,9 @@ and the files move to the card once a card is back.
    ESP-IDF 6.1 finds a labelled FAT partition by label with any subtype
    (`components/fatfs/vfs/vfs_fat_spiflash.c`), so no partition or tooling
    changes are needed and LAN OTA images keep the same layout.
-2. **Format once.** The first mount that fails formats the partition and
-   records that in NVS (new namespace `osflash`, key `formatted`). After that
+2. **Format once.** A mount that fails with `ESP_FAIL` is retried once
+   without a format, so a transient fault never spends the format. When the
+   retry fails too, the partition is formatted and that is recorded in NVS (new namespace `osflash`, key `formatted`). After that
    flag is set, a failed mount is an error that is logged and leaves the
    volume off. The firmware never formats it again by itself and never
    touches the card, NVS or any other partition. A factory image may hold
