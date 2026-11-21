@@ -1,0 +1,711 @@
+#include "os_logger_flash_copy.h"
+
+#include "sha256_stream.h"
+#include "sync_codec.h"
+
+#include <algorithm>
+#include <array>
+#include <cassert>
+#include <cerrno>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <map>
+#include <optional>
+#include <set>
+#include <span>
+#include <string>
+#include <sys/stat.h>
+#include <vector>
+
+namespace {
+namespace fc = opensensor::logger::flash_copy;
+using Bytes = std::vector<std::uint8_t>;
+using fc::Failure;
+using fc::Outcome;
+
+constexpr const char *kFlash = "/flash/output";
+constexpr const char *kCard = "/sd/output";
+constexpr const char *kDay = "thing=t1/year=2026/month=11/day=21";
+const std::string kName = std::string(kDay) + "/a-1-2.parquet";
+const std::string kSource = std::string(kFlash) + "/" + kName;
+const std::string kFinal = std::string(kCard) + "/" + kName;
+const std::string kTemp = kFinal + ".copy";
+
+Bytes pattern(std::size_t length, std::uint32_t seed = 0x12345678) {
+  Bytes out(length);
+  for (auto &byte : out) {
+    seed = seed * 1664525U + 1013904223U;
+    byte = static_cast<std::uint8_t>(seed >> 24);
+  }
+  return out;
+}
+
+std::uint32_t crc_of(const Bytes &bytes) {
+  return opensensor::sync::crc32_update(0xffffffffU, bytes.data(),
+                                        bytes.size()) ^
+         0xffffffffU;
+}
+
+// The real SHA-256 stream, copied fresh so a fake can be returned by value.
+struct Hasher {
+  opensensor::hash::Sha256Stream stream;
+  Hasher() = default;
+  Hasher(const Hasher &) {}
+  Hasher &operator=(const Hasher &) { return *this; }
+};
+
+// An in memory pair of FAT volumes. It owns the one reader and the one
+// writer the copy may hold, and checks the machine never opens a second.
+struct FakeIO {
+  std::map<std::string, Bytes> files;
+  std::set<std::string> dirs = {kFlash, kCard};
+  bool reader_open = false, writer_open = false;
+  std::string reader_path, writer_path;
+  std::size_t reader_pos = 0;
+  std::vector<std::uint8_t> buffer = std::vector<std::uint8_t>(8192);
+  Hasher sha;
+
+  // Failure injection.
+  std::string fail_inspect, fail_open_read, fail_open_write, fail_unlink;
+  int fail_inspect_errno = EIO;
+  bool fail_dirs = false, fail_sync = false, fail_hash_begin = false;
+  bool fail_close_write = false;
+  int fail_rename = 0; // errno to fail rename with, 0 for none
+  std::optional<std::size_t> corrupt_at;
+
+  // What happened.
+  unsigned data_reads = 0, syncs = 0;
+  std::size_t largest_read = 0;
+  std::vector<std::string> unlinked, made;
+
+  void add_dirs(const std::string &path) {
+    for (std::size_t at = path.find('/', 1); at != std::string::npos;
+         at = path.find('/', at + 1))
+      dirs.insert(path.substr(0, at));
+    dirs.insert(path);
+  }
+
+  // A reset closes every handle and keeps what was written.
+  void reset() {
+    reader_open = writer_open = false;
+    reader_path.clear();
+    writer_path.clear();
+  }
+
+  int inspect(const char *path, struct stat *info) {
+    if (fail_inspect == path) {
+      errno = fail_inspect_errno;
+      return -1;
+    }
+    *info = {};
+    if (const auto file = files.find(path); file != files.end()) {
+      info->st_mode = S_IFREG;
+      info->st_size = static_cast<off_t>(file->second.size());
+      return 0;
+    }
+    if (dirs.contains(path)) {
+      info->st_mode = S_IFDIR;
+      return 0;
+    }
+    errno = ENOENT;
+    return -1;
+  }
+
+  bool make_directories(const char *path) {
+    if (fail_dirs) {
+      errno = EIO;
+      return false;
+    }
+    made.emplace_back(path);
+    add_dirs(path);
+    return true;
+  }
+
+  bool open_read(const char *path) {
+    assert(!reader_open);
+    if (fail_open_read == path) {
+      errno = EIO;
+      return false;
+    }
+    if (!files.contains(path)) {
+      errno = ENOENT;
+      return false;
+    }
+    reader_open = true;
+    reader_path = path;
+    reader_pos = 0;
+    return true;
+  }
+
+  bool open_write(const char *path) {
+    assert(!writer_open);
+    const std::string name = path;
+    if (fail_open_write == name) {
+      errno = EIO;
+      return false;
+    }
+    if (files.contains(name) || dirs.contains(name)) {
+      errno = EEXIST;
+      return false;
+    }
+    if (!dirs.contains(name.substr(0, name.rfind('/')))) {
+      errno = ENOENT;
+      return false;
+    }
+    files[name] = {};
+    writer_open = true;
+    writer_path = name;
+    return true;
+  }
+
+  std::span<std::uint8_t> scratch() { return buffer; }
+
+  std::ptrdiff_t read(std::span<std::uint8_t> out) {
+    assert(reader_open);
+    const auto file = files.find(reader_path);
+    if (file == files.end()) {
+      errno = EIO;
+      return -1;
+    }
+    ++data_reads;
+    const std::size_t count =
+        std::min(out.size(), file->second.size() - reader_pos);
+    std::copy_n(file->second.begin() + static_cast<std::ptrdiff_t>(reader_pos),
+                count, out.begin());
+    reader_pos += count;
+    largest_read = std::max(largest_read, count);
+    return static_cast<std::ptrdiff_t>(count);
+  }
+
+  bool write(std::span<const std::uint8_t> bytes) {
+    assert(writer_open);
+    auto &file = files.at(writer_path);
+    const std::size_t start = file.size();
+    file.insert(file.end(), bytes.begin(), bytes.end());
+    if (corrupt_at && *corrupt_at >= start && *corrupt_at < file.size())
+      file[*corrupt_at] ^= 0x5a;
+    return true;
+  }
+
+  bool sync() {
+    assert(writer_open);
+    ++syncs;
+    if (fail_sync) {
+      errno = EIO;
+      return false;
+    }
+    return true;
+  }
+
+  bool close_read() {
+    assert(reader_open);
+    reader_open = false;
+    return true;
+  }
+
+  bool close_write() {
+    assert(writer_open);
+    writer_open = false;
+    if (fail_close_write) {
+      errno = EIO;
+      return false;
+    }
+    return true;
+  }
+
+  int unlink(const char *path) {
+    assert(!(reader_open && reader_path == path));
+    assert(!(writer_open && writer_path == path));
+    if (fail_unlink == path) {
+      errno = EIO;
+      return -1;
+    }
+    if (files.erase(path) == 0) {
+      errno = ENOENT;
+      return -1;
+    }
+    unlinked.emplace_back(path);
+    return 0;
+  }
+
+  int rename_no_replace(const char *from, const char *to) {
+    assert(!(writer_open && writer_path == from));
+    if (fail_rename) {
+      errno = fail_rename;
+      return -1;
+    }
+    if (files.contains(to) || dirs.contains(to)) {
+      errno = EEXIST;
+      return -1;
+    }
+    const auto node = files.extract(from);
+    if (node.empty()) {
+      errno = ENOENT;
+      return -1;
+    }
+    files[to] = std::move(node.mapped());
+    return 0;
+  }
+
+  std::expected<void, opensensor::hash::Sha256Error> hash_begin() {
+    if (fail_hash_begin)
+      return std::unexpected(opensensor::hash::Sha256Error::Setup);
+    return sha.stream.begin();
+  }
+  void hash_update(std::span<const std::uint8_t> bytes) {
+    sha.stream.update(bytes);
+  }
+  std::expected<opensensor::hash::Sha256Digest, opensensor::hash::Sha256Error>
+  hash_finish() {
+    return sha.stream.finish();
+  }
+};
+
+FakeIO with_source(const Bytes &bytes, const std::string &name = kName) {
+  FakeIO io;
+  const std::string source = std::string(kFlash) + "/" + name;
+  io.add_dirs(source.substr(0, source.rfind('/')));
+  io.files[source] = bytes;
+  return io;
+}
+
+void begin(fc::Copier &copier, const std::string &name = kName) {
+  const auto begun = copier.begin(kFlash, kCard, name.c_str());
+  assert(begun.has_value());
+  assert(copier.active());
+}
+
+struct Run {
+  Outcome outcome = Outcome::InProgress;
+  unsigned steps = 0;
+};
+
+// Steps until the copy ends, or `limit` steps. Every step reads at most one
+// chunk of at most kChunkBytes.
+Run run(fc::Copier &copier, FakeIO &io, unsigned limit = 10000) {
+  Run out;
+  while (out.steps < limit) {
+    io.data_reads = 0;
+    out.outcome = copier.step(io);
+    ++out.steps;
+    assert(io.data_reads <= 1);
+    assert(io.largest_read <= fc::kChunkBytes);
+    if (out.outcome != Outcome::InProgress) {
+      assert(!copier.active());
+      assert(!io.reader_open && !io.writer_open);
+      break;
+    }
+  }
+  return out;
+}
+
+void happy_path() {
+  for (const std::size_t length : {std::size_t{0}, std::size_t{100}}) {
+    const Bytes bytes = pattern(length);
+    FakeIO io = with_source(bytes);
+    fc::Copier copier;
+    begin(copier);
+    const Run result = run(copier, io);
+    assert(result.outcome == Outcome::Copied);
+    assert(!copier.failure().has_value());
+    assert(io.files.at(kFinal) == bytes);
+    assert(!io.files.contains(kSource));
+    assert(!io.files.contains(kTemp));
+    assert(io.syncs == 1);
+    assert(io.made.size() == 1 &&
+           io.made[0] == std::string(kCard) + "/" + kDay);
+    assert(io.unlinked == std::vector<std::string>{kSource});
+    assert(copier.bytes() == length && copier.crc() == crc_of(bytes));
+    assert(std::strcmp(copier.relative(), kName.c_str()) == 0);
+  }
+}
+
+// Each step moves one bounded chunk. 3 x 4096 + 17 bytes take one start
+// step, five source reads (four chunks and EOF), one seal step, five verify
+// reads and one commit step.
+void multi_chunk() {
+  const Bytes bytes = pattern(3 * fc::kChunkBytes + 17);
+  FakeIO io = with_source(bytes);
+  fc::Copier copier;
+  begin(copier);
+  const Run result = run(copier, io);
+  assert(result.outcome == Outcome::Copied);
+  assert(result.steps == 13);
+  assert(io.largest_read == fc::kChunkBytes);
+  assert(io.files.at(kFinal) == bytes);
+
+  // A scratch buffer smaller than a chunk bounds the read instead.
+  FakeIO small = with_source(bytes);
+  small.buffer.resize(1000);
+  fc::Copier again;
+  begin(again);
+  assert(run(again, small).outcome == Outcome::Copied);
+  assert(small.largest_read == 1000);
+  assert(small.files.at(kFinal) == bytes);
+
+  // No scratch at all is an IO error before anything is created.
+  FakeIO none = with_source(bytes);
+  none.buffer.clear();
+  fc::Copier empty;
+  begin(empty);
+  assert(run(empty, none).outcome == Outcome::IoError);
+  assert(empty.failure() == Failure::Scratch);
+  assert(none.files.contains(kSource) && !none.files.contains(kTemp));
+}
+
+// A reset mid copy leaves a partial temporary on the card. The next attempt
+// removes it, because its source is still on flash, and copies again.
+void reset_mid_copy() {
+  const Bytes bytes = pattern(5 * fc::kChunkBytes);
+  for (const unsigned stop : {3U, 8U, 12U}) {
+    FakeIO io = with_source(bytes);
+    {
+      fc::Copier first;
+      begin(first);
+      const Run partial = run(first, io, stop);
+      assert(partial.outcome == Outcome::InProgress);
+      assert(io.files.contains(kTemp) && io.files.contains(kSource));
+      io.reset();
+    }
+    const Bytes stale = io.files.at(kTemp);
+    fc::Copier second;
+    begin(second);
+    const Run result = run(second, io);
+    assert(result.outcome == Outcome::Copied);
+    assert(io.unlinked.front() == kTemp);
+    assert(io.files.at(kFinal) == bytes);
+    assert(!io.files.contains(kSource) && !io.files.contains(kTemp));
+    (void)stale;
+  }
+}
+
+// A byte that differs on the card fails the readback. The temporary goes,
+// the source stays and no final name appears.
+void verify_mismatch() {
+  const Bytes bytes = pattern(2 * fc::kChunkBytes + 5);
+  FakeIO io = with_source(bytes);
+  io.corrupt_at = fc::kChunkBytes + 3;
+  fc::Copier copier;
+  begin(copier);
+  const Run result = run(copier, io);
+  assert(result.outcome == Outcome::IoError);
+  assert(copier.failure() == Failure::Verify);
+  assert(io.files.at(kSource) == bytes);
+  assert(!io.files.contains(kTemp) && !io.files.contains(kFinal));
+  assert(io.unlinked == std::vector<std::string>{kTemp});
+}
+
+// The card already holds the same bytes under the final name. The source is
+// freed, the final file is not touched, and a stale temporary goes too.
+void existing_identical() {
+  const Bytes bytes = pattern(2 * fc::kChunkBytes + 9);
+  FakeIO io = with_source(bytes);
+  io.add_dirs(std::string(kCard) + "/" + kDay);
+  io.files[kFinal] = bytes;
+  io.files[kTemp] = pattern(10, 7);
+  fc::Copier copier;
+  begin(copier);
+  const Run result = run(copier, io);
+  assert(result.outcome == Outcome::AlreadyIdentical);
+  assert(io.files.at(kFinal) == bytes);
+  assert(!io.files.contains(kSource) && !io.files.contains(kTemp));
+  assert(io.unlinked == (std::vector<std::string>{kTemp, kSource}));
+  assert(io.syncs == 0 && io.made.empty());
+}
+
+// The card holds other bytes under the final name. Both stay, nothing is
+// deleted or overwritten.
+void existing_different() {
+  const Bytes bytes = pattern(2 * fc::kChunkBytes + 9);
+  const std::array<Bytes, 3> others = {
+      pattern(bytes.size(), 99),    // same size, other bytes
+      pattern(bytes.size() + 1, 1), // other size
+      [&] {                         // one byte differs at the end
+        Bytes last = bytes;
+        last.back() ^= 1;
+        return last;
+      }()};
+  for (const Bytes &other : others) {
+    FakeIO io = with_source(bytes);
+    io.add_dirs(std::string(kCard) + "/" + kDay);
+    io.files[kFinal] = other;
+    fc::Copier copier;
+    begin(copier);
+    const Run result = run(copier, io);
+    assert(result.outcome == Outcome::Conflict);
+    assert(io.files.at(kFinal) == other && io.files.at(kSource) == bytes);
+    assert(io.unlinked.empty());
+  }
+  // A size mismatch needs no read at all.
+  FakeIO io = with_source(bytes);
+  io.add_dirs(std::string(kCard) + "/" + kDay);
+  io.files[kFinal] = pattern(3);
+  fc::Copier copier;
+  begin(copier);
+  const Run quick = run(copier, io);
+  assert(quick.outcome == Outcome::Conflict && quick.steps == 1);
+  // A directory under the final name is a conflict too.
+  FakeIO folder = with_source(bytes);
+  folder.add_dirs(kFinal);
+  fc::Copier other;
+  begin(other);
+  assert(run(other, folder).outcome == Outcome::Conflict);
+  assert(folder.files.at(kSource) == bytes && folder.unlinked.empty());
+}
+
+// A source missing at the start touches nothing on the card, not even a
+// temporary, since only a temporary whose source is on flash may go. A
+// source that vanishes mid copy keeps the temporary for the same reason.
+void source_vanished() {
+  FakeIO io;
+  io.add_dirs(std::string(kCard) + "/" + kDay);
+  io.files[kTemp] = pattern(10);
+  fc::Copier copier;
+  begin(copier);
+  const Run result = run(copier, io);
+  assert(result.outcome == Outcome::IoError);
+  assert(copier.failure() == Failure::SourceMissing);
+  assert(copier.error() == ENOENT);
+  assert(io.files.contains(kTemp) && io.unlinked.empty());
+
+  const Bytes bytes = pattern(3 * fc::kChunkBytes);
+  FakeIO later = with_source(bytes);
+  fc::Copier mid;
+  begin(mid);
+  assert(run(mid, later, 2).outcome == Outcome::InProgress);
+  later.files.erase(kSource);
+  const Run gone = run(mid, later);
+  assert(gone.outcome == Outcome::IoError);
+  assert(mid.failure() == Failure::SourceRead);
+  assert(later.files.contains(kTemp) && !later.files.contains(kFinal));
+  assert(later.unlinked.empty());
+
+  // A source that cannot be inspected is not treated as missing.
+  FakeIO broken = with_source(bytes);
+  broken.fail_inspect = kSource;
+  fc::Copier stat_error;
+  begin(stat_error);
+  assert(run(stat_error, broken).outcome == Outcome::IoError);
+  assert(stat_error.failure() == Failure::SourceStat);
+  assert(broken.unlinked.empty());
+}
+
+// The rename never replaces. A refused rename removes the temporary and
+// keeps the source, and a final name that appeared meanwhile stays as it is.
+void rename_refused() {
+  const Bytes bytes = pattern(fc::kChunkBytes + 1);
+  FakeIO io = with_source(bytes);
+  io.fail_rename = EACCES;
+  fc::Copier copier;
+  begin(copier);
+  const Run result = run(copier, io);
+  assert(result.outcome == Outcome::IoError);
+  assert(copier.failure() == Failure::Rename && copier.error() == EACCES);
+  assert(io.files.at(kSource) == bytes);
+  assert(!io.files.contains(kTemp) && !io.files.contains(kFinal));
+
+  FakeIO race = with_source(bytes);
+  fc::Copier racer;
+  begin(racer);
+  // Start, two source reads and EOF, seal, two verify reads and EOF.
+  assert(run(racer, race, 8).outcome == Outcome::InProgress);
+  const Bytes other = pattern(4, 3);
+  race.files[kFinal] = other;
+  const Run raced = run(racer, race);
+  assert(raced.outcome == Outcome::IoError && raced.steps == 1);
+  assert(racer.failure() == Failure::Rename && racer.error() == EEXIST);
+  assert(race.files.at(kFinal) == other && race.files.at(kSource) == bytes);
+  assert(!race.files.contains(kTemp));
+}
+
+// Every other IO failure keeps the source and removes only the temporary
+// this attempt made.
+void io_failures() {
+  const Bytes bytes = pattern(fc::kChunkBytes + 1);
+  struct Case {
+    const char *what;
+    void (*arm)(FakeIO &);
+    Failure failure;
+    bool temp_made;
+  };
+  const std::array<Case, 8> cases = {{
+      {"directory", [](FakeIO &io) { io.fail_dirs = true; }, Failure::Directory,
+       false},
+      {"source open", [](FakeIO &io) { io.fail_open_read = kSource; },
+       Failure::SourceOpen, false},
+      {"temp open", [](FakeIO &io) { io.fail_open_write = kTemp; },
+       Failure::TempOpen, false},
+      {"hash", [](FakeIO &io) { io.fail_hash_begin = true; }, Failure::Hash,
+       true},
+      {"sync", [](FakeIO &io) { io.fail_sync = true; }, Failure::TempSync,
+       true},
+      {"close", [](FakeIO &io) { io.fail_close_write = true; },
+       Failure::TempClose, true},
+      {"card stat",
+       [](FakeIO &io) {
+         io.fail_inspect = kFinal;
+         io.fail_inspect_errno = EIO;
+       },
+       Failure::CardStat, false},
+      {"stale temp",
+       [](FakeIO &io) {
+         io.add_dirs(std::string(kCard) + "/" + kDay);
+         io.files[kTemp] = pattern(3);
+         io.fail_unlink = kTemp;
+       },
+       Failure::TempRemove, false},
+  }};
+  for (const Case &c : cases) {
+    FakeIO io = with_source(bytes);
+    c.arm(io);
+    fc::Copier copier;
+    begin(copier);
+    const Run result = run(copier, io);
+    assert(result.outcome == Outcome::IoError);
+    assert(copier.failure() == c.failure);
+    assert(std::strlen(fc::failure_name(c.failure)) > 0);
+    assert(io.files.at(kSource) == bytes);
+    assert(!io.files.contains(kFinal));
+    if (c.failure != Failure::TempRemove)
+      assert(!io.files.contains(kTemp));
+    assert(c.temp_made ==
+           (std::count(io.unlinked.begin(), io.unlinked.end(), kTemp) == 1));
+    (void)c.what;
+  }
+
+  // The copy is on the card but the source cannot be freed. The next pass
+  // finds the identical final file and frees it then.
+  FakeIO io = with_source(bytes);
+  io.fail_unlink = kSource;
+  fc::Copier copier;
+  begin(copier);
+  assert(run(copier, io).outcome == Outcome::IoError);
+  assert(copier.failure() == Failure::SourceUnlink);
+  assert(io.files.at(kFinal) == bytes && io.files.contains(kSource));
+  io.fail_unlink.clear();
+  begin(copier);
+  assert(run(copier, io).outcome == Outcome::AlreadyIdentical);
+  assert(!io.files.contains(kSource) && io.files.at(kFinal) == bytes);
+}
+
+// Quarantined files keep their relative path, so they land in the card's
+// quarantine. A file at the top of the root needs no directory.
+void same_relative_path() {
+  const std::string name =
+      "quarantine/thing=t1/year=2026_month=11_day=21/a-1-boot-00000001.partial";
+  const Bytes bytes = pattern(77);
+  FakeIO io = with_source(bytes, name);
+  fc::Copier copier;
+  begin(copier, name);
+  assert(run(copier, io).outcome == Outcome::Copied);
+  assert(io.files.at(std::string(kCard) + "/" + name) == bytes);
+  assert(io.made.front() ==
+         std::string(kCard) + "/quarantine/thing=t1/year=2026_month=11_day=21");
+
+  FakeIO top = with_source(bytes, "top.parquet");
+  fc::Copier flat;
+  begin(flat, "top.parquet");
+  assert(run(flat, top).outcome == Outcome::Copied);
+  assert(top.made.size() == 1 && top.made[0] == kCard);
+  assert(top.files.at(std::string(kCard) + "/top.parquet") == bytes);
+}
+
+void begin_rules() {
+  fc::Copier copier;
+  const auto bad = [&](const char *flash, const char *card, const char *name,
+                       fc::BeginError want) {
+    const auto begun = copier.begin(flash, card, name);
+    assert(!begun.has_value() && begun.error() == want);
+    assert(!copier.active());
+  };
+  using enum fc::BeginError;
+  bad(kFlash, kCard, nullptr, BadName);
+  bad(kFlash, kCard, "", BadName);
+  bad(kFlash, kCard, "/abs.parquet", BadName);
+  bad(kFlash, kCard, "a//b.parquet", BadName);
+  bad(kFlash, kCard, "a/../b.parquet", BadName);
+  bad(kFlash, kCard, "../b.parquet", BadName);
+  bad(kFlash, kCard, "a/..", BadName);
+  bad(kFlash, kCard, "a/./b.parquet", BadName);
+  bad(kFlash, kCard, "dir/", BadName);
+  bad(kFlash, kCard, "a.parquet.copy", BadName);
+  bad(nullptr, kCard, "a.parquet", BadName);
+  bad(kFlash, "", "a.parquet", BadName);
+  const std::string longest(fc::kRelativeBytes, 'a');
+  bad(kFlash, kCard, longest.c_str(), TooLong);
+  const std::string root(fc::kPathBytes, 'r');
+  bad(kFlash, root.c_str(), "a.parquet", TooLong);
+  // A name that fits every path, the temporary included.
+  const std::string fits(fc::kRelativeBytes - 1, 'b');
+  assert(copier.begin(kFlash, kCard, fits.c_str()).has_value());
+  const auto busy = copier.begin(kFlash, kCard, "a.parquet");
+  assert(!busy.has_value() && busy.error() == Busy);
+  assert(std::strcmp(copier.relative(), fits.c_str()) == 0);
+}
+
+// cancel() closes what is open and removes the temporary of this attempt,
+// since its source is still on flash.
+void cancel_mid_copy() {
+  const Bytes bytes = pattern(3 * fc::kChunkBytes);
+  FakeIO io = with_source(bytes);
+  fc::Copier copier;
+  begin(copier);
+  assert(run(copier, io, 3).outcome == Outcome::InProgress);
+  assert(io.reader_open && io.writer_open);
+  copier.cancel(io);
+  assert(!copier.active() && !io.reader_open && !io.writer_open);
+  assert(!io.files.contains(kTemp) && io.files.at(kSource) == bytes);
+  // Idle cancel and step do nothing.
+  copier.cancel(io);
+  assert(copier.step(io) == Outcome::IoError);
+  assert(copier.failure() == Failure::Idle);
+  assert(io.files.at(kSource) == bytes);
+}
+
+// Within a directory Parquet goes before its sidecar, and only finalized
+// files, their sidecars and quarantined files are copied.
+void copy_order() {
+  using fc::Kind;
+  assert(fc::copy_kind("a/b.parquet") == Kind::Parquet);
+  assert(fc::copy_kind("a/b.json") == Kind::Sidecar); // "<stem>.json"
+  assert(fc::copy_kind("quarantine/t/p/x-1-00000001.partial") ==
+         Kind::Quarantined);
+  assert(fc::copy_kind("quarantine/t/p/x.json-1-00000001.partial") ==
+         Kind::Quarantined);
+  assert(!fc::copy_kind("a/b-1.partial").has_value()); // being written
+  assert(!fc::copy_kind("a/b.json.partial").has_value());
+  assert(!fc::copy_kind("a/b.parquet.copy").has_value()); // a temporary
+  assert(!fc::copy_kind("quarantine/t/p/x.partial.copy").has_value());
+  assert(!fc::copy_kind("a/notes.txt").has_value());
+  assert(!fc::copy_kind("").has_value() && !fc::copy_kind(nullptr).has_value());
+
+  std::vector<std::string> names = {"b.json", "c.txt", "a.json", "b.parquet",
+                                    "a.parquet"};
+  std::sort(names.begin(), names.end(),
+            [](const std::string &a, const std::string &b) {
+              return fc::copy_before(a.c_str(), b.c_str());
+            });
+  assert((names == std::vector<std::string>{"a.parquet", "b.parquet", "a.json",
+                                            "b.json", "c.txt"}));
+  assert(!fc::copy_before("a.parquet", "a.parquet"));
+  assert(fc::copy_before("z.parquet", "a.json"));
+}
+} // namespace
+
+int main() {
+  happy_path();
+  multi_chunk();
+  reset_mid_copy();
+  verify_mismatch();
+  existing_identical();
+  existing_different();
+  source_vanished();
+  rename_refused();
+  io_failures();
+  same_relative_path();
+  begin_rules();
+  cancel_mid_copy();
+  copy_order();
+  return 0;
+}

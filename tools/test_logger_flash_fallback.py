@@ -18,6 +18,7 @@ from host_cxx import CXX_STD
 # the extra sources it links.
 TESTS = {
     "archive-target": ("test_archive_target.cpp", ["os_logger_archive_target.h"], []),
+    "flash-copy": ("test_flash_copy.cpp", [], ["src/sha256_stream.cpp"]),
 }
 
 FORBIDDEN = re.compile(
