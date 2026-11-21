@@ -603,6 +603,49 @@ void render_asleep(Canvas &c, const Model &model) {
   static_cast<void>(asleep_line(c, y, Str::AsleepDevice, st.device_name));
 }
 
+void render_storage_fault(Canvas &c, int error) {
+  c.clear();
+  const Layout &l = c.layout();
+  const FontSet &f = l.fonts;
+  const int mid = c.width() / 2;
+  const int max_w = c.width() - 2 * l.header.margin;
+  const int gap = line_step(f.label);
+  constexpr std::array kLanguages{Language::English, Language::Arabic};
+  // Each language block is a title, one line and up to two help lines, each
+  // stepped by the font its script lands in. The blocks and the code line
+  // sit centred on the frame.
+  const Language previous = language();
+  std::array<int, kLanguages.size()> block{};
+  int total = gap;
+  for (std::size_t i = 0; i < kLanguages.size(); ++i) {
+    set_language(kLanguages[i]);
+    block[i] = line_step(f.title, tr(Str::StorageFaultTitle)) +
+               line_step(f.label, tr(Str::StorageFaultOff)) +
+               2 * line_step(f.label, tr(Str::StorageFaultHelp));
+    total += block[i] + gap;
+  }
+  int y = std::max(0, (c.height() - total) / 2);
+  for (std::size_t i = 0; i < kLanguages.size(); ++i) {
+    set_language(kLanguages[i]);
+    const std::string_view title = tr(Str::StorageFaultTitle);
+    const std::string_view off = tr(Str::StorageFaultOff);
+    const std::string_view help = tr(Str::StorageFaultHelp);
+    int line = y + f.title.ascent;
+    c.text(f.title, mid, line, title, Align::Center);
+    line += line_step(f.title, title) - f.title.ascent + f.label.ascent;
+    c.text(f.label, mid, line, off, Align::Center);
+    line += line_step(f.label, off);
+    static_cast<void>(
+        c.text_lines(f.label, mid, line, help, Align::Center, max_w));
+    y += block[i] + gap;
+  }
+  set_language(previous);
+  Text code{};
+  const int n = std::snprintf(code.data(), code.size(),
+                              tr_fmt(Str::StorageFaultCodeFmt), error);
+  c.text(f.label, mid, y + f.label.ascent, view(code, n), Align::Center);
+}
+
 Nav navigate(std::uint8_t page, Input in) {
   if (page >= kPageCount)
     page = kDashboardPage;

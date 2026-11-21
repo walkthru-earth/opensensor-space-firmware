@@ -83,6 +83,7 @@ GOLDEN = {
     "status-fault": "35f039edd6ce4d2d1e9f940d053149ab5632e18a728d0aaf9504b3b755ef96ae",
     "status-warming": "c71ce893885c2b861f6806d9bfa399eea86ae707c6cb9588e81ab65fb1d87373",
     "status": "00c8c182626ebd0c10d3e79fdda2757c7cc91449f4c9f36c5d9cf714dc059b5d",
+    "storage-fault": "d4884180575902b99bef3df73a5727b46a11b245945b3c4136f3e4d296e4a3d9",
 }
 # A few Arabic 400x300 r0 frames, one of each kind of page, so a change to
 # the bidi pass, the Arabic fonts or the mirroring shows up here.

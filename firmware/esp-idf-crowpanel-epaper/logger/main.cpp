@@ -1189,15 +1189,45 @@ void update_indicator(std::int64_t now) {
   }
 }
 
+// NVS did not start, so the board has no settings and does not log. The
+// panel needs no NVS, so the fault goes on the glass in both languages,
+// because the language setting lives in NVS too. Then the LED blinks at 4 Hz
+// and the serial line repeats every 30 s. Never erase NVS here, it holds the
+// owner's settings and the Thing id.
+[[noreturn]] void storage_fault(esp_err_t error) {
+  constexpr const char *kLine =
+      "OS ERROR operation=nvs-init error=%d logging=false\n";
+  oslog.printf(kLine, error);
+  board::start_indicator();
+  if (esp_psram_is_initialized() && start_display()) {
+    const auto rotation = ui::effective_rotation(
+        ui::defaults(kOrientationSource), kProfile, ui::Rotation::R0);
+    if (auto canvas = presenter->canvas(rotation)) {
+      ui::render_storage_fault(*canvas, error);
+      static_cast<void>(presenter->compose());
+      const auto plan = presenter->plan(true, true);
+      const auto result = presenter->present(panel, plan);
+      if (!result)
+        oslog.printf("OS ERROR operation=display-show error=%s mode=%s\n",
+                     epd::to_string(result.error()), epd::to_string(plan.mode));
+      panel.sleep();
+    }
+  }
+  // 4 Hz, faster than the 1 Hz warm up and sensor fault blink.
+  for (unsigned tick = 1;; ++tick) {
+    board::indicator(tick % 2 != 0);
+    vTaskDelay(pdMS_TO_TICKS(125));
+    if (tick % 240 == 0)
+      opensensor::console::printf(kLine, error);
+  }
+}
+
 } // namespace
 
 bool init_board() {
   const auto nvs_result = nvs_flash_init();
-  if (nvs_result != ESP_OK) {
-    oslog.printf("OS ERROR operation=nvs-init error=%d logging=false\n",
-                 nvs_result);
-    return false;
-  }
+  if (nvs_result != ESP_OK)
+    storage_fault(nvs_result);
   opensensor::log::report_coredump();
   board::start_indicator();
   const bool keys_ok = start_key_scan();

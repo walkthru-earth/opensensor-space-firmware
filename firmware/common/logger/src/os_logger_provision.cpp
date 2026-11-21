@@ -43,6 +43,8 @@ void safe_error(ProvisionResult &result, const char *key) {
                                   "malformed",
                                   "line-too-long",
                                   "empty",
+                                  "no-equals",
+                                  "unknown-key",
                                   "nvs"};
   const char *safe = "invalid-key";
   for (const auto *candidate : keys)
