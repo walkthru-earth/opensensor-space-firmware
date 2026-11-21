@@ -9,6 +9,41 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## LIST and OPEN carry the STAC sidecar next to its Parquet (feat/143-sidecar-sync)
+
+**Needs a matched app build (opensensor-space-mobile#265) and a reflash.** No
+column, field id, LIVE key, STATUS key, config key, frame layout, dictionary or
+digest changes. The protocol stays 3, because the number feeds `proto_min` in
+every board template and a bump would move the description digest.
+
+**What changed.** `LIST` and `LIST_SINCE` now send one more `FILE` frame right
+after a dated Parquet whose STAC File Item sidecar exists, named
+`thing=<uuid>/year=YYYY/month=MM/day=DD/data_HHMM_<boot>_<first>-<last>-<n>.json`,
+the Parquet name with `.json` in place of `.parquet`. `LIST_END` and
+`LIST_SINCE_END` count it. `OPEN` accepts that name only. It checks that the
+Parquet is beside it, that the json is 2 to 426,832 bytes and starts with `{`
+and ends with `}`, and answers `ERROR` 3 with the name otherwise. Any other
+`.json` name, including `.json.partial` and json under `unsynced/`,
+`flash-conflict/`, `quarantine/` or `legacy-parquet/`, answers `ERROR` 2
+`detail="charset"`. `READ` and `CLOSE` work as for a Parquet. The sidecar is
+served from the card or the flash volume, wherever it is. `ERROR` 3 now reads
+"not a finalized file", a Parquet or a sidecar. The serial `BLE OPEN` line of a
+sidecar always says `crc=miss`. The serial archive list and `PARQUET SCAN`
+still count Parquet only.
+
+**Why.** #143. The sidecar is the File Item that travels with its Parquet
+(decision record 0001), so the phone archive holds both after a sync.
+
+**What the app must do.** Accept a `FILE` name that ends in `.json` when the
+same name with `.parquet` is in the same listing, and fetch it like a
+Parquet. It always follows its Parquet in the listing. Verify it by `size`,
+CRC-32 and a first byte `{` and last byte `}` instead of the `PAR1` magic, and
+store it under the same Hive path next to its Parquet. A Parquet with no
+sidecar is normal (a board without STAC columns, an undated file, or a failed
+sidecar write). Do not count `.json` entries as data files in History. Older
+app builds that reject a non `.parquet` name must be replaced, there is no
+capability bit.
+
 ## PARQUET BEGIN names the integer encoding (feat/delta-integer-switch)
 
 **No app change needed. No reflash needed for files to stay readable.** No

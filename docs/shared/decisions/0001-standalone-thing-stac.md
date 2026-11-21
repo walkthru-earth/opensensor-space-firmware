@@ -26,10 +26,10 @@ built from the upload ledger instead of a bucket read. The analysis from
 | `items.parquet` | Catalog host, optional | Rebuilt from the Item JSON |
 | Regenerated STAC | Phone and indexer, optional | They may rebuild the File Item and the Thing Collection, and the result must equal the board's output. The Root Catalog has no board output to match. The phone writes a File Item only when it is the Thing ([opensensor-space-mobile#266](https://github.com/walkthru-earth/opensensor-space-mobile/issues/266)) |
 
-The Item is meant to travel with its Parquet. No transport can carry it today.
-Sidecar transport over the board uploader is future work in [#144](https://github.com/walkthru-earth/opensensor-space-firmware/issues/144), and
-over BLE and LAN in [#143](https://github.com/walkthru-earth/opensensor-space-firmware/issues/143). Undated files stay on the card with no Item, as
-before.
+The Item is meant to travel with its Parquet. When this record was written no
+transport could carry it. BLE and LAN sync carry it since [#143](https://github.com/walkthru-earth/opensensor-space-firmware/issues/143).
+Sidecar transport over the board uploader is future work in [#144](https://github.com/walkthru-earth/opensensor-space-firmware/issues/144).
+Undated files stay on the card with no Item, as before.
 
 The board stays the only Collection writer. A file the phone publishes after a
 BLE or LAN sync enters the Collection only when the board learns of that
