@@ -4,7 +4,10 @@
 // row group, footer and rename stages.
 //
 // Build with -DOS_FIELDS_INC="\"<board>/telemetry_fields.inc\"".
-// Usage: partial_rebuild_fixture output.parquet none|lz4 groups rows
+// Usage: partial_rebuild_fixture output.parquet none|lz4 groups rows [delta]
+//
+// With "delta" the INT32 and INT64 columns are DELTA_BINARY_PACKED, as a
+// board with CONFIG_OS_LOGGER_DELTA_INTEGERS writes them (#135).
 //
 // Columns follow prepare_columns() in the shared logger. Every leaf is
 // OPTIONAL with a validity byte, field_id is the 1-based table position and
@@ -137,8 +140,11 @@ int index_of(const char *name) {
 } // namespace
 
 int main(int argc, char **argv) {
-  if (argc != 5)
+  if (argc != 5 && !(argc == 6 && std::strcmp(argv[5], "delta") == 0))
     return 2;
+  const auto integers = argc == 6
+                            ? telemetry::IntegerEncoding::DeltaBinaryPacked
+                            : telemetry::IntegerEncoding::Plain;
   const bool compressed = std::strcmp(argv[2], "lz4") == 0;
   const std::size_t groups = std::strtoul(argv[3], nullptr, 10);
   const std::size_t count = std::strtoul(argv[4], nullptr, 10);
@@ -163,8 +169,9 @@ int main(int argc, char **argv) {
   if (!file)
     return 3;
   telemetry::Writer writer;
-  auto result = writer.begin(file_sink, file, workspace, columns.data(),
-                             kFieldCount, compressed ? &compression : nullptr);
+  auto result =
+      writer.begin(file_sink, file, workspace, columns.data(), kFieldCount,
+                   compressed ? &compression : nullptr, integers);
   std::vector<unsigned long long> ends;
   for (std::size_t g = 0; g < groups && result.ok; ++g) {
     for (std::size_t r = 0; r < count; ++r)

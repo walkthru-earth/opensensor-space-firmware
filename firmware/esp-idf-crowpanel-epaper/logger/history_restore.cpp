@@ -31,14 +31,10 @@
 
 #include "restore_order.h"
 
-// The restore decodes PLAIN values only (parquet_columns.h refuses DELTA with
-// ColumnError::Encoding), and monotonic_us, sd_used_bytes and co2_ppm are
-// integer columns. A board image that writes DELTA integers (#135) would lose
-// its chart history after every reset, so this board refuses the switch until
-// the decoder reads DELTA_BINARY_PACKED.
-#if defined(CONFIG_OS_LOGGER_DELTA_INTEGERS) && CONFIG_OS_LOGGER_DELTA_INTEGERS
-#error "history restore reads PLAIN only, turn off DELTA integers (#135)"
-#endif
+// monotonic_us, sd_used_bytes and co2_ppm are integer columns. The page
+// decoder (parquet_columns.h) reads them as PLAIN or DELTA_BINARY_PACKED
+// (#229), so the restore works with CONFIG_OS_LOGGER_DELTA_INTEGERS (#135) on
+// or off. Footer statistics stay PLAIN under either encoding.
 
 namespace opensensor::crowpanel {
 namespace {
@@ -583,7 +579,8 @@ used_range(Workspace &ws, const Boot &boot, const FileRef &file) {
     const auto &chunk = ws.summary.row_groups[g].columns[*column];
     if (!chunk.has_bounds)
       continue;
-    // PLAIN little endian INT64 bits, as the reader decoded them.
+    // Statistics are PLAIN little endian INT64 bits whatever the page
+    // encoding, as the footer reader decoded them.
     const auto low = std::bit_cast<std::int64_t>(chunk.min);
     const auto high = std::bit_cast<std::int64_t>(chunk.max);
     if (!range)

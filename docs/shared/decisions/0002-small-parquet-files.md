@@ -102,8 +102,15 @@ off on the board numbers below.
   encoding (`pixi run logger-encoding-test`). Off is the writer default byte
   for byte. On changes only the integer chunks, keeps every statistic and reads
   back the same values in both readers. No shipped `sdkconfig.defaults` sets
-  it, and the `bench-delta` CI leg compiles the CoreS3 and Waveshare V2 images
-  with it on.
+  it, and the `bench-delta` CI legs compile the CoreS3, Waveshare V2 and
+  CrowPanel images with it on.
+- Both readers in this repo decode DELTA_BINARY_PACKED since #229.
+  `parquet_columns.h`, which the CrowPanel chart history restore uses, reads
+  INT32 and INT64 DELTA pages, bounded and heap free, and refuses a malformed
+  stream with `ColumnError::Delta` (`pixi run reader-test`, crafted streams,
+  the writer edge files, PyArrow DELTA files and a page fuzz loop).
+  `tools/rebuild_partial.py` rebuilds a torn DELTA `.partial` to its intact row
+  groups (`pixi run rebuild-partial-test`).
 - On host fixtures shaped like the CoreS3 dictionary, DELTA plus LZ4_RAW is 35
   percent smaller than PLAIN LZ4_RAW for one 90 row group and 38 percent for
   four, see [Small Parquet files](../parquet-small-files.md).
@@ -124,12 +131,8 @@ off on the board numbers below.
 
 ### Before any board turns it on
 
-- The CrowPanel chart history restore decodes PLAIN pages only through
-  `parquet_columns.h`. Its build stops when the switch is on, and that stays
-  until the decoder reads DELTA_BINARY_PACKED.
-- `tools/rebuild_partial.py` rebuilds PLAIN partials only. A DELTA partial is
-  refused as torn, so recovery of a reset window needs DELTA page support
-  first.
+- The CrowPanel chart history restore after a reset, read from a DELTA file
+  on the board. The host decoder is proven, the board read is not.
 - A matched phone build with a newest-first entry in
   [mobile migration](../mobile-migration.md), and every board of that kind
   reflashed.

@@ -10,7 +10,11 @@ the footer, before and inside the trailing length and magic) and checks that
 the rebuild keeps exactly the completed row groups. Rebuilt files must read
 the same in PyArrow and DuckDB, equal the original rows that were fully
 written, and carry the same schema, row group metadata and column orders as
-the footer the board would have written. No serial port or board is used.
+the footer the board would have written. Every board runs twice, once with
+PLAIN integer pages and once with DELTA_BINARY_PACKED ones as
+CONFIG_OS_LOGGER_DELTA_INTEGERS writes them (#135, #229), so a torn DELTA
+.partial is cut at the same stages and must keep the same rows. No serial
+port or board is used.
 """
 
 from __future__ import annotations
@@ -60,9 +64,11 @@ def compile_fixture(inc: Path, exe: Path, sanitize: bool) -> None:
     subprocess.run(command, check=True)
 
 
-def write_fixture(exe: Path, out: Path, codec: str) -> dict:
-    run = subprocess.run([str(exe), str(out), codec, str(GROUPS), str(ROWS)],
-                         check=True, capture_output=True, text=True)
+def write_fixture(exe: Path, out: Path, codec: str, integers: str = "plain") -> dict:
+    command = [str(exe), str(out), codec, str(GROUPS), str(ROWS)]
+    if integers == "delta":
+        command.append("delta")
+    run = subprocess.run(command, check=True, capture_output=True, text=True)
     info = json.loads(run.stdout)
     require(info["size"] == out.stat().st_size, "fixture size report")
     require(len(info["group_ends"]) == GROUPS, "fixture group ends")
@@ -98,7 +104,7 @@ def cuts(info: dict) -> list[int]:
 
 def check_cut(src_dir: Path, out_dir: Path, data: bytes, cut: int, info: dict,
               fields: list[rp.Field], fields_path: Path, original: list[dict],
-              meta: dict, label: str, columns: int | None = None) -> str:
+              meta: dict, label: str, columns: int | None = None, integers: str = "PLAIN") -> str:
     source = src_dir / f"Y=2026/M=10/aq_{label}_{cut}-1.partial"
     source.parent.mkdir(parents=True, exist_ok=True)
     source.write_bytes(data[:cut])
@@ -116,6 +122,7 @@ def check_cut(src_dir: Path, out_dir: Path, data: bytes, cut: int, info: dict,
     require(report["row_groups"] == complete and report["rows"] == complete * ROWS, f"{where}: counts {report}")
     require(report["kept_bytes"] == good_end and report["dropped_tail_bytes"] == cut - good_end, f"{where}: bytes")
     require(report["readers_match"] is True, f"{where}: readers")
+    require(report["integers"] == integers, f"{where}: integer encoding {report['integers']}")
     expected_tail = "none" if cut == good_end else ("footer" if complete == GROUPS else "page")
     if cut - good_end == 1:
         expected_tail = "page"  # one 0x15 byte opens both a page and a footer
@@ -158,67 +165,88 @@ def check_board(name: str, inc: Path, exe: Path, work: Path, sanitize: bool) -> 
     compile_fixture(inc, exe, sanitize)
     fields = rp.load_fields(inc)
     checked = 0
-    for codec in ("none", "lz4"):
-        label = f"{name}-{codec}"
-        original_path = work / f"{label}.parquet"
-        info = write_fixture(exe, original_path, codec)
-        require(info["columns"] == len(fields), f"{label}: field table parse")
-        data = original_path.read_bytes()
-        original = pq.read_table(original_path).to_pylist()
-        meta = footer.read_footer(original_path)
-        require(len(meta[footer.FILE_ROW_GROUPS]) == GROUPS, f"{label}: original groups")
-        outcomes = {}
-        for cut in cuts(info):
-            outcome = check_cut(work / "src", work / "out", data, cut, info, fields, inc, original, meta, label)
-            outcomes[outcome] = outcomes.get(outcome, 0) + 1
-            checked += 1
-        require(outcomes.get("empty") and outcomes.get("rebuilt"), f"{label}: both outcomes covered")
-
-        # Rename stage. A complete file is copied unchanged, never refootered.
-        whole = work / "src" / f"{label}-whole-1.partial"
-        whole.write_bytes(data)
-        report = rp.rebuild(whole, work / "out" / f"{label}-whole", fields, fields_path=inc)
-        require(report["status"] == "complete", f"{label}: complete status")
-        require(Path(report["output"]).read_bytes() == data, f"{label}: complete copy is identical")
-
-        # A forced codec that does not match the file finds no row group.
-        wrong = "lz4" if codec == "none" else "none"
-        cut = info["group_ends"][1] + 7
-        report = rp.rebuild(_cut_file(work, f"{label}-wrongcodec", data, cut), work / "out" / f"{label}-wc",
-                            fields, codec=wrong)
-        require(report["status"] == "empty", f"{label}: wrong forced codec {report}")
-        report = rp.rebuild(_cut_file(work, f"{label}-rightcodec", data, cut), work / "out" / f"{label}-rc",
-                            fields, codec=codec)
-        require(report["status"] == "rebuilt" and report["row_groups"] == 2, f"{label}: right forced codec")
-
-        # A corrupt page header in group 3 stops the walk at group 2.
-        broken = bytearray(data[: info["group_ends"][3] - 1])
-        broken[info["group_ends"][1]] = 0x00  # STOP, an empty header
-        report = rp.rebuild(_cut_file(work, f"{label}-corrupt", bytes(broken), len(broken)),
-                            work / "out" / f"{label}-corrupt", fields)
-        require(report["status"] == "rebuilt" and report["row_groups"] == 2, f"{label}: corrupt header {report}")
-        require(report["tail"] == "unknown", f"{label}: corrupt tail kind")
-
-        # A corrupt definition level stream in group 2 also stops the walk.
-        if codec == "none":
-            broken = bytearray(data[: info["group_ends"][2] + 3])
-            start, _, _, _ = rp.page_header(bytes(broken), info["group_ends"][0])
-            broken[start + 4] = 0x03  # a bit packed run, never written by the board
-            report = rp.rebuild(_cut_file(work, f"{label}-levels", bytes(broken), len(broken)),
-                                work / "out" / f"{label}-levels", fields)
-            require(report["status"] == "rebuilt" and report["row_groups"] == 1, f"{label}: corrupt levels {report}")
-        else:
-            broken = bytearray(data[: info["group_ends"][2] + 3])
-            start, _, stored, _ = rp.page_header(bytes(broken), info["group_ends"][0])
-            broken[start] = 0xFF  # the first token now claims a run past the block
-            report = rp.rebuild(_cut_file(work, f"{label}-lz4", bytes(broken), len(broken)),
-                                work / "out" / f"{label}-lz4", fields)
-            require(report["status"] == "rebuilt" and report["row_groups"] == 1, f"{label}: corrupt lz4 {report}")
-        checked += 5 + check_page_guards(work, label, data, info, fields, codec)
+    for integers in ("plain", "delta"):
+        for codec in ("none", "lz4"):
+            label = f"{name}-{codec}" if integers == "plain" else f"{name}-{codec}-delta"
+            checked += check_file(label, exe, work, fields, inc, codec, integers)
     return checked
 
 
-def page_header_bytes(raw_size: int, stored_size: int, rows: int) -> bytes:
+def check_file(label: str, exe: Path, work: Path, fields: list[rp.Field], inc: Path, codec: str,
+               integers: str) -> int:
+    checked = 0
+    encoding = rp.DELTA_BINARY_PACKED if integers == "delta" else rp.PLAIN
+    original_path = work / f"{label}.parquet"
+    info = write_fixture(exe, original_path, codec, integers)
+    require(info["columns"] == len(fields), f"{label}: field table parse")
+    data = original_path.read_bytes()
+    original = pq.read_table(original_path).to_pylist()
+    meta = footer.read_footer(original_path)
+    require(len(meta[footer.FILE_ROW_GROUPS]) == GROUPS, f"{label}: original groups")
+    whole = rp.plan(data[: info["group_ends"][-1]], fields)
+    require(whole.integers == encoding, f"{label}: fixture integer pages are {rp.ENCODING_NAMES[encoding]}")
+    outcomes = {}
+    for cut in cuts(info):
+        outcome = check_cut(work / "src", work / "out", data, cut, info, fields, inc, original, meta, label,
+                            integers=rp.ENCODING_NAMES[encoding])
+        outcomes[outcome] = outcomes.get(outcome, 0) + 1
+        checked += 1
+    require(outcomes.get("empty") and outcomes.get("rebuilt"), f"{label}: both outcomes covered")
+
+    # Rename stage. A complete file is copied unchanged, never refootered.
+    whole = work / "src" / f"{label}-whole-1.partial"
+    whole.write_bytes(data)
+    report = rp.rebuild(whole, work / "out" / f"{label}-whole", fields, fields_path=inc)
+    require(report["status"] == "complete", f"{label}: complete status")
+    require(Path(report["output"]).read_bytes() == data, f"{label}: complete copy is identical")
+
+    # A forced codec that does not match the file finds no row group.
+    wrong = "lz4" if codec == "none" else "none"
+    cut = info["group_ends"][1] + 7
+    report = rp.rebuild(_cut_file(work, f"{label}-wrongcodec", data, cut), work / "out" / f"{label}-wc",
+                        fields, codec=wrong)
+    require(report["status"] == "empty", f"{label}: wrong forced codec {report}")
+    report = rp.rebuild(_cut_file(work, f"{label}-rightcodec", data, cut), work / "out" / f"{label}-rc",
+                        fields, codec=codec)
+    require(report["status"] == "rebuilt" and report["row_groups"] == 2, f"{label}: right forced codec")
+
+    # A corrupt page header in group 3 stops the walk at group 2.
+    broken = bytearray(data[: info["group_ends"][3] - 1])
+    broken[info["group_ends"][1]] = 0x00  # STOP, an empty header
+    report = rp.rebuild(_cut_file(work, f"{label}-corrupt", bytes(broken), len(broken)),
+                        work / "out" / f"{label}-corrupt", fields)
+    require(report["status"] == "rebuilt" and report["row_groups"] == 2, f"{label}: corrupt header {report}")
+    require(report["tail"] == "unknown", f"{label}: corrupt tail kind")
+
+    # A corrupt definition level stream in group 2 also stops the walk.
+    if codec == "none":
+        broken = bytearray(data[: info["group_ends"][2] + 3])
+        start, _, _, _, _ = rp.page_header(bytes(broken), info["group_ends"][0])
+        broken[start + 4] = 0x03  # a bit packed run, never written by the board
+        report = rp.rebuild(_cut_file(work, f"{label}-levels", bytes(broken), len(broken)),
+                            work / "out" / f"{label}-levels", fields)
+        require(report["status"] == "rebuilt" and report["row_groups"] == 1, f"{label}: corrupt levels {report}")
+    else:
+        broken = bytearray(data[: info["group_ends"][2] + 3])
+        # The first page of group 2 large enough that a literal run of 15 or
+        # more bytes overruns it. A DELTA page of a constant column is a few
+        # bytes and may still decode to its size.
+        pos = info["group_ends"][0]
+        start, raw_size, stored, _, _ = rp.page_header(bytes(broken), pos)
+        while raw_size < 64:
+            pos = start + stored
+            start, raw_size, stored, _, _ = rp.page_header(bytes(broken), pos)
+        broken[start] = 0xFF  # the first token now claims a run past the block
+        report = rp.rebuild(_cut_file(work, f"{label}-lz4", bytes(broken), len(broken)),
+                            work / "out" / f"{label}-lz4", fields)
+        require(report["status"] == "rebuilt" and report["row_groups"] == 1, f"{label}: corrupt lz4 {report}")
+    checked += 5 + check_page_guards(work, label, data, info, fields, codec)
+    if integers == "delta":
+        checked += check_delta_pages(work, label, data, info, fields, codec)
+    return checked
+
+
+def page_header_bytes(raw_size: int, stored_size: int, rows: int, encoding: int = rp.PLAIN) -> bytes:
     """Encode a page header the way the writer does, for crafted pages."""
     out = rp.Out()
     header = rp.Struct(out)
@@ -227,7 +255,7 @@ def page_header_bytes(raw_size: int, stored_size: int, rows: int) -> bytes:
     header.number(3, rp.I32, stored_size)
     header.field(5, rp.STRUCT)
     body = rp.Struct(out)
-    for field_id, value in ((1, rows), (2, 0), (3, 3), (4, 3)):
+    for field_id, value in ((1, rows), (2, encoding), (3, 3), (4, 3)):
         body.number(field_id, rp.I32, value)
     body.end()
     header.end()
@@ -249,11 +277,11 @@ def check_page_guards(work: Path, label: str, data: bytes, info: dict, fields: l
     pos = info["group_ends"][0]
     index = next(i for i, f in enumerate(fields) if f.name == "sequence")
     for f in fields[:index]:
-        start, _, stored, _ = rp.page_header(data, pos)
+        start, _, stored, _, _ = rp.page_header(data, pos)
         pos = start + stored
-    start, raw_size, stored_size, rows = rp.page_header(data, pos)
+    start, raw_size, stored_size, rows, encoding = rp.page_header(data, pos)
     end = start + stored_size
-    require(data[pos:start] == page_header_bytes(raw_size, stored_size, rows), f"{label}: header encoder")
+    require(data[pos:start] == page_header_bytes(raw_size, stored_size, rows, encoding), f"{label}: header encoder")
     kind = fields[index].type
 
     # A page whose row count differs from the first page of its group.
@@ -267,7 +295,7 @@ def check_page_guards(work: Path, label: str, data: bytes, info: dict, fields: l
     # refuses it.
     raw = rp.pa.decompress(data[start:end], decompressed_size=raw_size, codec="lz4_raw", asbytes=True)
     short = rp.pa.compress(raw[:-8], codec="lz4_raw", asbytes=True)
-    page = page_header_bytes(raw_size, len(short), rows) + short
+    page = page_header_bytes(raw_size, len(short), rows, encoding) + short
     crafted = data[:pos] + page + data[end : info["group_ends"][1]]
     message = torn(rp.parse_page, crafted, pos, kind, code, rows)
     require(message is not None and "fewer bytes" in message, f"{label}: short lz4 block {message}")
@@ -276,10 +304,87 @@ def check_page_guards(work: Path, label: str, data: bytes, info: dict, fields: l
     require(report["status"] == "rebuilt" and report["row_groups"] == 1, f"{label}: short lz4 block {report}")
 
     # A header asking for more bytes than any writer page is never allocated.
-    huge = data[:pos] + page_header_bytes(2**31 - 1, stored_size, rows) + data[start:end]
+    huge = data[:pos] + page_header_bytes(2**31 - 1, stored_size, rows, encoding) + data[start:end]
     message = torn(rp.parse_page, huge, pos, kind, code, rows)
     require(message is not None and "writer layout" in message, f"{label}: huge raw size {message}")
     return 3
+
+
+def check_delta_pages(work: Path, label: str, data: bytes, info: dict, fields: list[rp.Field], codec: str) -> int:
+    """DELTA pages that are torn or out of shape stop the walk where they start."""
+    code = rp.CODECS[codec]
+    pos, checked = info["group_ends"][0], 0
+    for f in fields:
+        start, raw_size, stored, rows, encoding = rp.page_header(data, pos)
+        integer = f.type in (rp.INT32, rp.INT64)
+        require(encoding == (rp.DELTA_BINARY_PACKED if integer else rp.PLAIN), f"{label}: {f.name} page encoding")
+        if integer:
+            # The same page under a file whose integer pages are PLAIN.
+            message = torn(rp.parse_page, data, pos, f.type, code, rows, rp.PLAIN)
+            require(message is not None and "integer pages are PLAIN" in message, f"{label}: mixed {message}")
+            checked += 1
+        elif f.type == rp.FLOAT and codec == "none" and checked < 3:
+            # A FLOAT page that claims DELTA_BINARY_PACKED.
+            forged = data[:pos] + page_header_bytes(raw_size, stored, rows, rp.DELTA_BINARY_PACKED) + data[start:]
+            message = torn(rp.parse_page, forged, pos, f.type, code, rows)
+            require(message is not None and "keeps PLAIN" in message, f"{label}: DELTA float {message}")
+            checked += 1
+        if integer and codec == "none" and checked < 3:
+            # A miniblock bit width wider than the column, in group 2.
+            raw = data[start : start + stored]
+            levels = int.from_bytes(raw[:4], "little")
+            stream = raw[4 + levels :]
+            cursor = 0
+            for _ in range(4):
+                _, cursor = rp.uleb128(stream, cursor)
+            if cursor < len(stream):
+                _, cursor = rp.uleb128(stream, cursor)  # min delta of block 1
+                width_at = start + 4 + levels + cursor
+                broken = bytearray(data[: info["group_ends"][2] + 3])
+                broken[width_at] = 65
+                message = torn(rp.parse_page, bytes(broken), pos, f.type, code, rows)
+                require(message is not None and "wider" in message, f"{label}: wide DELTA width {message}")
+                report = rp.rebuild(_cut_file(work, f"{label}-width", bytes(broken), len(broken)),
+                                    work / "out" / f"{label}-width", fields)
+                require(report["status"] == "rebuilt" and report["row_groups"] == 1, f"{label}: width {report}")
+                # One byte past the stream, kept inside the page sizes.
+                grown = page_header_bytes(raw_size + 1, stored + 1, rows, encoding) + raw + b"\x00"
+                crafted = data[:pos] + grown + data[start + stored :]
+                message = torn(rp.parse_page, crafted, pos, f.type, code, rows)
+                require(message is not None and "after its last miniblock" in message, f"{label}: trailing {message}")
+                checked += 1
+        pos = start + stored
+    require(checked >= 3, f"{label}: DELTA page checks ran")
+    return checked
+
+
+def check_delta_streams() -> None:
+    """apache/parquet-format Encodings.md DELTA_BINARY_PACKED examples and bad streams."""
+    one = bytes([0x80, 0x01, 0x04, 0x05, 0x02, 0x02, 0, 0, 0, 0])
+    require(rp.delta_values(one, 5, rp.INT64) == [1, 2, 3, 4, 5], "Encodings.md example 1")
+    two = bytes([0x80, 0x01, 0x04, 0x08, 0x0E, 0x03, 0x02, 0xFF, 0xFF, 0xFF, 0xC0, 0x3F]) + bytes(6)
+    require(rp.delta_values(two, 8, rp.INT32) == [7, 5, 3, 1, 2, 3, 4, 5], "Encodings.md example 2")
+    require(rp.delta_values(bytes([0x80, 0x01, 0x04, 0x00, 0x00]), 0, rp.INT64) == [], "all null page")
+    # Deltas wrap at the column width, INT64 max then min then max again.
+    top = 2**64 - 2  # zigzag of 2**63 - 1
+    first = bytes(((top >> (7 * i)) & 0x7F) | (0x80 if i < 9 else 0) for i in range(10))
+    wrap = bytes([0x80, 0x01, 0x04, 0x03]) + first + bytes([0x01, 0x02, 0, 0, 0, 0x02]) + bytes(7)
+    require(rp.delta_values(wrap, 3, rp.INT64) == [2**63 - 1, -(2**63), 2**63 - 1], "wrapping INT64 deltas")
+    cases = {
+        "count": (one, 4, rp.INT64, "present rows"),
+        "trailing": (one + b"\x00", 5, rp.INT64, "after its last"),
+        "shape": (bytes([0x80, 0x02]) + one[2:], 5, rp.INT64, "block shape"),
+        "width": (one[:6] + bytes([65, 0, 0, 0]), 5, rp.INT64, "wider"),
+        "width32": (two[:6] + bytes([33]) + two[7:], 8, rp.INT32, "wider"),
+        "body": (two[:-1], 8, rp.INT32, "past the payload"),
+        "widths": (one[:8], 5, rp.INT64, "bit widths"),
+        "first32": (bytes([0x80, 0x01, 0x04, 0x01, 0x80, 0x80, 0x80, 0x80, 0x10]), 1, rp.INT32, "first value"),
+        "varint": (bytes([0x80, 0x01, 0x04, 0x01]) + bytes([0xFF] * 9 + [0x02]), 1, rp.INT64, "64 bits"),
+        "short": (one[:3], 5, rp.INT64, "inside a varint"),
+    }
+    for name, (stream, count, kind, expect) in cases.items():
+        message = torn(rp.delta_values, stream, count, kind)
+        require(message is not None and expect in message, f"DELTA {name}: {message}")
 
 
 def check_levels() -> None:
@@ -378,8 +483,10 @@ def main() -> None:
         check_older_prefix(waveshare, work / "fixture-older", work, args.sanitize)
         check_cli(waveshare, work)
         check_levels()
+        check_delta_streams()
     suffix = " (ASan + UBSan fixture)" if args.sanitize else ""
-    print(f"PASS partial rebuild, {checked} cuts and corruptions across both boards and codecs{suffix}")
+    print(f"PASS partial rebuild, {checked} cuts and corruptions across every board, both codecs and PLAIN and "
+          f"DELTA_BINARY_PACKED integer pages{suffix}")
 
 
 if __name__ == "__main__":

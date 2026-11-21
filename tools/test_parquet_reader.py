@@ -20,9 +20,16 @@ Run with ``pixi run reader-test`` (ASan + UBSan) or
    frame under 1 KB.
 5. The page decoder (parquet_columns.h) reads every INT32, INT64 and FLOAT
    column of the writer files and the plain PyArrow files back, and each row,
-   null and float bit pattern must match PyArrow and DuckDB. Dictionary pages,
-   ZSTD and DELTA_BINARY_PACKED are refused. Hand-built pages cover every
-   error, and a seeded loop corrupts and truncates real pages and chunks.
+   null and float bit pattern must match PyArrow and DuckDB. Dictionary pages
+   and ZSTD are refused. Hand-built pages cover every error, and a seeded
+   loop corrupts and truncates real pages and chunks.
+6. DELTA_BINARY_PACKED INT32 and INT64 pages (#229) decode to the PyArrow and
+   DuckDB rows and to the same rows as the PLAIN twin. That covers the writer
+   files, every edge and real shape of tools/delta_fixture.cpp, PyArrow's own
+   DELTA pages and a CrowPanel shaped file whose monotonic_us, co2_ppm and
+   sd_used_bytes the chart history restore reads. Hand-built streams cover
+   the spec examples and every malformed header, width and count, and the
+   mutation loop runs over DELTA files too.
 """
 
 from __future__ import annotations
@@ -330,18 +337,113 @@ def writer_files(tools: Tools, directory: Path) -> None:
             print(f"PASS firmware writer {groups} x {rows} rows x {columns} columns {codec}: "
                   f"PyArrow + DuckDB + Iceberg metrics agree, {decoded} columns decode to the same rows",
                   flush=True)
-    # DELTA_BINARY_PACKED integers (#135, no board writes it) are refused, FLOAT
-    # columns of the same file still decode.
+    # DELTA_BINARY_PACKED integers (#135, no board writes it yet) decode to
+    # the same rows as the PLAIN twin, FLOAT columns beside them too.
     for codec in ("none", "lz4"):
+        plain = directory / f"writer-delta-plain-{codec}.parquet"
         path = directory / f"writer-delta-{codec}.parquet"
-        subprocess.run([str(tools.writer), str(path), "90", "9", codec, "2", "delta"],
-                       check=True, stdout=subprocess.DEVNULL, timeout=TIMEOUT)
-        integers = {leaf.name: "encoding" for leaf in pq.ParquetFile(path).schema
-                    if leaf.physical_type in ("INT32", "INT64")}
+        for target, extra in ((plain, []), (path, ["delta"])):
+            subprocess.run([str(tools.writer), str(target), "90", "9", codec, "2", *extra],
+                           check=True, stdout=subprocess.DEVNULL, timeout=TIMEOUT)
+        integers = [leaf.name for leaf in pq.ParquetFile(path).schema if leaf.physical_type in ("INT32", "INT64")]
         require(len(integers) >= 4, "delta file has integer columns")
-        decoded = check_columns(tools, path, integers)
-        require(decoded >= 3, "delta file FLOAT columns decode")
-    print("PASS DELTA_BINARY_PACKED integer pages are refused, FLOAT pages beside them decode", flush=True)
+        require(delta_columns(path) == set(integers), f"{path.name}: integer chunks list DELTA_BINARY_PACKED")
+        decoded = check_columns(tools, path)
+        require(decoded == check_columns(tools, plain), "delta file decodes every column the PLAIN file does")
+        require(tools.columns(path) == tools.columns(plain), f"{path.name}: rows equal the PLAIN twin")
+    print("PASS DELTA_BINARY_PACKED writer files decode to the PyArrow and DuckDB rows and equal the PLAIN twin",
+          flush=True)
+
+
+def delta_columns(path: Path) -> set[str]:
+    """Columns whose chunk lists DELTA_BINARY_PACKED."""
+    meta = pq.ParquetFile(path).metadata
+    return {meta.schema.column(c).name for g in range(meta.num_row_groups) for c in range(meta.num_columns)
+            if "DELTA_BINARY_PACKED" in meta.row_group(g).column(c).encodings}
+
+
+def delta_files(tools: Tools, directory: Path, sanitize: bool) -> None:
+    """Every DELTA shape the writer makes, PyArrow DELTA pages and a CrowPanel file."""
+    flags = [CXX_STD, "-Wall", "-Wextra", "-Werror", "-g", "-I", str(ROOT / "firmware/common/vendor/lz4")]
+    if sanitize:
+        flags += ["-fsanitize=address,undefined", "-fno-sanitize-recover=all"]
+    source = ROOT / "firmware/common/src"
+    fixture = directory / "delta_fixture"
+    subprocess.run(["clang++", *flags, str(ROOT / "tools/delta_fixture.cpp"), str(source / "parquet_writer.cpp"),
+                    str(source / "lz4_codec.cpp"), "-o", str(fixture)], check=True)
+    out = directory / "delta-shapes"
+    out.mkdir()
+    subprocess.run([str(fixture), str(out)], check=True, stdout=subprocess.DEVNULL, timeout=120)
+    deltas = sorted(out.glob("*-delta-*.parquet"))
+    require(len(deltas) == 26, f"delta fixture wrote 26 DELTA files, got {len(deltas)}")
+    for path in deltas:
+        plain = path.with_name(path.name.replace("-delta-", "-plain-"))
+        require(delta_columns(path), f"{path.name}: has DELTA chunks")
+        check_columns(tools, path)
+        require(tools.columns(path) == tools.columns(plain), f"{path.name}: rows equal the PLAIN twin")
+    print(f"PASS DELTA_BINARY_PACKED edge and real shapes: {len(deltas)} files (wrap, full 64 bit width, zero "
+          "width miniblocks, nulls, all null, 1 to 1000 rows) decode to the PyArrow, DuckDB and PLAIN rows",
+          flush=True)
+
+    # PyArrow's own DELTA writer, several pages per chunk and both codecs.
+    rows = 1000
+    table = pa.table({
+        "t": pa.array([1_700_000_000_000_000 + i * 10_000_000 + (i * 7919 % 13) if i % 17 else None
+                       for i in range(rows)], pa.int64()),
+        "wide": pa.array([(-(2**63) if i % 2 else 2**63 - 1) for i in range(rows)], pa.int64()),
+        "small": pa.array([(i * 2654435761) % 4001 - 2000 for i in range(rows)], pa.int32()),
+        "edge32": pa.array([(-(2**31) if i % 3 == 0 else 2**31 - 1) if i % 5 else None for i in range(rows)],
+                           pa.int32()),
+        "flat": pa.array([42] * rows, pa.int32()),
+        "f": pa.array([i * 0.25 for i in range(rows)], pa.float32()),
+    })
+    encodings = dict.fromkeys(("t", "wide", "small", "edge32", "flat"), "DELTA_BINARY_PACKED")
+    arrow = 0
+    for compression in ("NONE", "LZ4"):
+        # 200 rows a group keeps the file within the reader's 8 row groups and
+        # still crosses a 128 value block inside each chunk.
+        for group_rows in (rows, 200):
+            path = directory / f"pyarrow-delta-{compression}-{group_rows}.parquet"
+            pq.write_table(table, path, compression=compression, use_dictionary=False,
+                           column_encoding=encodings, row_group_size=group_rows, data_page_size=512)
+            require(delta_columns(path) == set(encodings), f"{path.name}: PyArrow wrote DELTA chunks")
+            check_columns(tools, path)
+            arrow += 1
+    print(f"PASS PyArrow DELTA_BINARY_PACKED files: {arrow} files, many pages per chunk, decode to the PyArrow "
+          "and DuckDB rows", flush=True)
+
+    # A CrowPanel shaped file, as the chart history restore reads it.
+    board = directory / "crowpanel_fixture"
+    inc = ROOT / "firmware/esp-idf-crowpanel-epaper/logger/telemetry_fields.inc"
+    subprocess.run(["clang++", *flags, f'-DOS_FIELDS_INC="{inc}"', str(ROOT / "tools/partial_rebuild_fixture.cpp"),
+                    str(source / "parquet_writer.cpp"), str(source / "lz4_codec.cpp"), "-o", str(board)],
+                   check=True)
+    for codec in ("none", "lz4"):
+        files = {}
+        for encoding in ("plain", "delta"):
+            path = directory / f"crowpanel-{encoding}-{codec}.parquet"
+            extra = ["delta"] if encoding == "delta" else []
+            subprocess.run([str(board), str(path), codec, "8", "90", *extra], check=True, stdout=subprocess.DEVNULL,
+                           timeout=TIMEOUT)
+            files[encoding] = path
+        path = files["delta"]
+        require({"monotonic_us", "co2_ppm", "sd_used_bytes"} <= delta_columns(path),
+                f"{path.name}: restore columns are DELTA")
+        check_columns(tools, path)
+        rows_delta = {c["name"]: c for c in tools.columns(path)["columns"]}
+        rows_plain = {c["name"]: c for c in tools.columns(files["plain"])["columns"]}
+        require(rows_delta == rows_plain, f"{path.name}: rows equal the PLAIN twin")
+        require(len(rows_delta["monotonic_us"]["rows"]) == 720 and None not in rows_delta["monotonic_us"]["rows"],
+                "monotonic_us decodes every row")
+        # used_range() reads sd_used_bytes from the chunk statistics, which
+        # stay PLAIN whatever the page encoding.
+        stats = [tools.dump(files[e])["row_groups"] for e in ("plain", "delta")]
+        index = [c["name"] for c in tools.dump(path)["columns"]].index("sd_used_bytes")
+        require([(g["columns"][index]["min"], g["columns"][index]["max"]) for g in stats[0]] ==
+                [(g["columns"][index]["min"], g["columns"][index]["max"]) for g in stats[1]],
+                "sd_used_bytes statistics equal the PLAIN twin")
+    print("PASS CrowPanel shaped DELTA files (8 x 90 rows, both codecs): monotonic_us, co2_ppm and every other "
+          "column decode to the PLAIN rows, sd_used_bytes statistics are unchanged", flush=True)
 
 
 def geo_files(tools: Tools, directory: Path) -> None:
@@ -783,7 +885,10 @@ def page_cases(tools: Tools, directory: Path) -> None:
     require(run.returncode == 0, f"page cases: rc={run.returncode} {run.stderr[-3000:]}")
     cases = json.loads(run.stdout)["cases"]
     targets = sorted(directory.glob("writer-9x9x*.parquet")) + sorted(directory.glob("writer-90x77x4-*.parquet")) + [
-        directory / "pyarrow-NONE-False-4.parquet", directory / "pyarrow-LZ4-False-11.parquet"]
+        directory / "pyarrow-NONE-False-4.parquet", directory / "pyarrow-LZ4-False-11.parquet",
+        directory / "writer-delta-none.parquet", directory / "writer-delta-lz4.parquet",
+        directory / "delta-shapes/edge-130-delta-none.parquet", directory / "delta-shapes/edge-257-delta-lz4.parquet",
+        directory / "pyarrow-delta-NONE-200.parquet", directory / "crowpanel-delta-lz4.parquet"]
     total = accepted = refused = 0
     for seed, path in enumerate(targets, start=101):
         run = subprocess.run([str(tools.reader), "pagefuzz", str(path), "1500", str(seed)], capture_output=True,
@@ -808,6 +913,7 @@ def main() -> None:
         writer_files(tools, directory)
         geo_files(tools, directory)
         pyarrow_files(tools, directory)
+        delta_files(tools, directory, args.sanitize)
         crafted(tools, directory)
         fuzz(tools, directory)
         page_cases(tools, directory)

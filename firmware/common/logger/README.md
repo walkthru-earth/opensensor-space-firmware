@@ -572,14 +572,15 @@ stay the same. `os_logger_encoding.h` maps the switch to the
 boot line `PARQUET BEGIN` ends with `integers=PLAIN` or
 `integers=DELTA_BINARY_PACKED`. A board turns it on with one line in its
 `sdkconfig.defaults`, and no board does until decision record 0002 records
-the board measurement (#61). The CrowPanel stops the build when it is on,
-because its chart history restore decodes PLAIN values only
-(`parquet_columns.h`).
+the board measurement (#61). The CrowPanel chart history restore reads both
+encodings, because `parquet_columns.h` decodes DELTA_BINARY_PACKED INT32 and
+INT64 pages (#229), and `tools/rebuild_partial.py` rebuilds a torn DELTA
+`.partial`.
 
 `pixi run logger-encoding-test` fails when the Kconfig default is not n, when
 a shipped `sdkconfig.defaults` sets it, when `os_logger.cpp` takes the
-encoding from anywhere else, or when a board that decodes its own files lacks
-the build stop. It builds `tests/test_encoding.cpp` with the switch off and
+encoding from anywhere else, or when a board that decodes its own files still
+stops the build on the switch. It builds `tests/test_encoding.cpp` with the switch off and
 on and writes files through the real writer, with and without LZ4_RAW. Off
 must equal the writer default byte for byte. On must list DELTA_BINARY_PACKED
 for integer chunks only, keep every statistic and read back the same values

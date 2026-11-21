@@ -7,8 +7,10 @@
 // One call decodes one column chunk of one row group. It reads the Thrift
 // Compact PageHeader of every DATA_PAGE (v1) in the chunk, decompresses an
 // LZ4_RAW payload into caller scratch, expands the RLE/bit-packed definition
-// levels (bit width 1, a flat optional leaf) and the PLAIN values into
-// caller spans. Dictionary pages, DataPageV2, DELTA encodings, other codecs
+// levels (bit width 1, a flat optional leaf) and the values into caller
+// spans. Values are PLAIN, or DELTA_BINARY_PACKED for INT32 and INT64
+// columns, which the writer emits under IntegerEncoding::DeltaBinaryPacked
+// (#135, #229). Dictionary pages, DataPageV2, other encodings, other codecs
 // and BYTE_ARRAY columns are refused with an error, never guessed at.
 //
 // Zero heap. The caller owns the FileSummary from read_parquet_footer(), the
@@ -33,13 +35,15 @@ enum class [[nodiscard]] ColumnError : uint8_t {
   Read,        // ReadAt failed
   PageHeader,  // malformed or truncated Thrift PageHeader
   PageType,    // not a v1 DATA_PAGE (dictionary, index or v2 page)
-  Encoding,    // a value encoding other than PLAIN, levels other than RLE
+  Encoding,    // not PLAIN, DELTA on a FLOAT, or levels other than RLE
   Codec,       // a codec other than UNCOMPRESSED or LZ4_RAW
   Lz4,         // LZ4 block did not decode to exactly the promised size
   Length,      // page sizes disagree with the chunk or with each other
   Levels,      // definition level stream malformed or wrong row count
   Values,      // value bytes disagree with the present row count
   Capacity,    // scratch smaller than the page needs
+  Delta,       // DELTA_BINARY_PACKED stream malformed, out of range or a
+               // count other than the present rows
 };
 
 [[nodiscard]] const char *column_error_name(ColumnError error);

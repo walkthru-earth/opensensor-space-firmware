@@ -432,9 +432,10 @@ and by hand from the Actions tab (`workflow_dispatch`).
   entries. `waveshare-psram-build` stays a manual SDK fixture. A
   `bench-stall` leg compiles the CoreS3 and Waveshare logger bench images
   with `OS_BENCH=stall`, so the `CONFIG_OS_LOGGER_BENCH_STALL` code keeps
-  building. A `bench-delta` leg does the same with `OS_BENCH=delta` for the
-  `CONFIG_OS_LOGGER_DELTA_INTEGERS` switch (#135). They only compile them and
-  have no size or slot check.
+  building. `bench-delta` legs do the same with `OS_BENCH=delta` for the
+  `CONFIG_OS_LOGGER_DELTA_INTEGERS` switch (#135) on CoreS3, Waveshare V2
+  and the CrowPanel, whose history restore reads DELTA pages (#229). They
+  only compile them and have no size or slot check.
 - Each board job uploads its `idf.py size --format json2` report and
   `os-build-sha256.json` as the `size-<board>` artifact, and the ELF, map and
   `flash_args` as `firmware-<board>`. Both are kept 90 days for `main` builds
