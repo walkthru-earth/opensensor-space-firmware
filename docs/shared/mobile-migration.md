@@ -9,7 +9,7 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
-## SET_CONFIG error details and the retired PIN (fix/config-error-detail-and-nvs-recovery)
+## SET_CONFIG error details, the retired PIN and the settings storage fault (fix/config-error-detail-and-nvs-recovery)
 
 **Needs a matched reflash and an app check of its ERROR 12 handling.** No
 column, field id, LIVE key, STATUS key, config key, dictionary or digest
@@ -27,6 +27,11 @@ changes.
   `detail="ble.pin"` (#177). Every other six digit value is still accepted.
 - The serial `parquet config-hex` reply uses the same two words, so
   `no-equals` and `unknown-key` replace `invalid-key` for those cases.
+- When NVS does not start (#177) the board still records nothing and starts
+  no radio, as before, and now shows it. CoreS3 shows red screen text, the
+  Waveshare V2 logger blinks its LED red at 1 Hz, the CrowPanel and the
+  ePaper-3.97 draw a page in English and Arabic, and the CrowPanel LED blinks
+  at 4 Hz. The serial line keeps its text and now repeats every 30 s.
 
 **Why.** A phone that sent `wifi.psk secret` without the `=`, or a PSK with a
 stray `=` on a malformed line, got its Wi-Fi password back in the ERROR
@@ -41,6 +46,9 @@ not be able to set it again.
   app sent as a stand in for the detail.
 - Before sending `ble.pin`, refuse the retired default in the app too, and on
   ERROR 12 `detail="ble.pin"` ask the owner for another PIN.
+- A board with the storage fault never advertises. When the owner reports
+  "Settings storage error", point to the recovery steps in that board's guide.
+  Never suggest erasing the board, NVS holds its Thing id.
 
 ## Internal flash fallback archive (feat/flash-fallback-archive)
 
