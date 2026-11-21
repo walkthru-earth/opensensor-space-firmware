@@ -3,19 +3,23 @@ and firmware/common/gnss_reader.
 
 Covers the SIMCom CGNSSINFO dialect, fix to H3 cell, freshness, the per row
 location source rule, that a GNSS cell never splits files and that a
-deployment id change does (#148). Compiles the real os_gnss.cpp,
-device_config.cpp and the pinned H3 library. It does not prove a receiver
-fix, UART timing or antenna placement on a board.
+deployment id change does (#148). Source checks, each with mutants, keep a
+raw receiver line and position out of the panic core dump (#172). Compiles
+the real os_gnss.cpp, device_config.cpp and the pinned H3 library. It does
+not prove a receiver fix, UART timing, antenna placement or the contents of
+a real core dump on a board.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 import re
 import subprocess
 import tempfile
 
+import check_idf_target
 from host_cxx import CXX_STD
 from h3_library import library_flags
 
@@ -54,12 +58,124 @@ def check_wiring(root: Path) -> None:
     logger_cmake = (root / "firmware/common/logger/CMakeLists.txt").read_text()
     assert "gnss_reader" not in logger_cmake, "the logger does not require the reader task"
 
+
+def function_body(text: str, signature: str) -> str:
+    start = text.index(signature)
+    return text[start:text.index("\n}\n", start)]
+
+
+def check_reader_dump(reader: str) -> None:
+    """The panic core dump saves the live part of each task stack, not .bss
+    or the heap (#172). The reply line stays in one .bss buffer, the only
+    parse runs in parse_line, which wipes its Reading on exit, and line_fix
+    scrubs the dead parse and H3 frames from the same caller frame right
+    after. tools/stack_budget.py proves the scrub frame is deep enough on a
+    board build."""
+    buffers = re.findall(r"std::array<char,\s*kLineBytes>\s*(&?)\s*(\w+)", reader)
+    assert sorted(buffers) == [("", "line_buffer"), ("&", "buffer")], \
+        f"the reply line has one .bss home, found {buffers}"
+    assert re.search(r"^std::array<char, kLineBytes> line_buffer\{\};$", reader, re.M), \
+        "line_buffer is declared at namespace scope"
+    assert "[[gnu::noinline]] void scrub_stack() {" in reader, "the scrub keeps its own frame"
+    scrub = function_body(reader, "void scrub_stack() {")
+    assert re.search(r"std::array<unsigned char, kScrubBytes> (\w+);\n\s*wipe_bytes\(\1\);", scrub), \
+        "the scrub zeroes a local array of kScrubBytes"
+    assert "asm volatile" in scrub, "the scrub array is kept"
+    # One parse, in a frame of its own that line_fix scrubs right after.
+    assert reader.count("parse_fix(") == 1, "a parse outside parse_line"
+    assert re.search(r"\[\[nodiscard, gnu::noinline\]\] std::expected<Fix, ParseError>\s*parse_line\(",
+                     reader), "parse_line keeps the parse in its own frame"
+    parse = function_body(reader, "parse_line(const Dialect &dialect, std::string_view line) {")
+    assert re.search(r"auto reading =\s*dialect\.parse_fix\([^;]*\);\n\s*const WipeOnExit "
+                     r"wipe_reading\(reading\);", parse), "parse_line wipes its Reading on exit"
+    assert reader.count("parse_line(") == 2, "parse_line is called from line_fix only"
+    fix = function_body(reader, "line_fix(const Dialect &dialect")
+    assert re.search(r"= parse_line\(dialect, line\);\n\s*scrub_stack\(\);", fix), \
+        "line_fix scrubs right after the parse"
+    poll = function_body(reader, "bool poll_fix(const Dialect &dialect, State &shown) {")
+    assert "line_fix(dialect, line)" in poll, "the AT poll parses through line_fix"
+    exchange = function_body(reader, "Reply exchange(std::string_view command")
+    assert re.search(r"on_line\(line\);\n\s*wipe_bytes\(line_buffer\);", exchange), \
+        "exchange wipes the line after every line"
+    loop = function_body(reader, "void stream_fix(const Dialect &dialect, State &shown) {")
+    assert re.search(r"line_fix\(dialect, std::string_view\(line_buffer\.data\(\), length\)\);\n"
+                     r"\s*wipe_bytes\(line_buffer\);", loop), "stream_fix parses through line_fix"
+    for body in (exchange, loop):
+        assert "const WipeOnExit wipe_buffer(line_buffer);" in body, "the line is wiped on every exit"
+
+
+def check_dump_config(settings: list[str], defaults: dict[str, str], budgets: dict) -> None:
+    """A dump that captured DRAM would save .bss, line_buffer included."""
+    assert "# CONFIG_ESP_COREDUMP_CAPTURE_DRAM is not set" in settings, \
+        "check_idf_target.py fails a board build that captures DRAM"
+    for name, text in defaults.items():
+        assert not re.search(r"^CONFIG_ESP_COREDUMP_CAPTURE_DRAM=y", text, re.M), \
+            f"{name} captures DRAM in the core dump"
+    scrub = budgets["tasks"]["os-gnss"].get("scrub", {})
+    assert scrub.get("function", "").endswith("::scrub_stack()"), "stack_budget.json checks the scrub"
+    assert any("::parse_line(" in item for item in scrub.get("covers", [])), \
+        "the scrub covers the parse and the H3 conversion"
+
+
+def must_fail(check, *args) -> None:
+    try:
+        check(*args)
+    except AssertionError:
+        return
+    raise AssertionError(f"{check.__name__} accepted a mutant")
+
+
+def check_core_dump(root: Path) -> None:
+    reader = (root / "firmware/common/gnss_reader/src/os_gnss_reader.cpp").read_text()
+    check_reader_dump(reader)
+    mutants = [
+        # A second line buffer on the stack.
+        reader.replace("  const WipeOnExit wipe_buffer(line_buffer);\n",
+                       "  std::array<char, kLineBytes> buffer{};\n  const WipeOnExit wipe_buffer(line_buffer);\n", 1),
+        # No scrub after the parse.
+        reader.replace("  scrub_stack();\n  return fix;\n", "  return fix;\n", 1),
+        # The scrub inlined into its caller, so it has no frame of its own.
+        reader.replace("[[gnu::noinline]] void scrub_stack()", "void scrub_stack()", 1),
+        reader.replace("  wipe_bytes(frame);\n", "", 1),
+        reader.replace("  const WipeOnExit wipe_reading(reading);\n", "", 1),
+        # The parse inlined into its caller, past the scrubbed frame.
+        reader.replace("[[nodiscard, gnu::noinline]] std::expected<Fix, ParseError>",
+                       "[[nodiscard]] std::expected<Fix, ParseError>", 1),
+        # A second parse that line_fix does not scrub after.
+        reader.replace("  std::size_t length = 0;\n", "  std::size_t length = 0;\n"
+                       "  const auto extra = settings.dialect->parse_fix({});\n", 1),
+        reader.replace("  std::size_t length = 0;\n", "  std::size_t length = 0;\n"
+                       "  const auto extra = parse_line(dialect, {});\n", 1),
+        # The line left in .bss after it was handled.
+        reader.replace("    on_line(line);\n    wipe_bytes(line_buffer);\n", "    on_line(line);\n", 1),
+    ]
+    for mutant in mutants:
+        assert mutant != reader, "a mutant did not apply"
+        must_fail(check_reader_dump, mutant)
+
+    paths = [*root.glob("tools/*sdkconfig.defaults"), *root.glob("firmware/esp-idf-*/sdkconfig.defaults*"),
+             *root.glob("firmware/esp-idf-*/*/sdkconfig.defaults*")]
+    defaults = {str(path.relative_to(root)): path.read_text() for path in paths}
+    assert "tools/idf-sdkconfig.defaults" in defaults, "the shared sdkconfig defaults are scanned"
+    assert "firmware/esp-idf-waveshare-sim7670g/logger/sdkconfig.defaults" in defaults, \
+        "the reader board's defaults are scanned"
+    budgets = json.loads((root / "tools/stack_budget.json").read_text())
+    settings = list(check_idf_target.COREDUMP_SETTINGS)
+    check_dump_config(settings, defaults, budgets)
+    must_fail(check_dump_config, [item for item in settings if "CAPTURE_DRAM" not in item], defaults, budgets)
+    must_fail(check_dump_config, settings, {**defaults, "x": "CONFIG_ESP_COREDUMP_CAPTURE_DRAM=y\n"}, budgets)
+    dropped = json.loads(json.dumps(budgets))
+    del dropped["tasks"]["os-gnss"]["scrub"]
+    must_fail(check_dump_config, settings, defaults, dropped)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sanitize", action="store_true")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
     check_wiring(root)
+    check_core_dump(root)
     common = root / "firmware/common"
     with tempfile.TemporaryDirectory(prefix="os-gnss-test-") as temporary:
         directory = Path(temporary)
@@ -81,7 +197,8 @@ def main() -> None:
             command += ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
         subprocess.run(command, check=True)
         subprocess.run([str(executable)], check=True)
-    print("GNSS: SIMCom dialect, fix to cell, freshness, source rule and no file split passed")
+    print("GNSS: SIMCom dialect, fix to cell, freshness, source rule, no file split and core dump "
+          "exposure passed")
 
 
 if __name__ == "__main__":
