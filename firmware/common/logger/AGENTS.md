@@ -38,6 +38,13 @@ initialization and each board's schema/provenance remain in its own trial.
   A radio LIST runs as bounded `ArchiveSession::step()` calls from the worker
   loop, one per pass after samples and commits. Never walk a whole tree for a
   radio request in one call.
+- Flash fallback (decision record 0004). Each new file takes its root once at
+  create, from `archive_target::choose()`, and keeps it through finalize,
+  sidecar and quarantine. Never move an open file between roots. Copy back
+  runs only in an idle worker pass with the card Ready, no LIST and no
+  emergency close, one chunk per pass with the bus lock and a heartbeat, from
+  the PSRAM `FlashDrain`. It deletes a flash file only after a verified
+  identical copy and never deletes to make room. ERASE_ARCHIVE stays card only.
   Any new loop or walk on the worker calls `stamp_heartbeat()` per entry, and
   any new blocking board hook is stamped on both sides. Writer code stamps only
   after confirmed progress, never before a call that may hang. Keep the

@@ -191,7 +191,7 @@ Notified after every stored sample (every 10 s) and after any `control` request 
 | `sd` | 1 when the card is mounted and the output directory exists |
 | `part` | retained `.partial` files seen at the last listing |
 | `qf` / `qb` | retained quarantine file count / bytes after startup quarantine; includes earlier boots |
-| `ls` | `LIST_SINCE` mount epoch, the FAT volume serial of the mounted card as a u32, 0 while no card is mounted or the serial is unknown. A phone compares it with the `mount_epoch` of its saved cursor to know before listing whether the cursor still applies. Absent on older firmware |
+| `ls` | `LIST_SINCE` mount epoch, the FAT volume serial of the mounted card as a u32 (stepped by one per file copied back from flash this boot), 0 while no card is mounted or the serial is unknown. A phone compares it with the `mount_epoch` of its saved cursor to know before listing whether the cursor still applies. Absent on older firmware |
 | `dc` / `dr` | proto 3. `dc` counts BLE and LAN sessions closed since boot, including refused LAN clients, saturating at 65535. `dr` is the newest [disconnect reason](#disconnect-reasons) code, or null while `dc` is 0 |
 
 A board without an enabled RTC adapter reports `rtc=2`. Each boot starts with
@@ -711,7 +711,10 @@ all-zero cursor, which asks for a full listing and returns a first cursor.
 
 - The mount epoch is the FAT volume serial of the card. A cursor from another
   card, a reformatted card or a board that cannot read the serial (epoch 0)
-  gets the `full` listing.
+  gets the `full` listing. On a board with the internal flash fallback root
+  (decision record 0004) the epoch steps by one for each file copied back from
+  flash to the card this boot, and the board answers `full` while flash holds
+  files or no card can be listed, so a cursor never skips a file that moved.
 - Dated files. The board walks `thing=<id>/year=…/month=…/day=…` from a
   floor day up, and skips older year, month and day folders without reading
   them. The floor is the smallest of the cursor day, the UTC day before today

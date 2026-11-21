@@ -36,7 +36,31 @@ to `/sd/output`; `legacy_directory` is opt-in for previous archives.
 `/flash/output` by a board built with `CONFIG_OS_LOGGER_FLASH_FALLBACK` whose
 boot mount succeeded (decision record 0004). `begin()` rejects a root that is
 not absolute, is longer than 31 bytes or overlaps the card archive or the
-codec-test root. The logger does not write there yet.
+codec-test root.
+
+With a fallback root the worker picks a root for each new file. The card
+takes it while the governor can write, else flash while its free space stays
+above `fallback_reserve_bytes` (128 KiB by default), else the rows wait in RAM.
+A file keeps its root until it finalizes, so a card that leaves mid-file keeps
+today's handling and a card that comes back leaves an open flash file on flash
+until its window rotates. Each change prints `OS STORAGE
+target=<card|flash|none>`, and the flash volume crossing its reserve prints
+`OS FLASH full free=<n> reserve=<n>` or `OS FLASH room free=<n>` once per
+transition. Nothing is deleted to make room. Boot quarantine also moves flash
+`.partial` files into `/flash/output/quarantine/` and prints `PARQUET RECOVERY
+... root=flash`. LIST walks the card, then the legacy root, then flash, and
+skips a flash name the card already holds. Without a card LIST and OPEN serve
+flash, and ERROR 8 means neither root is usable. OPEN and READ try the card
+first, then flash. LIST_SINCE answers `full` while flash holds files or after
+a copy moved one.
+
+While the card is Ready, no LIST runs and no emergency close is pending, the
+idle worker copies flash files back one chunk per pass, Parquet before its
+sidecar, verified by SHA-256, and prints `OS FLASH copy name=<relative>
+bytes=<n> result=<copied|identical|conflict|error|cancelled>`, then `OS FLASH
+copy done files=<n>` once flash is empty. Only a file whose identical copy is
+verified on the card is removed from flash. A conflict or crosslink suspect
+stays on both roots for the owner. ERASE_ARCHIVE erases card roots only.
 
 `Config::sample_interval_ms` sets the sample period and the footer
 `acquisition.sample_interval_ms`. The default is 10 s, which both boards keep.

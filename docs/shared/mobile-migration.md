@@ -9,6 +9,40 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## Internal flash fallback archive (feat/flash-fallback-archive)
+
+**Needs a matched reflash of all four boards. No app change is required.**
+No column, field id, LIVE key, STATUS key, response, config key, dictionary
+or digest changes. Decision record 0004.
+
+**What changed.**
+
+- Without a writable card the board writes new Parquet files and sidecars to
+  its internal flash under `/flash/output`, with the same names and paths as
+  on the card, and copies them back to the card once one is Ready. The
+  ePaper-3.97 now opts in too, so all four boards do.
+- Without a card, `LIST`, `OPEN` and `READ` now answer from flash instead of
+  ERROR 8. ERROR 8 means neither root is usable. With a card, `LIST` adds the
+  flash files the card does not hold yet, after the card entries.
+- `LIST_SINCE` answers `full` while flash holds files or no card can be
+  listed, and STATUS `ls` steps by one for each file copied back this boot,
+  so a saved cursor from before a copy reads as stale.
+- New log lines `OS STORAGE target=<card|flash|none>`, `OS FLASH full
+  free=<n> reserve=<n>`, `OS FLASH room free=<n>`, `OS FLASH copy name=<n>
+  bytes=<n> result=<copied|identical|conflict|error|cancelled>`, `OS FLASH
+  copy held files=<n>`, `OS FLASH copy done files=<n>`, `OS FLASH ERROR
+  operation=<space|write|directory|allocate|copy-walk>` and `PARQUET RECOVERY
+  quarantined=<n> repaired=0 deleted=0 root=flash`.
+
+**Why.** A Thing with no card, or a pulled card, kept its rows in RAM only and
+dropped them once the batch filled. Flash keeps a few windows (about an hour
+on the CrowPanel, about 19 hours on the 16 MB boards) for the phone and the
+card.
+
+**What the app must do.** Nothing. A file can now appear in a listing without
+a card and later reappear from the card with the same name and bytes, so a
+copy the phone already holds stays valid.
+
 ## Shared e-paper UI on the Waveshare ePaper-3.97
 
 **Log lines only, no app change.** The ePaper-3.97 replaces its bring-up

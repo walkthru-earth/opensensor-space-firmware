@@ -100,8 +100,10 @@ The owner approved these for this feature on 2026-11-21.
 
 - Capacity is small. A 15 minute window of the CoreS3 schema measured
   49,839 bytes ([0002](0002-small-parquet-files.md)), so the 16 MB boards hold
-  roughly 75 windows, about 19 hours, and the CrowPanel about 7 windows, under
-  2 hours. Wear levelling and FAT take a little of each.
+  roughly 75 windows, about 19 hours. The CrowPanel `spiffs` partition is
+  0x60000 bytes (384 KiB). After the 128 KiB `fallback_reserve_bytes` and the
+  FAT and wear levelling overhead it holds about 3 to 4 windows, about an
+  hour. Wear levelling and FAT also take a little of the 16 MB boards.
 - Each flash erase or write stalls the instruction cache for a few
   milliseconds. The 10 s monotonic sampling and the watchdog rules stay. A
   bench test must show no sample gaps.
