@@ -49,6 +49,83 @@ struct Inputs {
   return !in.card_ready && in.flash_mounted && choose(in) == Target::None;
 }
 
+// What the card showed at its last write (decision record 0004, item 4).
+// A probe that wrote nothing leaves Untested, so the next card write, a new
+// card file or a copy back write, is the test.
+enum class CardWrites : std::uint8_t {
+  Untested, // no write since the last probe that wrote nothing
+  Passed,   // a card write succeeded
+  Failed,   // a probe write test failed, and no card write succeeded since
+};
+
+// After a failed write test an open flash file is finalized for another test
+// at most once in this time. Without it a card that mounts but cannot write
+// closed the flash file at every probe, about 150 extra files a day at the
+// 600 s backoff cap. Between those tests the rows wait in RAM before each
+// flash file opens, and a probe then tests the card without closing a file.
+inline constexpr std::int64_t kRetestFinalizeSeconds = 3600;
+
+struct ProbeInputs {
+  // The probe measured at least the card reserve.
+  bool space_ok = false;
+  // The space band after this probe lets the card take files, that is
+  // storage::probe_state() is Ready or Degraded. A Full card in the band
+  // above the reserve stays Full and cannot.
+  bool card_writable = false;
+  bool rows_waiting = false;
+  // The open telemetry file is on flash.
+  bool flash_open = false;
+  // The next commit goes to flash while the card cannot take it, so the
+  // rows have a home without the card.
+  bool flash_takes_rows = false;
+  CardWrites writes = CardWrites::Untested;
+  // Seconds since the failed write test, when writes is Failed.
+  std::int64_t failed_age_s = 0;
+};
+
+enum class [[nodiscard]] ProbeAction : std::uint8_t {
+  Measure,       // no card write, the probe succeeds on its mount and space
+  Write,         // the waiting rows test the card, no flash file is open
+  FinalizeWrite, // finalize the open flash file, then the rows test the card
+  Defer,         // no card write, and the probe counts as failed
+};
+
+// The card write at a storage probe (#218, #219). The waiting rows are the
+// write test. An open flash file is finalized for the test only when the
+// card will take files after the probe and its last write test did not fail
+// within kRetestFinalizeSeconds, so a bad or Full card never cuts the flash
+// file into short pieces. With no rows waiting nothing is written and the
+// flash file stays open. A card whose last write test failed is not called
+// writable on its mount alone, the probe defers and the backoff grows.
+[[nodiscard]] constexpr ProbeAction probe_action(const ProbeInputs &in) {
+  if (!in.space_ok)
+    return ProbeAction::Measure;
+  if (!in.card_writable) {
+    // The rows go to flash while the card stays Full. A board without a
+    // flash root writes them to the card above its reserve, as before.
+    if (in.flash_takes_rows || !in.rows_waiting)
+      return ProbeAction::Measure;
+    return ProbeAction::Write;
+  }
+  const bool failed = in.writes == CardWrites::Failed;
+  if (!in.rows_waiting)
+    return failed ? ProbeAction::Defer : ProbeAction::Measure;
+  if (!in.flash_open)
+    return ProbeAction::Write;
+  if (failed && in.failed_age_s < kRetestFinalizeSeconds)
+    return ProbeAction::Defer;
+  return ProbeAction::FinalizeWrite;
+}
+
+// A copy back write the card refused while the card has not passed a write
+// since its last probe. It counts as the write test, so the card leaves
+// Ready (#218). After a passed write a refused copy is that file's problem
+// and leaves the card state alone, so one bad path never stops logging.
+[[nodiscard]] constexpr bool copy_fails_card(CardWrites writes,
+                                             bool card_write_failure) {
+  return card_write_failure && writes != CardWrites::Passed;
+}
+
 [[nodiscard]] constexpr const char *target_name(Target target) {
   switch (target) {
   case Target::Card:

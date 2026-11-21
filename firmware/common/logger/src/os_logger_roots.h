@@ -10,7 +10,8 @@
 // host test checks every overlap. It only compares strings.
 namespace opensensor::logger::roots {
 
-// Longest fallback root, so <root>/<relative> fits the 416 byte walk paths.
+// Longest fallback root, so <root>/<relative> fits paths::kPathBytes
+// (os_logger_paths.h).
 inline constexpr std::size_t kMaxFallbackBytes = 31;
 
 // True when `path` is `root` or lies below it. A missing path or root holds
