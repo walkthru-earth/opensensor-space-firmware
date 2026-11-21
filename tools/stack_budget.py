@@ -78,7 +78,7 @@ FUNC_RE = re.compile(r"^([0-9a-f]{8}) <([^>]+)>:$")
 ENTRY_RE = re.compile(r"\tentry\ta1, (\d+)")
 # A real call targets a function start. A target with an offset is a literal
 # pool word decoded as an instruction, so it is ignored.
-CALL_RE = re.compile(r"\tcall(?:0|4|8|12)\t[0-9a-f]+ <([^>+]+)>$")
+CALL_RE = re.compile(r"\tcall(0|4|8|12)\t[0-9a-f]+ <([^>+]+)>$")
 CALLX_RE = re.compile(r"\tcallx(?:0|4|8|12)\t")
 
 
@@ -175,6 +175,8 @@ def add_disassembly(graph: Graph, listing: str) -> None:
     known = set(graph.functions) | {title.rsplit(":", 1)[1] for title in graph.functions if ":" in title}
     current: Function | None = None
     frame_seen = False
+    windowed: set[str] = set()
+    call0: list[tuple[Function, str]] = []
     for line in listing.splitlines():
         if match := FUNC_RE.match(line):
             name = match.group(2)
@@ -188,10 +190,24 @@ def add_disassembly(graph: Graph, listing: str) -> None:
         if not frame_seen and (match := ENTRY_RE.search(line)):
             current.frame = int(match.group(1))
             frame_seen = True
+            windowed.add(current.name)
         elif match := CALL_RE.search(line):
-            current.calls.add(match.group(1))
+            if match.group(1) == "0":
+                call0.append((current, match.group(2)))
+            else:
+                current.calls.add(match.group(2))
         elif CALLX_RE.search(line):
             current.indirect = True
+    # A call0 cannot enter a windowed function, whose `entry` needs the window
+    # a call4, call8 or call12 sets up, and GCC emits only those for the
+    # windowed ABI. So a call0 is real only when it targets prebuilt code with
+    # no `entry`. Data after a jump that objdump decodes as a call0 landing on
+    # a function start is dropped, it is not a call (sys_thread_sem_init seen
+    # from __dtoa_engine on CrowPanel, 2026-11-21).
+    for caller, target in call0:
+        function = graph.functions.get(target)
+        if function is not None and function.source == "disassembly" and target not in windowed:
+            caller.calls.add(target)
 
 
 def pattern_matches(graph: Graph, pattern: str) -> list[str]:
