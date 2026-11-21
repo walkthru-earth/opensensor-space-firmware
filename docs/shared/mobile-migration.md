@@ -9,6 +9,26 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## CoreS3 DIAG power line prints null for a failed read (fix/cores3-power-readouts)
+
+**Needs a matched reflash of the CoreS3. No app change is required.** No
+column, field id, LIVE key, STATUS key, response, dictionary or digest changes.
+
+**What changed.**
+
+- The boot `DIAG power` serial line reads the PMIC through the same status
+  returning register reads as the stored power columns. A failed read now
+  prints `null` for `external_5v`, `usb_output`, `vbus_mv`, `battery_mv` or
+  `battery_percent`. Before, it printed `off`, `input` or `0`, because
+  M5Unified folds a failed I2C read to 0. A good read prints the same text as
+  before.
+- `battery_mv` is also `null` outside 2500 to 4500 mV, as in the stored column.
+- The device page shows `--` for the same values instead of 0.
+- The field order and the other keys of the line are unchanged.
+
+**What the app must do.** Nothing for the phone link. A tool that parses the
+serial line as integers must accept `null` for those five keys.
+
 ## Internal flash fallback archive (feat/flash-fallback-archive)
 
 **Needs a matched reflash of all four boards. No app change is required.**

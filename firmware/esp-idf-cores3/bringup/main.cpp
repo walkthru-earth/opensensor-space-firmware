@@ -265,17 +265,23 @@ void report_i2c() {
 }
 
 void report_power() {
+  // Status returning reads, so a failed read prints null, not 0 (#199).
+  const auto supply = telemetry::read_power_now();
   const auto charging = M5.Power.getChargeState();
+  namespace pw = telemetry::power;
+  pw::IntText vbus_buffer;
+  pw::IntText battery_buffer;
+  pw::IntText percent_buffer;
   oslog.printf(
-      "DIAG power pmic_type=%d external_5v=%s usb_output=%s vbus_mv=%d "
-      "battery_mv=%d battery_percent=%ld charging=%s battery_current_ma=%ld\n",
+      "DIAG power pmic_type=%d external_5v=%s usb_output=%s vbus_mv=%s "
+      "battery_mv=%s battery_percent=%s charging=%s battery_current_ma=%ld\n",
       static_cast<int>(M5.Power.getType()),
-      M5.Power.getExtOutput() ? "on" : "off",
-      M5.Power.getUsbOutput() ? "source" : "input",
-      static_cast<int>(M5.Power.getVBUSVoltage()),
-      static_cast<int>(M5.Power.getBatteryVoltage()),
-      static_cast<long>(M5.Power.getBatteryLevel()), charging_name(charging),
-      static_cast<long>(M5.Power.getBatteryCurrent()));
+      pw::bool_text(supply.external_5v, "on", "off", "null"),
+      pw::bool_text(supply.usb_output, "source", "input", "null"),
+      pw::int_text(supply.vbus_mv, vbus_buffer, "null"),
+      pw::int_text(supply.battery_mv, battery_buffer, "null"),
+      pw::int_text(supply.battery_percent, percent_buffer, "null"),
+      charging_name(charging), static_cast<long>(M5.Power.getBatteryCurrent()));
 }
 
 void report_rtc_imu_touch() {
@@ -680,14 +686,24 @@ void draw_device_page() {
     M5.Display.setTextColor(TFT_WHITE, TFT_BLACK);
   }
   M5.Display.setCursor(8, 55);
-  M5.Display.printf("VBUS: %d mV", static_cast<int>(M5.Power.getVBUSVoltage()));
+  const auto supply = telemetry::read_power_now();
+  namespace pw = telemetry::power;
+  pw::IntText vbus_buffer;
+  pw::IntText battery_buffer;
+  pw::IntText percent_buffer;
+  const char *unit_vbus = supply.vbus_mv ? " mV" : "";
+  const char *unit_battery = supply.battery_mv ? " mV" : "";
+  const char *unit_percent = supply.battery_percent ? "%" : "";
+  M5.Display.printf("VBUS: %s%s",
+                    pw::int_text(supply.vbus_mv, vbus_buffer, "--"), unit_vbus);
   M5.Display.setCursor(168, 55);
-  M5.Display.printf("Battery: %d mV",
-                    static_cast<int>(M5.Power.getBatteryVoltage()));
+  M5.Display.printf("Battery: %s%s",
+                    pw::int_text(supply.battery_mv, battery_buffer, "--"),
+                    unit_battery);
   M5.Display.setCursor(8, 75);
-  M5.Display.printf("Battery: %ld%%  %s",
-                    static_cast<long>(M5.Power.getBatteryLevel()),
-                    charging_name(M5.Power.getChargeState()));
+  M5.Display.printf("Battery: %s%s  %s",
+                    pw::int_text(supply.battery_percent, percent_buffer, "--"),
+                    unit_percent, charging_name(M5.Power.getChargeState()));
 
   M5.Display.setCursor(8, 103);
   M5.Display.printf(
