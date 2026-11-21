@@ -1,6 +1,12 @@
 # Weekly update PR for the SHA pinned GitHub Actions in .github/workflows.
 # All bumps arrive as one grouped PR, and a release must be 7 days old before
 # it is proposed, so a compromised or yanked tag has time to be caught.
+#
+# Only GitHub Actions is covered (#45). The conda ecosystem does not update
+# lock files, so it cannot move pixi.lock, and no ecosystem reads the ESP-IDF
+# component manifests or tools/idf-dependencies.lock. The IDF Python lock is
+# resolved against the SDK constraints file, which a single pip bump would
+# leave. Those pins move by hand, see docs/shared/development.md.
 version: 2
 updates:
   - package-ecosystem: github-actions

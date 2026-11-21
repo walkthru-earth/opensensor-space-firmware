@@ -50,10 +50,13 @@ Policy is to pin the latest stable release of every dependency. Rechecking on
 **2026-11-21** confirmed mDNS **1.15.1**, led_strip **3.1.1** and ESP-IDF
 **6.1.1** as latest, and M5Unified and M5GFX **0.3.0** as their latest
 releases. H3 **4.6.0** came out on 2026-11-18 and the pin stays at **4.5.0**
-until the H3 library moves to it. Dated device evidence records which component versions each
-qualified image used. LZ4 is vendored **1.11.0** with checked hashes, the
-[official latest release](https://github.com/lz4/lz4/releases/tag/v1.11.0)
-when checked on 2026-11-09.
+until embedded-h3-location tags a release that vendors it (#224). Dated device evidence records which component versions each
+qualified image used. LZ4 is vendored **1.11.0** with checked hashes.
+[LZ4 1.11.1](https://github.com/lz4/lz4/releases/tag/v1.11.1) came out on
+2026-11-10. Its `lz4.c` and `lz4.h` change only turns on the fast decode loop
+for `__PPC64__` and bumps the version number, and its main fix is in
+`lz4hc.c`, which the firmware does not vendor, so the ESP32-S3 and host code
+is the same and the pin stays at 1.11.0 (#45).
 Commit each board’s generated `dependencies.lock` to pin transitive component
 resolution. The Waveshare diagnostic variant keeps its own in
 `diagnostic/dependencies.lock`, so building it leaves the logger lock alone. Downloaded
@@ -417,8 +420,9 @@ and by hand from the Actions tab (`workflow_dispatch`).
   gate refuses to start when a `*-test` task in `pixi.toml` is missing from its
   list, except the two SDK fixtures the board job runs.
 - **Board builds** run `pixi run idf-setup`, then `cores3-build`,
-  `waveshare-build logger`, `waveshare-build diagnostic`, and the generic
-  `connectivity-build-test` and `logger-build-test` fixtures. The SDK comes
+  `waveshare-build logger`, `waveshare-build diagnostic`, `crowpanel-build`,
+  `epaper397-build`, and the generic `connectivity-build-test` and
+  `logger-build-test` fixtures. The SDK comes
   from the same `setup-idf.sh` path developers use, so CI builds exactly the
   commit in `tools/idf-dependencies.lock`. After each build
   `idf-python-check` proves the IDF venv still matches the
@@ -440,8 +444,12 @@ and by hand from the Actions tab (`workflow_dispatch`).
   uses more than half of the smallest app slot in that variant's
   `partitions.csv`. The share and the measurements behind it live in
   `tools/ota_slot_check.py`.
-- **Reproducible image paths** runs `repro-paths-check waveshare logger`. It
-  builds that image in two git worktrees of the commit at paths of different
+- **Reproducible image paths** runs `repro-paths-check <board> <variant>` in
+  one parallel leg per board, for the telemetry app a release ships, CoreS3
+  `bringup` and the `logger` of Waveshare V2, CrowPanel and ePaper-3.97. The
+  Waveshare diagnostic is not released and has no leg. `boards-test` fails
+  when a leg is missing. Each leg
+  builds its image in two git worktrees of the commit at paths of different
   length, with `SOURCE_DATE_EPOCH` set to the commit time, and fails unless
   every file in the two `os-build-sha256.json` manifests matches, the app,
   bootloader, partition table, OTA data, `sdkconfig` and flash arguments. The
@@ -458,7 +466,16 @@ and by hand from the Actions tab (`workflow_dispatch`).
   pushes to `main` and uploads its SARIF result to code scanning. It never
   runs on pull requests and is not part of `CI result`.
 - Dependabot opens one grouped pull request a week for action pin updates,
-  only for releases at least 7 days old (`.github/dependabot.yml`).
+  only for releases at least 7 days old (`.github/dependabot.yml`). It covers
+  GitHub Actions only. Its `conda` ecosystem does not update lock files, so it
+  cannot move `pixi.lock`, and it has no ecosystem for the ESP-IDF component
+  manifests or `tools/idf-dependencies.lock` (checked against the
+  [supported ecosystems](https://docs.github.com/en/code-security/dependabot/ecosystems-supported-by-dependabot/supported-ecosystems-and-repositories)
+  on 2026-11-21). The IDF Python lock is resolved against the SDK's
+  constraints file by `idf-python-lock`, so a single package bump from its
+  `pip` ecosystem would leave that file. Those pins move by hand after a check
+  of the latest stable release, as
+  [Dependency selection](../../AGENTS.md#dependency-selection) asks.
 
 CI proves compilation and host logic only. It never flashes a board, and board
 runs stay manual and dated in each bench record. Every action is pinned to a
@@ -643,14 +660,33 @@ use throwaway keys in a temp dir and never touch `secrets/`.
 ## Cutting a release
 
 `.github/workflows/release.yml` runs when a `v*` tag is pushed. It builds the
-CoreS3 and Waveshare logger images with the same pinned SDK and build tasks as
-CI, with no cache. Its IDF venv comes from the same hashed lock, and
-`idf-python-check` runs after each build. It then creates a **draft** release that holds the unsigned
-app images, one SPDX SBOM per image from `esp-idf-sbom`, `SHA256SUMS` and a
+telemetry app of every board, CoreS3 `bringup` and the Waveshare V2,
+CrowPanel and ePaper-3.97 `logger`, with the same pinned SDK and build tasks as
+CI, with no cache. Each build sets `SOURCE_DATE_EPOCH` to the commit time,
+the same as the CI `repro-paths` check, so the build date and time in the app
+description come from the commit. Its IDF venv comes from the same hashed lock, and
+`idf-python-check` runs after each build.
+
+`pixi run release-identity` then fails the board leg unless the app image
+names the tag as its app version (not `-dirty`), its project name matches the
+build, its ESP-IDF version is the pinned one in `tools/idf-dependencies.lock`,
+its ELF SHA-256 matches the built ELF, and it holds the board's `kFirmware`
+from `telemetry_contract.h` and no other firmware identity. The identity goes
+into `<asset>.identity.json` and the job summary. The release job checks
+again that every identity file names the tag and lists each board's
+`kFirmware` and ESP-IDF version in the release notes. The tag and `kFirmware`
+are separate. The tag names the release, and `kFirmware` is the identity the
+board reports in LIVE, its BLE info and its Parquet footers.
+
+It then creates a **draft** release that holds the unsigned
+app images, one SPDX SBOM and one identity file per image, `SHA256SUMS` and a
 build provenance attestation for every file in `SHA256SUMS`. Assets are named
-`opensensor_cores3-bringup-<tag>.bin` and `opensensor_waveshare-logger-<tag>.bin`. CI never
+`<app>-<variant>-<tag>`, `opensensor_cores3-bringup-<tag>.bin`,
+`opensensor_waveshare-logger-<tag>.bin`, `opensensor_crowpanel-logger-<tag>.bin`
+and `opensensor_epaper397-logger-<tag>.bin`. CI never
 holds the signing key and never publishes. A manual run from the Actions tab
-on any branch is a dry run. It builds and uploads the same files as the
+on any branch is a dry run. Its identity check expects the `git describe`
+output of the commit in place of a tag. It builds and uploads the same files as the
 `release-files` artifact and creates no release. A re-run for a tag that
 already has a release, draft or published, fails before it attests or uploads
 anything. `release-workflow-test` in the host gate pins these rules.
@@ -658,11 +694,8 @@ anything. `release-workflow-test` in the host gate pins these rules.
 The release holds app images only, with no bootloader, partition table or
 `flash_args`. It serves an OTA update or an app only flash of a board that
 already runs this firmware. It cannot first flash a blank board. For that, use
-the build and flash workflow of the
-[CoreS3](../../firmware/esp-idf-cores3/README.md#current-build-and-flash-workflow)
-or the
-[Waveshare V2](../../firmware/esp-idf-waveshare-sim7670g/README.md#current-build-and-flash-workflow)
-and the checks in the root `AGENTS.md` before any physical flash write.
+the build and flash workflow in the board README, linked from the board table
+at the top of this page, and the checks in the root `AGENTS.md` before any physical flash write.
 
 Run these from the repository root, with `v1.2.0` standing for the new tag.
 
@@ -701,13 +734,16 @@ Run these from the repository root, with `v1.2.0` standing for the new tag.
    ```
 
 3. Download the draft and check it against `SHA256SUMS`. Then check the
-   attestation of every image and SBOM, tied to `release.yml` so an
-   attestation from any other workflow in the repository does not pass.
+   attestation of every image, SBOM and identity file, tied to `release.yml`
+   so an attestation from any other workflow in the repository does not pass.
+   Then compare each board's `kFirmware` in the release notes with the
+   identity this release should ship.
 
    ```sh
    gh release download v1.2.0 --dir exports/release-v1.2.0/unsigned
    (cd exports/release-v1.2.0/unsigned && shasum -a 256 -c SHA256SUMS)
-   for f in exports/release-v1.2.0/unsigned/*.bin exports/release-v1.2.0/unsigned/*.spdx.json; do
+   for f in exports/release-v1.2.0/unsigned/*.bin exports/release-v1.2.0/unsigned/*.spdx.json \
+     exports/release-v1.2.0/unsigned/*.identity.json; do
      gh attestation verify "$f" --repo walkthru-earth/opensensor-space-firmware \
        --signer-workflow walkthru-earth/opensensor-space-firmware/.github/workflows/release.yml
    done
