@@ -64,7 +64,7 @@ C++ contract tests and cannot prove behavior on a physical board.
 | App image share of the smallest app slot in the board `partitions.csv`, fail closed over the budget in the tool | `ota-slot-check --label --partitions --build`, `ota-slot-check-test` |
 | Chunked LAN OTA rules (contiguous chunks, slot size cap, chip and project match, SHA-256 before the boot switch, abort on any owner error), the slot generation lookup, stale owner and last seen decisions `ota_lan.cpp` calls (source checked, proved by mutation) and the boot self test verdict and mark plan, host built with sanitizers | `ota-transfer-test`, `boot-self-test-test` |
 | Serial core dump readback that prints without memory and keeps no raw dump on the host, even on a failed decode. The partition stays unless `--erase`, which clears only the coredump partition after a good read. Hardware only, never in the gate | `coredump-read <board> <checked-port> [variant] [--erase] [--dry-run]`, `coredump-read-test` |
-| Static task stack worst case, xTaskCreate name and stack size cross check in every `#if` branch, and linker section budgets per image (`stack_budget.json`) | `stack-budget [--check] [--path]`, `stack-budget-test` |
+| Static task stack worst case, xTaskCreate name and stack size cross check in every `#if` branch, linker section budgets per image and a task scrub frame that must cover the subtrees it names plus a margin (`stack_budget.json`, #172) | `stack-budget [--check] [--path]`, `stack-budget-test` |
 
 - Never write eFuses or format SD; flash writes require the root `AGENTS.md`
   safety sequence and an explicit checked serial port. Only one process owns
