@@ -55,6 +55,16 @@ initialization and each board's schema/provenance remain in its own trial.
   emergency close, one chunk per pass with the bus lock and a heartbeat, from
   the PSRAM `FlashDrain`. It deletes a flash file only after a verified
   identical copy and never deletes to make room. ERASE_ARCHIVE stays card only.
+  Copy back lives in `src/os_logger_copy_back.cpp` (#215) and reaches worker
+  state only through `copy_back::worker` in `os_logger.cpp`. One walk fills the
+  sorted `copy_candidates::List` in PSRAM, and every flash commit that
+  finalizes or fails, a conflict set aside, a cancel, a mount and a wait clears
+  it, so the next step walks again.
+- The Thing id loads through `thing_id::load_or_create()` in
+  `os_logger_thing_id.h` (#225). It writes only when the key is not found and
+  never rewrites a value that failed to read or to match the format. A fault
+  prints the stage and the `esp_err_t` and calls the optional
+  `Hooks::thing_id_fault`, so each board shows it.
 - The STAC sidecar (#142) is opt in through `Config::stac_columns`. The worker
   writes `<file>.json` only after the Parquet rename, through
   `<file>.json.partial`, fsync and rename, and never replaces an existing one.
