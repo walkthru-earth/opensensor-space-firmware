@@ -61,13 +61,12 @@ template <class Probe>
 }
 
 // LIST_SINCE never leaves out a file the peer may not have seen. A flash file
-// carries no card mount epoch, and a copy puts files on the card that are new
-// to it but old to the peer, so either case falls back to the full listing.
-// The worker can meet the second case by moving its mount epoch after a copy,
-// which already makes every older cursor full (os_logger_list_since.h).
-[[nodiscard]] constexpr bool since_needs_full(bool flash_holds_files,
-                                              bool copied_since_cursor) {
-  return flash_holds_files || copied_since_cursor;
+// carries no card mount epoch, so while flash holds one the answer is the
+// full listing. A copy puts files on the card that are new to it but old to
+// the peer. The worker covers that by moving its mount epoch after each copy,
+// which makes every older cursor full (os_logger_list_since.h).
+[[nodiscard]] constexpr bool since_needs_full(bool flash_holds_files) {
+  return flash_holds_files;
 }
 
 } // namespace opensensor::logger::list_merge

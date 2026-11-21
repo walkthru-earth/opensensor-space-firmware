@@ -115,13 +115,11 @@ void bad_names() {
   assert(!lm::emits(FlashName::NotListed));
 }
 
-// LIST_SINCE stays incremental only while flash holds no file and no copy
-// has moved a file onto the card since the peer's cursor.
+// LIST_SINCE stays incremental only while flash holds no file. A copy onto
+// the card moves the mount epoch instead (test_list_since.cpp).
 void since_rule() {
-  static_assert(!lm::since_needs_full(false, false));
-  static_assert(lm::since_needs_full(true, false));
-  static_assert(lm::since_needs_full(false, true));
-  static_assert(lm::since_needs_full(true, true));
+  static_assert(!lm::since_needs_full(false));
+  static_assert(lm::since_needs_full(true));
 }
 } // namespace
 

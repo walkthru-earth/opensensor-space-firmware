@@ -64,7 +64,7 @@ def check_wiring(source: str) -> None:
             r"return open\.open\(\) \? on_flash\(open\) : choose_target\(\) == "
             r"archive_target::Target::Flash;",
         "LIST_SINCE falls back to the full listing while flash holds files":
-            r"in\.force_full = list_merge::since_needs_full\(flash_holds_files, false\);",
+            r"in\.force_full = list_merge::since_needs_full\(flash_holds_files\);",
         "a LIST_SINCE walk without the card hands out epoch 0":
             r"in\.card_listable = card_listable\(\);",
         "LIST and OPEN answer while either root is usable":

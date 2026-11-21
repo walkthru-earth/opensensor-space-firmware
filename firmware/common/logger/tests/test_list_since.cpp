@@ -517,11 +517,11 @@ void check_flash_fallback() {
       {.mount_epoch = 0xcafe, .day = 20260310, .boot = boot_of(1), .seq = 3},
       &ring, boot_of(2));
   assert(!ls::plan(in).full);
-  in.force_full = list_merge::since_needs_full(true, false);
+  in.force_full = list_merge::since_needs_full(true);
   auto plan = ls::plan(in);
   assert(plan.full && plan.result.flags == ossync::kListSinceFull);
   assert(plan.result.next.mount_epoch == 0xcafe);
-  in.force_full = list_merge::since_needs_full(false, false);
+  in.force_full = list_merge::since_needs_full(false);
   assert(!ls::plan(in).full);
   // A copy moved the epoch on. The cursor taken before it is full, the
   // cursor the full listing hands out is incremental.

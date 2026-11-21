@@ -1473,7 +1473,7 @@ public:
       // epoch. A copy back moves the epoch instead (copy_bumps), see
       // list_merge::since_needs_full.
       in.card_listable = card_listable();
-      in.force_full = list_merge::since_needs_full(flash_holds_files, false);
+      in.force_full = list_merge::since_needs_full(flash_holds_files);
       const auto plan = list_since::plan(in);
       result = plan.result;
       oslog.printf("LIST_SINCE plan full=%u floor=%lu unsynced_full=%u "
