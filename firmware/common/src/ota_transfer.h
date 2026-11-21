@@ -22,6 +22,13 @@
 //     the boot partition moves to the new slot.
 //   - An owner that sends nothing for kStallMs while Receiving, or whose
 //     session closed, loses the upload, so it cannot block other sessions.
+//   - Only the session that staged an image may cancel it while that session
+//     is open. Once it closed, any session may cancel it.
+//   - OTA_END reads the whole image back on the worker. The optional Sink
+//     progress callback runs on both sides of each long step and once per
+//     kProgressBytes of read back, so the worker heartbeat keeps moving.
+//   - There is no version rule. esp_app_desc_t::version is a git describe
+//     string, not an ordered number, so an older image is accepted.
 //   - Any rule broken by the owner aborts the upload and returns to Idle.
 //   - Nothing here touches NVS or the SD archive. Reboot is a separate REBOOT
 //     request.
@@ -87,6 +94,16 @@ enum class Route : std::uint8_t { NotOta, LanOnly, Handle };
 // real gap, and well below the 300 s LAN idle close.
 inline constexpr std::int64_t kStallMs = 30000;
 enum class Keep : std::uint8_t { Keep, SessionClosed, Stalled };
+
+// OTA_END calls the Sink progress callback once per this many bytes of read
+// back, plus once on each side of esp_ota_end and the read back.
+inline constexpr std::uint32_t kProgressBytes = 64U * 1024U;
+// Whether a read back that moved from `before` to `after` bytes crossed a
+// kProgressBytes boundary, or reached `size`, the end of the image.
+[[nodiscard]] constexpr bool
+progress_due(std::uint32_t before, std::uint32_t after, std::uint32_t size) {
+  return after == size || before / kProgressBytes != after / kProgressBytes;
+}
 // Whether the Receiving owner keeps its upload. `idle_ms` is the time since
 // its last OTA request.
 [[nodiscard]] constexpr Keep keep_owner(bool session_open,
@@ -170,6 +187,10 @@ struct Sink {
   std::expected<void, SinkError> (*revert)(void *context) = nullptr;
   // esp_ota_abort. Safe to call with no open handle.
   void (*abort)(void *context) = nullptr;
+  // Optional. Long work on the worker is still moving, see kProgressBytes.
+  // The device stamps the worker heartbeat and takes queued samples. It must
+  // not call back into the Transfer.
+  void (*progress)(void *context) = nullptr;
 };
 
 // The upload owner. Any value that changes when the LAN session changes, for
@@ -199,20 +220,35 @@ owner_generation(Owner owner, std::uint8_t slots, Lookup &&generation_of) {
   return static_cast<std::uint32_t>(generation_of(peer));
 }
 
+// Whether the session of a lan_owner() is still open. `generation` is the
+// owner peer slot's connection generation now, or nullopt when the slot is
+// out of range. The session is open only while it still equals the owner's.
+[[nodiscard]] constexpr bool
+owner_open(Owner owner, std::optional<std::uint32_t> generation) {
+  return generation.has_value() &&
+         *generation == static_cast<std::uint32_t>(owner);
+}
+
 // Whether the Receiving upload of a lan_owner() keeps going, checked before
-// each OTA request. `generation` is the owner peer slot's connection
-// generation now, or nullopt when the slot is out of range. The session is
-// open only while it still equals the owner's. `seen_us` is the time of the
-// owner's last OTA request, from touch_seen(). Any other phase keeps.
+// each OTA request. `generation` is as owner_open() takes it. `seen_us` is the
+// time of the owner's last OTA request, from touch_seen(). Any other phase
+// keeps.
 [[nodiscard]] constexpr Keep
 stale_action(const Progress &progress, Owner owner,
              std::optional<std::uint32_t> generation, std::int64_t now_us,
              std::int64_t seen_us) {
   if (progress.phase != Phase::Receiving)
     return Keep::Keep;
-  const bool open = generation.has_value() &&
-                    *generation == static_cast<std::uint32_t>(owner);
-  return keep_owner(open, (now_us - seen_us) / 1000);
+  return keep_owner(owner_open(owner, generation), (now_us - seen_us) / 1000);
+}
+
+// Whether the staged image of a lan_owner() should be released to any
+// session, checked before each OTA request. True only in Ready once the
+// staging session closed. The image stays staged either way.
+[[nodiscard]] constexpr bool
+release_due(const Progress &progress, Owner owner,
+            std::optional<std::uint32_t> generation) {
+  return progress.phase == Phase::Ready && !owner_open(owner, generation);
 }
 
 // The owner's last seen time after `requester` sent an OTA request at
@@ -241,6 +277,11 @@ public:
   // A staged image (Ready) is kept, since its bytes are already verified.
   bool drop_owner(Owner gone);
 
+  // The session that staged the Ready image is gone, so any session may now
+  // cancel it. The image stays staged. Returns true when it was released by
+  // this call.
+  bool release_staged(Owner gone);
+
   [[nodiscard]] Progress progress() const;
   [[nodiscard]] bool active() const { return phase_ != Phase::Idle; }
   [[nodiscard]] Owner owner() const { return owner_; }
@@ -254,11 +295,15 @@ private:
   [[nodiscard]] std::expected<void, Error>
   check_header(std::span<const std::uint8_t> first) const;
   Error fail(Error error);
+  void reset();
+  void note_progress() const;
 
   Target target_;
   Sink sink_;
   Phase phase_ = Phase::Idle;
   Owner owner_ = 0;
+  // Ready only. The staging session closed, so any session may cancel.
+  bool released_ = false;
   std::uint32_t size_ = 0;
   std::uint32_t next_ = 0;
   Digest declared_{};

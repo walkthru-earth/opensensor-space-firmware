@@ -315,9 +315,9 @@ Error codes: 1 malformed request · 2 invalid name · 3 not a finalized Parquet 
 
 Rules:
 
-- **Names** are the same relative paths the serial `PARQUET FILE name=` line prints: `thing=…/year=…/month=…/day=…/data_HHMM_<boot>_<first>-<last>-<n>.parquet`, `thing=…/unsynced/boot=…/…`, or `legacy-parquet/…`. Since #5, `codec-test` copies live under `/sd/bench/boot=…/` outside the archive root and are never listed. Older cards may still list `benchmarks/boot=…/…`. Same character whitelist as `safe_name()` in the firmware: `[0-9a-z._=/-]`, no `..`, no `//`, ends in `.parquet`. A name is 9 to 384 bytes and never starts with `/` ([`safe_parquet_name`](../../firmware/common/src/sync_codec.h)). `OPEN` answers `ERROR` 2 `detail="length"` for an empty name or one of 400 bytes or more, and `ERROR` 2 `detail="charset"` for any other name that fails the rule ([`ArchiveSession::open`](../../firmware/common/connectivity/src/archive_sync.cpp)). `LIST` checks a legacy name before it adds the 15 byte `legacy-parquet/` prefix, so a listed legacy name can reach 399 bytes. `OPEN` checks the full name, so it refuses a listed name over 384 bytes with `ERROR` 2 ([`ListVisitor` and `resolve_path`](../../firmware/common/logger/src/os_logger.cpp)).
+- **Names** are the same relative paths the serial `PARQUET FILE name=` line prints: `thing=…/year=…/month=…/day=…/data_HHMM_<boot>_<first>-<last>-<n>.parquet`, `thing=…/unsynced/boot=…/…`, `flash-conflict/thing=…/…` (a flash fallback file whose name the card held with other bytes, see the flash fallback note below), or `legacy-parquet/…`. Since #5, `codec-test` copies live under `/sd/bench/boot=…/` outside the archive root and are never listed. Older cards may still list `benchmarks/boot=…/…`. Same character whitelist as `safe_name()` in the firmware: `[0-9a-z._=/-]`, no `..`, no `//`, ends in `.parquet`. A name is 9 to 384 bytes and never starts with `/` ([`safe_parquet_name`](../../firmware/common/src/sync_codec.h)). `OPEN` answers `ERROR` 2 `detail="length"` for an empty name or one of 400 bytes or more, and `ERROR` 2 `detail="charset"` for any other name that fails the rule ([`ArchiveSession::open`](../../firmware/common/connectivity/src/archive_sync.cpp)). `LIST` checks a legacy name before it adds the 15 byte `legacy-parquet/` prefix, so a listed legacy name can reach 399 bytes. `OPEN` checks the full name, so it refuses a listed name over 384 bytes with `ERROR` 2 ([`ListVisitor` and `resolve_path`](../../firmware/common/logger/src/os_logger.cpp)).
 - **`OPEN`** runs the finalized-file check (magic `PAR1` head and tail, footer length sane, size 12 to 1,048,576 bytes) and returns the CRC-32 (IEEE, same as the serial `crc32=` field) of the whole file. The device remembers the CRC it computed when it finalized the file, keyed by path, size and modification time, so `OPEN` of a recent file skips the full read. A cache miss (an older file, a reboot, a remount) reads the whole file once. Either way the value is the same. At most one logical file is open per connection; a new `OPEN` implicitly closes that connection's previous one without affecting other connections. Handles start at 1 and are invalid after disconnect. A path that does not exist is `ERROR` 3. A file the device cannot open for another reason, such as a full descriptor table, is `ERROR` 4. Both carry the requested name as `detail`. A file larger than 1,048,576 bytes fails the finalized check, so `OPEN` answers `ERROR` 3 for it ([`check_file`](../../firmware/common/logger/src/os_logger.cpp), [`parquet_complete`](../../firmware/common/src/sync_codec.h)). `LIST` and `LIST_SINCE` check only the name and that the size fits u32, not this cap, so such a file is still listed on every sync.
-- **Flash fallback** ([0004](decisions/0004-flash-fallback-archive.md)). A name keeps the same relative path on the card and on flash. `LIST` shows a flash file the card does not hold, and `OPEN` and `READ` look on the card first, then on flash. Copy back can free a flash file between a `LIST` and a later `OPEN` or `READ`. When the card is still Ready the name is found there with the same bytes. When neither root holds it, `OPEN` answers `ERROR` 3 (`detail` is the name, a missing path reads as not finalized), and a `READ` whose stream must reopen after a remount answers `ERROR` 5. The phone then lists again and opens the name it finds, which is on the card. A phone that already holds the file under that name has nothing to fetch.
+- **Flash fallback** ([0004](decisions/0004-flash-fallback-archive.md)). A name keeps the same relative path on the card and on flash. `LIST` shows a flash file the card does not hold, and `OPEN` and `READ` look on the card first, then on flash. Copy back can free a flash file between a `LIST` and a later `OPEN` or `READ`. When the card is still Ready the name is found there with the same bytes. When neither root holds it, `OPEN` answers `ERROR` 3 (`detail` is the name, a missing path reads as not finalized), and a `READ` whose stream must reopen after a remount answers `ERROR` 5. The phone then lists again and opens the name it finds, which is on the card. A phone that already holds the file under that name has nothing to fetch. When the card already holds a name with other bytes, the board keeps both and renames the flash file to `flash-conflict/<name>` (#212). `LIST` then names it with that prefix, first on flash and after its copy on the card, so the phone fetches it as one more file. Its rows may overlap the file of the plain name, so the phone keeps both and never merges or replaces either.
 - **CRC-32 check values.** Device (ROM table routine) and host tools agree on these, and a phone CRC implementation must too. Empty input is `00000000`. ASCII `123456789` is `cbf43926`. ASCII `The quick brown fox jumps over the lazy dog` is `414fa339`. The 1 MiB fixture whose byte `i` is `((i*31+7) & 0xff) ^ ((i>>12) & 0xff)` is `391e95d7`. Chunk boundaries never change the result.
 - **`READ`** is clipped to `max_read` and to end-of-file. Chunks are delivered in offset order; `next_offset` tells the phone where to continue. Offsets are absolute, so a phone can resume after a disconnect by `OPEN` + `READ` from where it stopped, provided `size` and `crc32` in the new `OPENED` frame match the earlier one (the file is immutable, so they must). After a storage remount the card may have been edited or swapped, so the first `READ` on each open handle runs the finalized check again. The same `size` and `crc32` keep the handle and the read proceeds. Only a proven change drops the handle. That is a different size or CRC from a completed check, or a file that is missing or no longer finalized on a card that mounted again. That `READ` answers `ERROR` 5 (bad handle), as does every later `READ` or `CLOSE` on it. The phone fails that file for the current run and a fresh `LIST` and `OPEN` decide what to fetch next. While the card has not mounted again, or when the check hits an I/O error or a short read, or the descriptor table is full, `READ` answers `READ_END` status 4 with no `CHUNK`. The handle stays valid and the check runs on the next `READ`. `CLOSE` on a handle still waiting for its check answers `CLOSED`.
 - A file is **complete** only when the phone has `size` bytes, its own CRC-32 equals `OPENED.crc32`, and the head/tail magic is `PAR1`. Anything else is discarded, never presented as data.
@@ -768,7 +768,7 @@ all-zero cursor, which asks for a full listing and returns a first cursor.
   (decision record 0004) the epoch steps by one for each file copied back from
   flash to the card. The count lives in NVS (`osflash/copies`) and is stored
   ahead of each copy, so a reboot never brings back an epoch from before a
-  copy. Without that count the epoch is 0 and copy back waits. The board
+  copy. Every mount reads the count, also when the flash mount failed. Without that count the epoch is 0 and copy back waits. The board
   answers `full` while flash holds files. While no card can be listed it
   walks flash alone and hands out epoch 0, so that cursor never matches the
   card when it comes back. A cursor never skips a file that moved.
@@ -967,7 +967,8 @@ The rules, all checked on the device.
 
 - `OTA_BEGIN` declares the image size and its SHA-256. The size must be at
   least 112 bytes and at most the inactive slot, `slot_bytes` in the answer
-  (6 MiB on both boards today).
+  (6 MiB on CoreS3, both Waveshare images and the ePaper-3.97, 3.75 MiB on
+  the CrowPanel).
 - `OTA_WRITE` chunks arrive in order, with no gap and no overlap, and never
   past the declared size. `offset` must equal `next` from the last
   `OTA_STATE`. A chunk is at most `max_chunk` bytes (507), so a request is at
@@ -976,18 +977,24 @@ The rules, all checked on the device.
   checks the image magic `0xE9`, the app description magic `0xABCD5432`, the
   chip id (`0x0009`, ESP32-S3) and the exact project name against the running
   app before any byte reaches flash. The project names are
-  `opensensor_cores3` and `opensensor_waveshare`. The Waveshare logger and
+  `opensensor_cores3`, `opensensor_crowpanel`, `opensensor_epaper397` and
+  `opensensor_waveshare`. The Waveshare logger and
   diagnostic images share a name, so a diagnostic image can be pushed to a
   logger. The diagnostic has no LAN, so the board then needs USB to get back.
 - `OTA_END` needs every declared byte. ESP-IDF checks the image
   (`esp_ota_end`), then the device reads the slot back and compares its
   SHA-256 with the declared one, then it sets the boot partition. Only then
-  does it answer phase `ready`. Allow 120 s for this answer. A repeated
+  does it answer phase `ready`. Allow 120 s for this answer. The storage
+  worker keeps its heartbeat and keeps taking samples through this step. A
+  repeated
   `OTA_END` in phase `ready` answers the same `OTA_STATE` again and does
   nothing else, so a phone that lost the answer may simply resend it.
 - The device never reboots on its own. A staged image boots on the next
   `REBOOT` (`0x0B`) or power cycle. `OTA_CANCEL` in phase `ready` points the
   boot partition back at the running app.
+- There is no version rule. The app version is a `git describe` string, not
+  an ordered number, so the device accepts an older image as readily as a
+  newer one.
 - Any rule the owner breaks aborts the upload, frees the slot and returns to
   `idle`. The phone starts again with `OTA_BEGIN`.
 - Nothing here touches NVS, the device settings or the SD archive.
@@ -998,7 +1005,16 @@ leaves the upload running. When the owner session closes, or sends no OTA
 request for 30 s while receiving, the next OTA request from any session drops
 the partial upload first and logs `OTA ABORT reason=session-closed` or
 `reason=stalled`. The owner may send
-`OTA_BEGIN` again to restart. Any session may cancel a staged image.
+`OTA_BEGIN` again to restart.
+
+A staged image stays with the session that staged it. While that session is
+open, `OTA_CANCEL` from any other session answers `ERROR` 7
+`detail="ota-owner"` and the image stays staged. Once that session closed, the
+next OTA request from any session releases the image, logs
+`OTA RELEASE reason=session-closed`, and any session may then cancel it. A
+host that pushed with one session and cancels with a new one after it closed
+therefore still works. `OTA_CANCEL` with nothing staged or receiving answers
+phase `idle` for any session.
 
 `OTA_STATE` (`0x50`) answers every successful request.
 
@@ -1020,6 +1036,7 @@ Golden frame `50 01 04030201 0d0c0b0a 00006000 fb01` is phase receiving, next
 | Body of the wrong length | `ERROR` 1 `detail="ota"`, aborts |
 | `OTA_WRITE`, `OTA_END` while idle | `ERROR` 5 `detail="ota-idle"` |
 | Another session while receiving | `ERROR` 7 `detail="ota-owner"` |
+| `OTA_CANCEL` from another session while the staging session is open | `ERROR` 7 `detail="ota-owner"` |
 | `OTA_BEGIN` or `OTA_WRITE` while ready | `ERROR` 7 `detail="reboot-pending"` |
 | Size below 112 or above the slot | `ERROR` 6 `detail="size"` |
 | Offset other than `next` | `ERROR` 6 `detail="offset"`, aborts |
@@ -1035,8 +1052,14 @@ Golden frame `50 01 04030201 0d0c0b0a 00006000 fb01` is phase receiving, next
 | Setting the boot partition failed | `ERROR` 8 `detail="boot"`, aborts |
 
 Each phase change logs one line, `OTA BEGIN size= slot= slot_bytes=`,
-`OTA READY size= slot= sha256=match reboot=required`, `OTA CANCEL from=` or
+`OTA READY size= slot= sha256=match reboot=required`, `OTA CANCEL from=`,
+`OTA RELEASE reason=session-closed` or
 `OTA ERROR op= reason= next= size= active=`. Chunks are not logged.
+
+`ERROR` 18 (`IMAGE_REJECTED`) always means the image itself is wrong, so
+sending the same file again cannot help. Its `detail` is one of `header`,
+`chip`, `project`, `verify` or `digest`, as in the table above. The app shows
+it as a rejected image, not as a link or storage fault.
 
 After the reboot the logger runs its boot self test. Once the SD card is
 ready, the PM2.5 column has held a valid value and BLE has started, it prints
