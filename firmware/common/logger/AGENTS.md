@@ -51,8 +51,9 @@ initialization and each board's schema/provenance remain in its own trial.
 - Integer encoding (#135). `CONFIG_OS_LOGGER_DELTA_INTEGERS` (default n)
   reaches `Writer::begin` only through `os_logger_encoding.h`. Never turn it on
   in a shipped `sdkconfig.defaults` before decision record 0002 records the
-  #61 measurement. A board that decodes its own files with `parquet_columns.h`
-  must `#error` on it. `OS_BENCH=delta` builds the bench image.
+  #61 measurement. `parquet_columns.h` and `tools/rebuild_partial.py` read
+  DELTA_BINARY_PACKED integer pages (#229), so a board that decodes its own
+  files needs no build stop. `OS_BENCH=delta` builds the bench image.
 - Flash fallback (decision record 0004). Each new file takes its root once at
   create, from `archive_target::choose()`, and keeps it through finalize,
   sidecar and quarantine. Never move an open file between roots. Copy back
