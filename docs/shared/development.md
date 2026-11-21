@@ -568,8 +568,12 @@ secrets-check` runs the same check alone.
 
 Firmware does not check app signatures yet. Turning that on is #40, and it
 waits on an owner-approved bootloader reflash. Until then a signed image boots
-exactly like an unsigned one, so signing only proves the release came from the
-owner key.
+exactly like an unsigned one. A signature proves origin only to someone who
+holds the owner public key and trusts that it is the owner's. `release-sign`
+writes that key next to the signed images, and the owner uploads it with each
+release (see [Cutting a release](#cutting-a-release)). No owner public key is
+published or pinned in this repository yet, so today only the owner can check
+a release signature. Pinning its SHA-256 here once is an owner step.
 
 ESP32-S3 Secure Boot v2 verifies RSA-3072 signatures only, so that is the one
 scheme the task accepts.
@@ -625,15 +629,19 @@ pixi run release-sign --out exports/signed \
 
 For each input it runs `espsecure sign-data --version 2` to
 `<out>/<name>.signed.bin`, then `espsecure verify-signature --version 2` on the
-result. It then writes `<out>/SHA256SUMS` in `sha256sum` format. It refuses to
-run when
+result. It writes the public half of the key as
+`<out>/app_signing_public_key.pem` and checks every signed image against that
+file alone too. It then writes `<out>/SHA256SUMS` in `sha256sum` format, which
+lists the signed images and the public key, and prints the public key's
+SHA-256. The public key holds no secret. It refuses to run when
 
 - `secrets/.env` is missing or does not set `OS_APP_SIGNING_KEY`
 - git tracks any path under `secrets/`
 - `secrets/`, `secrets/.env` or the key is open to group or other
 - the key is outside `secrets/`, password protected or not an RSA-3072 key
 - the output directory or an input is inside `secrets/`
-- an output would replace one of the inputs, or is already a symlink
+- an output, the public key or `SHA256SUMS` would replace one of the
+  inputs, or is already a symlink
 - the key or `secrets/.env` cannot be read, or `.env` is not UTF-8
 
 It never prints the key, the `.env` values or any file contents. It names the
@@ -720,13 +728,15 @@ Run these from the repository root, with `v1.2.0` standing for the new tag.
    ```
 
 5. Join both checksum lists into one `SHA256SUMS`, then upload it with the
-   signed images. It replaces the draft `SHA256SUMS`.
+   signed images and the public key. It replaces the draft `SHA256SUMS`.
 
    ```sh
    cat exports/release-v1.2.0/unsigned/SHA256SUMS exports/release-v1.2.0/signed/SHA256SUMS \
      | LC_ALL=C sort -k 2 > exports/release-v1.2.0/SHA256SUMS
    gh release upload v1.2.0 --clobber \
-     exports/release-v1.2.0/signed/*.signed.bin exports/release-v1.2.0/SHA256SUMS
+     exports/release-v1.2.0/signed/*.signed.bin \
+     exports/release-v1.2.0/signed/app_signing_public_key.pem \
+     exports/release-v1.2.0/SHA256SUMS
    ```
 
 6. Review the draft on GitHub, then publish it.
@@ -737,8 +747,18 @@ Run these from the repository root, with `v1.2.0` standing for the new tag.
 
 The attestation covers the unsigned images and SBOMs as CI built them. The
 signed images are those bytes plus the owner signature block, and the owner
-key is their proof of origin. Until #40 the firmware does not check that
-signature.
+key is their proof of origin. The joined `SHA256SUMS` and the public key are
+uploaded by the owner, so the attestation does not cover them. A reader checks
+a signed image with the public key from the release.
+
+```sh
+pixi run espsecure verify-signature --version 2 \
+  --keyfile app_signing_public_key.pem opensensor_waveshare-logger-v1.2.0.signed.bin
+```
+
+That proves the image matches the key uploaded with it, not that the key is
+the owner's, until the owner pins its SHA-256 in this document. Until #40 the
+firmware does not check that signature.
 
 ## Owner maintenance
 

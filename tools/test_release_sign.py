@@ -114,7 +114,17 @@ def check_happy(root: Path) -> None:
     assert f"secrets/{KEY_NAME}" in stdout, stdout
     assert_no_leak(repo, stdout + stderr)
     sums = (out / rs.SUMS).read_text().splitlines()
-    assert len(sums) == 2, sums
+    assert len(sums) == 3, sums
+    # The public key is listed, holds no private part and is the key's own.
+    public = out / rs.PUBLIC_KEY
+    public_line = f"{hashlib.sha256(public.read_bytes()).hexdigest()}  {rs.PUBLIC_KEY}"
+    assert public_line in sums, sums
+    assert f"sha256 {public_line.split('  ')[0]}" in stdout, stdout
+    sums.remove(public_line)
+    assert "PRIVATE" not in public.read_text() and (public.stat().st_mode & 0o777) == 0o644
+    private = serialization.load_pem_private_key((repo / "secrets" / KEY_NAME).read_bytes(), password=None)
+    assert public.read_bytes() == private.public_key().public_bytes(
+        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
     for line, image in zip(sums, bins):
         digest, name = line.split("  ")
         signed = out / f"{image.stem}.signed.bin"
@@ -125,6 +135,9 @@ def check_happy(root: Path) -> None:
         assert data.startswith(image.read_bytes())
         result = espsecure("verify-signature", "--version", "2", "--keyfile", str(repo / "secrets" / KEY_NAME),
                            str(signed))
+        assert result.returncode == 0, result.stdout + result.stderr
+        # Anyone holding only the published public key can check it too.
+        result = espsecure("verify-signature", "--version", "2", "--keyfile", str(public), str(signed))
         assert result.returncode == 0, result.stdout + result.stderr
 
     # A flipped byte fails verification, and the bad output is removed.
@@ -145,6 +158,9 @@ def check_happy(root: Path) -> None:
     other = root / "other.pem"
     make_key(other)
     result = espsecure("verify-signature", "--version", "2", "--keyfile", str(other), str(out / "aq_app1.signed.bin"))
+    assert result.returncode != 0
+    # A tampered image fails against the public key as well.
+    result = espsecure("verify-signature", "--version", "2", "--keyfile", str(public), str(tampered))
     assert result.returncode != 0
 
 
@@ -282,7 +298,7 @@ def check_refusals(root: Path) -> None:
     # A symlinked SHA256SUMS or signed output in --out is refused, and the
     # file it points at is left alone.
     repo = make_repo(root, "out-links")
-    for name in (rs.SUMS, f"{bins[0].stem}.signed.bin"):
+    for name in (rs.SUMS, rs.PUBLIC_KEY, f"{bins[0].stem}.signed.bin"):
         link_out = root / f"links-{len(name)}"
         link_out.mkdir()
         victim = root / f"victim-{len(name)}.txt"

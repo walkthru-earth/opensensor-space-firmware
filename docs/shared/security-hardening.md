@@ -101,6 +101,13 @@ what that does and does not protect.
 - The Waveshare logger and diagnostic images share the project name
   `opensensor_waveshare`. A diagnostic image pushed to a logger is accepted.
   The diagnostic has no LAN, so that board needs USB to get back.
+- There is no version rule, so the token holder can push an older image. The
+  app version is a `git describe` string with no order. Refusing a downgrade
+  needs either an owner chosen release version scheme, or anti-rollback
+  (`secure_version`), which needs the bootloader reflash and eFuse writes.
+  Both wait on an owner decision.
+- A staged image can be cancelled only by the session that staged it while
+  that session is open. Once it closed, any token holder may cancel it.
 - There is no LAN or BLE core dump endpoint. A core dump holds each task's
   TCB and the live part of its stack, from the saved stack pointer up, which
   can hold the Wi-Fi PSK, the LAN token or the device PIN. It does not hold
