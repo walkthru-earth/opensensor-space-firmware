@@ -25,7 +25,6 @@ layout, config key, dictionary or digest changes. Decision record 0004, items
   freed and kept `LIST_SINCE` on `full` for good. The serial console prints
   the new line `OS FLASH conflict name=<name> moved=flash-conflict/<name>
   sidecar=<0|1>`, or `moved=none reason=<why> errno=<n>` when the file stays.
-
 - STATUS `ls` on a boot whose flash mount failed, or on an image with the
   fallback off, now includes the copies earlier boots made (#217). Before it
   was the bare volume serial and could repeat an epoch a saved cursor holds.
@@ -37,11 +36,17 @@ layout, config key, dictionary or digest changes. Decision record 0004, items
   (retry) when no card write passed since the card came back (#218). The
   serial console prints the existing `PARQUET STORAGE state=retry` line after
   the `OS FLASH copy ... result=error` line.
+- Each copied file now reads the card free space right away (#213), so STATUS
+  `sd_state` can move from 0 to 1 (degraded) or 2 (full) during a copy back,
+  and the existing `PARQUET STORAGE` line can follow an `OS FLASH copy ...
+  result=copied` line. A reading that fails moves it to 3 (retry). Before, the
+  card free space waited for the next batch commit.
 
-**Why.** A conflicting flash file was unreachable by the phone. A Full card in the band above its reserve took the waiting rows into
-a card file that then held every later row off flash, and a card that cannot
+**Why.** A conflicting flash file was unreachable by the phone. A Full card
+in the band above its reserve took the waiting rows into a card file that then held every later row off flash, and a card that cannot
 write cut each flash file at every probe. A card with no rows to test reached
-Ready on its mount alone.
+Ready on its mount alone, and a copy back could fill the card past its
+reserve before the governor saw it.
 
 **What the app must do.** Accept a listed name that starts with
 `flash-conflict/` and holds a Thing path after it. Archive it under that full

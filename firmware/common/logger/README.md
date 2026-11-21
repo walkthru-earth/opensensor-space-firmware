@@ -70,7 +70,9 @@ While the card is Ready, no LIST runs and no emergency close is pending, the
 idle worker copies flash files back one chunk per pass, Parquet before its
 sidecar, verified by SHA-256, and prints `OS FLASH copy name=<relative>
 bytes=<n> result=<copied|identical|conflict|error|cancelled>`, then `OS FLASH
-copy done files=<n>` once flash is empty. Only a file whose identical copy is
+copy done files=<n>` once flash is empty. Each copied file reads the card free
+space again, so a copy that takes the card below a governor band pauses the
+copy back before the next file until the card is Ready again (#213). Only a file whose identical copy is
 verified on the card is removed from flash. After a conflict both files
 stay, and the flash one, its sidecar first, is renamed on flash to
 `flash-conflict/<relative>` and printed as `OS FLASH conflict name=<relative>

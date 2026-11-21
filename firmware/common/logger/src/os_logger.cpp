@@ -2798,6 +2798,18 @@ bool service_copy_back(bool storage_ready) {
     mount_epoch = list_since::next_epoch(mount_epoch.load());
     remove_empty_flash_directories(relative);
     measure_flash();
+    // A committed copy took card space, so the governor sees it now and not
+    // at the next batch commit (#213). A failed answer leaves Ready like a
+    // failed commit, and the next pass waits for the probe.
+    if (outcome == flash_copy::Outcome::Copied) {
+      const auto previous = governor.state();
+      std::uint64_t free_bytes = 0;
+      if (measure_free(free_bytes))
+        governor.observe_free(free_bytes, now);
+      else
+        governor.write_failed(now);
+      publish_storage(previous);
+    }
     break;
   case flash_copy::Outcome::Conflict: {
     oslog.printf("OS FLASH copy name=%s bytes=%llu result=conflict\n", relative,

@@ -107,6 +107,11 @@ def check_wiring(source: str) -> None:
             r"const auto begun = drain\.copier\.begin\(",
         "the copy count lives in the osflash namespace":
             r"nvs_set_u32\(flags, opensensor::storage::kFlashCopiesKey, count\)",
+        "a committed copy measures card free space before the next pass (#213)":
+            r"measure_flash\(\); if \(outcome == flash_copy::Outcome::Copied\) \{ "
+            r"const auto previous = governor\.state\(\); std::uint64_t free_bytes = 0; "
+            r"if \(measure_free\(free_bytes\)\) governor\.observe_free\(free_bytes, now\); "
+            r"else governor\.write_failed\(now\); publish_storage\(previous\); \}",
         "a copy back moves the mount epoch":
             r"copy_count\.copied\(\); mount_epoch = list_since::next_epoch\(mount_epoch\.load\(\)\);",
         "the copier hashes with its own stream":
