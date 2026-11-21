@@ -126,10 +126,10 @@ def check_file(path: Path, dictionary: dict, anchored: bool, compressed: bool, l
 
 
 def check_phone_keys(firmware: Path) -> None:
-    """board.json declares the page 7 keys display/settings.cpp parses (#184)."""
-    display = firmware.parent / "display"
-    header = (display / "settings.h").read_text()
-    source = (display / "settings.cpp").read_text()
+    """board.json declares the page 7 keys the shared epaper_ui settings parse (#184)."""
+    shared = firmware.parents[1] / "common" / "epaper_ui"
+    header = (shared / "include" / "epaper_ui" / "settings.h").read_text()
+    source = (shared / "src" / "settings.cpp").read_text()
     block = re.search(r"kPhoneKeys\{(.*?)\};", header, re.S)
     require(block is not None, "settings.h has no kPhoneKeys")
     names = re.findall(r'"([a-z0-9_.]+)"', block.group(1))

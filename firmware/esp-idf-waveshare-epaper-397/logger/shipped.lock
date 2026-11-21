@@ -1,0 +1,53 @@
+{
+  "board": "waveshare-esp32-s3-epaper-397",
+  "releases": [
+    {
+      "dict": "a19c450b6fc5bc4bb76e9b52e03aa75bee05cd3c1505d961771279366c820439",
+      "rows": 39,
+      "segments": [
+        {
+          "module": "system",
+          "segment": "head",
+          "first": 1,
+          "rows": 10,
+          "sha256": "f8d63dc250ef43b6bc993add6c519444cf06136e4c53ccaa1fc2fb0b40f30954"
+        },
+        {
+          "module": "sen63c",
+          "segment": "core",
+          "first": 11,
+          "rows": 9,
+          "sha256": "334abc529f97fd652b8c4e938b6d271e6456bf33374a9c2044e8cd645abe8585"
+        },
+        {
+          "module": "system",
+          "segment": "runtime",
+          "first": 20,
+          "rows": 12,
+          "sha256": "618ccfddd9013bd941fb60a562ab25f0433893fb0d37555ade4f9ccdc12731d6"
+        },
+        {
+          "module": "system",
+          "segment": "clock_close",
+          "first": 32,
+          "rows": 2,
+          "sha256": "f960d7a8e1c0e7f764edbbc176ad32df34b8ff5afbd782f127fb0b287311bbc4"
+        },
+        {
+          "module": "system",
+          "segment": "clock_anchor",
+          "first": 34,
+          "rows": 2,
+          "sha256": "d560c885630a5511ac50bed6981d2edec1b9186a4ad68f2006f4022eaea7053b"
+        },
+        {
+          "module": "system",
+          "segment": "location",
+          "first": 36,
+          "rows": 4,
+          "sha256": "0d7e1e7a66992d35564ff37ad430fc0efaa03155ab22746211c11e8059f2a256"
+        }
+      ]
+    }
+  ]
+}

@@ -1,13 +1,16 @@
 #include "../board_io.h"
-#include "canvas.h"
+#include "display_profile.h"
+#include "epaper_ui/canvas.h"
+#include "epaper_ui/history.h"
+#include "epaper_ui/orientation.h"
+#include "epaper_ui/pages.h"
+#include "epaper_ui/presenter.h"
+#include "epaper_ui/settings.h"
+#include "epaper_ui/ui_model.h"
 #include "epd_uc8276c.h"
-#include "history.h"
 #include "history_restore.h"
-#include "pages.h"
 #include "sensor_modules.h"
-#include "settings.h"
 #include "telemetry_contract.h"
-#include "ui_model.h"
 #include <algorithm>
 #include <array>
 #include <ble_sync.h>
@@ -30,6 +33,7 @@
 #include <new>
 #include <nvs.h>
 #include <nvs_flash.h>
+#include <optional>
 #include <os_console.h>
 #include <os_logger.h>
 #include <os_sen6x.h>
@@ -768,7 +772,8 @@ bool start_key_scan() {
 }
 
 // ---------------------------------------------------------------------------
-// UI task. Owns the panel, the history and both frames after init_board.
+// UI task. Owns the panel, the history and the three frames after
+// init_board.
 
 constexpr std::uint32_t kUiStackBytes = 8192;
 constexpr UBaseType_t kUiPriority = 1;
@@ -778,10 +783,20 @@ constexpr std::uint32_t kHistoryGapS = 20;
 // A failed panel update waits this long before the next attempt.
 constexpr TickType_t kDisplayRetryTicks = pdMS_TO_TICKS(5000);
 
-epd::Panel panel;
+constexpr const ui::DisplayProfile &kProfile =
+    opensensor::crowpanel::kDisplayProfile;
+static_assert(kProfile.width == epd::kWidth &&
+              kProfile.height == epd::kHeight &&
+              kProfile.frame_bytes() == epd::kFrameBytes);
+// No motion sensor, so Auto is never offered and the sensed turn is R0.
+constexpr bool kOrientationSource = kProfile.orientation.present;
+static_assert(!kOrientationSource);
+
+epd::Uc8276c panel;
 ui::History *history = nullptr;
-std::uint8_t *draw_frame = nullptr;
-std::uint8_t *shown_frame = nullptr;
+// Pages draw the logical frame at the screen's rotation, the presenter turns
+// it into the panel frame and keeps the frame on the glass, all in PSRAM.
+std::optional<ui::Presenter> presenter;
 
 ui::Model model_of(const UiFeed &f) {
   ui::Model m{};
@@ -804,6 +819,7 @@ ui::Model model_of(const UiFeed &f) {
               .uptime_s = f.uptime_s,
               .firmware = f.firmware.data(),
               .thing = f.thing.data(),
+              .sensor_model = "SEN63C",
               .sensor_serial = f.sensor_serial.data(),
               .sensor_fw = f.sensor_fw.data(),
               .sensor_status = r.device_status,
@@ -890,8 +906,11 @@ void log_panel_settings(const char *operation, esp_err_t error) {
                panel_settings.theme == ui::Theme::Dark ? "dark" : "light");
 }
 
-// A missing namespace or key is a first boot, so defaults and no error.
+// A missing namespace or key is a first boot, so defaults and no error. A
+// version 1 blob from before the Rotation row decodes with rotation 0, the
+// next save writes version 2. Nothing is erased.
 void load_panel_settings() {
+  panel_settings = ui::defaults(kOrientationSource);
   nvs_handle_t handle = 0;
   esp_err_t error = nvs_open(kPanelNamespace, NVS_READONLY, &handle);
   if (error == ESP_OK) {
@@ -900,7 +919,8 @@ void load_panel_settings() {
     error = nvs_get_blob(handle, kPanelKey, blob.data(), &size);
     nvs_close(handle);
     if (error == ESP_OK)
-      panel_settings = ui::decode(std::span{blob.data(), size});
+      panel_settings =
+          ui::decode(std::span{blob.data(), size}, kOrientationSource);
   }
   if (error == ESP_ERR_NVS_NOT_FOUND)
     error = ESP_OK;
@@ -950,12 +970,12 @@ ui::SettingsInfo settings_info_of(const UiFeed &f) {
   return {.wifi_configured = f.wifi_configured,
           .wifi_on = f.wifi_enabled,
           .sensor_present = f.sensor_present,
-          .fan_cleaning = f.fan_cleaning};
+          .fan_cleaning = f.fan_cleaning,
+          .orientation_source = kOrientationSource};
 }
 
 void ui_task(void *) {
   ui::UiState state{.page = ui::start_page(panel_settings)};
-  ui::RefreshPolicy policy;
   UiFeed local{};
   std::uint32_t seen_version = 0;
   std::uint32_t seen_seq = 0;
@@ -968,7 +988,6 @@ void ui_task(void *) {
   std::int64_t last_input_us = esp_timer_get_time();
   std::int64_t save_due_us = 0; // 0 when nothing waits to be saved
   std::int64_t next_redraw_us = 0;
-  const ui::Frame draw{draw_frame, ui::kFrameBytes};
   for (;;) {
     bool input = false;
     ui::Input key{};
@@ -1059,26 +1078,30 @@ void ui_task(void *) {
         changed && !state.asleep && (urgent || now >= next_redraw_us);
     if (shown && !input && !pairing_changed && !fell_asleep && !data_due)
       continue;
-    ui::Canvas canvas{draw};
-    ui::render_screen(canvas, state, panel_settings, settings_info_of(local),
-                      model_of(local), *history);
-    if (shown && !input && !fell_asleep &&
-        std::memcmp(draw_frame, shown_frame, ui::kFrameBytes) == 0)
+    // The user's turn on top of the mount. A new turn differs from the glass,
+    // so the presenter shows it at once with a full refresh.
+    const auto rotation =
+        ui::effective_rotation(panel_settings, kProfile, ui::Rotation::R0);
+    auto canvas = presenter->canvas(rotation);
+    if (!canvas) {
+      // start_display validated the profile and sized the logical frame for
+      // every rotation, so this does not happen. Never draw out of bounds.
+      vTaskDelay(kDisplayRetryTicks);
       continue;
-    const auto mode = policy.next(page_changed, forced) == ui::Refresh::Full
-                          ? epd::Mode::Full
-                          : epd::Mode::Partial;
-    const auto result =
-        panel.show(epd::Frame{draw_frame, ui::kFrameBytes}, mode);
+    }
+    ui::render_screen(*canvas, state, panel_settings, settings_info_of(local),
+                      model_of(local), *history);
+    if (!presenter->compose() && shown && !input && !fell_asleep)
+      continue;
+    const auto plan = presenter->plan(page_changed, forced);
+    const auto result = presenter->present(panel, plan);
     if (!result) {
       oslog.printf("OS ERROR operation=display-show error=%s mode=%s\n",
-                   epd::to_string(result.error()),
-                   mode == epd::Mode::Full ? "full" : "partial");
+                   epd::to_string(result.error()), epd::to_string(plan.mode));
       shown = false;
       vTaskDelay(kDisplayRetryTicks);
       continue;
     }
-    std::memcpy(shown_frame, draw_frame, ui::kFrameBytes);
     shown = true;
     shown_passkey = local.passkey;
     drawn = current;
@@ -1103,31 +1126,46 @@ void ui_task(void *) {
 // Panel, history and frames come before the radios, which take most of the
 // internal DMA memory the panel needs.
 bool start_display() {
+  constexpr std::size_t kLogical = kProfile.logical_frame_bytes();
+  constexpr std::size_t kFrame = kProfile.frame_bytes();
   feed_mutex = xSemaphoreCreateMutex();
   void *history_memory = heap_caps_aligned_alloc(
       alignof(ui::History), sizeof(ui::History), MALLOC_CAP_SPIRAM);
-  draw_frame = static_cast<std::uint8_t *>(
-      heap_caps_malloc(ui::kFrameBytes, MALLOC_CAP_SPIRAM));
-  shown_frame = static_cast<std::uint8_t *>(
-      heap_caps_malloc(ui::kFrameBytes, MALLOC_CAP_SPIRAM));
-  if (!feed_mutex || !history_memory || !draw_frame || !shown_frame) {
+  auto *logical = static_cast<std::uint8_t *>(
+      heap_caps_malloc(kLogical, MALLOC_CAP_SPIRAM));
+  auto *frame =
+      static_cast<std::uint8_t *>(heap_caps_malloc(kFrame, MALLOC_CAP_SPIRAM));
+  auto *shown =
+      static_cast<std::uint8_t *>(heap_caps_malloc(kFrame, MALLOC_CAP_SPIRAM));
+  if (!feed_mutex || !history_memory || !logical || !frame || !shown) {
     oslog.printf(
         "OS ERROR operation=allocate mem=psram bytes=%u "
         "purpose=display\n",
-        static_cast<unsigned>(sizeof(ui::History) + 2 * ui::kFrameBytes));
+        static_cast<unsigned>(sizeof(ui::History) + kLogical + 2 * kFrame));
     return false;
   }
   history = new (history_memory) ui::History();
-  const auto begun = panel.begin();
+  auto created =
+      ui::Presenter::create(kProfile, std::span{logical, kLogical},
+                            std::span{frame, kFrame}, std::span{shown, kFrame});
+  const auto begun =
+      created ? panel.begin() : std::expected<void, epd::Error>{};
   const epd::Pins pins{};
+  const char *error = "none";
+  if (!created)
+    error = ui::to_string(created.error());
+  else if (!begun)
+    error = epd::to_string(begun.error());
+  const bool ready = created.has_value() && begun.has_value();
   oslog.printf("OS DISPLAY ready=%u panel=uc8276c width=%d height=%d "
                "sck=%d mosi=%d cs=%d dc=%d rst=%d busy=%d power=%d "
                "history_bytes=%u error=%s\n",
-               begun.has_value(), ui::kWidth, ui::kHeight, pins.sck, pins.mosi,
+               ready, kProfile.width, kProfile.height, pins.sck, pins.mosi,
                pins.cs, pins.dc, pins.rst, pins.busy, pins.power,
-               static_cast<unsigned>(sizeof(ui::History)),
-               begun ? "none" : epd::to_string(begun.error()));
-  return begun.has_value();
+               static_cast<unsigned>(sizeof(ui::History)), error);
+  if (created)
+    presenter.emplace(*created);
+  return ready;
 }
 
 bool start_ui_task() {

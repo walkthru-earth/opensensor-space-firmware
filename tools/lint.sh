@@ -86,6 +86,10 @@ common_sources=(
   firmware/common/src/sha256_stream.cpp
   firmware/common/sensors/src/pms_frame.cpp
   firmware/common/power/src/os_battery_health.cpp
+  firmware/common/text/src/os_text.cpp
+  firmware/common/text/src/os_text_font.cpp
+  firmware/common/text/src/os_arabic_fonts_s_gen.cpp
+  firmware/common/text/src/os_arabic_fonts_l_gen.cpp
   firmware/common/upload/src/os_upload_sigv4.cpp
   firmware/common/upload/src/os_upload_sts.cpp
   firmware/common/upload/src/os_upload_policy.cpp
@@ -100,6 +104,23 @@ common_sources=(
   firmware/common/runtime/src/log_persist.cpp
   firmware/common/runtime/src/power.cpp
   firmware/common/upload/src/os_upload_device.cpp
+  firmware/common/epaper_ui/src/canvas.cpp
+  firmware/common/epaper_ui/src/chart.cpp
+  firmware/common/epaper_ui/src/history.cpp
+  firmware/common/epaper_ui/src/pages.cpp
+  firmware/common/epaper_ui/src/settings.cpp
+  firmware/common/epaper_ui/src/ui_model.cpp
+  firmware/common/epaper_ui/src/strings.cpp
+  firmware/common/epaper_ui/src/panel.cpp
+  firmware/common/epaper_ui/src/profile.cpp
+  firmware/common/epaper_ui/src/orientation.cpp
+  firmware/common/epaper_ui/src/presenter.cpp
+  firmware/common/epaper_ui/src/layout_400x300.cpp
+  firmware/common/epaper_ui/src/layout_300x400.cpp
+  firmware/common/epaper_ui/src/layout_800x480.cpp
+  firmware/common/epaper_ui/src/layout_480x800.cpp
+  firmware/common/epaper_ui/src/fonts_compact_gen.cpp
+  firmware/common/epaper_ui/src/fonts_large_gen.cpp
   firmware/common/connectivity/src/frame_ring.cpp
   firmware/common/connectivity/src/ota_lan.cpp
   firmware/common/src/boot_self_test.cpp

@@ -299,7 +299,7 @@
       ]
     },
     "os-ui": {
-      "about": "CrowPanel e-paper UI task. Renders the dashboard from the UI feed and drives the UC8276C panel over SPI.",
+      "about": "E-paper UI task on the CrowPanel and the ePaper-3.97. Renders the shared dashboard from the UI feed and drives the board's panel over SPI.",
       "entry": [
         "*{anonymous}::ui_task(*"
       ]
@@ -517,8 +517,8 @@
         },
         "os-ui": {
           "stack_bytes": 8192,
-          "measured": 3344,
-          "budget": 3712
+          "measured": 3408,
+          "budget": 3776
         },
         "esp_timer": {
           "measured": 592,
@@ -533,17 +533,76 @@
         ".iram0.text": 128000,
         ".dram0.data": 35072,
         ".dram0.bss": 58880,
-        ".flash.text": 1214464,
-        ".flash.rodata": 421632,
+        ".flash.text": 1224448,
+        ".flash.rodata": 434432,
         ".noinit": 256
       },
       "sections_measured": {
         ".iram0.text": 125295,
         ".dram0.data": 34257,
-        ".dram0.bss": 57496,
-        ".flash.text": 1190502,
-        ".flash.rodata": 413272,
+        ".dram0.bss": 57512,
+        ".flash.text": 1200258,
+        ".flash.rodata": 425736,
         ".noinit": 3
+      }
+    },
+    "epaper397/logger": {
+      "build": "firmware/esp-idf-waveshare-epaper-397/build/logger",
+      "tasks": {
+        "parquet-sd": {
+          "stack_bytes": 24576,
+          "measured": 11136,
+          "budget": 12288
+        },
+        "nimble_host": {
+          "measured": 5840,
+          "budget": 6464
+        },
+        "os_ble_error": {
+          "stack_bytes": 4096,
+          "measured": 2576,
+          "budget": 2880
+        },
+        "os-lan": {
+          "stack_bytes": 8192,
+          "measured": 4832,
+          "budget": 5376
+        },
+        "board": {
+          "task_name": "os-board",
+          "stack_bytes": 12288,
+          "measured": 4720,
+          "budget": 5248
+        },
+        "os-ui": {
+          "stack_bytes": 8192,
+          "measured": 3408,
+          "budget": 3776
+        },
+        "esp_timer": {
+          "measured": 592,
+          "budget": 704
+        },
+        "sys_evt": {
+          "measured": 1040,
+          "budget": 1152
+        }
+      },
+      "sections": {
+        ".iram0.text": 127744,
+        ".dram0.data": 34560,
+        ".dram0.bss": 58880,
+        ".flash.text": 1201920,
+        ".flash.rodata": 456192,
+        ".noinit": 0
+      },
+      "sections_measured": {
+        ".iram0.text": 125195,
+        ".dram0.data": 33872,
+        ".dram0.bss": 57504,
+        ".flash.text": 1178182,
+        ".flash.rodata": 447024,
+        ".noinit": 0
       }
     }
   }

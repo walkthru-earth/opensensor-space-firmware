@@ -58,12 +58,15 @@ lives in RAM and starts empty after each reset.
 pixi run idf-setup
 pixi run crowpanel-build
 pixi run crowpanel-contract-test --sanitize
-pixi run crowpanel-ui-test
-pixi run crowpanel-ui-preview   # PNG pages in artifacts/ui-preview/
+pixi run epaper-ui-test
+pixi run epaper-ui-preview   # PNG pages in artifacts/epaper-ui-preview/400x300/
 ```
 
-The image is 1,710,960 bytes in a 3.75 MiB (0x3C0000) OTA slot, 43.5% of the
-slot, under the 50% CI budget (2026-11-17).
+The pages come from the shared `firmware/common/epaper_ui` component. This
+board adds its UC8276C driver and `display/display_profile.h`.
+
+The image is 1,744,112 bytes in a 3.75 MiB (0x3C0000) OTA slot, 44.4% of the
+slot, under the 50% CI budget (2026-11-20).
 Flashing follows the root checklist. The first flash of a factory board needs
 the full erase in the [board guide](../../docs/boards/elecrow-crowpanel-epaper-42/README.md#first-flash).
 Later flashes use the backup-gated helper.
