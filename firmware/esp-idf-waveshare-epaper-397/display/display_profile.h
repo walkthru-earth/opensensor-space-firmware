@@ -46,6 +46,9 @@ inline constexpr ui::SensorAxes kSensorAxes{
     .right = axis_of(board::kImuToPanel.x),
     .down = axis_of(board::kImuToPanel.y),
 };
+// IMU x against panel x since 2026-11-21, IMU y along panel y.
+static_assert(kSensorAxes.right == ui::Axis::NegX);
+static_assert(kSensorAxes.down == ui::Axis::PosY);
 
 inline constexpr ui::DisplayProfile kDisplayProfile{
     .width = 800,

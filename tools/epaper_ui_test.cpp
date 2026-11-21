@@ -1928,13 +1928,16 @@ void test_epaper397_profile() {
   // The tracker reads board::kImuToPanel, the table the board's own
   // quarter_turn() logs with. A device turned clockwise by q quarters shows
   // the picture turned back by q, so each pose the board logs as quarter q
-  // settles on R(4 - q).
+  // settles on R(4 - q). Since 2026-11-21 IMU x runs against panel x, so a
+  // quarter turn clockwise reads +1 g on IMU x.
+  CHECK(board.orientation.axes.right == Axis::NegX);
+  CHECK(board.orientation.axes.down == Axis::PosY);
   struct Pose {
     std::int16_t x;
     std::int16_t y;
   };
   constexpr std::array<Pose, 4> kPoses{
-      {{0, -16384}, {-16384, 0}, {0, 16384}, {16384, 0}}};
+      {{0, -16384}, {16384, 0}, {0, 16384}, {-16384, 0}}};
   for (std::size_t q = 0; q < kPoses.size(); ++q) {
     const board::Accel a{.x = kPoses[q].x, .y = kPoses[q].y, .z = 0};
     CHECK(board::quarter_turn(a) == q);
@@ -1946,12 +1949,16 @@ void test_epaper397_profile() {
       static_cast<void>(t.update(up, ms));
     CHECK(t.current() == static_cast<Rotation>((4 - q) % 4));
   }
-  // Lying flat keeps the picture where it is.
-  OrientationTracker flat{board.orientation.axes, Rotation::R90};
-  for (std::uint32_t ms = 0; ms <= 2500; ms += 500)
-    static_cast<void>(
-        flat.update(Gravity{.x = 0.0F, .y = 0.0F, .z = 16384.0F}, ms));
-  CHECK(flat.current() == Rotation::R90);
+  // Lying flat keeps the picture where it is, face down or face up, where
+  // the owner's board read az about -19000.
+  for (const float z : {16384.0F, -19000.0F}) {
+    OrientationTracker flat{board.orientation.axes, Rotation::R90};
+    for (std::uint32_t ms = 0; ms <= 2500; ms += 500)
+      static_cast<void>(flat.update(Gravity{.x = 0.0F, .y = 0.0F, .z = z}, ms));
+    CHECK(flat.current() == Rotation::R90);
+    CHECK(!board::quarter_turn(
+        {.x = 0, .y = 0, .z = static_cast<std::int16_t>(z)}));
+  }
 }
 
 void test_profile() {
