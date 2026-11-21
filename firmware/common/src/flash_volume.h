@@ -6,8 +6,8 @@
 // "/flash". It is formatted at most once in the life of the board. The first
 // format records `osflash/formatted` = 1 in NVS, and after that a failed
 // mount is an error that leaves the volume off. A first ESP_FAIL is retried
-// once without a format, so a transient fault never spends the format. Owner data on the volume is
-// never formatted away by a later boot.
+// once without a format, so a transient fault never spends the format. Owner
+// data on the volume is never formatted away by a later boot.
 //
 // The policy below is pure and board neutral. The ESP-IDF mount, the NVS flag
 // and the free space query sit behind borrowed callbacks, so the host test

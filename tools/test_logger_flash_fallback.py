@@ -20,6 +20,7 @@ TESTS = {
     "archive-target": ("test_archive_target.cpp", ["os_logger_archive_target.h"], []),
     "flash-copy": ("test_flash_copy.cpp", [], ["src/sha256_stream.cpp"]),
     "list-merge": ("test_list_merge.cpp", ["os_logger_list_merge.h"], []),
+    "roots": ("test_roots.cpp", ["os_logger_roots.h"], []),
 }
 
 FORBIDDEN = re.compile(
@@ -55,7 +56,8 @@ def main() -> None:
             subprocess.run([str(executable)], check=True)
     print("flash fallback checks passed: archive target for every input and the "
           "reserve boundary, verified copy back with resets, conflicts and "
-          "refused renames, and the LIST merge of the flash root")
+          "refused renames, the LIST merge of the flash root and the fallback root "
+          "overlap rules")
 
 
 if __name__ == "__main__":

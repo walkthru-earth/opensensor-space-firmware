@@ -14,6 +14,7 @@
 #include "os_logger_location.h"
 #include "os_logger_power.h"
 #include "os_logger_provision.h"
+#include "os_logger_roots.h"
 #include "os_logger_rotation.h"
 #include "os_logger_status.h"
 #include "os_logger_transfer_gate.h"
@@ -3159,25 +3160,17 @@ void unlock_bus() {
     xSemaphoreGive(spi_mutex);
 }
 
-// True when `path` is `root` or lies below it.
-bool path_within(const char *path, const char *root) {
-  const std::size_t length = std::strlen(root);
-  return std::strncmp(path, root, length) == 0 &&
-         (path[length] == '\0' || path[length] == '/');
-}
+using opensensor::logger::roots::path_within;
 
 // True when the optional flash fallback root is unset, or an absolute path of
-// at most 31 bytes that neither holds nor sits below the card archive or the
-// codec-test root.
+// at most 31 bytes that neither holds nor sits below the card archive, the
+// codec-test root or the legacy root (os_logger_roots.h).
 bool fallback_root_valid(const Config &configuration) {
-  const char *root = configuration.fallback_directory;
-  if (!root)
-    return true;
-  return root[0] == '/' && std::strlen(root) <= 31 &&
-         !path_within(root, configuration.output_directory) &&
-         !path_within(configuration.output_directory, root) &&
-         !path_within(root, configuration.benchmark_directory) &&
-         !path_within(configuration.benchmark_directory, root);
+  return opensensor::logger::roots::fallback_valid(
+      {.output = configuration.output_directory,
+       .benchmark = configuration.benchmark_directory,
+       .legacy = configuration.legacy_directory,
+       .fallback = configuration.fallback_directory});
 }
 
 // True for a SHA-256 digest as 64 lowercase hex characters.
