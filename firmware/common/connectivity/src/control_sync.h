@@ -21,6 +21,10 @@ struct ControlReplies {
   // as a res 8 cell, or 0 for none. Runs on the worker, so it must not block.
   // nullptr means the board has no receiver and the key is omitted.
   std::uint64_t (*gnss_cell)(void *) = nullptr;
+  // Long control work on the worker, such as OTA_END reading the whole image
+  // back, calls this between bounded steps. The worker stamps its heartbeat
+  // and takes queued samples. nullptr means nothing to do.
+  void (*progress)(void *) = nullptr;
 };
 
 // Executes GET/SET_CONFIG, LOG_TAIL, GET_DIAG, idle ABORT, GET_TOKEN,
