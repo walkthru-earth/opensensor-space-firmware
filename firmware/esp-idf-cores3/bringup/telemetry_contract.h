@@ -60,8 +60,8 @@ constexpr std::uint32_t kPmsStaleAfterMs = 5000;
 constexpr const char *kConfiguration =
     "{\"sample_interval_ms\":10000,\"pms_warmup_us\":30000000,"
     "\"pms_stale_after_ms\":5000,\"pms_uart_rx\":18,\"pms_uart_tx\":17,"
-    "\"pms_baud\":9600,\"m5unified\":\"0.3.0\",\"esp_idf\":\"6.1.1\",\"ltr553\":"
-    "\"raw-v1\","
+    "\"pms_baud\":9600,\"m5unified\":\"0.3.0\",\"esp_idf\":\"6.1.1\","
+    "\"ltr553\":\"raw-v1\","
     "\"snapshot\":\"latest-available-not-average\"}";
 constexpr const char *kUnknown = "unknown";
 // Footer thing.board, the board slug of the template path. The free text name
