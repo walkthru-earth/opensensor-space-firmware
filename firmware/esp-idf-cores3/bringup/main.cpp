@@ -823,6 +823,28 @@ void draw_pairing_overlay(const ble::PairingState &pairing) {
     M5.Display.print("Only someone reading this screen can pair.");
 }
 
+// The Thing id did not load, so logging is off for the boot (#225). Red text
+// like the NVS fault, with the stage and the ESP-IDF error. The stored value
+// is never rewritten.
+void draw_thing_id_fault(const oslogger::thing_id::Error &error) {
+  M5.Display.fillScreen(TFT_BLACK);
+  M5.Display.setTextColor(TFT_RED, TFT_BLACK);
+  M5.Display.setTextSize(2);
+  M5.Display.setCursor(8, 48);
+  M5.Display.print("Settings storage error");
+  M5.Display.setCursor(8, 80);
+  M5.Display.print("Logging is off");
+  M5.Display.setCursor(8, 112);
+  M5.Display.printf("thing-id stage=%s",
+                    oslogger::thing_id::stage_name(error.stage));
+  M5.Display.setCursor(8, 136);
+  M5.Display.printf("error=%d", error.code);
+  M5.Display.setTextColor(TFT_WHITE, TFT_BLACK);
+  M5.Display.setTextSize(1);
+  M5.Display.setCursor(8, 176);
+  M5.Display.print("Read the USB serial log and see the board guide");
+}
+
 void show_pms_screen() {
   telemetry::lock_display();
   // M5GFX 0.3.0 renumbered rotation so 0 is the upright landscape panel.
@@ -830,6 +852,12 @@ void show_pms_screen() {
   const auto pairing = ble::pairing();
   if (ble_started && pairing.active) {
     draw_pairing_overlay(pairing);
+    M5.Display.waitDMA();
+    telemetry::unlock_display();
+    return;
+  }
+  if (const auto fault = telemetry::thing_id_fault()) {
+    draw_thing_id_fault(*fault);
     M5.Display.waitDMA();
     telemetry::unlock_display();
     return;
@@ -998,6 +1026,16 @@ static void board_poll() {
     show_pms_screen();
     print_periodic_pms();
     last_display_ms = now;
+  }
+  // A Thing id fault repeats its line every 30 s on the physical console
+  // only, so the repeats never push the first line out of the log ring.
+  static std::uint32_t last_fault_line_ms = now;
+  if (const auto fault = telemetry::thing_id_fault();
+      fault && static_cast<std::uint32_t>(now - last_fault_line_ms) >= 30000) {
+    last_fault_line_ms = now;
+    opensensor::console::printf(oslogger::thing_id::kFaultLine,
+                                oslogger::thing_id::stage_name(fault->stage),
+                                fault->code);
   }
   wait_ms(20);
 }
