@@ -66,7 +66,9 @@ sidecar, verified by SHA-256, and prints `OS FLASH copy name=<relative>
 bytes=<n> result=<copied|identical|conflict|error|cancelled>`, then `OS FLASH
 copy done files=<n>` once flash is empty. Only a file whose identical copy is
 verified on the card is removed from flash. A conflict or crosslink suspect
-stays on both roots for the owner. ERASE_ARCHIVE erases card roots only.
+stays on both roots for the owner. ERASE_ARCHIVE erases card roots only. The
+serial `parquet erase-archive CONFIRM` closes an open flash telemetry file
+without a finalize, and the next boot quarantines its `.partial` on flash.
 
 Limits. The open card file at the moment a card is pulled does not move to
 flash. With the optional `storage_remount` hook the first Retry probe
