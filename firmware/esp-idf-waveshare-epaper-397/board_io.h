@@ -99,8 +99,24 @@ struct PowerStatus {
   bool battery_present = false;
   std::optional<std::uint16_t> battery_mv;
   std::optional<std::uint8_t> battery_percent;
+  // STATUS2 0x01 bits 7:5 read 001, the test XPowersLib isCharging() makes.
+  // False without a battery or when that read fails.
+  bool charging = false;
 };
+// Board task, it shares the internal bus.
 [[nodiscard]] std::expected<PowerStatus, PmicError> read_power();
+// The charge the screen header draws.
+struct BatteryLevel {
+  std::uint8_t percent = 0; // 0 to 100
+  bool charging = false;
+};
+// Board task, called every loop. About every 30 s it reads the PMIC and
+// caches the charge, the first loop reads at once.
+void poll_power(std::int64_t now_us);
+// Any task. The charge poll_power cached, or nothing before the first read,
+// when that read failed, with no battery present or without a percent. The
+// display task reads it, so the UI never touches the I2C bus.
+[[nodiscard]] std::optional<BatteryLevel> last_battery();
 
 // QMI8658A accelerometer, the gyro stays off. Only the orientation hook
 // uses it. A board without an answering IMU keeps running, the hook then
