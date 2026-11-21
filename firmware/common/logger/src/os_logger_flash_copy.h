@@ -225,28 +225,28 @@ enum class Kind : std::uint8_t { Parquet, Sidecar, Quarantined };
 
 class Copier {
 public:
-  // Starts a copy of <flash_root>/<relative> to <card_root>/<relative>. A
+  // Starts a copy of <flash_root>/<name> to <card_root>/<name>. A
   // quarantined file keeps its relative path, so it lands in the card's
   // quarantine. The roots are copied into the paths here.
   [[nodiscard]] std::expected<void, BeginError>
-  begin(const char *flash_root, const char *card_root, const char *relative) {
+  begin(const char *flash_root, const char *card_root, const char *name) {
     if (stage_ != Stage::Idle)
       return std::unexpected(BeginError::Busy);
     if (flash_root == nullptr || *flash_root == '\0' || card_root == nullptr ||
-        *card_root == '\0' || relative == nullptr || *relative == '\0')
+        *card_root == '\0' || name == nullptr || *name == '\0')
       return std::unexpected(BeginError::BadName);
-    const std::size_t length = ::strnlen(relative, kRelativeBytes);
+    const std::size_t length = ::strnlen(name, kRelativeBytes);
     if (length >= kRelativeBytes)
       return std::unexpected(BeginError::TooLong);
-    if (!detail::plain_relative(relative, length) ||
-        detail::ends_with(relative, length, kTempSuffix))
+    if (!detail::plain_relative(name, length) ||
+        detail::ends_with(name, length, kTempSuffix))
       return std::unexpected(BeginError::BadName);
     const int source = std::snprintf(source_.data(), source_.size(), "%s/%s",
-                                     flash_root, relative);
-    const int final_length = std::snprintf(final_.data(), final_.size(),
-                                           "%s/%s", card_root, relative);
+                                     flash_root, name);
+    const int final_length =
+        std::snprintf(final_.data(), final_.size(), "%s/%s", card_root, name);
     const int temp = std::snprintf(temp_.data(), temp_.size(), "%s/%s%s",
-                                   card_root, relative, kTempSuffix);
+                                   card_root, name, kTempSuffix);
     if (source < 0 || final_length < 0 || temp < 0 ||
         static_cast<std::size_t>(source) >= source_.size() ||
         static_cast<std::size_t>(temp) >= temp_.size()) {
@@ -328,7 +328,7 @@ private:
     error_ = 0;
   }
 
-  template <class IO> std::span<std::uint8_t> chunk(IO &io) {
+  template <class IO> static std::span<std::uint8_t> chunk(IO &io) {
     const std::span<std::uint8_t> scratch = io.scratch();
     return scratch.first(std::min(scratch.size(), kChunkBytes));
   }
@@ -359,9 +359,9 @@ private:
     }
   }
 
-  template <class IO> Outcome fail(IO &io, Failure failure, int error) {
-    failure_ = failure;
-    error_ = error;
+  template <class IO> Outcome fail(IO &io, Failure why, int code) {
+    failure_ = why;
+    error_ = code;
     release(io);
     stage_ = Stage::Idle;
     return Outcome::IoError;
@@ -373,8 +373,8 @@ private:
     return outcome;
   }
 
-  template <class IO> bool hash_begin(IO &io, std::uint32_t &crc) {
-    crc = 0xffffffffU;
+  template <class IO> static bool hash_begin(IO &io, std::uint32_t &running) {
+    running = 0xffffffffU;
     return io.hash_begin().has_value();
   }
 
@@ -383,10 +383,10 @@ private:
       return fail(io, Failure::Scratch, 0);
     struct stat source{};
     if (io.inspect(source_.data(), &source) != 0) {
-      const int error = errno;
-      return fail(
-          io, error == ENOENT ? Failure::SourceMissing : Failure::SourceStat,
-          error);
+      const int code = errno;
+      return fail(io,
+                  code == ENOENT ? Failure::SourceMissing : Failure::SourceStat,
+                  code);
     }
     if (!S_ISREG(source.st_mode) || source.st_size < 0)
       return fail(io, Failure::SourceStat, 0);
@@ -469,8 +469,8 @@ private:
     if (got < 0 || static_cast<std::size_t>(got) > buffer.size())
       return fail(io, Failure::SourceRead, errno);
     if (got == 0) {
-      if (const auto failure = finish_source(io))
-        return fail(io, *failure, *failure == Failure::SourceRead ? errno : 0);
+      if (const auto failed = finish_source(io))
+        return fail(io, *failed, *failed == Failure::SourceRead ? errno : 0);
       stage_ = Stage::Seal;
       return Outcome::InProgress;
     }
@@ -558,8 +558,8 @@ private:
       bytes_ += part.size();
       return Outcome::InProgress;
     }
-    if (const auto failure = finish_source(io))
-      return fail(io, *failure, *failure == Failure::SourceRead ? errno : 0);
+    if (const auto failed = finish_source(io))
+      return fail(io, *failed, *failed == Failure::SourceRead ? errno : 0);
     if (!io.open_read(final_.data()))
       return fail(io, Failure::CardRead, errno);
     reading_ = true;

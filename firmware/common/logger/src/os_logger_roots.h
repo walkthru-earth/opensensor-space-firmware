@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstring>
@@ -42,10 +43,9 @@ struct Roots {
   if (root[0] != '/' || std::strlen(root) > kMaxFallbackBytes)
     return false;
   const std::array others{roots.output, roots.benchmark, roots.legacy};
-  for (const char *other : others)
-    if (path_within(root, other) || path_within(other, root))
-      return false;
-  return true;
+  return std::none_of(others.begin(), others.end(), [root](const char *other) {
+    return path_within(root, other) || path_within(other, root);
+  });
 }
 
 } // namespace opensensor::logger::roots
