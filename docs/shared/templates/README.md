@@ -55,9 +55,14 @@ A squash or rebase merge drops the pinned commit from main and the gate fails.
 
 ## Mobile
 
-The app copies these files verbatim into its bundled templates. Its template
-index resolves a board by `desc` first, then by `dict`. Hash the bytes as
-copied, never a parsed and re-serialized copy.
+The app copies these files verbatim into its bundled templates. A `desc` resolves only to the
+template it names, a served one before a bundled one, and never falls back to
+its `dict`. Only a footer or device with no `desc` resolves by `dict`. For
+such a file the app fetches the footer `template.href` once. It accepts only
+an https href on the commit pinned firmware template path that `kTemplateHref`
+writes, follows no redirect, and binds the bytes only when their SHA-256 is
+the footer `desc` and the dict matches (mobile #286 and #294). Hash the bytes
+as copied, never a parsed and re-serialized copy.
 
 ## Regenerate
 
