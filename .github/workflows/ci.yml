@@ -145,6 +145,11 @@ jobs:
             task: cores3-build
             extra_task: waveshare-build logger
             bench: delta
+          # The CrowPanel chart history restore decodes its own DELTA files
+          # through parquet_columns.h since #229, so its on branch builds too.
+          - name: bench-delta-crowpanel
+            task: crowpanel-build
+            bench: delta
     env:
       IDF_CCACHE_ENABLE: "1"
       CCACHE_MAXSIZE: 500M
