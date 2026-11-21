@@ -41,14 +41,14 @@ Notes
   the patched code stays Apache-2.0. See
   [`firmware/common/vendor/esp-nimble/README.md`](firmware/common/vendor/esp-nimble/README.md)
   for the pinned hashes and the upstream commits.
-- Every e-paper image, the CrowPanel today, carries bitmaps rendered from
-  Inter, not the font file. The OFL lets a font be embedded in a product, and
-  the bitmaps stay under the OFL. See
+- Every e-paper image, the CrowPanel and the ePaper-3.97 today, carries
+  bitmaps rendered from Inter, not the font file. The OFL lets a font be
+  embedded in a product, and the bitmaps stay under the OFL. See
   [`firmware/common/epaper_ui/vendor/inter/README.md`](firmware/common/epaper_ui/vendor/inter/README.md)
   for the release and hash.
 - The shared text component carries Arabic bitmaps rendered from Cairo, not
-  the font file, and only an image that links it carries them. They stay
-  under the OFL. See
+  the font file, and only an image that links it carries them, the CrowPanel
+  and the ePaper-3.97 today. They stay under the OFL. See
   [`firmware/common/text/vendor/cairo/README.md`](firmware/common/text/vendor/cairo/README.md)
   for the release, upstream commits and hash.
 
@@ -104,12 +104,12 @@ components, which carry the same licenses and copyright notices.
 
 | Component | Version | Used by | License | Copyright |
 | :--- | :--- | :--- | :--- | :--- |
-| `espressif/mdns` | 1.15.1 | CoreS3, Waveshare SIM7670G | Apache-2.0 | Copyright Espressif Systems (Shanghai) CO LTD |
+| `espressif/mdns` | 1.15.1 | CoreS3, Waveshare SIM7670G, CrowPanel ePaper 4.2, Waveshare ePaper-3.97 | Apache-2.0 | Copyright Espressif Systems (Shanghai) CO LTD |
 | `espressif/led_strip` | 3.1.1 | Waveshare SIM7670G | Apache-2.0 | Copyright Espressif Systems (Shanghai) CO LTD |
 | `m5stack/m5unified` | 0.3.0 | CoreS3 | MIT | Copyright (c) 2021 M5Stack |
 | `m5stack/m5gfx` | 0.3.0 | CoreS3 | MIT, with bundled third-party parts listed below | Copyright (c) 2021 M5Stack |
-| `walkthru-earth/embedded-h3-location` (git, tag `v2.0.0`, commit `49753cb9a8795ff1ae6bc6eed461fee0fc30cdc7`) | 2.0.0 | CoreS3, Waveshare SIM7670G | CC-BY-4.0 AND Apache-2.0, see its `LICENSE` and `NOTICE` | Copyright (c) 2025-2026 Walkthru.Earth |
-| Uber H3, vendored unmodified inside `embedded-h3-location` under `vendor/h3` (tag `v4.5.0`, commit `1b536c34225191ba24a75a840f634d4a48c3b206`) | 4.5.0 | CoreS3, Waveshare SIM7670G | Apache-2.0, see `vendor/h3/LICENSE` and `vendor/h3/NOTICE` in that library | Copyright 2017-2021 Uber Technologies, Inc. |
+| `walkthru-earth/embedded-h3-location` (git, tag `v2.0.0`, commit `49753cb9a8795ff1ae6bc6eed461fee0fc30cdc7`) | 2.0.0 | CoreS3, Waveshare SIM7670G, CrowPanel ePaper 4.2, Waveshare ePaper-3.97 | CC-BY-4.0 AND Apache-2.0, see its `LICENSE` and `NOTICE` | Copyright (c) 2025-2026 Walkthru.Earth |
+| Uber H3, vendored unmodified inside `embedded-h3-location` under `vendor/h3` (tag `v4.5.0`, commit `1b536c34225191ba24a75a840f634d4a48c3b206`) | 4.5.0 | CoreS3, Waveshare SIM7670G, CrowPanel ePaper 4.2, Waveshare ePaper-3.97 | Apache-2.0, see `vendor/h3/LICENSE` and `vendor/h3/NOTICE` in that library | Copyright 2017-2021 Uber Technologies, Inc. |
 
 `embedded-h3-location` is fetched from GitHub by the component manager, not
 the ESP Component Registry. `firmware/common/location/idf_component.yml` pins
