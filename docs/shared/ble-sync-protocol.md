@@ -335,7 +335,7 @@ Rules:
 | Key | Value | Applied | Meaning |
 | --- | --- | --- | --- |
 | `ble.pair` | `random` \| `fixed` \| `none` | next boot | pairing mode, see [pairing modes](#pairing-modes) |
-| `ble.pin` | 6 digits `000000`–`999999`, except the retired default | next boot | passkey for `fixed` mode. The retired default is refused with `detail="ble.pin"` |
+| `ble.pin` | 6 digits `000000` to `999999`, except the retired default | next boot | passkey for `fixed` mode. The retired default is refused with `detail="ble.pin"` |
 | `ble.clear_bonds` | `1` | *action* | forget every bonded phone |
 | `wifi.on` | `0` \| `1` | immediately | station radio on/off (off by default) |
 | `wifi.ssid` | ≤ 32 bytes, no control characters (bytes `0x00` to `0x1F` and `0x7F`). Required while `wifi.on` is 1 | immediately | network name |

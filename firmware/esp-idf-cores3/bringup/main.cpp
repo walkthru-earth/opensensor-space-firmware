@@ -1026,7 +1026,9 @@ constexpr const char *kNvsFaultLine =
   }
 }
 
-// The parameter is the NVS init error, ESP_OK when NVS started.
+// The parameter is the NVS init error, ESP_OK when NVS started. FreeRTOS
+// fixes the callback signature.
+// cppcheck-suppress constParameterCallback
 void board_task(void *parameter) {
   const auto nvs =
       static_cast<esp_err_t>(reinterpret_cast<std::intptr_t>(parameter));
