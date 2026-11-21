@@ -191,7 +191,7 @@ Notified after every stored sample (every 10 s) and after any `control` request 
 | `sd` | 1 when the card is mounted and the output directory exists |
 | `part` | retained `.partial` files seen at the last listing |
 | `qf` / `qb` | retained quarantine file count / bytes after startup quarantine; includes earlier boots |
-| `ls` | `LIST_SINCE` mount epoch, the FAT volume serial of the mounted card as a u32 (stepped by one per file copied back from flash, a count kept in NVS over the life of the board), 0 while no card is mounted or the serial is unknown. A phone compares it with the `mount_epoch` of its saved cursor to know before listing whether the cursor still applies. Absent on older firmware |
+| `ls` | `LIST_SINCE` mount epoch, the FAT volume serial of the mounted card as a u32 (stepped by one per file copied back from flash, a count kept in NVS over the life of the board), 0 while no card is mounted, the serial is unknown or that count cannot be read. A phone compares it with the `mount_epoch` of its saved cursor to know before listing whether the cursor still applies. Absent on older firmware |
 | `dc` / `dr` | proto 3. `dc` counts BLE and LAN sessions closed since boot, including refused LAN clients, saturating at 65535. `dr` is the newest [disconnect reason](#disconnect-reasons) code, or null while `dc` is 0 |
 
 A board without an enabled RTC adapter reports `rtc=2`. Each boot starts with

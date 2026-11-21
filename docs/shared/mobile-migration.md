@@ -21,6 +21,9 @@ or digest changes. Decision record 0004.
   its internal flash under `/flash/output`, with the same names and paths as
   on the card, and copies them back to the card once one is Ready. The
   ePaper-3.97 now opts in too, so all four boards do.
+- A card that comes back finalizes the open flash file at the next storage
+  probe, so that file can hold less than a full window. The rows waiting in
+  RAM then start a card file.
 - Without a card, `LIST`, `OPEN` and `READ` now answer from flash instead of
   ERROR 8. ERROR 8 means neither root is usable. With a card, `LIST` adds the
   flash files the card does not hold yet, after the card entries.
