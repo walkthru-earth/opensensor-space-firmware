@@ -2251,14 +2251,16 @@ ossync::ArchiveSession archive_session(
 
 // begin() points `descriptor` at config.descriptor (.rodata) once the config
 // validates, before any link starts. The worker only reads it afterwards.
+// `progress` keeps the heartbeat and samples moving through a long OTA_END.
 ossync::ControlReplies control_replies{
-    nullptr, [](void *, ble::Link) { return link_payload_max(); },
-    [](void *, ble::Link, const std::uint8_t *frame, std::size_t length) {
-      return respond(frame, length);
-    },
-    [](void *, ble::Link, ble::Op op, ble::Error code, const char *detail) {
-      return respond_error(op, code, detail);
-    }};
+    .context = nullptr,
+    .payload_max = [](void *, ble::Link) { return link_payload_max(); },
+    .respond = [](void *, ble::Link, const std::uint8_t *frame,
+                  std::size_t length) { return respond(frame, length); },
+    .error = [](void *, ble::Link, ble::Op op, ble::Error code,
+                const char *detail) { return respond_error(op, code, detail); },
+    .progress = [](void *) { static_cast<void>(error_wait_step(nullptr)); },
+};
 
 // GET_CONFIG page 1 location.gnss_cell, on the worker. begin() wires it only
 // when the board has a gnss_fix hook. The hook copies the reader's newest fix

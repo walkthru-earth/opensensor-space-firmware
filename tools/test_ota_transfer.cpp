@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -43,7 +44,10 @@ struct FakeFlash {
   int activates = 0;
   int reverts = 0;
   int aborts = 0;
+  int progresses = 0;
   std::uint32_t begun_size = 0;
+  // OTA_END steps in order, f finish, d digest, a activate, p progress.
+  std::string trace;
 };
 
 FakeFlash &flash_of(void *context) {
@@ -80,6 +84,7 @@ ota::Sink sink_for(FakeFlash &flash) {
           -> std::expected<ota::Digest, ota::SinkError> {
         auto &f = flash_of(context);
         ++f.digests;
+        f.trace += 'd';
         if (f.fail_digest || size != f.written.size())
           return std::unexpected(ota::SinkError::Failed);
         return f.digest;
@@ -88,12 +93,14 @@ ota::Sink sink_for(FakeFlash &flash) {
           [](void *context) {
             auto &f = flash_of(context);
             ++f.finishes;
+            f.trace += 'f';
             return fail_if(f.fail_finish);
           },
       .activate =
           [](void *context) {
             auto &f = flash_of(context);
             ++f.activates;
+            f.trace += 'a';
             return fail_if(f.fail_activate);
           },
       .revert =
@@ -103,6 +110,12 @@ ota::Sink sink_for(FakeFlash &flash) {
             return fail_if(f.fail_revert);
           },
       .abort = [](void *context) { ++flash_of(context).aborts; },
+      .progress =
+          [](void *context) {
+            auto &f = flash_of(context);
+            ++f.progresses;
+            f.trace += 'p';
+          },
   };
 }
 
@@ -469,12 +482,34 @@ void test_ownership() {
                  ota::Error::RebootPending));
   CHECK(is_error(transfer.handle(first, kOwner), ota::Error::RebootPending));
   CHECK(!transfer.drop_owner(kOwner));
-  // Any session may cancel a staged image. It restores the running slot.
+  // While the staging session is open, another session cannot cancel the
+  // staged image.
+  CHECK(is_error(transfer.handle(kCancel, kOther), ota::Error::Busy));
+  CHECK(transfer.progress().phase == ota::Phase::Ready && flash.reverts == 0);
+  // Once that session closed, any session may cancel it. Only the staging
+  // owner releases it, and only once.
+  CHECK(!transfer.release_staged(kOther));
+  CHECK(transfer.release_staged(kOwner));
+  CHECK(!transfer.release_staged(kOwner));
+  CHECK(transfer.progress().phase == ota::Phase::Ready);
+  // OTA_END stays idempotent after the release.
+  CHECK(transfer.handle(kEnd, kOther).has_value() && flash.activates == 1);
   const auto cancelled = transfer.handle(kCancel, kOther);
   CHECK(cancelled && cancelled->phase == ota::Phase::Idle &&
         flash.reverts == 1);
-  // Cancel when idle is a no-op.
+  // Cancel when idle is a no-op for any session.
   CHECK(transfer.handle(kCancel, kOther).has_value() && flash.aborts == 2);
+  CHECK(!transfer.release_staged(kOwner));
+  // Nothing to release while Receiving, drop_owner handles that.
+  start(transfer, bytes);
+  CHECK(!transfer.release_staged(kOwner));
+  // A new staged image is not released by the old one's release.
+  CHECK(send_all(transfer, bytes).has_value());
+  CHECK(transfer.handle(kEnd, kOwner).has_value());
+  CHECK(is_error(transfer.handle(kCancel, kOther), ota::Error::Busy));
+  // The staging session cancels its own image. It restores the running slot.
+  const auto own = transfer.handle(kCancel, kOwner);
+  CHECK(own && own->phase == ota::Phase::Idle && flash.reverts == 2);
   // A failed revert keeps the image staged.
   start(transfer, bytes);
   CHECK(send_all(transfer, bytes).has_value());
@@ -482,6 +517,80 @@ void test_ownership() {
   flash.fail_revert = true;
   CHECK(is_error(transfer.handle(kCancel, kOwner), ota::Error::Activate));
   CHECK(transfer.progress().phase == ota::Phase::Ready);
+}
+
+// OTA_END reads the whole image back on the worker. Progress runs on each
+// side of esp_ota_end and of the read back, so the worker heartbeat moves.
+void test_progress() {
+  const auto bytes = image(2 * ota::kMaxChunk);
+  {
+    FakeFlash flash;
+    flash.digest = digest_a();
+    ota::Transfer transfer(target(), sink_for(flash));
+    start(transfer, bytes);
+    CHECK(send_all(transfer, bytes).has_value());
+    // BEGIN and WRITE are bounded per request and report no progress.
+    CHECK(flash.progresses == 0);
+    CHECK(transfer.handle(kEnd, kOwner).has_value());
+    CHECK(flash.trace == "pfpdpa");
+    // A repeated OTA_END reads nothing back.
+    CHECK(transfer.handle(kEnd, kOwner).has_value() && flash.trace == "pfpdpa");
+  }
+  {
+    // A failed esp_ota_end still reports once it returns.
+    FakeFlash flash;
+    flash.digest = digest_a();
+    flash.fail_finish = true;
+    ota::Transfer transfer(target(), sink_for(flash));
+    start(transfer, bytes);
+    CHECK(send_all(transfer, bytes).has_value());
+    CHECK(is_error(transfer.handle(kEnd, kOwner), ota::Error::Verify));
+    CHECK(flash.trace == "pfp");
+  }
+  {
+    // A failed read back too.
+    FakeFlash flash;
+    flash.digest = digest_a();
+    flash.fail_digest = true;
+    ota::Transfer transfer(target(), sink_for(flash));
+    start(transfer, bytes);
+    CHECK(send_all(transfer, bytes).has_value());
+    CHECK(is_error(transfer.handle(kEnd, kOwner), ota::Error::Flash));
+    CHECK(flash.trace == "pfpdp");
+  }
+  {
+    // Progress is optional. A sink without it still stages the image.
+    FakeFlash flash;
+    flash.digest = digest_a();
+    auto sink = sink_for(flash);
+    sink.progress = nullptr;
+    ota::Transfer transfer(target(), sink);
+    start(transfer, bytes);
+    CHECK(send_all(transfer, bytes).has_value());
+    const auto done = transfer.handle(kEnd, kOwner);
+    CHECK(done && done->phase == ota::Phase::Ready && flash.trace == "fda");
+  }
+  // progress_due() is the read back cadence in ota_lan.cpp. It fires once
+  // per kProgressBytes and at the end of the image.
+  constexpr std::uint32_t block = ota::kProgressBytes;
+  static_assert(block == 65536);
+  static_assert(!ota::progress_due(0, 1024, 0x600000));
+  static_assert(!ota::progress_due(block - 2048, block - 1024, 0x600000));
+  static_assert(ota::progress_due(block - 1024, block, 0x600000));
+  static_assert(!ota::progress_due(block, block + 1024, 0x600000));
+  static_assert(ota::progress_due(block + 512, 2 * block + 512, 0x600000));
+  static_assert(ota::progress_due(1000, 1500, 1500));
+  // Count the calls over a full 6 MiB slot read in 1024 byte steps, as the
+  // device digest loop runs it.
+  int calls = 0;
+  constexpr std::uint32_t size = 0x600000 - 100;
+  for (std::uint32_t offset = 0; offset < size;) {
+    const std::uint32_t count = size - offset < 1024 ? size - offset : 1024;
+    if (ota::progress_due(offset, offset + count, size))
+      ++calls;
+    offset += count;
+  }
+  CHECK(calls == 96);
 }
 
 void test_wire() {
@@ -581,6 +690,17 @@ void test_stale_owner() {
     CHECK(ota::stale_action(still, owner, std::nullopt, seen + stall_us, 0) ==
           ota::Keep::Keep);
   }
+  // A staged image is released to any session once its session closed, and
+  // never while it is open or in another phase.
+  constexpr ota::Progress ready{.phase = ota::Phase::Ready};
+  static_assert(ota::owner_open(owner, kGen));
+  static_assert(!ota::owner_open(owner, kGen + 1));
+  static_assert(!ota::owner_open(owner, std::nullopt));
+  CHECK(!ota::release_due(ready, owner, kGen));
+  CHECK(ota::release_due(ready, owner, kGen + 1));
+  CHECK(ota::release_due(ready, owner, std::nullopt));
+  CHECK(!ota::release_due(receiving, owner, std::nullopt));
+  CHECK(!ota::release_due({.phase = ota::Phase::Idle}, owner, std::nullopt));
 
   // owner_generation() is the slot lookup drop_stale() runs. It asks for the
   // owner's own slot and returns what the slot holds now, so a reconnect on
@@ -663,6 +783,7 @@ int main() {
   test_header_rules();
   test_finish_rules();
   test_ownership();
+  test_progress();
   test_wire();
   test_routing();
   test_stall();

@@ -967,7 +967,8 @@ The rules, all checked on the device.
 
 - `OTA_BEGIN` declares the image size and its SHA-256. The size must be at
   least 112 bytes and at most the inactive slot, `slot_bytes` in the answer
-  (6 MiB on both boards today).
+  (6 MiB on CoreS3, both Waveshare images and the ePaper-3.97, 3.75 MiB on
+  the CrowPanel).
 - `OTA_WRITE` chunks arrive in order, with no gap and no overlap, and never
   past the declared size. `offset` must equal `next` from the last
   `OTA_STATE`. A chunk is at most `max_chunk` bytes (507), so a request is at
@@ -976,18 +977,24 @@ The rules, all checked on the device.
   checks the image magic `0xE9`, the app description magic `0xABCD5432`, the
   chip id (`0x0009`, ESP32-S3) and the exact project name against the running
   app before any byte reaches flash. The project names are
-  `opensensor_cores3` and `opensensor_waveshare`. The Waveshare logger and
+  `opensensor_cores3`, `opensensor_crowpanel`, `opensensor_epaper397` and
+  `opensensor_waveshare`. The Waveshare logger and
   diagnostic images share a name, so a diagnostic image can be pushed to a
   logger. The diagnostic has no LAN, so the board then needs USB to get back.
 - `OTA_END` needs every declared byte. ESP-IDF checks the image
   (`esp_ota_end`), then the device reads the slot back and compares its
   SHA-256 with the declared one, then it sets the boot partition. Only then
-  does it answer phase `ready`. Allow 120 s for this answer. A repeated
+  does it answer phase `ready`. Allow 120 s for this answer. The storage
+  worker keeps its heartbeat and keeps taking samples through this step. A
+  repeated
   `OTA_END` in phase `ready` answers the same `OTA_STATE` again and does
   nothing else, so a phone that lost the answer may simply resend it.
 - The device never reboots on its own. A staged image boots on the next
   `REBOOT` (`0x0B`) or power cycle. `OTA_CANCEL` in phase `ready` points the
   boot partition back at the running app.
+- There is no version rule. The app version is a `git describe` string, not
+  an ordered number, so the device accepts an older image as readily as a
+  newer one.
 - Any rule the owner breaks aborts the upload, frees the slot and returns to
   `idle`. The phone starts again with `OTA_BEGIN`.
 - Nothing here touches NVS, the device settings or the SD archive.
@@ -998,7 +1005,16 @@ leaves the upload running. When the owner session closes, or sends no OTA
 request for 30 s while receiving, the next OTA request from any session drops
 the partial upload first and logs `OTA ABORT reason=session-closed` or
 `reason=stalled`. The owner may send
-`OTA_BEGIN` again to restart. Any session may cancel a staged image.
+`OTA_BEGIN` again to restart.
+
+A staged image stays with the session that staged it. While that session is
+open, `OTA_CANCEL` from any other session answers `ERROR` 7
+`detail="ota-owner"` and the image stays staged. Once that session closed, the
+next OTA request from any session releases the image, logs
+`OTA RELEASE reason=session-closed`, and any session may then cancel it. A
+host that pushed with one session and cancels with a new one after it closed
+therefore still works. `OTA_CANCEL` with nothing staged or receiving answers
+phase `idle` for any session.
 
 `OTA_STATE` (`0x50`) answers every successful request.
 
@@ -1020,6 +1036,7 @@ Golden frame `50 01 04030201 0d0c0b0a 00006000 fb01` is phase receiving, next
 | Body of the wrong length | `ERROR` 1 `detail="ota"`, aborts |
 | `OTA_WRITE`, `OTA_END` while idle | `ERROR` 5 `detail="ota-idle"` |
 | Another session while receiving | `ERROR` 7 `detail="ota-owner"` |
+| `OTA_CANCEL` from another session while the staging session is open | `ERROR` 7 `detail="ota-owner"` |
 | `OTA_BEGIN` or `OTA_WRITE` while ready | `ERROR` 7 `detail="reboot-pending"` |
 | Size below 112 or above the slot | `ERROR` 6 `detail="size"` |
 | Offset other than `next` | `ERROR` 6 `detail="offset"`, aborts |
@@ -1035,8 +1052,14 @@ Golden frame `50 01 04030201 0d0c0b0a 00006000 fb01` is phase receiving, next
 | Setting the boot partition failed | `ERROR` 8 `detail="boot"`, aborts |
 
 Each phase change logs one line, `OTA BEGIN size= slot= slot_bytes=`,
-`OTA READY size= slot= sha256=match reboot=required`, `OTA CANCEL from=` or
+`OTA READY size= slot= sha256=match reboot=required`, `OTA CANCEL from=`,
+`OTA RELEASE reason=session-closed` or
 `OTA ERROR op= reason= next= size= active=`. Chunks are not logged.
+
+`ERROR` 18 (`IMAGE_REJECTED`) always means the image itself is wrong, so
+sending the same file again cannot help. Its `detail` is one of `header`,
+`chip`, `project`, `verify` or `digest`, as in the table above. The app shows
+it as a rejected image, not as a link or storage fault.
 
 After the reboot the logger runs its boot self test. Once the SD card is
 ready, the PM2.5 column has held a valid value and BLE has started, it prints
