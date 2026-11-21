@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ble_sync.h"
+#include "power_registers.h"
 
 #include <cstdint>
 
@@ -34,6 +35,10 @@ struct PmsReading {
 PmsReading pms_reading(bool present, std::int64_t now_us,
                        std::int64_t received_mono_us,
                        std::uint8_t sensor_error);
+// One power reading through the status returning register reads (#199), the
+// same path as the stored power columns. A failed read is nullopt. Main task
+// DIAG line and device page use it, so the PMIC has one reader.
+[[nodiscard]] power::Reading read_power_now();
 // SD volume owned by main.cpp. Storage worker only, with the display lock
 // held. remount unmounts and mounts again, never formats.
 bool remount_sd();
