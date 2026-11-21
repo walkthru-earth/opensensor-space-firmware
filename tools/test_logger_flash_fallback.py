@@ -19,6 +19,7 @@ from host_cxx import CXX_STD
 TESTS = {
     "archive-target": ("test_archive_target.cpp", ["os_logger_archive_target.h"], []),
     "flash-copy": ("test_flash_copy.cpp", [], ["src/sha256_stream.cpp"]),
+    "list-merge": ("test_list_merge.cpp", ["os_logger_list_merge.h"], []),
 }
 
 FORBIDDEN = re.compile(
@@ -53,7 +54,8 @@ def main() -> None:
             subprocess.run(command, check=True)
             subprocess.run([str(executable)], check=True)
     print("flash fallback checks passed: archive target for every input and the "
-          "reserve boundary")
+          "reserve boundary, verified copy back with resets, conflicts and "
+          "refused renames, and the LIST merge of the flash root")
 
 
 if __name__ == "__main__":
