@@ -84,7 +84,7 @@ struct FlashOps {
   const char *(*error_name)(FlashMountCode code) = nullptr;
 };
 
-// Runs the format-once policy. Writes one or two NUL terminated lines, each
+// Runs the format-once policy. Writes up to three NUL terminated lines, each
 // ending in '\n', into `line`. The last one is always the OS FLASH mount line.
 [[nodiscard]] std::expected<FlashVolume, FlashMountError>
 mount_flash_policy(const FlashOps &ops, std::span<char, kFlashLineBytes> line);
@@ -93,5 +93,10 @@ mount_flash_policy(const FlashOps &ops, std::span<char, kFlashLineBytes> line);
 // initialized first. Call once at boot, before the logger starts.
 [[nodiscard]] std::expected<FlashVolume, FlashMountError>
 mount_flash_volume(std::span<char, kFlashLineBytes> line);
+
+// Device glue. Total and free bytes of the mounted volume, for the logger's
+// flash reserve check. Unavailable while nothing is mounted at
+// kFlashMountPoint.
+[[nodiscard]] std::expected<FlashSpace, FlashSpaceError> flash_volume_space();
 
 } // namespace opensensor::storage

@@ -535,6 +535,18 @@ void check_flash_fallback() {
   // unknown.
   assert(ls::next_epoch(0xffffffffU) == 1);
   assert(ls::next_epoch(0) == 0);
+  // A remount reads the volume serial again. The copies of this boot stay
+  // counted, so a cursor taken before them never matches after the remount.
+  assert(ls::shifted_epoch(0xcafe, 0) == 0xcafe);
+  assert(ls::shifted_epoch(0xcafe, 3) == 0xcb01);
+  assert(ls::shifted_epoch(0, 5) == 0);
+  for (const std::uint32_t serial : {1U, 0xcafeU, 0xfffffffeU, 0xffffffffU}) {
+    assert(ls::shifted_epoch(serial, 1) == ls::next_epoch(serial));
+    assert(ls::shifted_epoch(serial, 2) ==
+           ls::next_epoch(ls::next_epoch(serial)));
+  }
+  assert(ls::shifted_epoch(0xffffffffU, 0xffffffffU) == 0xffffffffU);
+  assert(ls::shifted_epoch(5, 0xffffffffU) == 5);
 }
 
 void check_walks() {

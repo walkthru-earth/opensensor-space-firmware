@@ -100,4 +100,8 @@ mount_flash_volume(std::span<char, kFlashLineBytes> line) {
   return mount_flash_policy(ops, line);
 }
 
+std::expected<FlashSpace, FlashSpaceError> flash_volume_space() {
+  return space(nullptr);
+}
+
 } // namespace opensensor::storage

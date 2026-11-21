@@ -390,6 +390,19 @@ struct Inputs {
   return epoch == UINT32_MAX ? 1 : epoch + 1;
 }
 
+// The volume serial moved on by `bumps` copies, as next_epoch() applied that
+// many times. A remount reads the serial again and the worker shifts it by
+// the copies of this boot, so a cursor from before a copy stays stale.
+[[nodiscard]] constexpr std::uint32_t shifted_epoch(std::uint32_t serial,
+                                                    std::uint32_t bumps) {
+  if (serial == 0)
+    return 0;
+  // The nonzero epochs form a cycle of UINT32_MAX values.
+  const std::uint64_t index =
+      (std::uint64_t{serial} - 1 + bumps) % std::uint64_t{UINT32_MAX};
+  return static_cast<std::uint32_t>(index + 1);
+}
+
 struct Plan {
   // Walk what plain LIST walks. The cursor did not match this mount.
   bool full = false;

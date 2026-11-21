@@ -60,8 +60,13 @@ struct Config {
   const char *legacy_directory = nullptr;
   // Optional archive root on the internal flash volume for a board without a
   // card (decision record 0004), "/flash/output" when the board mounted it.
-  // nullptr when the board has no such volume. Nothing is written there yet.
+  // nullptr when the board has no such volume. New files go there while no
+  // card is writable, and the worker copies them back once the card is Ready.
   const char *fallback_directory = nullptr;
+  // Free bytes the flash volume keeps. Below it no new file is created
+  // there (decision record 0004, item 6). The default is a little more than
+  // two 15 minute windows of the CoreS3 schema.
+  std::uint64_t fallback_reserve_bytes = 128ULL * 1024ULL;
   // codec-test copies live here, outside the listed and synced archive.
   const char *benchmark_directory = "/sd/bench";
   // Sync service tuning; nullptr keeps the shared defaults.
