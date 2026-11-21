@@ -269,6 +269,108 @@ void archive_contract() {
   put_u32(tail, 88);
   assert(parquet_complete(100, head, tail));
 }
+
+// The STAC sidecar of a dated Parquet name, the only json LIST and OPEN
+// serve (#143).
+void sidecar_contract() {
+  using namespace opensensor::sync;
+  constexpr const char *kDay = "thing=t1/year=2026/month=11/day=21/";
+  const std::string file = "data_0910_0123456789abcdef0123456789abcdef_1-90-0";
+  const std::string parquet = kDay + file + ".parquet";
+  const std::string json = kDay + file + ".json";
+  assert(dated_parquet_name(parquet.c_str()));
+  std::array<char, 385> out{};
+  auto length = parquet_sidecar_name(parquet.c_str(), out);
+  assert(length && *length == json.size() && json == out.data());
+  length = sidecar_parquet_name(json.c_str(), out);
+  assert(length && *length == parquet.size() && parquet == out.data());
+  assert(safe_sidecar_name(json.c_str()));
+  // Too small for the name and its NUL.
+  std::array<char, 8> small{};
+  const auto tight = sidecar_parquet_name(json.c_str(), small);
+  assert(!tight && tight.error() == SidecarNameError::TooLong);
+  std::vector<char> exact(parquet.size() + 1);
+  assert(sidecar_parquet_name(json.c_str(), exact).has_value());
+  exact.pop_back();
+  assert(!sidecar_parquet_name(json.c_str(), exact).has_value());
+
+  // Not dated, so no sidecar: unsynced, conflict, quarantine, legacy,
+  // benchmark and malformed names.
+  const std::string invalid_parquet[] = {
+      "thing=t1/unsynced/boot=0123456789abcdef0123456789abcdef/"
+      "data_unsynced_0123456789abcdef0123456789abcdef_1-90-0.parquet",
+      "flash-conflict/" + parquet,
+      "quarantine/" + parquet,
+      "legacy-parquet/" + parquet,
+      "boot=0123456789abcdef0123456789abcdef/lz4_raw_1-2-0.parquet",
+      "thing=/year=2026/month=11/day=21/" + file + ".parquet",
+      "thing=t1/year=26/month=11/day=21/" + file + ".parquet",
+      "thing=t1/year=2026/month=1/day=21/" + file + ".parquet",
+      "thing=t1/year=2026/month=11/day=2x/" + file + ".parquet",
+      "thing=t1/year=2026/month=11/day=21/extra/" + file + ".parquet",
+      kDay + std::string("data_0910_0123456789ABCDEF0123456789abcdef_1-90-0"
+                         ".parquet"),
+      kDay + std::string("data_0910_0123456789abcdef0123456789abcde_1-90-0"
+                         ".parquet"),
+      kDay + std::string("data_0910_0123456789abcdef0123456789abcdef_1-90"
+                         ".parquet"),
+      kDay + std::string("data_0910_0123456789abcdef0123456789abcdef_1-90-"
+                         ".parquet"),
+      kDay + std::string("data_0910_0123456789abcdef0123456789abcdef_1--0"
+                         ".parquet"),
+      "../" + parquet,
+      "/" + parquet,
+  };
+  for (const auto &name : invalid_parquet) {
+    assert(!dated_parquet_name(name.c_str()));
+    const auto miss = parquet_sidecar_name(name.c_str(), out);
+    assert(!miss && miss.error() == SidecarNameError::NotSidecar);
+    std::string sidecar = name.substr(0, name.size() - 8) + ".json";
+    assert(!safe_sidecar_name(sidecar.c_str()));
+  }
+  // Never a partial, a traversal, another suffix or a bare suffix.
+  const std::string invalid_json[] = {
+      json + ".partial",
+      parquet,
+      kDay + file + ".JSON",
+      kDay + file + ".json/",
+      kDay + std::string(".json"),
+      ".json",
+      "",
+      std::string("thing=t1/year=2026/month=11/day=21/../") + file + ".json",
+      std::string("thing=t1/year=2026/month=11//day=21/") + file + ".json",
+      "thing=t1/year=2026/month=11/day=21/./" + file + ".json",
+      "/" + json,
+      "../" + json,
+      "thing=t1\\x/year=2026/month=11/day=21/" + file + ".json",
+      "thing=T1/year=2026/month=11/day=21/" + file + ".json",
+      "thing=t1/year=2026/month=11/day=21/" + file + "\n.json",
+  };
+  for (const auto &name : invalid_json) {
+    assert(!safe_sidecar_name(name.c_str()));
+    const auto miss = sidecar_parquet_name(name.c_str(), out);
+    assert(!miss && miss.error() == SidecarNameError::NotSidecar);
+  }
+  assert(!sidecar_parquet_name(nullptr, out).has_value());
+  // The Parquet name bound applies to the derived name.
+  const std::string thing(384 - parquet.size() + 2, 'a');
+  const std::string longest =
+      "thing=" + thing + "/year=2026/month=11/day=21/" + file + ".json";
+  assert(longest.size() + 3 == 384);
+  assert(safe_sidecar_name(longest.c_str()));
+  const std::string over =
+      "thing=a" + thing + "/year=2026/month=11/day=21/" + file + ".json";
+  assert(!safe_sidecar_name(over.c_str()));
+
+  assert(sidecar_complete(2, '{', '}'));
+  assert(sidecar_complete(kMaxSidecarBytes, '{', '}'));
+  assert(!sidecar_complete(kMaxSidecarBytes + 1, '{', '}'));
+  assert(!sidecar_complete(1, '{', '}'));
+  assert(!sidecar_complete(0, '{', '}'));
+  assert(!sidecar_complete(10, '[', ']'));
+  assert(!sidecar_complete(10, '{', '\n'));
+  assert(!sidecar_complete(10, ' ', '}'));
+}
 } // namespace
 
 int main() {
@@ -277,4 +379,5 @@ int main() {
   wire_contract();
   crc_contract();
   archive_contract();
+  sidecar_contract();
 }
