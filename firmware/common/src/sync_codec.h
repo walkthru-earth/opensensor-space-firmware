@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -92,12 +93,9 @@ inline bool safe_parquet_name(const char *name, std::size_t max_length = 384) {
 
 namespace detail {
 constexpr bool decimal(std::string_view text) {
-  if (text.empty())
-    return false;
-  for (const char c : text)
-    if (c < '0' || c > '9')
-      return false;
-  return true;
+  return !text.empty() && std::all_of(text.begin(), text.end(), [](char c) {
+    return c >= '0' && c <= '9';
+  });
 }
 
 // Takes "<key><count digits>/" off the front of rest.
@@ -145,9 +143,11 @@ constexpr bool dated_parquet_shape(std::string_view name) {
   if (rest.size() < 4 + 1 + 32 + 1 || !detail::decimal(rest.substr(0, 4)) ||
       rest[4] != '_' || rest[37] != '_')
     return false;
-  for (const char c : rest.substr(5, 32))
-    if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')))
-      return false;
+  const std::string_view boot = rest.substr(5, 32);
+  if (!std::all_of(boot.begin(), boot.end(), [](char c) {
+        return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+      }))
+    return false;
   rest.remove_prefix(38);
   return detail::take_number(rest, '-') && detail::take_number(rest, '-') &&
          detail::decimal(rest);

@@ -144,9 +144,9 @@ def check_wiring(source: str) -> None:
             r"&& \(!sidecars \|\| emit_sidecar\(exported\)\);",
         "a sidecar is looked up where OPEN finds it":
             r"list_merge::sidecar\(probe, card_listable\(\) \? kDirectory : nullptr, "
-            r"flash_ready \? flash_root : nullptr, json, on_flash\);",
+            r"flash_ready \? flash_root : nullptr, json, flash_phase\);",
         "the flash walk marks its Parquet files as on flash":
-            r"\.sidecars = sidecars_, \.on_flash = phase_ == Phase::Flash\};",
+            r"\.sidecars = sidecars_, \.flash_phase = phase_ == Phase::Flash\};",
         "OPEN checks a sidecar name as a sidecar":
             r"return check_archive_file\(path, file, check\);",
         "a sidecar needs its Parquet on a root that pairs with it":

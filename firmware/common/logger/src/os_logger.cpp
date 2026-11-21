@@ -1419,7 +1419,7 @@ struct ListVisitor {
   // stay Parquet only.
   bool sidecars = false;
   // The walk is on the flash root.
-  bool on_flash = false;
+  bool flash_phase = false;
   // Set for a file the wire cannot describe.
   bool bad_entry = false;
 
@@ -1433,9 +1433,9 @@ struct ListVisitor {
     if (!opensensor::sync::parquet_sidecar_name(exported, json))
       return true;
     ArchiveDirectoryIO probe;
-    const auto bytes =
-        list_merge::sidecar(probe, card_listable() ? kDirectory : nullptr,
-                            flash_ready ? flash_root : nullptr, json, on_flash);
+    const auto bytes = list_merge::sidecar(
+        probe, card_listable() ? kDirectory : nullptr,
+        flash_ready ? flash_root : nullptr, json, flash_phase);
     if (bytes)
       return emit(context, json, *bytes);
     if (bytes.error() == list_merge::SidecarMiss::Unreadable) {
@@ -1527,7 +1527,7 @@ public:
         .context = context,
         .partials = &partials,
         .sidecars = sidecars_,
-        .on_flash = phase_ == Phase::Flash};
+        .flash_phase = phase_ == Phase::Flash};
     using Walk = opensensor::logger::detail::DirectoryWalk<ArchiveDirectoryIO>;
     Walk::Status status;
     if (phase_ == Phase::Flash) {
@@ -1852,7 +1852,7 @@ bool resolve_path(const char *name, char *path, std::size_t size) {
 
 // The name of `path` under the card or flash root, and which root holds it.
 // Null for any other path.
-const char *archive_relative(const char *path, bool &on_flash) {
+const char *archive_relative(const char *path, bool &from_flash) {
   const std::array<const char *, 2> roots{kDirectory,
                                           flash_ready ? flash_root : nullptr};
   for (std::size_t at = 0; at < roots.size(); ++at) {
@@ -1860,7 +1860,7 @@ const char *archive_relative(const char *path, bool &on_flash) {
       continue;
     const std::size_t length = std::strlen(roots[at]);
     if (std::strncmp(path, roots[at], length) == 0 && path[length] == '/') {
-      on_flash = at == 1;
+      from_flash = at == 1;
       return path + length + 1;
     }
   }
