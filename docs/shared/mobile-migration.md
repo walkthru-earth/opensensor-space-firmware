@@ -47,6 +47,53 @@ heartbeat stamp on the worker (#40).
 - The device still accepts an older image. The app should show the image's
   version before the push and ask the owner to confirm a downgrade.
 
+## Flash fallback hardening (fix/flash-fallback-hardening)
+
+**Needs a matched reflash of all four boards and an app that accepts
+`flash-conflict/` names.** No column, field id, LIVE key, STATUS key, response
+layout, config key, dictionary or digest changes. Decision record 0004, items
+4, 7 and 9.
+
+**What changed.**
+
+- A flash fallback file whose name the card already held with other bytes
+  now moves on flash to `flash-conflict/<name>`, with its sidecar (#212).
+  `LIST` and `LIST_SINCE` name it there, first from flash and after its copy
+  from the card, and `OPEN` serves it. Before it was never listed, never
+  freed and kept `LIST_SINCE` on `full` for good. The serial console prints
+  the new line `OS FLASH conflict name=<name> moved=flash-conflict/<name>
+  sidecar=<0|1>`, or `moved=none reason=<why> errno=<n>` when the file stays.
+- STATUS `ls` on a boot whose flash mount failed, or on an image with the
+  fallback off, now includes the copies earlier boots made (#217). Before it
+  was the bare volume serial and could repeat an epoch a saved cursor holds.
+- A storage probe no longer closes an open flash file for a card that stays
+  Full, or again within an hour for a card that just failed its write test
+  (#219). Flash files then keep their whole window, and STATUS `sd_state` stays
+  3 (retry) after a failed write test until a later test passes.
+- A copy back write the card refuses moves STATUS `sd_state` from 0 to 3
+  (retry) when no card write passed since the card came back (#218). The
+  serial console prints the existing `PARQUET STORAGE state=retry` line after
+  the `OS FLASH copy ... result=error` line.
+- Each copied file now reads the card free space right away (#213), so STATUS
+  `sd_state` can move from 0 to 1 (degraded) or 2 (full) during a copy back,
+  and the existing `PARQUET STORAGE` line can follow an `OS FLASH copy ...
+  result=copied` line. A reading that fails moves it to 3 (retry). Before, the
+  card free space waited for the next batch commit.
+
+**Why.** A conflicting flash file was unreachable by the phone. A Full card
+in the band above its reserve took the waiting rows into a card file that then held every later row off flash, and a card that cannot
+write cut each flash file at every probe. A card with no rows to test reached
+Ready on its mount alone, and a copy back could fill the card past its
+reserve before the governor saw it.
+
+**What the app must do.** Accept a listed name that starts with
+`flash-conflict/` and holds a Thing path after it. Archive it under that full
+name, as one more file. Its rows may repeat or differ from the file of the
+plain name, so keep both and never merge, replace or drop either. A reader
+that globs `thing=*` skips it, so show it to the owner as a conflict copy.
+`sd_state` keeps its values and the app already treats 3 (retry) as not
+logging.
+
 ## SET_CONFIG error details, the retired PIN and the settings storage fault (fix/config-error-detail-and-nvs-recovery)
 
 **Needs a matched reflash and an app check of its ERROR 12 handling.** No

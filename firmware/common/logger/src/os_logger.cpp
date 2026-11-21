@@ -16,6 +16,7 @@
 #include "os_logger_list_since.h"
 #include "os_logger_live.h"
 #include "os_logger_location.h"
+#include "os_logger_paths.h"
 #include "os_logger_power.h"
 #include "os_logger_provision.h"
 #include "os_logger_roots.h"
@@ -102,6 +103,9 @@ using opensensor::sync::put_i64;
 using opensensor::sync::put_u16;
 using opensensor::sync::put_u32;
 using opensensor::utc::days_from_civil;
+namespace paths = opensensor::logger::paths;
+// The "%.384s" name bounds below print at most one relative name.
+static_assert(paths::kRelativeBytes == 384);
 constexpr std::size_t kMaxRows = cadence::kMaxBatchRows;
 static_assert(kMaxRows <= telemetry::kLz4PageRows,
               "the LZ4 page scratch must hold a full RAM batch");
@@ -117,8 +121,8 @@ struct OutputFile {
   FILE *file = nullptr;
   Writer writer;
   Workspace workspace{};
-  char stem[384]{}; // <partition>/<prefix>_<boot>_<first>
-  char partial[416]{};
+  char stem[paths::kRelativeBytes]{}; // <partition>/<prefix>_<boot>_<first>
+  char partial[paths::kPathBytes]{};
   char *staging = nullptr; // stdio buffer, see WriterState
   // kDirectory, kBenchDirectory or flash_root. A file keeps its root until
   // it is finalized, and every path of the file is built from it.
@@ -266,6 +270,11 @@ std::int64_t flash_retry_at = 0;
 const char *next_root = nullptr;
 archive_target::Target storage_target = archive_target::Target::None;
 bool storage_target_logged = false;
+// What the card showed at its last write, and the uptime second of a failed
+// probe write test. A probe asks it before it closes a flash file to test
+// the card, and a copy back failure asks it before it fails the card.
+archive_target::CardWrites card_writes = archive_target::CardWrites::Untested;
+std::int64_t card_failed_at = 0;
 // Files copied back over the life of the board, kept in NVS. A mount shifts
 // the volume serial by them, so a LIST_SINCE cursor from before a copy never
 // reads as current, not even after a reboot.
@@ -521,7 +530,7 @@ bool thing_identity() {
 }
 
 bool make_directories(const char *path) {
-  char copy[416];
+  char copy[paths::kPathBytes];
   if (std::strlen(path) >= sizeof(copy))
     return false;
   std::strcpy(copy, path);
@@ -616,7 +625,7 @@ bool quarantine_one(const char *root, const char *relative,
                     const char *origin) {
   const char *base = std::strrchr(relative, '/');
   base = base ? base + 1 : relative;
-  char directory[416];
+  char directory[paths::kPathBytes];
   const int length =
       base == relative
           ? std::snprintf(directory, sizeof(directory), "%s", root)
@@ -633,12 +642,12 @@ bool quarantine_one(const char *root, const char *relative,
                  relative);
     return false;
   }
-  char source[416];
+  char source[paths::kPathBytes];
   struct stat info{};
   std::snprintf(source, sizeof(source), "%s/%s", root, relative);
   if (io.inspect(source, &info) != 0)
     info.st_size = 0;
-  char destination[416];
+  char destination[paths::kPathBytes];
   const bool ok = opensensor::logger::detail::quarantine_partial(
       io, root, relative, boot_text, quarantine_counter++, destination,
       sizeof(destination));
@@ -678,7 +687,7 @@ void close_failed(OutputFile &target, const char *operation,
     open_rows = open_groups = 0;
   // The .partial is retained, never repaired. Move it out of the active tree
   // now, so the next file and LIST never see it beside live data.
-  char relative[416];
+  char relative[paths::kPathBytes];
   const int length =
       std::snprintf(relative, sizeof(relative), "%s-%lu.partial", target.stem,
                     static_cast<unsigned long>(target.attempt));
@@ -765,11 +774,12 @@ void log_copy_count_error() {
                 "copy_back=held");
 }
 
-// The mount epoch of a volume serial. Without a flash root nothing is ever
-// copied back, so the serial is the epoch and NVS is not read.
+// The mount epoch of a volume serial. The stored copy count is read on every
+// boot, with or without a flash root. A boot whose flash mount failed, or an
+// image with the fallback off, still sees the copies an earlier boot made, so
+// it never hands out an epoch a cursor from before those copies carries
+// (#217). A missing key leaves the serial as the epoch.
 std::uint32_t volume_epoch(std::uint32_t serial) {
-  if (!flash_root)
-    return serial;
   const std::uint32_t epoch = copy_count.epoch(copy_count_store, serial);
   if (serial && !epoch)
     log_copy_count_error();
@@ -1042,7 +1052,8 @@ void write_sidecar(const OutputFile &target, const char *ready,
   const std::string_view ready_path{ready};
   constexpr std::string_view kParquet = ".parquet";
   const std::string_view root{target.root};
-  char path[416], partial[424];
+  char path[paths::kPathBytes],
+      partial[paths::kPathBytes + sizeof(".partial") - 1];
   // <root>/<stem>-<last>-<attempt>, the name both files share.
   int path_length = -1, partial_length = -1;
   if (ready_path.ends_with(kParquet) &&
@@ -1235,7 +1246,7 @@ bool finalize_file(OutputFile &target) {
   target.file = nullptr;
   if (!target.benchmark)
     open_rows = open_groups = 0;
-  char ready[416];
+  char ready[paths::kPathBytes];
   std::snprintf(ready, sizeof(ready), "%s/%s-%lld-%lu.parquet", target.root,
                 target.stem, static_cast<long long>(target.last),
                 static_cast<unsigned long>(target.attempt));
@@ -1416,8 +1427,9 @@ struct ListVisitor {
 // Lists the flash root after the card. A name the card root holds is left
 // out, the card walk listed it. That includes a conflict, where the card holds
 // other bytes under the same name: OPEN serves the card copy first, so
-// listing the flash copy would name a file the peer cannot fetch. The flash
-// copy stays for the owner, with its OS FLASH copy result=conflict line.
+// listing the flash copy would name a file the peer cannot fetch. Copy back
+// then moves the flash copy to "flash-conflict/<name>" (#212), and this walk
+// lists it under that name.
 struct FlashListVisitor {
   ListVisitor &list;
   const char *card_root = nullptr; // null while the card is not listable
@@ -1771,7 +1783,7 @@ bool resolve_path(const char *name, char *path, std::size_t size) {
   struct stat info{};
   if (card_listable() && (io.inspect(path, &info) == 0 || errno != ENOENT))
     return true;
-  char flash[416];
+  char flash[paths::kPathBytes];
   const int length =
       std::snprintf(flash, sizeof(flash), "%s/%.384s", flash_root, name);
   if (length < 0 || static_cast<std::size_t>(length) >= sizeof(flash) ||
@@ -1782,7 +1794,7 @@ bool resolve_path(const char *name, char *path, std::size_t size) {
 }
 
 void send_file(const char *name) {
-  char path[416];
+  char path[paths::kPathBytes];
   if (!resolve_path(name, path, sizeof(path))) {
     oslog.println("PARQUET ERROR operation=get reason=invalid-name");
     return;
@@ -2447,6 +2459,8 @@ bool governed_commit(std::size_t &count, bool finalize,
   bool ok = commit(count, finalize);
   if (written)
     *written = ok;
+  if (ok)
+    card_writes = archive_target::CardWrites::Passed;
   std::uint64_t free_bytes = 0;
   if (ok && measure_free(free_bytes)) {
     governor.observe_free(free_bytes, uptime_seconds());
@@ -2564,7 +2578,7 @@ struct FlashDrain {
   CopyIO io;
   flash_copy::Copier copier;
   opensensor::logger::detail::DirectoryWalk<ArchiveDirectoryIO> walk;
-  std::array<char, flash_copy::kRelativeBytes> best{};
+  std::array<char, paths::kRelativeBytes> best{};
   Names held;
   Names failed;
   std::uint32_t moved = 0;
@@ -2610,33 +2624,54 @@ void copy_back_now() {
   }
 }
 
-// True when the flash file `relative` holds the owner's data on its own:
-// a sidecar waits until its Parquet left flash and is on the card.
-bool sidecar_waits(const char *relative) {
-  const std::string_view name{relative};
-  constexpr std::string_view kJson = ".json";
-  char parquet[flash_copy::kPathBytes];
-  const auto stem = static_cast<int>(name.size() - kJson.size());
+// True when `root` holds "<prefix><stem>.parquet". Sets `unsure` when the
+// path does not fit or the inspect fails for another reason than ENOENT.
+bool parquet_on(const char *root, std::string_view prefix,
+                std::string_view stem, bool &unsure) {
+  char parquet[paths::kPathBytes];
+  const int length =
+      std::snprintf(parquet, sizeof(parquet), "%s/%.*s%.*s.parquet", root,
+                    static_cast<int>(prefix.size()), prefix.data(),
+                    static_cast<int>(stem.size()), stem.data());
+  if (length < 0 || static_cast<std::size_t>(length) >= sizeof(parquet)) {
+    unsure = true;
+    return false;
+  }
   struct stat info{};
-  const int flash_length = std::snprintf(
-      parquet, sizeof(parquet), "%s/%.*s.parquet", flash_root, stem, relative);
-  if (flash_length < 0 ||
-      static_cast<std::size_t>(flash_length) >= sizeof(parquet))
+  if (ArchiveDirectoryIO::inspect(parquet, &info) == 0)
     return true;
-  if (ArchiveDirectoryIO::inspect(parquet, &info) == 0 || errno != ENOENT)
-    return true;
-  const int card_length = std::snprintf(
-      parquet, sizeof(parquet), "%s/%.*s.parquet", kDirectory, stem, relative);
-  if (card_length < 0 ||
-      static_cast<std::size_t>(card_length) >= sizeof(parquet))
-    return true;
-  return ArchiveDirectoryIO::inspect(parquet, &info) != 0;
+  unsure = unsure || errno != ENOENT;
+  return false;
+}
+
+// True when the flash file `relative` holds the owner's data on its own:
+// a sidecar waits until its Parquet left flash and is on the card. A set
+// aside sidecar (#212) belongs to its Parquet under either name, since only
+// the sidecar may have conflicted.
+bool sidecar_waits(const char *relative) {
+  constexpr std::string_view kJson = ".json";
+  std::string_view stem{relative};
+  stem.remove_suffix(kJson.size());
+  const std::array<std::string_view, 2> prefixes{"",
+                                                 flash_copy::kConflictPrefix};
+  std::size_t names = 1;
+  if (flash_copy::set_aside_name(relative)) {
+    stem.remove_prefix(flash_copy::kConflictPrefixLength);
+    names = 2;
+  }
+  bool unsure = false, on_card = false;
+  for (std::size_t at = 0; at < names; ++at) {
+    if (parquet_on(flash_root, prefixes[at], stem, unsure))
+      return true;
+    on_card = parquet_on(kDirectory, prefixes[at], stem, unsure) || on_card;
+  }
+  return unsure || !on_card;
 }
 
 // Removes the empty directories above a freed flash file, up to the flash
 // root. The root's quarantine folder stays for same-boot quarantine moves.
 void remove_empty_flash_directories(const char *relative) {
-  char path[flash_copy::kPathBytes];
+  char path[paths::kPathBytes];
   const int length =
       std::snprintf(path, sizeof(path), "%s/%s", flash_root, relative);
   if (length < 0 || static_cast<std::size_t>(length) >= sizeof(path))
@@ -2763,18 +2798,51 @@ bool service_copy_back(bool storage_ready) {
         outcome == flash_copy::Outcome::Copied ? "copied" : "identical");
     if (drain.moved != UINT32_MAX)
       ++drain.moved;
+    if (outcome == flash_copy::Outcome::Copied)
+      card_writes = archive_target::CardWrites::Passed;
     // A LIST_SINCE cursor from before the move never reads as current.
     copy_count.copied();
     mount_epoch = list_since::next_epoch(mount_epoch.load());
     remove_empty_flash_directories(relative);
     measure_flash();
+    // A committed copy took card space, so the governor sees it now and not
+    // at the next batch commit (#213). A failed answer leaves Ready like a
+    // failed commit, and the next pass waits for the probe.
+    if (outcome == flash_copy::Outcome::Copied) {
+      const auto previous = governor.state();
+      std::uint64_t free_bytes = 0;
+      if (measure_free(free_bytes))
+        governor.observe_free(free_bytes, now);
+      else
+        governor.write_failed(now);
+      publish_storage(previous);
+    }
     break;
-  case flash_copy::Outcome::Conflict:
+  case flash_copy::Outcome::Conflict: {
     oslog.printf("OS FLASH copy name=%s bytes=%llu result=conflict\n", relative,
                  bytes);
-    if (!drain.held.add(hash))
+    // Both files stay. The flash one moves to its set aside name, which the
+    // card does not hold, so LIST names it and the next pass copies it (#212).
+    const auto aside = drain.copier.set_aside(drain.io);
+    if (aside) {
+      oslog.printf("OS FLASH conflict name=%s moved=%s%s sidecar=%d\n",
+                   relative, flash_copy::kConflictPrefix, relative,
+                   *aside ? 1 : 0);
+      remove_empty_flash_directories(relative);
+      break;
+    }
+    oslog.printf("OS FLASH conflict name=%s moved=none reason=%s errno=%d\n",
+                 relative, flash_copy::aside_error_name(aside.error()),
+                 aside.error() == flash_copy::AsideError::AlreadyAside ? 0
+                                                                       : errno);
+    if (flash_copy::aside_retries(aside.error())) {
+      if (!drain.failed.add(hash))
+        drain.next_at = now + kCopyWaitSeconds;
+    } else if (!drain.held.add(hash)) {
       drain.next_at = now + kCopyWaitSeconds;
+    }
     break;
+  }
   default: {
     ++errors;
     const auto failure =
@@ -2783,6 +2851,17 @@ bool service_copy_back(bool storage_ready) {
                  "errno=%d\n",
                  relative, bytes, flash_copy::failure_name(failure),
                  drain.copier.error());
+    // A card that reached Ready without a write test fails it here, so it
+    // leaves Ready like after a failed commit (#218). The flash file stays.
+    if (archive_target::copy_fails_card(
+            card_writes,
+            flash_copy::card_write_failure(failure, drain.copier.error()))) {
+      const auto previous = governor.state();
+      card_writes = archive_target::CardWrites::Failed;
+      card_failed_at = now;
+      governor.write_failed(now);
+      publish_storage(previous);
+    }
     if (failure == flash_copy::Failure::CrosslinkSuspect) {
       // Both card entries and the flash source stay for the owner, once
       // per file and boot.
@@ -2895,19 +2974,41 @@ void probe_storage(std::size_t &count, bool &storage_ready,
                  quarantined);
   }
   // Waiting rows are the real write test. Committed while still in Retry so
-  // a card that mounts but cannot write keeps its growing backoff. An open
-  // flash file is finalized first, so the waiting rows open a card file and
-  // the card is written before Retry clears. A failed flash finalize is
-  // logged and paused by flash_commit and never fails the card probe. With
-  // no rows waiting the next card file is the write test, as without flash.
-  if (ok && free_bytes >= governor.limits().reserve) {
-    if (on_flash(writer_state->telemetry)) {
+  // a card that mounts but cannot write keeps its growing backoff.
+  // probe_action() decides whether an open flash file is finalized first, so
+  // the rows open a card file, or stays open because the card stays Full or
+  // failed its last test (#219). A failed flash finalize is logged and
+  // paused by flash_commit and never fails the card probe. With no rows
+  // waiting nothing is written, and the next card write is the test (#218).
+  if (ok) {
+    const auto plan = archive_target::probe_action(
+        {.space_ok = free_bytes >= governor.limits().reserve,
+         .card_writable = storage::writable(
+             storage::probe_state(previous, free_bytes, governor.limits())),
+         .rows_waiting = count != 0,
+         .flash_open = on_flash(writer_state->telemetry),
+         .flash_takes_rows = commit_to_flash(),
+         .writes = card_writes,
+         .failed_age_s = now - card_failed_at});
+    using enum archive_target::ProbeAction;
+    if (plan == FinalizeWrite) {
       std::size_t none = 0;
       flash_commit(none, true, nullptr);
     }
-    if (count) {
+    if (plan == Write || plan == FinalizeWrite) {
       next_root = kDirectory;
-      ok = commit(count, false) && measure_free(free_bytes);
+      if (commit(count, false)) {
+        card_writes = archive_target::CardWrites::Passed;
+        ok = measure_free(free_bytes);
+      } else {
+        card_writes = archive_target::CardWrites::Failed;
+        card_failed_at = now;
+        ok = false;
+      }
+    } else if (plan == Defer) {
+      ok = false;
+    } else if (card_writes != archive_target::CardWrites::Failed) {
+      card_writes = archive_target::CardWrites::Untested;
     }
   }
   if (ok)

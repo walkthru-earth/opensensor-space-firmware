@@ -1,5 +1,7 @@
 #pragma once
 
+#include "os_logger_paths.h"
+
 #include <array>
 #include <cerrno>
 #include <cstddef>
@@ -20,8 +22,8 @@ namespace opensensor::logger::list_merge {
 
 // The wire prefix of names on the legacy root. OPEN routes it there.
 inline constexpr char kLegacyPrefix[] = "legacy-parquet/";
-// Same bound as the archive walk paths.
-inline constexpr std::size_t kPathBytes = 416;
+// The archive walk bound (os_logger_paths.h).
+using paths::kPathBytes;
 
 enum class [[nodiscard]] FlashName : std::uint8_t {
   Emit,      // only on flash, list it

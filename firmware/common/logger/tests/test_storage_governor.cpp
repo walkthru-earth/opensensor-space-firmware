@@ -41,6 +41,13 @@ void space_transitions_have_hysteresis() {
   assert(next_space_state(State::Full, 1 * GiB, t) == State::Ready);
   // Retry is never left by a space measurement alone.
   assert(next_space_state(State::Retry, 1 * GiB, t) == State::Retry);
+  // A probe clears Retry, and Full keeps its hysteresis, so a Full card in
+  // the band above the reserve still cannot take files (#219).
+  assert(probe_state(State::Retry, 1 * GiB, t) == State::Ready);
+  assert(probe_state(State::Retry, 33 * MiB, t) == State::Degraded);
+  assert(probe_state(State::Retry, 31 * MiB, t) == State::Full);
+  assert(probe_state(State::Full, 40 * MiB, t) == State::Full);
+  assert(probe_state(State::Full, 48 * MiB, t) == State::Degraded);
 }
 
 void backoff_sequence() {
