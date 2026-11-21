@@ -971,3 +971,19 @@ was run. This short USB readback does not establish endurance, SD or power-cut
 durability, and host tests do not prove those either. Logs, the image hashes
 and the fetched file are in ignored
 `firmware/esp-idf-cores3/artifacts/2026-10-26-v621/`.
+
+## Header battery icon, built only (2026-11-21)
+
+Branch `feat/cores3-battery-icon` from `main` at `4f10521`. The screen header
+now draws a battery outline with a fill for the fuel gauge percent, the percent
+as text and a yellow bolt while the charge state counts as charging. The
+header moved to two status rows. Row 1 at y 4 holds `WiFi` at x 196, `BT` at
+x 244 and the page counter at x 296. Row 2 at y 17 holds the battery outline
+at x 196 to 217 with its nub to x 219, the percent at x 224 and the bolt at
+x 251 to 257. The icon reads the same `read_power_now()` values as the device
+page and is left out when `battery_mv` or `battery_percent` is null.
+
+`pixi run cores3-build` passed with the new layout asserts in
+`bringup/screen_header.h`. The image was not flashed and no board ran it, so
+nothing about the icon, its colours, its update rate or the charging mark is
+claimed on hardware. The owner bench test is in the pull request.

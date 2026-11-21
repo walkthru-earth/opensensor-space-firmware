@@ -3,6 +3,7 @@
 #include "device_config.h"
 #include "log_persist.h"
 #include "power.h"
+#include "screen_header.h"
 #include "telemetry_logger.h"
 #include "wifi_link.h"
 #include <M5Unified.h>
@@ -35,6 +36,7 @@
 #include <cstring>
 #include <ctime>
 #include <numeric>
+#include <string_view>
 
 namespace {
 
@@ -146,10 +148,15 @@ const char *reset_reason_name(esp_reset_reason_t reason) {
   }
 }
 
-// Same rule as the charging_status column, so DIAG and the screen keep the
-// charging, discharging and unknown names.
+// Same rule as the charging_status column, so DIAG, the device page and the
+// header battery mark agree on charging.
+bool is_charging(m5::charge_state_t state) {
+  return m5::charge_states_any_charging.contains(state);
+}
+
+// Charging, discharging and unknown names for DIAG and the screen.
 const char *charging_name(m5::charge_state_t state) {
-  if (m5::charge_states_any_charging.contains(state))
+  if (is_charging(state))
     return "charging";
   if (m5::charge_states_any_not_charging.contains(state))
     return "discharging";
@@ -530,19 +537,65 @@ void draw_pm_triplet(std::uint16_t pm1, std::uint16_t pm25, std::uint16_t pm10,
   }
 }
 
-void draw_screen_header(const char *title) {
-  M5.Display.setTextSize(2);
-  M5.Display.setCursor(8, 5);
-  M5.Display.print(title);
+std::uint16_t battery_colour(screen_header::Band band) {
+  using enum screen_header::Band;
+  switch (band) {
+  case High:
+    return TFT_GREEN;
+  case Mid:
+    return TFT_YELLOW;
+  case Low:
+    break;
+  }
+  return TFT_RED;
+}
+
+// Header battery icon and percent, from the same reading as the device page
+// and the battery columns. Nothing is drawn without a cell in the plausible
+// voltage range and a fuel gauge percent, so no battery means no icon.
+void draw_header_battery(const telemetry::power::Reading &supply,
+                         m5::charge_state_t charge) {
+  if (!supply.battery_mv || !supply.battery_percent)
+    return;
+  namespace sh = screen_header;
+  const auto percent = sh::clamp_percent(*supply.battery_percent);
+  M5.Display.drawRect(sh::kBatteryX, sh::kBatteryY, sh::kBatteryWidth,
+                      sh::kBatteryHeight, TFT_WHITE);
+  M5.Display.fillRect(sh::kBatteryX + sh::kBatteryWidth,
+                      sh::kBatteryY + (sh::kBatteryHeight - sh::kNubHeight) / 2,
+                      sh::kNubWidth, sh::kNubHeight, TFT_WHITE);
+  if (const int fill = sh::fill_px(percent); fill > 0)
+    M5.Display.fillRect(sh::kBatteryX + sh::kFillInset,
+                        sh::kBatteryY + sh::kFillInset, fill, sh::kFillHeight,
+                        battery_colour(sh::band_of(percent)));
   M5.Display.setTextSize(1);
-  M5.Display.setCursor(279, 10);
+  M5.Display.setCursor(sh::kPercentX, sh::kPercentY);
+  M5.Display.printf("%ld%%", static_cast<long>(percent));
+  if (!is_charging(charge))
+    return;
+  // A lightning bolt from two triangles in a 7 x 10 box.
+  constexpr int x = sh::kBoltX;
+  constexpr int y = sh::kBatteryY;
+  M5.Display.fillTriangle(x + 5, y, x, y + 6, x + 4, y + 5, TFT_YELLOW);
+  M5.Display.fillTriangle(x + 2, y + 4, x + 6, y + 4, x + 1, y + 9, TFT_YELLOW);
+}
+
+void draw_screen_header(std::string_view title,
+                        const telemetry::power::Reading &supply,
+                        m5::charge_state_t charge) {
+  namespace sh = screen_header;
+  M5.Display.setTextSize(sh::kTitleSize);
+  M5.Display.setCursor(sh::kTitleX, sh::kTitleY);
+  M5.Display.printf("%.*s", static_cast<int>(title.size()), title.data());
+  M5.Display.setTextSize(1);
+  M5.Display.setCursor(sh::kPageX, sh::kRow1Y);
   M5.Display.printf("%u/%u", static_cast<unsigned>(screen_page + 1),
                     static_cast<unsigned>(kScreenPageCount));
   if (ble_started) {
     const auto link = ble::link();
     M5.Display.setTextColor(link.connected ? TFT_GREEN : TFT_DARKGREY,
                             TFT_BLACK);
-    M5.Display.setCursor(236, 10);
+    M5.Display.setCursor(sh::kBtX, sh::kRow1Y);
     M5.Display.print(link.connected ? (link.authenticated ? "BT ok" : "BT ..")
                                     : "BT adv");
     M5.Display.setTextColor(TFT_WHITE, TFT_BLACK);
@@ -551,11 +604,12 @@ void draw_screen_header(const char *title) {
   if (std::strcmp(wifi.state, "off") != 0) {
     const bool up = std::strcmp(wifi.state, "connected") == 0;
     M5.Display.setTextColor(up ? TFT_GREEN : TFT_DARKGREY, TFT_BLACK);
-    M5.Display.setCursor(196, 10);
+    M5.Display.setCursor(sh::kWifiX, sh::kRow1Y);
     M5.Display.print(up ? (wifi.authenticated ? "WiFi ok" : "WiFi up")
                         : "WiFi ..");
     M5.Display.setTextColor(TFT_WHITE, TFT_BLACK);
   }
+  draw_header_battery(supply, charge);
 
   constexpr int bar_top = 31;
   constexpr int bar_height = 184;
@@ -669,7 +723,8 @@ void draw_counts_page(const telemetry::PmsReading &reading) {
                     static_cast<unsigned long>(reading.age_ms));
 }
 
-void draw_device_page() {
+void draw_device_page(const telemetry::power::Reading &supply,
+                      m5::charge_state_t charge) {
   M5.Display.setTextSize(1);
   M5.Display.setCursor(8, 35);
   // Live from the logger, not the boot mount result (#165).
@@ -686,7 +741,6 @@ void draw_device_page() {
     M5.Display.setTextColor(TFT_WHITE, TFT_BLACK);
   }
   M5.Display.setCursor(8, 55);
-  const auto supply = telemetry::read_power_now();
   namespace pw = telemetry::power;
   pw::IntText vbus_buffer;
   pw::IntText battery_buffer;
@@ -703,7 +757,7 @@ void draw_device_page() {
   M5.Display.setCursor(8, 75);
   M5.Display.printf("Battery: %s%s  %s",
                     pw::int_text(supply.battery_percent, percent_buffer, "--"),
-                    unit_percent, charging_name(M5.Power.getChargeState()));
+                    unit_percent, charging_name(charge));
 
   M5.Display.setCursor(8, 103);
   M5.Display.printf(
@@ -862,12 +916,15 @@ void show_pms_screen() {
     telemetry::unlock_display();
     return;
   }
+  // One power read per redraw serves the header and the device page. It runs
+  // before the clear, so the I2C reads do not lengthen the blank frame.
+  const auto supply = telemetry::read_power_now();
+  const auto charge = M5.Power.getChargeState();
   M5.Display.fillScreen(TFT_BLACK);
   M5.Display.setTextColor(TFT_WHITE, TFT_BLACK);
 
-  constexpr const char *titles[kScreenPageCount] = {
-      "PM mass", "Particle counts", "Device health", "Bluetooth"};
-  draw_screen_header(titles[screen_page]);
+  static_assert(screen_header::kTitles.size() == kScreenPageCount);
+  draw_screen_header(screen_header::kTitles[screen_page], supply, charge);
 
   const auto reading = pms_reading();
   if (reading.status != kPmsValid && screen_page < 2) {
@@ -877,7 +934,7 @@ void show_pms_screen() {
   } else if (screen_page == 1) {
     draw_counts_page(reading);
   } else if (screen_page == 2) {
-    draw_device_page();
+    draw_device_page(supply, charge);
   } else {
     draw_bluetooth_page();
   }
