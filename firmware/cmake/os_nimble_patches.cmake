@@ -29,8 +29,8 @@ function(os_patch_nimble)
     set(upstream_root "${idf_path}/components/bt/host/nimble/nimble")
     set(upstream "${upstream_root}/${relative}")
     set(patch_file "${OS_NIMBLE_PATCH_DIR}/ble_hs_hci-stale-ack.patch")
-    # esp-nimble 139cada as pinned by ESP-IDF v6.1 (tools/idf-dependencies.lock).
-    set(expected "576e8582bf25dd56170ce1d47d5c64ccddf1fc5facd7dcfa818dc19629cbd7b1")
+    # esp-nimble 544bb66 as pinned by ESP-IDF v6.1.1 (tools/idf-dependencies.lock).
+    set(expected "5c5f560bb30a6da8565f76cb63a2eeb384fd48ac75f94dd398852083945f3fd9")
 
     file(SHA256 "${upstream}" actual)
     if(NOT actual STREQUAL expected)
@@ -40,7 +40,7 @@ function(os_patch_nimble)
             "79316193f9, then drop or rebase ${patch_file} and update this pin.")
     endif()
     # The patch itself, as recorded in the README table beside it.
-    set(expected_patch "380807492b52fef1d6acdf94b06a50a3dbcc6a7386a3441504c8dd22f572f81d")
+    set(expected_patch "ac3b1f3ced1eada9e770f176996a88cd1e26736b1968fd5755e9f46953be56e2")
     file(SHA256 "${patch_file}" actual_patch)
     if(NOT actual_patch STREQUAL expected_patch)
         message(FATAL_ERROR
