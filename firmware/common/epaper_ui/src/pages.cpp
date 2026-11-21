@@ -603,20 +603,25 @@ void render_asleep(Canvas &c, const Model &model) {
   static_cast<void>(asleep_line(c, y, Str::AsleepDevice, st.device_name));
 }
 
-void render_storage_fault(Canvas &c, int error) {
+namespace {
+// The settings storage fault layout of render_storage_fault and
+// render_thing_id_fault. `code` is the ASCII code line, one line when it
+// fits and wrapped at its spaces when it does not.
+void storage_fault_page(Canvas &c, std::string_view code) {
   c.clear();
   const Layout &l = c.layout();
   const FontSet &f = l.fonts;
   const int mid = c.width() / 2;
   const int max_w = c.width() - 2 * l.header.margin;
   const int gap = line_step(f.label);
+  const bool one_line = text_width(f.label, code) <= max_w;
   constexpr std::array kLanguages{Language::English, Language::Arabic};
   // Each language block is a title, one line and up to two help lines, each
   // stepped by the font its script lands in. The blocks and the code line
   // sit centred on the frame.
   const Language previous = language();
   std::array<int, kLanguages.size()> block{};
-  int total = gap;
+  int total = one_line ? gap : 2 * gap;
   for (std::size_t i = 0; i < kLanguages.size(); ++i) {
     set_language(kLanguages[i]);
     block[i] = line_step(f.title, tr(Str::StorageFaultTitle)) +
@@ -640,10 +645,27 @@ void render_storage_fault(Canvas &c, int error) {
     y += block[i] + gap;
   }
   set_language(previous);
+  if (one_line)
+    c.text(f.label, mid, y + f.label.ascent, code, Align::Center);
+  else
+    static_cast<void>(c.text_lines(f.label, mid, y + f.label.ascent, code,
+                                   Align::Center, max_w));
+}
+} // namespace
+
+void render_storage_fault(Canvas &c, int error) {
   Text code{};
   const int n = std::snprintf(code.data(), code.size(),
                               tr_fmt(Str::StorageFaultCodeFmt), error);
-  c.text(f.label, mid, y + f.label.ascent, view(code, n), Align::Center);
+  storage_fault_page(c, view(code, n));
+}
+
+void render_thing_id_fault(Canvas &c, const char *stage, int error) {
+  Text code{};
+  const int n =
+      std::snprintf(code.data(), code.size(), tr_fmt(Str::ThingIdFaultCodeFmt),
+                    stage ? stage : "unknown", error);
+  storage_fault_page(c, view(code, n));
 }
 
 Nav navigate(std::uint8_t page, Input in) {

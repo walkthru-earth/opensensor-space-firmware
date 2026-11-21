@@ -2574,6 +2574,54 @@ void test_storage_fault() {
   set_language(Language::English);
 }
 
+// The Thing id fault page (#225) draws the same storage fault layout with a
+// code line naming the stage and the error, inside the frame at every size
+// class and rotation, the long code wrapped at its spaces.
+void test_thing_id_fault() {
+  for (const Language lang : {Language::English, Language::Arabic}) {
+    for (const DisplayProfile *prof : {&kHost400x300, &kHost800x480}) {
+      for (const Rotation r : {Rotation::R0, Rotation::R90}) {
+        for (const char *stage : {"open", "read", "write", "format"}) {
+          for (const int error : {0, 4354, -2147483647 - 1}) {
+            set_language(lang);
+            Buffer b(*prof, r);
+            b.canvas.fill({0, 0, b.canvas.width(), b.canvas.height()});
+            render_thing_id_fault(b.canvas, stage, error);
+            CHECK(language() == lang);
+            const int w = b.canvas.width();
+            const int h = b.canvas.height();
+            CHECK(ink_count(b.canvas, {0, 0, w, h}) > 500);
+            CHECK(ink_count(b.canvas, {0, 0, w, 2}) == 0);
+            CHECK(ink_count(b.canvas, {0, h - 2, w, 2}) == 0);
+            CHECK(ink_count(b.canvas, {0, 0, 2, h}) == 0);
+            CHECK(ink_count(b.canvas, {w - 2, 0, 2, h}) == 0);
+            Buffer other(*prof, r);
+            set_language(lang == Language::English ? Language::Arabic
+                                                   : Language::English);
+            render_thing_id_fault(other.canvas, stage, error);
+            CHECK(other.bytes == b.bytes);
+          }
+        }
+        // The stage, the error and the page itself are drawn.
+        Buffer read(*prof, r), write(*prof, r), code(*prof, r), nvs(*prof, r);
+        render_thing_id_fault(read.canvas, "read", 4355);
+        render_thing_id_fault(write.canvas, "write", 4355);
+        render_thing_id_fault(code.canvas, "read", 4364);
+        render_storage_fault(nvs.canvas, 4355);
+        CHECK(read.bytes != write.bytes);
+        CHECK(read.bytes != code.bytes);
+        CHECK(read.bytes != nvs.bytes);
+        // A missing stage name still draws a page.
+        Buffer none(*prof, r);
+        render_thing_id_fault(none.canvas, nullptr, 0);
+        CHECK(ink_count(none.canvas, {0, 0, none.canvas.width(),
+                                      none.canvas.height()}) > 500);
+      }
+    }
+  }
+  set_language(Language::English);
+}
+
 void test_arabic_fit() {
   // Every value a row can show, across settings and boards.
   std::vector<std::pair<Settings, SettingsInfo>> variants;
@@ -2728,6 +2776,7 @@ int main() {
   test_language_switch();
   test_arabic_fit();
   test_storage_fault();
+  test_thing_id_fault();
   std::printf("epaper ui, %d checks passed\n", g_checks);
   return 0;
 }
