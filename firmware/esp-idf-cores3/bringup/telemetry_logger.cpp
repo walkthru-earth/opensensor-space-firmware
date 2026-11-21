@@ -81,6 +81,11 @@ static_assert(
         charging_status_of(m5::charge_state_t::unsupported) == kChargingUnknown,
     "charging_status must follow the M5Unified charge state sets");
 
+} // namespace
+
+power::Reading read_power_now() { return read_power(); }
+
+namespace {
 void collect(oslogger::Row &row, std::int64_t now, std::int64_t, void *) {
   const auto &pms = latest;
   const PmsStatus status = contract::pms_status_of(

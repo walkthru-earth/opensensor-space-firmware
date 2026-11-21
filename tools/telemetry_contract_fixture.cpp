@@ -92,6 +92,25 @@ static_assert(
         kBatteryMinMv &&
     opensensor::semantics::decimal_value(battery_semantics->plausible_max) ==
         kBatteryMaxMv);
+// DIAG and device page text. Absent is null or --, a real 0 stays 0 (#199).
+constexpr bool text_is(const char *a, const char *b) {
+  while (*a && *a == *b) {
+    ++a;
+    ++b;
+  }
+  return *a == *b;
+}
+static_assert(text_is(bool_text(std::nullopt, "on", "off", "null"), "null") &&
+              text_is(bool_text(true, "on", "off", "null"), "on") &&
+              text_is(bool_text(false, "on", "off", "null"), "off"));
+inline void check_int_text() {
+  IntText buffer;
+  assert(std::strcmp(int_text(std::nullopt, buffer, "--"), "--") == 0);
+  assert(std::strcmp(int_text(0, buffer, "--"), "0") == 0);
+  assert(std::strcmp(int_text(5012, buffer, "null"), "5012") == 0);
+  assert(std::strcmp(int_text(-2147483647 - 1, buffer, "null"),
+                     "-2147483648") == 0);
+}
 } // namespace power_rows
 
 namespace {
@@ -208,6 +227,7 @@ static_assert(pms_status_name(kPmsMissing) == "missing" &&
 } // namespace
 
 int main(int argc, char **argv) {
+  power_rows::check_int_text();
   const BoardTable board;
   assert_live_keys(board.fields, field_count);
   if (argc == 2 && template_mode(argv[1]))

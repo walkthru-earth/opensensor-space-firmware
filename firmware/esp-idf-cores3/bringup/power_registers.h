@@ -12,7 +12,10 @@
 // battery_mv, which is now the exact ADC count. The M5Unified getter went
 // through float volts and truncated, so it could read 1 mV lower.
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <optional>
 
 namespace telemetry::power {
@@ -116,6 +119,25 @@ battery_percent_of(const Byte &level) {
       .external_5v = port_bit(registers.port0, kExternal5vBit),
       .usb_output = port_bit(registers.port0, kUsbOutputBit),
   };
+}
+
+// Text for the DIAG power line and the device page (#199). An absent value
+// prints as `null` on the serial line and `--` on the screen, never as 0.
+inline constexpr std::size_t kIntTextBytes = 12; // "-2147483648" and NUL
+using IntText = std::array<char, kIntTextBytes>;
+
+[[nodiscard]] inline const char *int_text(const std::optional<std::int32_t> &v,
+                                          IntText &buffer, const char *absent) {
+  if (!v)
+    return absent;
+  std::snprintf(buffer.data(), buffer.size(), "%d", static_cast<int>(*v));
+  return buffer.data();
+}
+
+[[nodiscard]] constexpr const char *bool_text(const std::optional<bool> &v,
+                                              const char *on, const char *off,
+                                              const char *absent) {
+  return !v ? absent : (*v ? on : off);
 }
 
 } // namespace telemetry::power

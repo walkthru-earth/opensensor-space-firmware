@@ -9,7 +9,7 @@
 ```mermaid
 flowchart LR
     S[Sensors] --> P[Immutable Parquet on SD]
-    P -. planned transfer .-> A[Phone: private archive and analysis]
+    P -- BLE and LAN sync --> A[Phone: private archive and analysis]
     A -. optional .-> H[Owner-controlled processing hub]
     A -. encrypted backup .-> B[Private object storage]
     A -. approved reduced contribution .-> C[Restricted intake]
@@ -21,7 +21,7 @@ flowchart LR
     W -. supported integration .-> V[External platforms]
 ```
 
-**Solid arrow:** implemented sensor-to-SD path. **Dashed arrows:** proposed work. Existing evidence lives in the [bench record](../docs/boards/m5stack-cores3/bench-verified.md); measurement/file rules remain in the [telemetry pipeline](../docs/shared/telemetry-pipeline.md).
+**Solid arrows:** the sensor-to-SD path and the BLE and LAN sync to the phone, both built (protocol in the [sync contract](../docs/shared/ble-sync-protocol.md)). **Dashed arrows:** proposed work. Existing evidence lives in the [bench record](../docs/boards/m5stack-cores3/bench-verified.md); measurement/file rules remain in the [telemetry pipeline](../docs/shared/telemetry-pipeline.md).
 
 ## Compute placement
 

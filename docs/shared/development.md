@@ -381,7 +381,7 @@ conditionals or sibling trial dependencies.
 
 ## Verification
 
-Every firmware PR runs the host gate and builds both boards. Use cached
+Every firmware PR runs the host gate and builds every board (CoreS3, Waveshare V2, CrowPanel e-paper and Waveshare ePaper-3.97). Use cached
 build directories and the pinned Pixi environment. Run additional gates for the
 changed subsystem. Preserve vendored bytes and licenses. Generic fixtures never
 get flashed.
