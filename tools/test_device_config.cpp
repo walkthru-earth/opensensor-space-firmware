@@ -300,6 +300,7 @@ void credentials() {
   assert(config::load(false));
   reject("wifi.ssid=" + std::string(33, 's'), "wifi.ssid");
   reject("wifi.psk=" + std::string(7, 'p'), "wifi.psk");
+  accept("wifi.psk=" + std::string(8, 'p'));
   reject("wifi.psk=" + std::string(64, 'p'), "wifi.psk");
   reject("wifi.ssid=bad\tname", "wifi.ssid");
   reject(std::string("wifi.psk=bad") + char(127) + "password", "wifi.psk");

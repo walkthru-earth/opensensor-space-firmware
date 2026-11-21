@@ -264,7 +264,7 @@ by direction.
 | `0x06` | `FLUSH` | none | `FLUSHED` or `ERROR` 10; `status` notify |
 | `0x07` | `STATUS` | none | `status` cache/notify only; **no `response` frame**, so the phone must not wait on `response` for it. If the value exceeds MTU − 3 the notification is omitted and the phone reads the cached characteristic. Over LAN this produces a `STATUS` push frame, so it doubles as a keep-alive ping. |
 | `0x08` | `GET_CONFIG` | empty or one page byte `0..7` | `CONFIG` or BLE `CONFIG_CHUNK` sequence |
-| `0x09` | `SET_CONFIG` | `key=value` lines, utf8, `\n`-separated (see [configuration](#device-configuration-v2)) | `CONFIG` or BLE `CONFIG_CHUNK` sequence; `ERROR` 12 with the offending key as `detail`, see [ERROR details](#error-details) |
+| `0x09` | `SET_CONFIG` | `key=value` lines, utf8, `\n`-separated (see [configuration](#device-configuration-v2)) | `CONFIG` or BLE `CONFIG_CHUNK` sequence; `ERROR` 12 with a `detail` that is usually the offending key, see [ERROR details](#error-details) |
 | `0x0A` | `WIFI_SCAN` | none | `WIFI_AP` × n (at most 48), then `WIFI_SCAN_END`, whose `status` is 15 if the radio cannot scan. `ERROR` 7 `detail="scan-pending"` while another scan is queued |
 | `0x0B` | `REBOOT` | none | `REBOOTING`, then the device finalizes any RAM batch and restarts |
 | `0x0C` | `LOG_TAIL` | `max_bytes` u16 (device clips to the bytes it retains, at most 65535) | `LOG` × n, then `LOG_END` |
@@ -507,7 +507,7 @@ Changing Wi-Fi settings over a LAN session is allowed but will usually drop that
 
 ### ERROR details
 
-`ERROR.detail` is short ASCII text, at most 64 bytes, and absent when the
+`ERROR.detail` is short text, at most 64 bytes, ASCII except where a row says it echoes the request, and absent when the
 firmware gives none. This table lists every `detail` that `SET_CONFIG`,
 `GET_CONFIG`, `GET_TOKEN`, `FLUSH` and `WIFI_SCAN` send. The details of
 `LIST`, `OPEN`, `GET_DIAG`, `GET_DESCRIPTOR`, the LAN handshake and LAN OTA
@@ -532,7 +532,7 @@ except where a row names its source.
 | --- | --- | --- | --- |
 | `SET_CONFIG` | 12 | `malformed` | a line holds a NUL byte |
 | `SET_CONFIG` | 12 | `line-too-long` | a line is 285 bytes or longer |
-| `SET_CONFIG` | 12 | the raw line | a line has no `=`. The detail is the line itself, cut to 47 bytes |
+| `SET_CONFIG` | 12 | the raw line | a line has no `=`. The detail is the line itself, cut to 47 bytes, so it can hold non-ASCII text and any secret the phone typed on that line |
 | `SET_CONFIG` | 12 | the key | an unknown key, or a value its row in the key table refuses. For example `wifi.psk` of 1 to 7 bytes, over 63 bytes or with a control byte, or `wifi.ssid` over 32 bytes or with a control byte. A line that starts with `=` gives an empty detail |
 | `SET_CONFIG` | 12 | `empty` | the body holds no line that is not blank |
 | `SET_CONFIG` | 12 | `wifi.ssid` | the request would leave `wifi.on` at 1 with an empty SSID |
