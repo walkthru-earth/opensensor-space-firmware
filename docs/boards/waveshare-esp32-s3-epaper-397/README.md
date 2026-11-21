@@ -175,8 +175,11 @@ that percent with the percent beside it. A plus over the icon means STATUS2
 `isCharging()`. On USB without a battery, or when the read fails, the header
 draws no icon, as on the CrowPanel. A narrow header keeps the icon and drops
 the percent, and drops the icon too when even that would push the clock onto
-the brand. The boot line `OS POWER` is unchanged and nothing new is logged.
-Built only, see the bench record.
+the brand. At boot the firmware sets the battery detection bit, TG28 0x68
+bit 0, as the Waveshare demo does, and logs the register as found in
+`OS PMIC ... bat_det=0x.. battery_detect=on`. The 30 s poll prints
+`OS POWER` again when VBUS, the battery flag, the percent or the read result
+changes. Built only, see the bench record.
 
 ## First flash
 

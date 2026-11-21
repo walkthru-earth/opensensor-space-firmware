@@ -90,6 +90,12 @@ enum class [[nodiscard]] PmicError : std::uint8_t { NotStarted, I2c };
 [[nodiscard]] std::expected<std::uint8_t, PmicError> pmic_chip_id();
 // LDO enable register 0x90, bit 0 ALDO1 to bit 3 ALDO4.
 [[nodiscard]] std::expected<std::uint8_t, PmicError> pmic_ldo_enables();
+// Battery detection control register 0x68, bit 0 enables detection.
+[[nodiscard]] std::expected<std::uint8_t, PmicError> pmic_battery_detect();
+// Sets 0x68 bit 0, leaves the rest as they are. The vendor demo turns it on
+// before it reads the battery flag, STATUS1 0x00 bit 3. How long the flag
+// takes to settle after this write is unverified, poll_power reads it again.
+[[nodiscard]] std::expected<void, PmicError> pmic_start_battery_detect();
 // Turns on the VBAT and VBUS ADC channels, leaves the rest as they are.
 [[nodiscard]] std::expected<void, PmicError> pmic_start_adc();
 // ALDO3 feeds the e-paper panel. On sets 3.3 V first.
@@ -111,8 +117,10 @@ struct BatteryLevel {
   bool charging = false;
 };
 // Board task, called every loop. About every 30 s it reads the PMIC and
-// caches the charge, the first loop reads at once.
-void poll_power(std::int64_t now_us);
+// caches the charge, the first loop reads at once. Returns that read for
+// logging, or nothing between reads.
+[[nodiscard]] std::optional<std::expected<PowerStatus, PmicError>>
+poll_power(std::int64_t now_us);
 // Any task. The charge poll_power cached, or nothing before the first read,
 // when that read failed, with no battery present or without a percent. The
 // display task reads it, so the UI never touches the I2C bus.

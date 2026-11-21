@@ -63,10 +63,11 @@ namespace pmic_reg {
 constexpr std::uint8_t kStatus1 = 0x00; // bit 5 VBUS good, bit 3 battery
 constexpr std::uint8_t kStatus2 = 0x01; // bits 7:5 001 while charging
 constexpr std::uint8_t kChipId = 0x03;
-constexpr std::uint8_t kAdcEnable = 0x30;  // bit 0 VBAT, bit 2 VBUS
-constexpr std::uint8_t kVbatHigh = 0x34;   // 6 bits, then 0x35 low 8, in mV
-constexpr std::uint8_t kLdoEnable = 0x90;  // bit 2 ALDO3
-constexpr std::uint8_t kAldo3Volts = 0x94; // bits 4:0, 0.5 V + 0.1 V steps
+constexpr std::uint8_t kAdcEnable = 0x30;     // bit 0 VBAT, bit 2 VBUS
+constexpr std::uint8_t kVbatHigh = 0x34;      // 5 bits, then 0x35 low 8, in mV
+constexpr std::uint8_t kBatteryDetect = 0x68; // bit 0 battery detection
+constexpr std::uint8_t kLdoEnable = 0x90;     // bit 2 ALDO3
+constexpr std::uint8_t kAldo3Volts = 0x94;    // bits 4:0, 0.5 V + 0.1 V steps
 constexpr std::uint8_t kBatteryPercent = 0xA4;
 } // namespace pmic_reg
 constexpr std::uint8_t kAldo3Bit = 1U << 2;
@@ -434,6 +435,17 @@ std::expected<std::uint8_t, PmicError> pmic_ldo_enables() {
   return pmic_read(pmic_reg::kLdoEnable);
 }
 
+std::expected<std::uint8_t, PmicError> pmic_battery_detect() {
+  return pmic_read(pmic_reg::kBatteryDetect);
+}
+
+// XPowersLib enableBattDetection() in the copy the Waveshare
+// ESP32-S3-ePaper-3.97 demo vendors, called from its axp_init().
+std::expected<void, PmicError> pmic_start_battery_detect() {
+  constexpr std::uint8_t kDetect = 1U << 0;
+  return pmic_update(pmic_reg::kBatteryDetect, kDetect, kDetect);
+}
+
 std::expected<void, PmicError> pmic_start_adc() {
   constexpr std::uint8_t kVbatVbus = (1U << 0) | (1U << 2);
   return pmic_update(pmic_reg::kAdcEnable, kVbatVbus, kVbatVbus);
@@ -459,10 +471,11 @@ std::expected<PowerStatus, PmicError> read_power() {
                   .charging = false};
   if (!out.battery_present)
     return out;
+  // XPowersLib getBattVoltage() reads these through readRegisterH5L8().
   const auto high = pmic_read(pmic_reg::kVbatHigh);
   const auto low = pmic_read(pmic_reg::kVbatHigh + 1);
   if (high && low)
-    out.battery_mv = static_cast<std::uint16_t>(((*high & 0x3F) << 8) | *low);
+    out.battery_mv = static_cast<std::uint16_t>(((*high & 0x1F) << 8) | *low);
   const auto percent = pmic_read(pmic_reg::kBatteryPercent);
   if (percent && *percent <= 100)
     out.battery_percent = *percent;
@@ -473,9 +486,10 @@ std::expected<PowerStatus, PmicError> read_power() {
   return out;
 }
 
-void poll_power(std::int64_t now_us) {
+std::optional<std::expected<PowerStatus, PmicError>>
+poll_power(std::int64_t now_us) {
   if (now_us < power_next_us)
-    return;
+    return std::nullopt;
   power_next_us = now_us + kPowerPollUs;
   const auto power = read_power();
   std::uint32_t cached = 0;
@@ -483,6 +497,7 @@ void poll_power(std::int64_t now_us) {
     cached = kBatteryValid | *power->battery_percent |
              (power->charging ? kBatteryCharging : 0U);
   battery_cache.store(cached, std::memory_order_relaxed);
+  return power;
 }
 
 std::optional<BatteryLevel> last_battery() {

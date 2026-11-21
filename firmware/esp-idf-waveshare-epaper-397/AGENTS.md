@@ -42,6 +42,8 @@ trial's settings or pins.
 - The board task polls the TG28 PMIC about every 30 s (`board::poll_power`)
   and caches the battery charge, `board::last_battery()` gives it to any
   task. The UI header draws it, and no battery or no percent draws no icon.
+  Boot sets the TG28 battery detection bit (0x68 bit 0) before the ADC, as
+  the vendor demo does, and the poll logs `OS POWER` again on a change.
 - No phone `config_keys` yet. Adding them moves the desc digest and needs the
   pinned URI commit steps in `docs/shared/templates/README.md`.
 - The PCF85063 is the RTC hook. UTC stays null until it holds a set time or a

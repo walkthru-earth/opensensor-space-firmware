@@ -115,6 +115,28 @@ Open findings from this boot.
   rotation on the device is shown yet. The owner test in the board README
   still confirms the axis table.
 
+## Battery detection and VBAT mask, 2026-11-21, built only
+
+- The owner reported `OS POWER vbus=1 battery=0 battery_mv=null
+  battery_percent=null` from the main `11f7cf0` image with a LiPo attached,
+  so the header drew no battery icon. The firmware never set the TG28
+  battery detection bit, register 0x68 bit 0, which the Waveshare demo sets
+  through XPowersLib `enableBattDetection()` in its `axp_init()`.
+- The boot now logs 0x68 as found in `OS PMIC ... bat_det=0x..`, sets bit 0
+  (`battery_detect=on|failed`) and then turns on the ADC. The 30 s power poll
+  prints `OS POWER` again when the read result, VBUS, the battery flag or
+  the presence of a percent differs from the last line. How long detection
+  takes to settle is unverified, no official TG28 or AXP2101 datasheet was
+  found.
+- VBAT now takes 5 bits from 0x34 (mask 0x1F) as XPowersLib
+  `readRegisterH5L8()` does for `getBattVoltage()`, where it took 6. A value
+  under 8,192 mV reads the same.
+- Built only, never flashed. The app image built from the working tree is
+  1,845,200 bytes (0x1c27d0) with 71% of the 6 MiB slot free, and
+  `pixi run stack-budget --image epaper397/logger --check` passes. Whether
+  0x68 bit 0 was clear on this board, and whether setting it makes STATUS1
+  report the battery, is not shown yet.
+
 Not shown yet. The UI pages, keys and settings popup on the glass, the
 picture turning with the device under Auto, partial refresh, the IMU lines on
 device, battery operation, the RTC set and kept

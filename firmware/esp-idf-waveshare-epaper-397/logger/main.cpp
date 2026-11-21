@@ -1221,22 +1221,30 @@ void log_scan(const char *name, board::Bus bus) {
                static_cast<unsigned>(count), count ? list.data() : "none");
 }
 
-void log_power() {
-  const bool bus_ok = board::start_internal_bus();
-  oslog.printf("OS PMIC bus ready=%u sda=%d scl=%d hz=%lu pmic=0x%02x "
-               "rtc=0x%02x\n",
-               bus_ok, board::kInternalSda, board::kInternalScl,
-               static_cast<unsigned long>(board::kInternalI2cHz),
-               board::kPmicAddress, board::kRtcAddress);
-  const auto id = board::pmic_chip_id();
-  const auto ldo = board::pmic_ldo_enables();
-  const auto adc = board::pmic_start_adc();
-  oslog.printf("OS PMIC chip=tg28 found=%u chip_id=0x%02x ldo_enables=0x%02x "
-               "adc=%s error=%s\n",
-               id.has_value(), id ? *id : 0, ldo ? *ldo : 0,
-               adc ? "on" : "failed",
-               id ? "none" : board::to_string(id.error()));
-  const auto power = board::read_power();
+using PowerRead = std::expected<board::PowerStatus, board::PmicError>;
+
+// What the last OS POWER line said. The boot line reads right after battery
+// detection is switched on, before it may have settled, so the 30 s poll
+// prints the line again when the read result, VBUS, the battery flag or the
+// presence of a percent differs from the last line.
+struct PowerLog {
+  bool ok = false;
+  bool vbus = false;
+  bool battery = false;
+  bool percent = false;
+  bool operator==(const PowerLog &) const = default;
+};
+constinit std::optional<PowerLog> power_log{};
+
+PowerLog power_key(const PowerRead &power) {
+  return {.ok = power.has_value(),
+          .vbus = power && power->vbus_good,
+          .battery = power && power->battery_present,
+          .percent = power && power->battery_percent.has_value()};
+}
+
+void log_power_status(const PowerRead &power) {
+  power_log = power_key(power);
   if (!power) {
     oslog.printf("OS POWER error=%s\n", board::to_string(power.error()));
     return;
@@ -1254,6 +1262,40 @@ void log_power() {
   oslog.printf("OS POWER vbus=%u battery=%u battery_mv=%s battery_percent=%s\n",
                power->vbus_good, power->battery_present, mv.data(),
                percent.data());
+}
+
+void log_power() {
+  const bool bus_ok = board::start_internal_bus();
+  oslog.printf("OS PMIC bus ready=%u sda=%d scl=%d hz=%lu pmic=0x%02x "
+               "rtc=0x%02x\n",
+               bus_ok, board::kInternalSda, board::kInternalScl,
+               static_cast<unsigned long>(board::kInternalI2cHz),
+               board::kPmicAddress, board::kRtcAddress);
+  const auto id = board::pmic_chip_id();
+  const auto ldo = board::pmic_ldo_enables();
+  // 0x68 as found, before this boot sets the detection bit.
+  const auto bat_det = board::pmic_battery_detect();
+  const auto detect = board::pmic_start_battery_detect();
+  const auto adc = board::pmic_start_adc();
+  std::array<char, 8> bat_det_text{};
+  std::snprintf(bat_det_text.data(), bat_det_text.size(), "%s", "null");
+  if (bat_det)
+    std::snprintf(bat_det_text.data(), bat_det_text.size(), "0x%02x",
+                  static_cast<unsigned>(*bat_det));
+  oslog.printf("OS PMIC chip=tg28 found=%u chip_id=0x%02x ldo_enables=0x%02x "
+               "bat_det=%s battery_detect=%s adc=%s error=%s\n",
+               id.has_value(), id ? *id : 0, ldo ? *ldo : 0,
+               bat_det_text.data(), detect ? "on" : "failed",
+               adc ? "on" : "failed",
+               id ? "none" : board::to_string(id.error()));
+  log_power_status(board::read_power());
+}
+
+void poll_power(std::int64_t now) {
+  const auto read = board::poll_power(now);
+  if (!read || (power_log && *power_log == power_key(*read)))
+    return;
+  log_power_status(*read);
 }
 
 // QMI8658 orientation evidence. The raw axes go with every quarter turn
@@ -1451,7 +1493,7 @@ void poll_board() {
   const auto now = esp_timer_get_time();
   poll_sensor(now);
   poll_orientation(now);
-  board::poll_power(now);
+  poll_power(now);
   if (logging)
     oslogger::poll();
   poll_feed(esp_timer_get_time());
