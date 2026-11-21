@@ -98,7 +98,17 @@ and the files move to the card once a card is back.
    flash file. This is the only automatic delete of owner data, and it
    happens only when an identical copy is on the card. If the card already
    holds a file of that name with different bytes, both stay, the worker logs
-   a conflict and never overwrites either. A stale temporary copy on the card
+   a conflict and never overwrites either. It then renames the flash file,
+   and its sidecar first, to `flash-conflict/<name>` on the flash volume
+   (#212). Nothing is copied or deleted by that rename. LIST names the file
+   there, so the phone can fetch both, and the next copy takes it to the same
+   name on the card, which frees flash and ends the `full` LIST_SINCE answer.
+   The folder sits beside the Thing tree, so a reader that globs `thing=*`
+   never counts its rows twice. A name already under `flash-conflict/`, a
+   quarantined file, a name too long for the prefix or a taken set aside name
+   stays held on flash for the owner. While flash holds a file under both
+   names, which a power cut inside that rename can leave sharing clusters,
+   neither is copied or freed. A stale temporary copy on the card
    holds no unique rows, because its source is still on flash, so the worker
    removes it and starts that copy again.
 10. **Cloud stays out.** Upload from the board is #144 and is not part of

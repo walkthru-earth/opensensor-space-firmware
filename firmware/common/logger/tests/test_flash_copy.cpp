@@ -695,6 +695,216 @@ void same_relative_path() {
   assert(top.files.at(std::string(kCard) + "/top.parquet") == bytes);
 }
 
+// A conflict sets the flash file aside on flash, with its sidecar, under
+// "flash-conflict/". The next copy takes it to that name on the card. No
+// file is deleted or overwritten on the way (#212).
+const std::string kAsideName = std::string(fc::kConflictPrefix) + kName;
+const std::string kStem = kName.substr(0, kName.size() - 8);
+const std::string kSidecar = std::string(kFlash) + "/" + kStem + ".json";
+const std::string kAsideSource = std::string(kFlash) + "/" + kAsideName;
+const std::string kAsideSidecar =
+    std::string(kFlash) + "/" + fc::kConflictPrefix + kStem + ".json";
+
+FakeIO conflicting(const Bytes &bytes, const Bytes &other) {
+  FakeIO io = with_source(bytes);
+  io.add_dirs(std::string(kCard) + "/" + kDay);
+  io.files[kFinal] = other;
+  return io;
+}
+
+void conflict_set_aside() {
+  const Bytes bytes = pattern(2 * fc::kChunkBytes + 9);
+  const Bytes other = pattern(bytes.size(), 99);
+  const Bytes sidecar = pattern(40, 3);
+  static_assert(fc::set_aside_name("flash-conflict/a.parquet"));
+  static_assert(!fc::set_aside_name("flash-conflict/"));
+  static_assert(!fc::set_aside_name("thing=t1/a.parquet"));
+  static_assert(!fc::set_aside_name(nullptr));
+  static_assert(fc::aside_retries(fc::AsideError::Rename) &&
+                fc::aside_retries(fc::AsideError::Directory) &&
+                fc::aside_retries(fc::AsideError::Stat) &&
+                !fc::aside_retries(fc::AsideError::Taken) &&
+                !fc::aside_retries(fc::AsideError::AlreadyAside) &&
+                !fc::aside_retries(fc::AsideError::TooLong) &&
+                !fc::aside_retries(fc::AsideError::NotCopied) &&
+                !fc::aside_retries(fc::AsideError::NotConflict));
+  assert(std::strcmp(fc::aside_error_name(fc::AsideError::Taken), "taken") ==
+         0);
+
+  FakeIO io = conflicting(bytes, other);
+  io.files[kSidecar] = sidecar;
+  fc::Copier copier;
+  begin(copier);
+  const Run first = run(copier, io);
+  assert(first.outcome == Outcome::Conflict);
+  const auto aside = copier.set_aside(io);
+  assert(aside.has_value() && *aside);
+  assert(std::strcmp(copier.relative(), kName.c_str()) == 0);
+  assert(io.unlinked.empty());
+  assert(!io.files.contains(kSource) && !io.files.contains(kSidecar));
+  assert(io.files.at(kAsideSource) == bytes);
+  assert(io.files.at(kAsideSidecar) == sidecar);
+  assert(io.files.at(kFinal) == other);
+  assert(io.made.back() ==
+         std::string(kFlash) + "/" + fc::kConflictPrefix + kDay);
+  // Once only, a second call has no conflict to act on.
+  const auto again = copier.set_aside(io);
+  assert(!again && again.error() == fc::AsideError::NotConflict);
+
+  // The next copy takes the set aside file to the same name on the card.
+  begin(copier, kAsideName);
+  const Run moved = run(copier, io);
+  assert(moved.outcome == Outcome::Copied);
+  assert(io.files.at(std::string(kCard) + "/" + kAsideName) == bytes);
+  assert(io.files.at(kFinal) == other);
+  assert(io.unlinked == std::vector<std::string>{kAsideSource});
+
+  // A second conflict under the set aside name stays where it is.
+  FakeIO twice = with_source(bytes, kAsideName);
+  twice.add_dirs(std::string(kCard) + "/" + fc::kConflictPrefix + kDay);
+  twice.files[std::string(kCard) + "/" + kAsideName] = other;
+  fc::Copier held;
+  begin(held, kAsideName);
+  const Run second = run(held, twice);
+  assert(second.outcome == Outcome::Conflict);
+  const auto stays = held.set_aside(twice);
+  assert(!stays && stays.error() == fc::AsideError::AlreadyAside);
+  assert(twice.files.at(kAsideSource) == bytes && twice.unlinked.empty());
+
+  // A sidecar that conflicts on its own moves alone.
+  FakeIO lone = with_source(sidecar, kStem + ".json");
+  lone.add_dirs(std::string(kCard) + "/" + kDay);
+  lone.files[std::string(kCard) + "/" + kStem + ".json"] = pattern(40, 4);
+  fc::Copier json;
+  begin(json, kStem + ".json");
+  const Run json_run = run(json, lone);
+  assert(json_run.outcome == Outcome::Conflict);
+  const auto json_aside = json.set_aside(lone);
+  assert(json_aside.has_value() && !*json_aside);
+  assert(lone.files.at(kAsideSidecar) == sidecar);
+  assert(!lone.files.contains(kSidecar) && lone.unlinked.empty());
+}
+
+// Every way a set aside can stop leaves both flash names as they were.
+void set_aside_refused() {
+  const Bytes bytes = pattern(300);
+  const Bytes other = pattern(301, 9);
+  const auto conflict = [&](FakeIO &io, fc::Copier &copier,
+                            const std::string &name = kName) {
+    begin(copier, name);
+    const Run result = run(copier, io);
+    assert(result.outcome == Outcome::Conflict);
+  };
+
+  // No conflict to act on.
+  {
+    FakeIO io = with_source(bytes);
+    fc::Copier copier;
+    const auto idle = copier.set_aside(io);
+    assert(!idle && idle.error() == fc::AsideError::NotConflict);
+    begin(copier);
+    const Run copied = run(copier, io);
+    assert(copied.outcome == Outcome::Copied);
+    const auto after = copier.set_aside(io);
+    assert(!after && after.error() == fc::AsideError::NotConflict);
+  }
+  // The sidecar's set aside name is taken. Nothing moves, not even the
+  // Parquet file, so the sidecar never ends up apart from it.
+  {
+    FakeIO io = conflicting(bytes, other);
+    io.files[kSidecar] = pattern(20);
+    io.files[kAsideSidecar] = pattern(21);
+    fc::Copier copier;
+    conflict(io, copier);
+    const auto taken = copier.set_aside(io);
+    assert(!taken && taken.error() == fc::AsideError::Taken);
+    assert(io.files.at(kSource) == bytes);
+    assert(io.files.at(kSidecar) == pattern(20));
+    assert(io.files.at(kAsideSidecar) == pattern(21));
+    assert(!io.files.contains(kAsideSource) && io.unlinked.empty());
+  }
+  // A refused rename or folder is retried later, the file stays.
+  for (const bool folder : {false, true}) {
+    FakeIO io = conflicting(bytes, other);
+    fc::Copier copier;
+    conflict(io, copier);
+    io.fail_rename = folder ? 0 : EBUSY;
+    io.fail_dirs = folder;
+    const auto refused = copier.set_aside(io);
+    assert(!refused);
+    assert(refused.error() ==
+           (folder ? fc::AsideError::Directory : fc::AsideError::Rename));
+    assert(errno == (folder ? EIO : EBUSY));
+    assert(io.files.at(kSource) == bytes && io.unlinked.empty());
+  }
+  // A sidecar that cannot be inspected keeps the Parquet file in place.
+  {
+    FakeIO io = conflicting(bytes, other);
+    fc::Copier copier;
+    conflict(io, copier);
+    io.fail_inspect = kSidecar;
+    const auto unsure = copier.set_aside(io);
+    assert(!unsure && unsure.error() == fc::AsideError::Stat);
+    assert(io.files.at(kSource) == bytes);
+  }
+  // A quarantined file is never set aside.
+  {
+    const std::string name = "quarantine/thing=t1/x/a-1-boot-00000001.partial";
+    FakeIO io = with_source(bytes, name);
+    io.add_dirs(std::string(kCard) + "/quarantine/thing=t1/x");
+    io.files[std::string(kCard) + "/" + name] = other;
+    fc::Copier copier;
+    conflict(io, copier, name);
+    const auto quarantined = copier.set_aside(io);
+    assert(!quarantined && quarantined.error() == fc::AsideError::NotCopied);
+  }
+  // A name that would not fit with the prefix stays.
+  {
+    const std::string name = std::string(375 - 8, 'a') + ".parquet";
+    FakeIO io = with_source(bytes, name);
+    io.files[std::string(kCard) + "/" + name] = other;
+    fc::Copier copier;
+    conflict(io, copier, name);
+    const auto long_name = copier.set_aside(io);
+    assert(!long_name && long_name.error() == fc::AsideError::TooLong);
+    assert(io.files.at(std::string(kFlash) + "/" + name) == bytes);
+  }
+}
+
+// Both flash names of one file, as a power cut inside the set aside rename
+// can leave them, may share clusters. Neither is copied or freed.
+void set_aside_pair() {
+  const Bytes bytes = pattern(500);
+  for (const bool from_aside : {false, true}) {
+    FakeIO io = with_source(bytes);
+    io.files[kAsideSource] = bytes;
+    fc::Copier copier;
+    begin(copier, from_aside ? kAsideName : kName);
+    const Run held = run(copier, io);
+    assert(held.outcome == Outcome::IoError && held.steps == 1);
+    assert(copier.failure() == Failure::CrosslinkSuspect);
+    assert(io.unlinked.empty() && io.made.empty());
+    assert(io.files.at(kSource) == bytes && io.files.at(kAsideSource) == bytes);
+    assert(!io.files.contains(kTemp));
+  }
+  // The other name cannot be inspected, the copy stops and is tried later.
+  FakeIO io = with_source(bytes);
+  io.fail_inspect = kAsideSource;
+  fc::Copier copier;
+  begin(copier);
+  const Run unsure = run(copier, io);
+  assert(unsure.outcome == Outcome::IoError);
+  assert(copier.failure() == Failure::SourceStat && copier.error() == EIO);
+  assert(io.files.at(kSource) == bytes && io.unlinked.empty());
+  // A copy that is not paired still restores its temporary name.
+  FakeIO clean = with_source(bytes);
+  fc::Copier plain;
+  begin(plain);
+  const Run copied = run(plain, clean);
+  assert(copied.outcome == Outcome::Copied);
+  assert(clean.files.at(kFinal) == bytes && !clean.files.contains(kTemp));
+}
+
 void begin_rules() {
   fc::Copier copier;
   const auto bad = [&](const char *flash, const char *card, const char *name,
@@ -826,5 +1036,8 @@ int main() {
   cancel_mid_copy();
   copy_order();
   card_write_failures();
+  conflict_set_aside();
+  set_aside_refused();
+  set_aside_pair();
   return 0;
 }

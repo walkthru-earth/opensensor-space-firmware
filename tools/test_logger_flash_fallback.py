@@ -117,6 +117,18 @@ def check_wiring(source: str) -> None:
             r"if \(\*kind == flash_copy::Kind::Sidecar && sidecar_waits\(name\)\) return true;",
         "the boot quarantine also covers the flash root":
             r"quarantine_directory\(flash_root, quarantined\);",
+        "a copy conflict sets the flash file aside under its own name (#212)":
+            r"const auto aside = drain\.copier\.set_aside\(drain\.io\); if \(aside\) \{ "
+            r"oslog\.printf\(\"OS FLASH conflict name=%s moved=%s%s sidecar=%d\\n\", "
+            r"relative, flash_copy::kConflictPrefix, relative, \*aside \? 1 : 0\); "
+            r"remove_empty_flash_directories\(relative\); break; \}",
+        "a set aside that may pass later is retried, any other is held":
+            r"if \(flash_copy::aside_retries\(aside\.error\(\)\)\) \{ "
+            r"if \(!drain\.failed\.add\(hash\)\) drain\.next_at = now \+ kCopyWaitSeconds; "
+            r"\} else if \(!drain\.held\.add\(hash\)\)",
+        "a set aside sidecar waits for its Parquet under either name":
+            r"if \(flash_copy::set_aside_name\(relative\)\) \{ "
+            r"stem\.remove_prefix\(flash_copy::kConflictPrefixLength\); names = 2; \}",
         "a crosslink suspect is logged and held once per file":
             r"PARQUET RECOVERY crosslink-suspect file=%s action=none\\n\", relative\); "
             r"if \(!drain\.held\.add\(hash\)\)",

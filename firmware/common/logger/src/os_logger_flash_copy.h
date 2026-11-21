@@ -26,7 +26,9 @@
 // what was read from flash. Only then is it renamed to the final name, which
 // must not exist, and only then is the flash file removed. A final name that
 // already exists is compared byte for byte by hash. Identical frees the flash
-// file, anything else is a conflict and both files stay.
+// file, anything else is a conflict and both files stay. set_aside() then
+// renames the flash file to "flash-conflict/<relative>" on flash, so the next
+// copy takes it to the card under that name (#212).
 //
 // The only files this ever deletes are the flash source after an identical
 // verified copy is on the card, and a temporary "<final>.copy" on the card
@@ -96,7 +98,9 @@ enum class [[nodiscard]] Failure : std::uint8_t {
   Rename,       // the final name was refused, EEXIST when it appeared meanwhile
   SourceUnlink, // copied, but the flash file could not be removed yet
   // "<final>.copy" and "<final>" both exist, possibly sharing clusters after
-  // a power cut inside the rename. Nothing was deleted, the source stays.
+  // a power cut inside the rename. Or the flash volume holds the source under
+  // both its name and its set aside name (#212), for the same reason. Nothing
+  // was deleted, the source stays.
   CrosslinkSuspect,
 };
 
@@ -173,6 +177,64 @@ enum class [[nodiscard]] BeginError : std::uint8_t {
   BadName, // a missing root, or a relative name that is not a plain path
   TooLong, // a path, the temporary included, would not fit kPathBytes
 };
+
+// A flash file whose name the card holds with other bytes moves on flash to
+// "<flash root>/flash-conflict/<relative>" (#212). Copy back then takes it to
+// the same name on the card, and LIST names it there, so the phone can fetch
+// both files and the flash volume empties. The folder sits beside the Thing
+// tree, so a reader that globs "thing=*" never counts its rows twice.
+inline constexpr char kConflictPrefix[] = "flash-conflict/";
+inline constexpr std::size_t kConflictPrefixLength =
+    sizeof(kConflictPrefix) - 1;
+
+[[nodiscard]] constexpr bool set_aside_name(const char *relative) {
+  return relative != nullptr &&
+         std::char_traits<char>::length(relative) > kConflictPrefixLength &&
+         std::char_traits<char>::compare(relative, kConflictPrefix,
+                                         kConflictPrefixLength) == 0;
+}
+
+// Why a conflicting flash file stayed where it is. Error only, for the log.
+enum class [[nodiscard]] AsideError : std::uint8_t {
+  NotConflict,  // the last copy did not end in a conflict
+  AlreadyAside, // already under kConflictPrefix, a second conflict stays held
+  NotCopied,    // quarantined, or neither a Parquet file nor a sidecar
+  TooLong,      // the set aside name would not fit a path
+  Stat,         // the sidecar could not be inspected
+  Directory,    // the set aside folder could not be made
+  Taken,        // the set aside name exists, nothing is replaced
+  Rename,       // the rename was refused for another reason, try later
+};
+
+[[nodiscard]] constexpr const char *aside_error_name(AsideError error) {
+  switch (error) {
+  case AsideError::NotConflict:
+    return "not-conflict";
+  case AsideError::AlreadyAside:
+    return "already-aside";
+  case AsideError::NotCopied:
+    return "not-copied";
+  case AsideError::TooLong:
+    return "too-long";
+  case AsideError::Stat:
+    return "stat";
+  case AsideError::Directory:
+    return "directory";
+  case AsideError::Taken:
+    return "taken";
+  case AsideError::Rename:
+    return "rename";
+  }
+  return "unknown";
+}
+
+// True when a set aside failure is about this boot only, such as a rename
+// refused while a peer holds the file open. The file is tried again later.
+// Every other failure holds the file for this boot.
+[[nodiscard]] constexpr bool aside_retries(AsideError error) {
+  return error == AsideError::Stat || error == AsideError::Directory ||
+         error == AsideError::Rename;
+}
 
 namespace detail {
 [[nodiscard]] constexpr bool ends_with(const char *name, std::size_t length,
@@ -255,6 +317,7 @@ public:
     // A refused begin names no file, never the last copy.
     source_[0] = final_[0] = temp_[0] = '\0';
     relative_at_ = 0;
+    conflicted_ = false;
     if (flash_root == nullptr || *flash_root == '\0' || card_root == nullptr ||
         *card_root == '\0' || name == nullptr || *name == '\0')
       return std::unexpected(BeginError::BadName);
@@ -313,6 +376,51 @@ public:
   template <class IO> void cancel(IO &io) {
     release(io);
     stage_ = Stage::Idle;
+  }
+
+  // Moves the flash file of the last copy, which ended in Conflict, to its
+  // set aside name on flash. A Parquet file takes its sidecar along, the
+  // sidecar first, so a sidecar never lands on the card beside the other
+  // Parquet file. Each move is a rename without replace on the flash
+  // volume, nothing is copied, deleted or overwritten. The value is true when
+  // a sidecar moved as well. On an error errno holds the failed call's code.
+  template <class IO>
+  [[nodiscard]] std::expected<bool, AsideError> set_aside(IO &io) {
+    if (stage_ != Stage::Idle || !conflicted_)
+      return std::unexpected(AsideError::NotConflict);
+    const char *relative = this->relative();
+    if (set_aside_name(relative))
+      return std::unexpected(AsideError::AlreadyAside);
+    const auto kind = copy_kind(relative);
+    if (!kind || *kind == Kind::Quarantined)
+      return std::unexpected(AsideError::NotCopied);
+    const std::size_t length = std::char_traits<char>::length(relative);
+    if (kConflictPrefixLength + length >= kRelativeBytes)
+      return std::unexpected(AsideError::TooLong);
+    bool sidecar = false;
+    if (*kind == Kind::Parquet) {
+      constexpr std::size_t kParquet = sizeof(".parquet") - 1;
+      const int stem = static_cast<int>(
+          std::char_traits<char>::length(source_.data()) - kParquet);
+      const int from = std::snprintf(final_.data(), final_.size(), "%.*s.json",
+                                     stem, source_.data());
+      if (from < 0 || static_cast<std::size_t>(from) >= final_.size())
+        return std::unexpected(AsideError::TooLong);
+      struct stat info{};
+      if (io.inspect(final_.data(), &info) == 0) {
+        const auto moved = move_aside(io, final_.data());
+        if (!moved)
+          return std::unexpected(moved.error());
+        sidecar = true;
+      } else if (errno != ENOENT) {
+        return std::unexpected(AsideError::Stat);
+      }
+    }
+    const auto moved = move_aside(io, source_.data());
+    if (!moved)
+      return std::unexpected(moved.error());
+    conflicted_ = false;
+    return sidecar;
   }
 
   [[nodiscard]] bool active() const { return stage_ != Stage::Idle; }
@@ -391,7 +499,71 @@ private:
   template <class IO> Outcome end(IO &io, Outcome outcome) {
     release(io);
     stage_ = Stage::Idle;
+    conflicted_ = outcome == Outcome::Conflict;
     return outcome;
+  }
+
+  // Renames the flash file at `from`, below the flash root, to its set aside
+  // name. Builds that name in temp_, which a conflict no longer needs. The
+  // folder is made first, then a rename that never replaces.
+  template <class IO>
+  std::expected<void, AsideError> move_aside(IO &io, const char *from) {
+    const std::size_t root = relative_at_;
+    const int length = std::snprintf(temp_.data(), temp_.size(), "%.*s%s%s",
+                                     static_cast<int>(root), source_.data(),
+                                     kConflictPrefix, from + root);
+    if (length < 0 || static_cast<std::size_t>(length) >= temp_.size())
+      return std::unexpected(AsideError::TooLong);
+    char *const slash = std::strrchr(temp_.data(), '/');
+    *slash = '\0';
+    const bool made = io.make_directories(temp_.data());
+    const int made_error = errno;
+    *slash = '/';
+    if (!made) {
+      errno = made_error;
+      return std::unexpected(AsideError::Directory);
+    }
+    if (io.rename_no_replace(from, temp_.data()) != 0)
+      return std::unexpected(errno == EEXIST ? AsideError::Taken
+                                             : AsideError::Rename);
+    return {};
+  }
+
+  // True when the flash volume also holds this file under its other name,
+  // with kConflictPrefix added or taken away. A power cut inside the flash
+  // rename can leave both entries sharing clusters, and freeing either after
+  // a copy would free the other's bytes. Builds the other name in temp_ and
+  // then puts the temporary back. errno is set when the inspect failed.
+  template <class IO> std::expected<bool, int> aside_pair(IO &io) {
+    const std::size_t root = relative_at_;
+    const char *relative = this->relative();
+    const int length =
+        set_aside_name(relative)
+            ? std::snprintf(temp_.data(), temp_.size(), "%.*s%s",
+                            static_cast<int>(root), source_.data(),
+                            relative + kConflictPrefixLength)
+            : std::snprintf(temp_.data(), temp_.size(), "%.*s%s%s",
+                            static_cast<int>(root), source_.data(),
+                            kConflictPrefix, relative);
+    bool pair = false;
+    int code = 0;
+    if (length >= 0 && static_cast<std::size_t>(length) < temp_.size()) {
+      struct stat info{};
+      if (io.inspect(temp_.data(), &info) == 0)
+        pair = true;
+      else if (errno != ENOENT)
+        code = errno;
+    }
+    // begin() checked that the temporary fits.
+    const std::size_t final_length = ::strnlen(final_.data(), final_.size());
+    if (final_length + sizeof(kTempSuffix) <= temp_.size()) {
+      std::memcpy(temp_.data(), final_.data(), final_length);
+      std::memcpy(temp_.data() + final_length, kTempSuffix,
+                  sizeof(kTempSuffix));
+    }
+    if (code)
+      return std::unexpected(code);
+    return pair;
   }
 
   template <class IO> static bool hash_begin(IO &io, std::uint32_t &running) {
@@ -402,6 +574,12 @@ private:
   template <class IO> Outcome start(IO &io) {
     if (chunk(io).empty())
       return fail(io, Failure::Scratch, 0);
+    // Both flash names of one file wait for the owner, like a card pair.
+    const auto pair = aside_pair(io);
+    if (!pair)
+      return fail(io, Failure::SourceStat, pair.error());
+    if (*pair)
+      return fail(io, Failure::CrosslinkSuspect, 0);
     struct stat source{};
     if (io.inspect(source_.data(), &source) != 0) {
       const int code = errno;
@@ -622,9 +800,10 @@ private:
   int error_ = 0;
   std::optional<Failure> failure_;
   Stage stage_ = Stage::Idle;
-  bool reading_ = false;  // the IO reader is open for this copy
-  bool writing_ = false;  // the IO writer is open for this copy
-  bool own_temp_ = false; // this attempt created the temporary
+  bool reading_ = false;    // the IO reader is open for this copy
+  bool writing_ = false;    // the IO writer is open for this copy
+  bool own_temp_ = false;   // this attempt created the temporary
+  bool conflicted_ = false; // the last copy ended in Conflict, see set_aside
 };
 
 } // namespace opensensor::logger::flash_copy

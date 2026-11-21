@@ -71,8 +71,16 @@ idle worker copies flash files back one chunk per pass, Parquet before its
 sidecar, verified by SHA-256, and prints `OS FLASH copy name=<relative>
 bytes=<n> result=<copied|identical|conflict|error|cancelled>`, then `OS FLASH
 copy done files=<n>` once flash is empty. Only a file whose identical copy is
-verified on the card is removed from flash. A conflict or crosslink suspect
-stays on both roots for the owner. ERASE_ARCHIVE erases card roots only. The
+verified on the card is removed from flash. After a conflict both files
+stay, and the flash one, its sidecar first, is renamed on flash to
+`flash-conflict/<relative>` and printed as `OS FLASH conflict name=<relative>
+moved=flash-conflict/<relative> sidecar=<0|1>` (#212). LIST names it there and
+the next copy takes it to that name on the card. When the rename cannot
+happen the line ends `moved=none reason=<why> errno=<n>`, where the reason is
+`already-aside`, `not-copied`, `too-long`, `stat`, `directory`, `taken` or
+`rename`, and the file stays on flash. It is tried again later after `stat`,
+`directory` and `rename`. A crosslink suspect, on the card or a
+flash file under both names, stays for the owner. ERASE_ARCHIVE erases card roots only. The
 serial `parquet erase-archive CONFIRM` closes an open flash telemetry file
 without a finalize, and the next boot quarantines its `.partial` on flash.
 

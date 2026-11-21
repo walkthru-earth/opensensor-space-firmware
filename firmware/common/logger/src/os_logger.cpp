@@ -1422,8 +1422,9 @@ struct ListVisitor {
 // Lists the flash root after the card. A name the card root holds is left
 // out, the card walk listed it. That includes a conflict, where the card holds
 // other bytes under the same name: OPEN serves the card copy first, so
-// listing the flash copy would name a file the peer cannot fetch. The flash
-// copy stays for the owner, with its OS FLASH copy result=conflict line.
+// listing the flash copy would name a file the peer cannot fetch. Copy back
+// then moves the flash copy to "flash-conflict/<name>" (#212), and this walk
+// lists it under that name.
 struct FlashListVisitor {
   ListVisitor &list;
   const char *card_root = nullptr; // null while the card is not listable
@@ -2616,27 +2617,48 @@ void copy_back_now() {
   }
 }
 
-// True when the flash file `relative` holds the owner's data on its own:
-// a sidecar waits until its Parquet left flash and is on the card.
-bool sidecar_waits(const char *relative) {
-  const std::string_view name{relative};
-  constexpr std::string_view kJson = ".json";
+// True when `root` holds "<prefix><stem>.parquet". Sets `unsure` when the
+// path does not fit or the inspect fails for another reason than ENOENT.
+bool parquet_on(const char *root, std::string_view prefix,
+                std::string_view stem, bool &unsure) {
   char parquet[flash_copy::kPathBytes];
-  const auto stem = static_cast<int>(name.size() - kJson.size());
+  const int length =
+      std::snprintf(parquet, sizeof(parquet), "%s/%.*s%.*s.parquet", root,
+                    static_cast<int>(prefix.size()), prefix.data(),
+                    static_cast<int>(stem.size()), stem.data());
+  if (length < 0 || static_cast<std::size_t>(length) >= sizeof(parquet)) {
+    unsure = true;
+    return false;
+  }
   struct stat info{};
-  const int flash_length = std::snprintf(
-      parquet, sizeof(parquet), "%s/%.*s.parquet", flash_root, stem, relative);
-  if (flash_length < 0 ||
-      static_cast<std::size_t>(flash_length) >= sizeof(parquet))
+  if (ArchiveDirectoryIO::inspect(parquet, &info) == 0)
     return true;
-  if (ArchiveDirectoryIO::inspect(parquet, &info) == 0 || errno != ENOENT)
-    return true;
-  const int card_length = std::snprintf(
-      parquet, sizeof(parquet), "%s/%.*s.parquet", kDirectory, stem, relative);
-  if (card_length < 0 ||
-      static_cast<std::size_t>(card_length) >= sizeof(parquet))
-    return true;
-  return ArchiveDirectoryIO::inspect(parquet, &info) != 0;
+  unsure = unsure || errno != ENOENT;
+  return false;
+}
+
+// True when the flash file `relative` holds the owner's data on its own:
+// a sidecar waits until its Parquet left flash and is on the card. A set
+// aside sidecar (#212) belongs to its Parquet under either name, since only
+// the sidecar may have conflicted.
+bool sidecar_waits(const char *relative) {
+  constexpr std::string_view kJson = ".json";
+  std::string_view stem{relative};
+  stem.remove_suffix(kJson.size());
+  const std::array<std::string_view, 2> prefixes{"",
+                                                 flash_copy::kConflictPrefix};
+  std::size_t names = 1;
+  if (flash_copy::set_aside_name(relative)) {
+    stem.remove_prefix(flash_copy::kConflictPrefixLength);
+    names = 2;
+  }
+  bool unsure = false, on_card = false;
+  for (std::size_t at = 0; at < names; ++at) {
+    if (parquet_on(flash_root, prefixes[at], stem, unsure))
+      return true;
+    on_card = parquet_on(kDirectory, prefixes[at], stem, unsure) || on_card;
+  }
+  return unsure || !on_card;
 }
 
 // Removes the empty directories above a freed flash file, up to the flash
@@ -2777,12 +2799,31 @@ bool service_copy_back(bool storage_ready) {
     remove_empty_flash_directories(relative);
     measure_flash();
     break;
-  case flash_copy::Outcome::Conflict:
+  case flash_copy::Outcome::Conflict: {
     oslog.printf("OS FLASH copy name=%s bytes=%llu result=conflict\n", relative,
                  bytes);
-    if (!drain.held.add(hash))
+    // Both files stay. The flash one moves to its set aside name, which the
+    // card does not hold, so LIST names it and the next pass copies it (#212).
+    const auto aside = drain.copier.set_aside(drain.io);
+    if (aside) {
+      oslog.printf("OS FLASH conflict name=%s moved=%s%s sidecar=%d\n",
+                   relative, flash_copy::kConflictPrefix, relative,
+                   *aside ? 1 : 0);
+      remove_empty_flash_directories(relative);
+      break;
+    }
+    oslog.printf("OS FLASH conflict name=%s moved=none reason=%s errno=%d\n",
+                 relative, flash_copy::aside_error_name(aside.error()),
+                 aside.error() == flash_copy::AsideError::AlreadyAside ? 0
+                                                                       : errno);
+    if (flash_copy::aside_retries(aside.error())) {
+      if (!drain.failed.add(hash))
+        drain.next_at = now + kCopyWaitSeconds;
+    } else if (!drain.held.add(hash)) {
       drain.next_at = now + kCopyWaitSeconds;
+    }
     break;
+  }
   default: {
     ++errors;
     const auto failure =

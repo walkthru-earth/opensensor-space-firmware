@@ -11,11 +11,20 @@ owner wipes them and starts again.
 
 ## Flash fallback hardening (fix/flash-fallback-hardening)
 
-**Needs a matched reflash of all four boards. No app change is required.**
-No column, field id, LIVE key, STATUS key, response, config key, dictionary
-or digest changes. Decision record 0004, items 4 and 7.
+**Needs a matched reflash of all four boards and an app that accepts
+`flash-conflict/` names.** No column, field id, LIVE key, STATUS key, response
+layout, config key, dictionary or digest changes. Decision record 0004, items
+4, 7 and 9.
 
 **What changed.**
+
+- A flash fallback file whose name the card already held with other bytes
+  now moves on flash to `flash-conflict/<name>`, with its sidecar (#212).
+  `LIST` and `LIST_SINCE` name it there, first from flash and after its copy
+  from the card, and `OPEN` serves it. Before it was never listed, never
+  freed and kept `LIST_SINCE` on `full` for good. The serial console prints
+  the new line `OS FLASH conflict name=<name> moved=flash-conflict/<name>
+  sidecar=<0|1>`, or `moved=none reason=<why> errno=<n>` when the file stays.
 
 - STATUS `ls` on a boot whose flash mount failed, or on an image with the
   fallback off, now includes the copies earlier boots made (#217). Before it
@@ -29,13 +38,18 @@ or digest changes. Decision record 0004, items 4 and 7.
   serial console prints the existing `PARQUET STORAGE state=retry` line after
   the `OS FLASH copy ... result=error` line.
 
-**Why.** A Full card in the band above its reserve took the waiting rows into
+**Why.** A conflicting flash file was unreachable by the phone. A Full card in the band above its reserve took the waiting rows into
 a card file that then held every later row off flash, and a card that cannot
 write cut each flash file at every probe. A card with no rows to test reached
 Ready on its mount alone.
 
-**What the app must do.** Nothing. `sd_state` keeps its values and the app
-already treats 3 (retry) as not logging.
+**What the app must do.** Accept a listed name that starts with
+`flash-conflict/` and holds a Thing path after it. Archive it under that full
+name, as one more file. Its rows may repeat or differ from the file of the
+plain name, so keep both and never merge, replace or drop either. A reader
+that globs `thing=*` skips it, so show it to the owner as a conflict copy.
+`sd_state` keeps its values and the app already treats 3 (retry) as not
+logging.
 
 ## Internal flash fallback archive (feat/flash-fallback-archive)
 
