@@ -6,6 +6,7 @@
 #include <cstring>
 #include <limits>
 #include <numeric>
+#include <type_traits>
 #include <utility>
 
 #include "lz4_codec.h"
@@ -27,6 +28,7 @@ constexpr size_t kMaxHeaderBytes = 256;
 constexpr int32_t kDataPage = 0;
 constexpr int32_t kPlain = 0;
 constexpr int32_t kRle = 3;
+constexpr int32_t kDeltaBinaryPacked = 5;
 
 class Thrift {
 public:
@@ -325,6 +327,172 @@ values(std::span<const uint8_t> bytes, PhysicalType type,
   return {};
 }
 
+// DELTA_BINARY_PACKED, as apache/parquet-format Encodings.md defines it.
+// A header of ULEB128 block size, miniblocks per block and total value
+// count, then the zigzag first value. Each block holds a zigzag min delta,
+// one bit width byte per miniblock and the miniblocks, bit packed LSB first
+// and padded to full size. In the last block the widths of miniblocks past
+// the last value are present with any value, and those miniblocks have no
+// bytes. Arithmetic wraps in the column's two's complement width.
+class DeltaStream {
+public:
+  explicit DeltaStream(std::span<const uint8_t> bytes) : bytes_(bytes) {}
+
+  [[nodiscard]] size_t left() const { return bytes_.size() - at_; }
+
+  // ULEB128 of at most 10 bytes whose value fits 64 bits. Overlong or
+  // truncated input is an error.
+  [[nodiscard]] std::expected<uint64_t, ColumnError> uleb() {
+    uint64_t value = 0;
+    for (unsigned i = 0; i < 10; ++i) {
+      if (at_ >= bytes_.size())
+        return std::unexpected(ColumnError::Delta);
+      const uint8_t b = bytes_[at_++];
+      if (i == 9 && b > 1)
+        return std::unexpected(ColumnError::Delta);
+      value |= static_cast<uint64_t>(b & 0x7f) << (7 * i);
+      if (!(b & 0x80))
+        return value;
+    }
+    return std::unexpected(ColumnError::Delta);
+  }
+
+  [[nodiscard]] std::expected<int64_t, ColumnError> zigzag() {
+    const auto raw = uleb();
+    if (!raw)
+      return std::unexpected(raw.error());
+    return std::bit_cast<int64_t>((*raw >> 1) ^ (0 - (*raw & 1)));
+  }
+
+  [[nodiscard]] std::expected<std::span<const uint8_t>, ColumnError>
+  take(uint64_t size) {
+    if (size > left())
+      return std::unexpected(ColumnError::Delta);
+    const auto bytes = bytes_.subspan(at_, static_cast<size_t>(size));
+    at_ += static_cast<size_t>(size);
+    return bytes;
+  }
+
+private:
+  std::span<const uint8_t> bytes_;
+  size_t at_ = 0;
+};
+
+// Value `index` of a miniblock packed LSB first at `width` bits. The caller
+// has checked that the body holds every bit of it.
+uint64_t unpack(std::span<const uint8_t> body, size_t index, unsigned width) {
+  uint64_t value = 0;
+  size_t bit = index * width;
+  for (unsigned got = 0; got < width;) {
+    const unsigned offset = bit % 8;
+    const unsigned part = std::min(8U - offset, width - got);
+    const uint64_t bits =
+        static_cast<uint64_t>(body[bit / 8] >> offset) & ((1U << part) - 1U);
+    value |= bits << got;
+    got += part;
+    bit += part;
+  }
+  return value;
+}
+
+// The largest block we accept. The spec bounds it only by ULEB128, and this
+// keeps every size product below 2^64.
+constexpr uint64_t kMaxDeltaBlock = std::numeric_limits<uint32_t>::max();
+
+// Decodes exactly out.size() values. The stream must state that count and
+// end at its last miniblock, so a short, long or padded stream is refused.
+template <typename T>
+[[nodiscard]] std::expected<void, ColumnError>
+delta_values(std::span<const uint8_t> bytes, std::span<T> out) {
+  using U = std::make_unsigned_t<T>;
+  constexpr unsigned kBits = 8 * sizeof(T);
+  DeltaStream in(bytes);
+  const auto block = in.uleb();
+  const auto miniblocks = in.uleb();
+  const auto count = in.uleb();
+  const auto first = in.zigzag();
+  if (!block || !miniblocks || !count || !first)
+    return std::unexpected(ColumnError::Delta);
+  if (*block == 0 || *block % 128 != 0 || *block > kMaxDeltaBlock ||
+      *miniblocks == 0 || *block % *miniblocks != 0 ||
+      (*block / *miniblocks) % 32 != 0 || *count != out.size())
+    return std::unexpected(ColumnError::Delta);
+  if (*first < std::numeric_limits<T>::min() ||
+      *first > std::numeric_limits<T>::max())
+    return std::unexpected(ColumnError::Delta);
+  // Both stay below 2^32, so the body size below fits 64 bits.
+  const uint64_t per_miniblock = *block / *miniblocks;
+  const uint64_t widths_per_block = *miniblocks;
+  size_t done = 0;
+  U last = static_cast<U>(*first);
+  if (!out.empty())
+    out[done++] = std::bit_cast<T>(last);
+  while (done < out.size()) {
+    const auto min_delta = in.zigzag();
+    if (!min_delta || *min_delta < std::numeric_limits<T>::min() ||
+        *min_delta > std::numeric_limits<T>::max())
+      return std::unexpected(ColumnError::Delta);
+    const auto widths = in.take(widths_per_block);
+    if (!widths)
+      return std::unexpected(widths.error());
+    for (const uint8_t width : *widths) {
+      // Widths past the last value are arbitrary and carry no body.
+      if (done == out.size())
+        continue;
+      if (width > kBits)
+        return std::unexpected(ColumnError::Delta);
+      const auto body = in.take(per_miniblock / 8 * width);
+      if (!body)
+        return std::unexpected(body.error());
+      const auto n = static_cast<size_t>(
+          std::min<uint64_t>(per_miniblock, out.size() - done));
+      for (size_t i = 0; i < n; ++i) {
+        last += static_cast<U>(*min_delta) +
+                static_cast<U>(unpack(*body, i, width));
+        out[done++] = std::bit_cast<T>(last);
+      }
+    }
+  }
+  if (in.left() != 0)
+    return std::unexpected(ColumnError::Delta);
+  return {};
+}
+
+// Moves the `present` decoded values at the front of `rows` to the rows
+// `valid` marks, and writes 0 to the null rows. Walking backwards never
+// overwrites a value before it moves, since a present value only moves on.
+template <typename T>
+void spread(std::span<T> rows, std::span<const uint8_t> valid,
+            size_t present) {
+  size_t from = present;
+  for (size_t i = rows.size(); i-- > 0;)
+    rows[i] = valid[i] ? rows[--from] : T{0};
+}
+
+// Decodes a DELTA_BINARY_PACKED INT32 or INT64 page body into its rows.
+[[nodiscard]] std::expected<void, ColumnError>
+delta_page(std::span<const uint8_t> bytes, PhysicalType type,
+           std::span<const uint8_t> valid, size_t first,
+           const ColumnOutput &out) {
+  const size_t present = std::accumulate(valid.begin(), valid.end(), size_t{0});
+  if (type == PhysicalType::Int64) {
+    const auto rows = out.int64s.subspan(first, valid.size());
+    const auto decoded = delta_values(bytes, rows.first(present));
+    if (!decoded)
+      return decoded;
+    spread(rows, valid, present);
+    return {};
+  }
+  if (type != PhysicalType::Int32)
+    return std::unexpected(ColumnError::Encoding);
+  const auto rows = out.int32s.subspan(first, valid.size());
+  const auto decoded = delta_values(bytes, rows.first(present));
+  if (!decoded)
+    return decoded;
+  spread(rows, valid, present);
+  return {};
+}
+
 // Reads one page's stored bytes at `at`, decompresses them and writes its
 // rows to `out` from row `first`. A separate frame keeps read_column small.
 [[nodiscard]] std::expected<void, ColumnError>
@@ -372,6 +540,8 @@ page_values(ReadAt read_at, void *context, uint64_t at, const Page &page,
   } else {
     std::fill(page_valid.begin(), page_valid.end(), uint8_t{1});
   }
+  if (page.encoding == kDeltaBinaryPacked)
+    return delta_page(value_bytes, schema.type, page_valid, first, out);
   // values() reads the mask from out.valid and writes it back unchanged.
   return values(value_bytes, schema.type, page_valid, first, out);
 }
@@ -403,6 +573,8 @@ const char *column_error_name(ColumnError error) {
     return "values";
   case Capacity:
     return "capacity";
+  case Delta:
+    return "delta";
   }
   return "unknown";
 }
@@ -477,7 +649,10 @@ std::expected<size_t, ColumnError> read_column(ReadAt read_at, void *context,
     if (!header)
       return std::unexpected(header.error());
     const Page &page = *header;
-    if (page.encoding != kPlain)
+    const bool integer = schema.type == PhysicalType::Int32 ||
+                         schema.type == PhysicalType::Int64;
+    if (page.encoding != kPlain &&
+        !(integer && page.encoding == kDeltaBinaryPacked))
       return std::unexpected(ColumnError::Encoding);
     if (schema.nullable && page.definition_encoding != kRle)
       return std::unexpected(ColumnError::Encoding);

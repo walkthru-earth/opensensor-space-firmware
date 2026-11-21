@@ -21,7 +21,8 @@
 //     exactly the group's rows with a 0 or 1 mask.
 //   parquet_reader_fixture pagecases
 //     Hand-built pages, one per hostile shape, each with the exact error the
-//     decoder must return, plus accepted RLE, bit-packed and two page chunks.
+//     decoder must return, plus accepted RLE, bit-packed and two page chunks
+//     and DELTA_BINARY_PACKED pages checked row by row.
 #include "../firmware/common/src/lz4_codec.h"
 #include "../firmware/common/src/parquet_columns.h"
 #include "../firmware/common/src/parquet_reader.h"
@@ -32,7 +33,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -588,6 +591,8 @@ struct Case {
   int64_t chunk_delta = 0; // added to total_compressed_size
   bool fail_reads = false;
   bool dictionary = false;
+  // When set, the decoded rows must equal these, nullopt for a null row.
+  std::vector<std::optional<int64_t>> rows_want{};
 };
 
 std::vector<uint8_t> lz4(const std::vector<uint8_t> &raw) {
@@ -640,6 +645,112 @@ std::vector<uint8_t> join(std::vector<uint8_t> a,
                           const std::vector<uint8_t> &b) {
   a.insert(a.end(), b.begin(), b.end());
   return a;
+}
+
+// DELTA_BINARY_PACKED bytes, built the way apache/parquet-format
+// Encodings.md describes, with knobs for the shapes a reader must accept.
+struct Delta {
+  std::vector<uint8_t> bytes;
+  void uleb(uint64_t v) {
+    while (v >= 0x80) {
+      bytes.push_back(static_cast<uint8_t>(v | 0x80));
+      v >>= 7;
+    }
+    bytes.push_back(static_cast<uint8_t>(v));
+  }
+  void zigzag(int64_t v) {
+    uleb((static_cast<uint64_t>(v) << 1) ^ static_cast<uint64_t>(v >> 63));
+  }
+};
+
+struct DeltaShape {
+  unsigned bits = 64; // 32 for an INT32 column
+  uint64_t block = 128;
+  uint64_t miniblocks = 4;
+  uint8_t unused_width = 0; // width byte of a miniblock past the last value
+  bool pad_ones = false;    // set every padding bit of the last miniblock
+};
+
+std::vector<uint8_t> delta(const std::vector<int64_t> &values,
+                           const DeltaShape &shape = {}) {
+  const uint64_t mask =
+      shape.bits == 64 ? ~uint64_t{0} : (uint64_t{1} << shape.bits) - 1;
+  const auto signed_delta = [&](uint64_t d) {
+    d &= mask;
+    if (shape.bits < 64 && (d >> (shape.bits - 1)) & 1)
+      d |= ~mask;
+    return std::bit_cast<int64_t>(d);
+  };
+  Delta out;
+  out.uleb(shape.block);
+  out.uleb(shape.miniblocks);
+  out.uleb(values.size());
+  out.zigzag(values.empty() ? 0 : values[0]);
+  const size_t per = shape.block / shape.miniblocks;
+  for (size_t at = 1; at < values.size(); at += shape.block) {
+    const size_t n = std::min<size_t>(shape.block, values.size() - at);
+    std::vector<int64_t> deltas(n);
+    for (size_t i = 0; i < n; ++i)
+      deltas[i] = signed_delta(static_cast<uint64_t>(values[at + i]) -
+                               static_cast<uint64_t>(values[at + i - 1]));
+    int64_t min = deltas[0];
+    for (const int64_t d : deltas)
+      min = std::min(min, d);
+    out.zigzag(min);
+    std::vector<uint8_t> widths;
+    for (size_t m = 0; m < shape.miniblocks; ++m) {
+      if (m * per >= n) {
+        widths.push_back(shape.unused_width);
+        continue;
+      }
+      uint64_t top = 0;
+      for (size_t i = m * per; i < std::min(n, (m + 1) * per); ++i)
+        top |= (static_cast<uint64_t>(deltas[i]) - static_cast<uint64_t>(min)) &
+               mask;
+      widths.push_back(static_cast<uint8_t>(std::bit_width(top)));
+    }
+    out.bytes.insert(out.bytes.end(), widths.begin(), widths.end());
+    for (size_t m = 0; m < shape.miniblocks && m * per < n; ++m) {
+      const unsigned width = widths[m];
+      std::vector<uint8_t> body(per * width / 8);
+      for (size_t i = 0; i < per; ++i) {
+        uint64_t v = 0;
+        if (m * per + i < n)
+          v = (static_cast<uint64_t>(deltas[m * per + i]) -
+               static_cast<uint64_t>(min)) &
+              mask;
+        else if (shape.pad_ones)
+          v = ~uint64_t{0};
+        for (unsigned b = 0; b < width; ++b)
+          if ((v >> b) & 1)
+            body[(i * width + b) / 8] |=
+                static_cast<uint8_t>(1U << ((i * width + b) % 8));
+      }
+      out.bytes.insert(out.bytes.end(), body.begin(), body.end());
+    }
+  }
+  return out.bytes;
+}
+
+// A DELTA page header with raw bytes, so a malformed stream can be built.
+std::vector<uint8_t> delta_page(const std::vector<uint8_t> &payload,
+                                size_t values, bool compress = false) {
+  return page(payload, values, compress, 0, 5);
+}
+
+// A nullable page whose present values are DELTA bytes.
+std::vector<uint8_t> nullable_delta(const std::vector<uint8_t> &levels,
+                                    const std::vector<uint8_t> &values) {
+  Page p;
+  p.le(levels.size(), 4);
+  p.append(levels);
+  p.append(values);
+  return p.bytes;
+}
+
+std::vector<std::optional<int64_t>>
+present_rows(const std::vector<int64_t> &values) {
+  return {values.begin(), values.end()};
 }
 
 int run_pagecases(State &state, Columns &columns) {
@@ -719,6 +830,46 @@ int run_pagecases(State &state, Columns &columns) {
     p.append(required_int32({7, -9}));
     stats_header = p.bytes;
   }
+  // DELTA_BINARY_PACKED inputs. Example 1 and 2 of Encodings.md, in a
+  // legal 128 value block.
+  const std::vector<int64_t> example1 = {1, 2, 3, 4, 5};
+  const std::vector<int64_t> example2 = {7, 5, 3, 1, 2, 3, 4, 5};
+  constexpr int64_t i64_min = std::numeric_limits<int64_t>::min();
+  constexpr int64_t i64_max = std::numeric_limits<int64_t>::max();
+  constexpr int64_t i32_min = std::numeric_limits<int32_t>::min();
+  constexpr int64_t i32_max = std::numeric_limits<int32_t>::max();
+  const std::vector<int64_t> wide64 = {i64_min, i64_max, 0, i64_min, -1};
+  const std::vector<int64_t> wide32 = {i32_min, i32_max, 0, i32_min, -1};
+  std::vector<int64_t> long_run(300);
+  {
+    uint64_t seed = 229;
+    int64_t v = 1'700'000'000'000'000;
+    for (auto &x : long_run) {
+      v += 10'000'000 + static_cast<int64_t>(next(seed) % 2001) - 1000;
+      x = v;
+    }
+  }
+  // Rows 0..5 nullable: 10, null, null, -3, 2^40, null.
+  const std::vector<int64_t> sparse = {10, -3, int64_t{1} << 40};
+  const auto delta_two = delta({1, 2});
+  // Header 128, 4, 2, first 1 then a block with min delta 1.
+  const auto block_head = [](uint64_t block, uint64_t miniblocks,
+                             uint64_t count, int64_t first) {
+    Delta d;
+    d.uleb(block);
+    d.uleb(miniblocks);
+    d.uleb(count);
+    d.zigzag(first);
+    return d.bytes;
+  };
+  const auto with_block = [&](std::vector<uint8_t> head, int64_t min_delta,
+                              std::vector<uint8_t> widths) {
+    Delta d;
+    d.bytes = std::move(head);
+    d.zigzag(min_delta);
+    d.bytes.insert(d.bytes.end(), widths.begin(), widths.end());
+    return d.bytes;
+  };
   const std::vector<Case> cases = {
       {.name = "rle-uncompressed",
        .type = PhysicalType::Float,
@@ -909,13 +1060,257 @@ int run_pagecases(State &state, Columns &columns) {
        .chunk = page(required_int32({1, 2}), 2),
        .want = ColumnError::Encoding,
        .dictionary = true},
-      {.name = "delta-encoding",
+      {.name = "delta-on-float",
+       .type = PhysicalType::Float,
+       .nullable = false,
+       .codec = Codec::Uncompressed,
+       .rows = 2,
+       .chunk = delta_page(delta({1, 2}), 2),
+       .want = ColumnError::Encoding},
+      {.name = "delta-example-1",
+       .type = PhysicalType::Int64,
+       .nullable = false,
+       .codec = Codec::Uncompressed,
+       .rows = 5,
+       .chunk = delta_page(delta(example1), 5),
+       .want = std::nullopt,
+       .rows_want = present_rows(example1)},
+      {.name = "delta-example-2",
+       .type = PhysicalType::Int32,
+       .nullable = false,
+       .codec = Codec::Uncompressed,
+       .rows = 8,
+       .chunk = delta_page(delta(example2, {.bits = 32}), 8),
+       .want = std::nullopt,
+       .rows_want = present_rows(example2)},
+      {.name = "delta-lz4",
+       .type = PhysicalType::Int32,
+       .nullable = false,
+       .codec = Codec::Lz4Raw,
+       .rows = 8,
+       .chunk = delta_page(delta(example2, {.bits = 32}), 8, true),
+       .want = std::nullopt,
+       .rows_want = present_rows(example2)},
+      {.name = "delta-nullable",
+       .type = PhysicalType::Int64,
+       .nullable = true,
+       .codec = Codec::Uncompressed,
+       .rows = 6,
+       .chunk = page(nullable_delta(rle, delta(sparse)), 6, false, 0, 5),
+       .want = std::nullopt,
+       .rows_want = {10, std::nullopt, std::nullopt, -3, int64_t{1} << 40, std::nullopt}},
+      {.name = "delta-all-null",
+       .type = PhysicalType::Int64,
+       .nullable = true,
+       .codec = Codec::Uncompressed,
+       .rows = 3,
+       .chunk = page(nullable_delta({0x06, 0}, delta({})), 3, false, 0, 5),
+       .want = std::nullopt,
+       .rows_want = {std::nullopt, std::nullopt, std::nullopt}},
+      {.name = "delta-one-value",
+       .type = PhysicalType::Int64,
+       .nullable = false,
+       .codec = Codec::Uncompressed,
+       .rows = 1,
+       .chunk = delta_page(delta({-42}), 1),
+       .want = std::nullopt,
+       .rows_want = {-42}},
+      {.name = "delta-wrap-int64",
+       .type = PhysicalType::Int64,
+       .nullable = false,
+       .codec = Codec::Uncompressed,
+       .rows = 5,
+       .chunk = delta_page(delta(wide64), 5),
+       .want = std::nullopt,
+       .rows_want = present_rows(wide64)},
+      {.name = "delta-wrap-int32",
+       .type = PhysicalType::Int32,
+       .nullable = false,
+       .codec = Codec::Uncompressed,
+       .rows = 5,
+       .chunk = delta_page(delta(wide32, {.bits = 32}), 5),
+       .want = std::nullopt,
+       .rows_want = present_rows(wide32)},
+      {.name = "delta-blocks-128",
+       .type = PhysicalType::Int64,
+       .nullable = false,
+       .codec = Codec::Uncompressed,
+       .rows = 300,
+       .chunk = delta_page(delta(long_run), 300),
+       .want = std::nullopt,
+       .rows_want = present_rows(long_run)},
+      {.name = "delta-blocks-256",
+       .type = PhysicalType::Int64,
+       .nullable = false,
+       .codec = Codec::Uncompressed,
+       .rows = 300,
+       .chunk = delta_page(delta(long_run, {.block = 256, .miniblocks = 8}), 300),
+       .want = std::nullopt,
+       .rows_want = present_rows(long_run)},
+      {.name = "delta-one-miniblock",
+       .type = PhysicalType::Int64,
+       .nullable = false,
+       .codec = Codec::Uncompressed,
+       .rows = 300,
+       .chunk = delta_page(delta(long_run, {.miniblocks = 1}), 300),
+       .want = std::nullopt,
+       .rows_want = present_rows(long_run)},
+      {.name = "delta-unused-widths",
+       .type = PhysicalType::Int64,
+       .nullable = false,
+       .codec = Codec::Uncompressed,
+       .rows = 8,
+       .chunk = delta_page(delta(example2, {.unused_width = 0xff, .pad_ones = true}), 8),
+       .want = std::nullopt,
+       .rows_want = present_rows(example2)},
+      {.name = "delta-two-pages",
+       .type = PhysicalType::Int64,
+       .nullable = false,
+       .codec = Codec::Uncompressed,
+       .rows = 7,
+       .chunk = join(delta_page(delta(example1), 5), delta_page(delta({-1, 9}), 2)),
+       .want = std::nullopt,
+       .rows_want = {1, 2, 3, 4, 5, -1, 9}},
+      {.name = "delta-empty",
+       .type = PhysicalType::Int64,
+       .nullable = false,
+       .codec = Codec::Uncompressed,
+       .rows = 2,
+       .chunk = delta_page({}, 2),
+       .want = ColumnError::Delta},
+      {.name = "delta-overlong-varint",
+       .type = PhysicalType::Int64,
+       .nullable = false,
+       .codec = Codec::Uncompressed,
+       .rows = 2,
+       .chunk = delta_page({0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x01}, 2),
+       .want = ColumnError::Delta},
+      {.name = "delta-varint-past-64-bits",
+       .type = PhysicalType::Int64,
+       .nullable = false,
+       .codec = Codec::Uncompressed,
+       .rows = 2,
+       .chunk = delta_page(join({0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x02}, {4, 2, 2}), 2),
+       .want = ColumnError::Delta},
+      {.name = "delta-block-zero",
+       .type = PhysicalType::Int64,
+       .nullable = false,
+       .codec = Codec::Uncompressed,
+       .rows = 2,
+       .chunk = delta_page(with_block(block_head(0, 4, 2, 1), 1, {0, 0, 0, 0}), 2),
+       .want = ColumnError::Delta},
+      {.name = "delta-block-64",
+       .type = PhysicalType::Int64,
+       .nullable = false,
+       .codec = Codec::Uncompressed,
+       .rows = 2,
+       .chunk = delta_page(with_block(block_head(64, 2, 2, 1), 1, {0, 0}), 2),
+       .want = ColumnError::Delta},
+      {.name = "delta-block-too-big",
+       .type = PhysicalType::Int64,
+       .nullable = false,
+       .codec = Codec::Uncompressed,
+       .rows = 2,
+       .chunk = delta_page(with_block(block_head(uint64_t{1} << 33, 4, 2, 1), 1, {0, 0, 0, 0}), 2),
+       .want = ColumnError::Delta},
+      {.name = "delta-miniblocks-zero",
+       .type = PhysicalType::Int64,
+       .nullable = false,
+       .codec = Codec::Uncompressed,
+       .rows = 2,
+       .chunk = delta_page(with_block(block_head(128, 0, 2, 1), 1, {}), 2),
+       .want = ColumnError::Delta},
+      {.name = "delta-miniblocks-3",
+       .type = PhysicalType::Int64,
+       .nullable = false,
+       .codec = Codec::Uncompressed,
+       .rows = 2,
+       .chunk = delta_page(with_block(block_head(128, 3, 2, 1), 1, {0, 0, 0}), 2),
+       .want = ColumnError::Delta},
+      {.name = "delta-miniblocks-8",
+       .type = PhysicalType::Int64,
+       .nullable = false,
+       .codec = Codec::Uncompressed,
+       .rows = 2,
+       .chunk = delta_page(with_block(block_head(128, 8, 2, 1), 1, {0, 0, 0, 0, 0, 0, 0, 0}), 2),
+       .want = ColumnError::Delta},
+      {.name = "delta-width-65",
+       .type = PhysicalType::Int64,
+       .nullable = false,
+       .codec = Codec::Uncompressed,
+       .rows = 2,
+       .chunk = delta_page(join(with_block(block_head(128, 4, 2, 1), 1, {65, 0, 0, 0}), std::vector<uint8_t>(260)), 2),
+       .want = ColumnError::Delta},
+      {.name = "delta-width-33-int32",
        .type = PhysicalType::Int32,
        .nullable = false,
        .codec = Codec::Uncompressed,
        .rows = 2,
-       .chunk = page(required_int32({1, 2}), 2, false, 0, 5),
-       .want = ColumnError::Encoding},
+       .chunk = delta_page(join(with_block(block_head(128, 4, 2, 1), 1, {33, 0, 0, 0}), std::vector<uint8_t>(132)), 2),
+       .want = ColumnError::Delta},
+      {.name = "delta-count-high",
+       .type = PhysicalType::Int64,
+       .nullable = false,
+       .codec = Codec::Uncompressed,
+       .rows = 2,
+       .chunk = delta_page(with_block(block_head(128, 4, 3, 1), 1, {0, 0, 0, 0}), 2),
+       .want = ColumnError::Delta},
+      {.name = "delta-count-low",
+       .type = PhysicalType::Int64,
+       .nullable = false,
+       .codec = Codec::Uncompressed,
+       .rows = 2,
+       .chunk = delta_page(block_head(128, 4, 1, 1), 2),
+       .want = ColumnError::Delta},
+      {.name = "delta-count-past-present",
+       .type = PhysicalType::Int64,
+       .nullable = true,
+       .codec = Codec::Uncompressed,
+       .rows = 6,
+       .chunk = page(nullable_delta(rle, delta({10, -3, 7, 8})), 6, false, 0, 5),
+       .want = ColumnError::Delta},
+      {.name = "delta-missing-block",
+       .type = PhysicalType::Int64,
+       .nullable = false,
+       .codec = Codec::Uncompressed,
+       .rows = 2,
+       .chunk = delta_page(block_head(128, 4, 2, 1), 2),
+       .want = ColumnError::Delta},
+      {.name = "delta-missing-widths",
+       .type = PhysicalType::Int64,
+       .nullable = false,
+       .codec = Codec::Uncompressed,
+       .rows = 2,
+       .chunk = delta_page(with_block(block_head(128, 4, 2, 1), 1, {0, 0}), 2),
+       .want = ColumnError::Delta},
+      {.name = "delta-truncated-body",
+       .type = PhysicalType::Int64,
+       .nullable = false,
+       .codec = Codec::Uncompressed,
+       .rows = 3,
+       .chunk = delta_page(prefix(delta({1, 2, 9}), delta({1, 2, 9}).size() - 1), 3),
+       .want = ColumnError::Delta},
+      {.name = "delta-trailing-byte",
+       .type = PhysicalType::Int64,
+       .nullable = false,
+       .codec = Codec::Uncompressed,
+       .rows = 2,
+       .chunk = delta_page(join(delta_two, {0}), 2),
+       .want = ColumnError::Delta},
+      {.name = "delta-first-past-int32",
+       .type = PhysicalType::Int32,
+       .nullable = false,
+       .codec = Codec::Uncompressed,
+       .rows = 2,
+       .chunk = delta_page(with_block(block_head(128, 4, 2, i32_max + 1), 1, {0, 0, 0, 0}), 2),
+       .want = ColumnError::Delta},
+      {.name = "delta-min-past-int32",
+       .type = PhysicalType::Int32,
+       .nullable = false,
+       .codec = Codec::Uncompressed,
+       .rows = 2,
+       .chunk = delta_page(with_block(block_head(128, 4, 2, 1), i32_min - 1, {0, 0, 0, 0}), 2),
+       .want = ColumnError::Delta},
       {.name = "zstd",
        .type = PhysicalType::Int32,
        .nullable = false,
@@ -979,6 +1374,18 @@ int run_pagecases(State &state, Columns &columns) {
       fprintf(stderr, "case %s: got %s\n", test.name,
               decoded ? "ok" : telemetry::column_error_name(decoded.error()));
       return 11;
+    }
+    for (size_t r = 0; r < test.rows_want.size(); ++r) {
+      const auto &want = test.rows_want[r];
+      const int64_t got = test.type == PhysicalType::Int64
+                              ? columns.int64s[r]
+                              : int64_t{columns.int32s[r]};
+      const bool row_ok = want ? columns.valid[r] == 1 && got == *want
+                               : columns.valid[r] == 0 && got == 0;
+      if (test.rows_want.size() != test.rows || !row_ok) {
+        fprintf(stderr, "case %s: row %zu wrong\n", test.name, r);
+        return 13;
+      }
     }
     ++passed;
   }
