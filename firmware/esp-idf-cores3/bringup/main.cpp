@@ -341,20 +341,6 @@ esp_err_t mount_sd() {
   return esp_vfs_fat_sdspi_mount("/sd", &host, &device, &mount, &sd_card);
 }
 
-// Mounts the internal flash volume (decision record 0004) and prints its
-// OS FLASH line. Returns the fallback archive root, or nullptr when the
-// volume is off or the build leaves it out.
-static const char *mount_flash_fallback() {
-#if CONFIG_OS_LOGGER_FLASH_FALLBACK
-  std::array<char, opensensor::storage::kFlashLineBytes> line{};
-  const auto volume = opensensor::storage::mount_flash_volume(line);
-  oslog.printf("%s", line.data());
-  return volume ? opensensor::storage::kFlashArchiveDirectory : nullptr;
-#else
-  return nullptr;
-#endif
-}
-
 bool report_sd() {
   if (sd_card)
     return true;
@@ -946,7 +932,8 @@ static void board_begin() {
   report_rtc_imu_touch();
   sd_mounted = report_sd();
   report_dma_memory("sd-mounted");
-  const char *fallback_directory = mount_flash_fallback();
+  const char *fallback_directory = opensensor::storage::mount_flash_fallback(
+      [](const char *text) { oslog.printf("%s", text); });
   start_pms();
   // os_logger prints the cause. The device page shows "not started".
   if (!telemetry::begin_logger(sd_mounted, fallback_directory))

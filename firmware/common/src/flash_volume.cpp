@@ -2,6 +2,10 @@
 
 #include "archive_files.h"
 
+#include <sdkconfig.h>
+
+#include <array>
+
 #include <diskio_wl.h>
 #include <esp_err.h>
 #include <esp_vfs_fat.h>
@@ -98,6 +102,18 @@ mount_flash_volume(std::span<char, kFlashLineBytes> line) {
                      .space = space,
                      .error_name = error_name};
   return mount_flash_policy(ops, line);
+}
+
+const char *mount_flash_fallback(void (*emit)(const char *text)) {
+#if CONFIG_OS_LOGGER_FLASH_FALLBACK
+  std::array<char, kFlashLineBytes> line{};
+  const auto volume = mount_flash_volume(line);
+  emit(line.data());
+  return volume ? kFlashArchiveDirectory : nullptr;
+#else
+  static_cast<void>(emit);
+  return nullptr;
+#endif
 }
 
 std::expected<FlashSpace, FlashSpaceError> flash_volume_space() {

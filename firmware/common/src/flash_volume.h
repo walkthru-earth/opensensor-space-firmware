@@ -97,6 +97,14 @@ mount_flash_policy(const FlashOps &ops, std::span<char, kFlashLineBytes> line);
 [[nodiscard]] std::expected<FlashVolume, FlashMountError>
 mount_flash_volume(std::span<char, kFlashLineBytes> line);
 
+// Boot helper for a board main. Mounts the flash volume, hands the OS FLASH
+// line to `emit` (a NUL terminated text ending in '\n'), and returns the
+// fallback archive root for oslogger::Config::fallback_directory. Returns
+// nullptr when the volume is off. A build without
+// CONFIG_OS_LOGGER_FLASH_FALLBACK mounts nothing, never calls `emit` and
+// returns nullptr.
+[[nodiscard]] const char *mount_flash_fallback(void (*emit)(const char *text));
+
 // Device glue. Total and free bytes of the mounted volume, for the logger's
 // flash reserve check. Unavailable while nothing is mounted at
 // kFlashMountPoint.

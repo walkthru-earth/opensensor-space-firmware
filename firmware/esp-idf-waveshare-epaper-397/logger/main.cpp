@@ -1291,19 +1291,6 @@ void poll_orientation(std::int64_t now) {
   log_turn(**read, turn);
   imu_log = {.logged = true, .turn = turn, .next_us = now + kImuLogUs};
 }
-// Mounts the internal flash volume (decision record 0004) and prints its
-// OS FLASH line. Returns the fallback archive root, or nullptr when the
-// volume is off or the build leaves it out.
-const char *mount_flash_fallback() {
-#if CONFIG_OS_LOGGER_FLASH_FALLBACK
-  std::array<char, opensensor::storage::kFlashLineBytes> line{};
-  const auto volume = opensensor::storage::mount_flash_volume(line);
-  oslog.printf("%s", line.data());
-  return volume ? opensensor::storage::kFlashArchiveDirectory : nullptr;
-#else
-  return nullptr;
-#endif
-}
 } // namespace
 
 bool init_board() {
@@ -1365,7 +1352,8 @@ bool init_board() {
                board::kSdData0, board::kSdData1, board::kSdData2,
                board::kSdData3);
   oslogger::Config logger_config = kLoggerConfig;
-  logger_config.fallback_directory = mount_flash_fallback();
+  logger_config.fallback_directory = opensensor::storage::mount_flash_fallback(
+      [](const char *text) { oslog.printf("%s", text); });
   logging = oslogger::begin(logger_config, kHooks, mounted);
   const bool ui_ok = display_ok && start_ui_task();
   if (display_ok && !ui_ok)

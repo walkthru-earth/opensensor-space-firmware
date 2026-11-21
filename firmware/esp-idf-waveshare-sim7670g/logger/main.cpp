@@ -203,19 +203,6 @@ const oslogger::Hooks kHooks{
     .gnss_fix = [](opensensor::gnss::Fix &fix,
                    void *) { return opensensor::gnss::latest(fix); },
 };
-// Mounts the internal flash volume (decision record 0004) and prints its
-// OS FLASH line. Returns the fallback archive root, or nullptr when the
-// volume is off or the build leaves it out.
-const char *mount_flash_fallback() {
-#if CONFIG_OS_LOGGER_FLASH_FALLBACK
-  std::array<char, opensensor::storage::kFlashLineBytes> line{};
-  const auto volume = opensensor::storage::mount_flash_volume(line);
-  oslog.printf("%s", line.data());
-  return volume ? opensensor::storage::kFlashArchiveDirectory : nullptr;
-#else
-  return nullptr;
-#endif
-}
 } // namespace
 
 bool init_board() {
@@ -267,7 +254,8 @@ bool init_board() {
                board::sd_buffer_reserved(), sensor_ready, kSdClk, kSdCmd,
                kSdData0);
   oslogger::Config logger_config = kLoggerConfig;
-  logger_config.fallback_directory = mount_flash_fallback();
+  logger_config.fallback_directory = opensensor::storage::mount_flash_fallback(
+      [](const char *text) { oslog.printf("%s", text); });
   if (const auto gnss = opensensor::gnss::start(kGnss); !gnss)
     oslog.printf("OS ERROR operation=gnss-start reason=%u\n",
                  static_cast<unsigned>(std::to_underlying(gnss.error())));

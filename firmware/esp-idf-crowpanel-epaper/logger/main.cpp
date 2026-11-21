@@ -1189,19 +1189,6 @@ void update_indicator(std::int64_t now) {
   }
 }
 
-// Mounts the internal flash volume (decision record 0004) and prints its
-// OS FLASH line. Returns the fallback archive root, or nullptr when the
-// volume is off or the build leaves it out.
-const char *mount_flash_fallback() {
-#if CONFIG_OS_LOGGER_FLASH_FALLBACK
-  std::array<char, opensensor::storage::kFlashLineBytes> line{};
-  const auto volume = opensensor::storage::mount_flash_volume(line);
-  oslog.printf("%s", line.data());
-  return volume ? opensensor::storage::kFlashArchiveDirectory : nullptr;
-#else
-  return nullptr;
-#endif
-}
 } // namespace
 
 bool init_board() {
@@ -1259,7 +1246,8 @@ bool init_board() {
       board::sd_buffer_reserved(), board::kSdMosi, board::kSdMiso,
       board::kSdClk, board::kSdCs, board::kSdPower);
   oslogger::Config logger_config = kLoggerConfig;
-  logger_config.fallback_directory = mount_flash_fallback();
+  logger_config.fallback_directory = opensensor::storage::mount_flash_fallback(
+      [](const char *text) { oslog.printf("%s", text); });
   // Earlier boots' rows seed the charts. Before the storage worker exists,
   // so nothing else touches the card, and before the UI task owns history.
   if (mounted && history)
