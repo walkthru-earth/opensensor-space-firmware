@@ -9,6 +9,7 @@
 #include "os_logger_codec_store.h"
 #include "os_logger_directory.h"
 #include "os_logger_emergency_close.h"
+#include "os_logger_encoding.h"
 #include "os_logger_flash_copy.h"
 #include "os_logger_footer.h"
 #include "os_logger_list_job.h"
@@ -930,9 +931,12 @@ bool create_file(OutputFile &target, Codec codec, bool benchmark) {
   // The writer copies this configuration; the LZ4 buffers/state it points to
   // live in writer_state for the whole session.
   const auto compression = writer_state->lz4.configuration();
+  // INT32 and INT64 value encoding from CONFIG_OS_LOGGER_DELTA_INTEGERS
+  // (#135), PLAIN unless the board turns it on. The LZ4 page scratch already
+  // holds the DELTA worst case (lz4_codec.h).
   const auto result = target.writer.begin(
       sink, target.file, target.workspace, writer_state->columns, field_count,
-      codec == Codec::Lz4Raw ? &compression : nullptr);
+      codec == Codec::Lz4Raw ? &compression : nullptr, encoding::kIntegers);
   if (!result.ok) {
     close_failed(target, "begin", result.error);
     return false;
@@ -4258,13 +4262,14 @@ bool begin(const Config &configuration, const Hooks &board_hooks,
       "PARQUET BEGIN schema=%s columns=%u sample_s=%u "
       "interval_s=%u max_rows=%u max_row_groups=%u psram_workspace_bytes=%u "
       "row_bytes=%u boot=%s thing=%s "
-      "codec=%s crc32_check=%s\n",
+      "codec=%s crc32_check=%s integers=%s\n",
       config.schema_name, unsigned(field_count),
       unsigned(config.sample_interval_ms / 1000),
       unsigned(rotation_seconds.load()), unsigned(kMaxRows),
       unsigned(kMaxRowGroups), unsigned(sizeof(WriterState)),
       unsigned(sizeof(Sample)), boot_text, thing_text,
-      codec_name(selected_codec), crc_check);
+      codec_name(selected_codec), crc_check,
+      encoding::name(encoding::kIntegers));
   // Releases the worker held in storage_worker() until BEGIN is out.
   xTaskNotifyGive(worker_task);
   return true;

@@ -117,6 +117,7 @@ logger-watchdog-test = "python tools/test_logger_watchdog.py --sanitize"
 # Bench only parquet bench-stall parser, deadline and default-off guard (#49).
 logger-bench-stall-test = "python tools/test_logger_bench_stall.py --sanitize"
 logger-codec-store-test = "python tools/test_logger_codec_store.py --sanitize"
+logger-encoding-test = "python tools/test_logger_encoding.py --sanitize"
 debug-log-test = "python tools/test_debug_log.py"
 owner-pin = "python tools/owner_pin.py"
 provision-usb = "python tools/provision_usb.py"
