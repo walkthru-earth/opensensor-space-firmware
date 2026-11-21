@@ -72,6 +72,9 @@ struct FakeIO {
   bool fail_dirs = false, fail_sync = false, fail_hash_begin = false;
   bool fail_close_write = false;
   int fail_rename = 0; // errno to fail rename with, 0 for none
+  // A rename that fails after writing the new entry, as a power cut inside a
+  // FAT rename can. Both names then hold the bytes (a crosslink on a card).
+  bool rename_leaves_both = false;
   std::optional<std::size_t> corrupt_at;
 
   // What happened.
@@ -231,6 +234,11 @@ struct FakeIO {
 
   int rename_no_replace(const char *from, const char *to) {
     assert(!(writer_open && writer_path == from));
+    if (rename_leaves_both) {
+      files[to] = files.at(from);
+      errno = EIO;
+      return -1;
+    }
     if (fail_rename) {
       errno = fail_rename;
       return -1;
@@ -396,22 +404,68 @@ void verify_mismatch() {
   assert(io.unlinked == std::vector<std::string>{kTemp});
 }
 
-// The card already holds the same bytes under the final name. The source is
-// freed, the final file is not touched, and a stale temporary goes too.
+// The card already holds the same bytes under the final name, with no
+// temporary next to it. The source is freed and the final file is not
+// touched.
 void existing_identical() {
   const Bytes bytes = pattern(2 * fc::kChunkBytes + 9);
   FakeIO io = with_source(bytes);
   io.add_dirs(std::string(kCard) + "/" + kDay);
   io.files[kFinal] = bytes;
-  io.files[kTemp] = pattern(10, 7);
   fc::Copier copier;
   begin(copier);
   const Run result = run(copier, io);
   assert(result.outcome == Outcome::AlreadyIdentical);
   assert(io.files.at(kFinal) == bytes);
-  assert(!io.files.contains(kSource) && !io.files.contains(kTemp));
-  assert(io.unlinked == (std::vector<std::string>{kTemp, kSource}));
+  assert(!io.files.contains(kSource));
+  assert(io.unlinked == std::vector<std::string>{kSource});
   assert(io.syncs == 0 && io.made.empty());
+}
+
+// A temporary next to a final file is the shape a power cut inside the FAT
+// rename leaves, both entries possibly on one cluster chain. Unlinking the
+// temporary would free the final file's clusters, and the identical hash
+// would then free the source too. So nothing is deleted, the source stays,
+// and the copy ends as a crosslink suspect, whatever the final file holds.
+void crosslink_suspect() {
+  const Bytes bytes = pattern(2 * fc::kChunkBytes + 9);
+  const std::array<Bytes, 3> finals = {bytes, pattern(bytes.size(), 5),
+                                       pattern(7, 5)};
+  for (const Bytes &final_bytes : finals) {
+    for (const bool same_temp : {true, false}) {
+      FakeIO io = with_source(bytes);
+      io.add_dirs(std::string(kCard) + "/" + kDay);
+      io.files[kFinal] = final_bytes;
+      const Bytes temp = same_temp ? final_bytes : pattern(10, 7);
+      io.files[kTemp] = temp;
+      fc::Copier copier;
+      begin(copier);
+      const Run result = run(copier, io);
+      assert(result.outcome == Outcome::IoError && result.steps == 1);
+      assert(copier.failure() == Failure::CrosslinkSuspect);
+      assert(std::strcmp(fc::failure_name(Failure::CrosslinkSuspect),
+                         "crosslink-suspect") == 0);
+      assert(io.unlinked.empty());
+      assert(io.files.at(kSource) == bytes);
+      assert(io.files.at(kFinal) == final_bytes && io.files.at(kTemp) == temp);
+      // Every later pass finds the same pair and still deletes nothing.
+      begin(copier);
+      assert(run(copier, io).outcome == Outcome::IoError);
+      assert(copier.failure() == Failure::CrosslinkSuspect);
+      assert(io.unlinked.empty() && io.files.contains(kSource));
+    }
+  }
+  // A temporary that cannot be inspected next to a final file is not
+  // touched either.
+  FakeIO io = with_source(bytes);
+  io.add_dirs(std::string(kCard) + "/" + kDay);
+  io.files[kFinal] = bytes;
+  io.fail_inspect = kTemp;
+  fc::Copier copier;
+  begin(copier);
+  assert(run(copier, io).outcome == Outcome::IoError);
+  assert(copier.failure() == Failure::CardStat && copier.error() == EIO);
+  assert(io.unlinked.empty() && io.files.contains(kSource));
 }
 
 // The card holds other bytes under the final name. Both stay, nothing is
@@ -491,8 +545,9 @@ void source_vanished() {
   assert(broken.unlinked.empty());
 }
 
-// The rename never replaces. A refused rename removes the temporary and
-// keeps the source, and a final name that appeared meanwhile stays as it is.
+// The rename never replaces. A refused rename keeps the source. It removes
+// the temporary only when the final name is confirmed absent, so a final
+// name that appeared meanwhile stays as it is and so does the temporary.
 void rename_refused() {
   const Bytes bytes = pattern(fc::kChunkBytes + 1);
   FakeIO io = with_source(bytes);
@@ -516,7 +571,29 @@ void rename_refused() {
   assert(raced.outcome == Outcome::IoError && raced.steps == 1);
   assert(racer.failure() == Failure::Rename && racer.error() == EEXIST);
   assert(race.files.at(kFinal) == other && race.files.at(kSource) == bytes);
-  assert(!race.files.contains(kTemp));
+  assert(race.files.contains(kTemp) && race.unlinked.empty());
+  // The next pass finds the pair and leaves it for the owner.
+  begin(racer);
+  assert(run(racer, race).outcome == Outcome::IoError);
+  assert(racer.failure() == Failure::CrosslinkSuspect);
+  assert(race.unlinked.empty() && race.files.at(kSource) == bytes);
+
+  // A rename that fails after the new entry was written leaves both names,
+  // which on a card may share clusters. The temporary is not unlinked.
+  FakeIO both = with_source(bytes);
+  both.rename_leaves_both = true;
+  fc::Copier half;
+  begin(half);
+  const Run partial = run(half, both);
+  assert(partial.outcome == Outcome::IoError);
+  assert(half.failure() == Failure::Rename && half.error() == EIO);
+  assert(both.files.at(kFinal) == bytes && both.files.at(kTemp) == bytes);
+  assert(both.files.at(kSource) == bytes && both.unlinked.empty());
+  both.rename_leaves_both = false;
+  begin(half);
+  assert(run(half, both).outcome == Outcome::IoError);
+  assert(half.failure() == Failure::CrosslinkSuspect);
+  assert(both.unlinked.empty() && both.files.at(kSource) == bytes);
 }
 
 // Every other IO failure keeps the source and removes only the temporary
@@ -699,6 +776,7 @@ int main() {
   reset_mid_copy();
   verify_mismatch();
   existing_identical();
+  crosslink_suspect();
   existing_different();
   source_vanished();
   rename_refused();

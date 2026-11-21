@@ -30,8 +30,13 @@
 //
 // The only files this ever deletes are the flash source after an identical
 // verified copy is on the card, and a temporary "<final>.copy" on the card
-// while its source is still on flash. A temporary whose source is gone stays
-// where it is. Nothing is overwritten, the final name is never replaced.
+// while its source is still on flash and the final name is absent. A
+// temporary whose source is gone stays where it is. A temporary next to a
+// final file is a crosslink suspect, since a power cut inside the FAT rename
+// can leave both entries sharing one cluster chain (os_logger_directory.h).
+// Removing either would free the clusters of the other, so such a pair stays
+// as it is, with its source, and the copy ends with CrosslinkSuspect. Nothing
+// is overwritten, the final name is never replaced.
 //
 // The Copier is a plain value. File handles, the scratch buffer and the hash
 // state belong to the IO, which provides
@@ -90,6 +95,9 @@ enum class [[nodiscard]] Failure : std::uint8_t {
   Verify,       // the readback differs from what was read from flash
   Rename,       // the final name was refused, EEXIST when it appeared meanwhile
   SourceUnlink, // copied, but the flash file could not be removed yet
+  // "<final>.copy" and "<final>" both exist, possibly sharing clusters after
+  // a power cut inside the rename. Nothing was deleted, the source stays.
+  CrosslinkSuspect,
 };
 
 [[nodiscard]] constexpr const char *failure_name(Failure failure) {
@@ -134,6 +142,8 @@ enum class [[nodiscard]] Failure : std::uint8_t {
     return "rename";
   case Failure::SourceUnlink:
     return "source-unlink";
+  case Failure::CrosslinkSuspect:
+    return "crosslink-suspect";
   }
   return "unknown";
 }
@@ -329,7 +339,10 @@ private:
   }
 
   // Closes what is open. This attempt's temporary goes only while its source
-  // is still on flash, so a copy is never the last one of its rows.
+  // is still on flash, so a copy is never the last one of its rows, and only
+  // while the final name is confirmed absent. A rename that failed may still
+  // have left a final entry sharing the temporary's clusters, and unlinking
+  // the temporary would then free them under the final file.
   template <class IO> void release(IO &io) {
     if (reading_)
       (void)close_reader(io);
@@ -340,7 +353,8 @@ private:
     if (own_temp_) {
       own_temp_ = false;
       struct stat info{};
-      if (io.inspect(source_.data(), &info) == 0)
+      if (io.inspect(source_.data(), &info) == 0 &&
+          io.inspect(final_.data(), &info) != 0 && errno == ENOENT)
         (void)io.unlink(temp_.data());
     }
   }
@@ -377,12 +391,19 @@ private:
     if (!S_ISREG(source.st_mode) || source.st_size < 0)
       return fail(io, Failure::SourceStat, 0);
     size_ = static_cast<std::uint64_t>(source.st_size);
-    // A temporary left by a reset or a failed attempt. Its source is on
-    // flash, checked just above, so it is only ever a partial copy.
-    if (io.unlink(temp_.data()) != 0 && errno != ENOENT)
-      return fail(io, Failure::TempRemove, errno);
+    // The final name is inspected before the temporary is touched.
     struct stat target{};
-    if (io.inspect(final_.data(), &target) == 0) {
+    const bool final_exists = io.inspect(final_.data(), &target) == 0;
+    if (!final_exists && errno != ENOENT)
+      return fail(io, Failure::CardStat, errno);
+    if (final_exists) {
+      // A temporary next to the final file may share its clusters. Leave
+      // both, and the source, for the owner.
+      struct stat temp{};
+      if (io.inspect(temp_.data(), &temp) == 0)
+        return fail(io, Failure::CrosslinkSuspect, 0);
+      if (errno != ENOENT)
+        return fail(io, Failure::CardStat, errno);
       if (!S_ISREG(target.st_mode) ||
           static_cast<std::uint64_t>(target.st_size) != size_)
         return end(io, Outcome::Conflict);
@@ -394,8 +415,11 @@ private:
       stage_ = Stage::HashSource;
       return Outcome::InProgress;
     }
-    if (errno != ENOENT)
-      return fail(io, Failure::CardStat, errno);
+    // A temporary left by a reset or a failed attempt, with no final name
+    // next to it. Its source is on flash, checked above, so it is only ever
+    // a partial copy.
+    if (io.unlink(temp_.data()) != 0 && errno != ENOENT)
+      return fail(io, Failure::TempRemove, errno);
     // The parent of the final name, written in place for the call.
     char *const slash = std::strrchr(final_.data(), '/');
     *slash = '\0';
