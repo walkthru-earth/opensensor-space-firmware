@@ -383,9 +383,10 @@ jobs:
   # worktrees of HEAD and compares the os-build-sha256.json manifests. Every
   # released image has a leg, so CoreS3 with M5Unified and M5GFX and the two
   # e-paper boards with the shared UI are path checked too. The legs run in
-  # parallel. On main run 44901111005 (2026-11-21) the one Waveshare leg took
-  # 4 min 11 s, under the 5 min 48 s host gate, so the extra legs add runner
-  # minutes but not wall time. The Waveshare diagnostic is never released and
+  # parallel. On the #233 PR run (2026-11-21) the four legs took 4 min 6 s to
+  # 5 min 14 s each, about 19.4 runner minutes against about 4 for the one
+  # Waveshare leg before, and the run took about 1 minute longer. The Waveshare
+  # diagnostic is never released and
   # has no leg. No ccache, a cache hit could hide a path that leaks at
   # compile time.
   repro-paths:
