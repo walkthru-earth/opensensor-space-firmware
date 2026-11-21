@@ -137,6 +137,14 @@ jobs:
           - name: bench-stall-epaper397
             task: epaper397-build
             bench: stall
+          # The DELTA_BINARY_PACKED integer switch (#135) through
+          # tools/idf-delta-sdkconfig.defaults, in build/<variant>-bench-delta.
+          # Off in every shipped image until decision record 0002 records the
+          # board measurement (#61), so this keeps the on branch compiling.
+          - name: bench-delta
+            task: cores3-build
+            extra_task: waveshare-build logger
+            bench: delta
     env:
       IDF_CCACHE_ENABLE: "1"
       CCACHE_MAXSIZE: 500M
@@ -224,7 +232,7 @@ jobs:
         env:
           TASK: ${{ matrix.task }}
           EXTRA_TASK: ${{ matrix.extra_task }}
-          # Empty builds the shipped image, stall the bench image.
+          # Empty builds the shipped image, stall or delta a bench image.
           OS_BENCH: ${{ matrix.bench }}
         run: |
           read -r -a task <<<"${TASK}"

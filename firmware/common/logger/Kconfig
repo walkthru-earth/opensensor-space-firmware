@@ -50,6 +50,20 @@ config OS_LOGGER_BENCH_STALL
         directory. Never ship an image with it, any serial user can stop
         logging with it.
 
+config OS_LOGGER_DELTA_INTEGERS
+    bool "Write INT32 and INT64 columns as DELTA_BINARY_PACKED"
+    default n
+    help
+        Every file the logger writes stores its INT32 and INT64 column values
+        as DELTA_BINARY_PACKED instead of PLAIN (#135). FLOAT columns, the
+        GEOMETRY column, the RLE definition levels, the columns, statistics
+        and footer stay as they are, and the codec choice still applies. Off
+        writes PLAIN, byte for byte as before. The boot PARQUET BEGIN line
+        ends with integers=PLAIN or integers=DELTA_BINARY_PACKED. Leave it
+        off on every board until decision record 0002 records the board
+        measurement (#61). OS_BENCH=delta builds a bench image with it on
+        through tools/idf-delta-sdkconfig.defaults.
+
 config OS_LOGGER_FLASH_FALLBACK
     bool "Mount the internal flash volume for cardless logging"
     default n

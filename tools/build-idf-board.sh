@@ -26,6 +26,7 @@ if [[ "${telemetry}" == 1 ]]; then
   python "${repo_root}/tools/check_board_template.py" "${trial_dir}/${variant}"
 fi
 # OS_BENCH=stall builds a bench image with tools/idf-bench-stall-sdkconfig.defaults
+# and OS_BENCH=delta one with tools/idf-delta-sdkconfig.defaults (#135), each
 # in its own directory, so its sdkconfig never leaks into the shipped build.
 build_dir="${trial_dir}/build/${variant}"
 target="${board}/${variant}"
@@ -39,7 +40,14 @@ case "${OS_BENCH:-}" in
     build_dir="${build_dir}-bench-stall"
     target="${target} bench=stall"
     idf_args+=(-D "OS_SDKCONFIG_OVERLAY=${repo_root}/tools/idf-bench-stall-sdkconfig.defaults") ;;
-  *) printf 'unknown OS_BENCH: %s (expected stall)\n' "${OS_BENCH}" >&2; exit 2 ;;
+  delta)
+    if [[ "${telemetry}" != 1 ]]; then
+      printf 'OS_BENCH=delta needs the logger runtime of the telemetry app, not %s\n' "${variant}" >&2; exit 2
+    fi
+    build_dir="${build_dir}-bench-delta"
+    target="${target} bench=delta"
+    idf_args+=(-D "OS_SDKCONFIG_OVERLAY=${repo_root}/tools/idf-delta-sdkconfig.defaults") ;;
+  *) printf 'unknown OS_BENCH: %s (expected stall or delta)\n' "${OS_BENCH}" >&2; exit 2 ;;
 esac
 rm -f "${build_dir}/os-build-target.txt" "${build_dir}/os-build-sha256.json"
 "${repo_root}/tools/idf.sh" -C "${trial_dir}" -B "${build_dir}" "${idf_args[@]}" build

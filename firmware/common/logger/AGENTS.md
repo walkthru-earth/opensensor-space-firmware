@@ -48,6 +48,11 @@ initialization and each board's schema/provenance remain in its own trial.
   The bench only `parquet bench-stall` command stays inside
   `#if CONFIG_OS_LOGGER_BENCH_STALL` (default n), set only by
   `tools/idf-bench-stall-sdkconfig.defaults` through `OS_BENCH=stall`.
+- Integer encoding (#135). `CONFIG_OS_LOGGER_DELTA_INTEGERS` (default n)
+  reaches `Writer::begin` only through `os_logger_encoding.h`. Never turn it on
+  in a shipped `sdkconfig.defaults` before decision record 0002 records the
+  #61 measurement. A board that decodes its own files with `parquet_columns.h`
+  must `#error` on it. `OS_BENCH=delta` builds the bench image.
 - Flash fallback (decision record 0004). Each new file takes its root once at
   create, from `archive_target::choose()`, and keeps it through finalize,
   sidecar and quarantine. Never move an open file between roots. Copy back

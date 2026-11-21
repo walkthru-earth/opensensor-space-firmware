@@ -1,0 +1,6 @@
+# Bench only overlay for the DELTA_BINARY_PACKED measurement (#135, #61).
+# The board build and flash scripts append it after the board defaults when
+# OS_BENCH=delta is set, and then use their own build/<variant>-bench-delta
+# directory. Files it writes store INT32 and INT64 values as
+# DELTA_BINARY_PACKED, see firmware/common/logger/README.md.
+CONFIG_OS_LOGGER_DELTA_INTEGERS=y
