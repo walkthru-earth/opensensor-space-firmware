@@ -128,10 +128,15 @@ OS PANEL rotation=<0|90|180|270> source=<auto|setting>
 ```
 
 The schematic does not show how the IMU axes sit against the panel, and the
-Waveshare demo never maps them to a rotation. So the axis table
-`kImuToPanel` in `board_io.h` is a provisional guess, IMU x along panel x and
-IMU y along panel y. The display profile reads the same table, and
-`pixi run epaper-ui-test` checks that the tracker and the board's
+Waveshare demo never maps them to a rotation. The first axis table
+`kImuToPanel` in `board_io.h` was a guess, IMU x along panel x and IMU y
+along panel y. On 2026-11-21 the owner reported that Auto turned the picture
+the wrong way round, and the board read `az` about -19000 lying face up. The
+x sign was flipped that day, so IMU x now runs against panel x and IMU y
+still runs along panel y. Only the sign of x changed, the picture for the
+upright and upside down poses is the same as before. The owner test below
+still has to confirm the new table. The display profile reads the same
+table, and `pixi run epaper-ui-test` checks that the tracker and the board's
 `quarter_turn()` agree on every pose. The board logs the raw axes on every
 change and every 30 s.
 
@@ -159,6 +164,19 @@ differs, the raw values show which IMU axis points down in each pose. Fix
 `kImuToPanel` and the static_asserts next to it, run `pixi run
 epaper-ui-test`, then record the result in the bench record. Until then the
 UI orientation is unverified.
+
+## Battery
+
+The board task reads the TG28 PMIC about every 30 s and caches the charge,
+so the UI task never touches the I2C bus. With a battery present and a
+percent in register 0xA4, the shared header draws a battery icon filled to
+that percent with the percent beside it. A plus over the icon means STATUS2
+(0x01) bits 7:5 read 001, the charging test of XPowersLib
+`isCharging()`. On USB without a battery, or when the read fails, the header
+draws no icon, as on the CrowPanel. A narrow header keeps the icon and drops
+the percent, and drops the icon too when even that would push the clock onto
+the brand. The boot line `OS POWER` is unchanged and nothing new is logged.
+Built only, see the bench record.
 
 ## First flash
 
