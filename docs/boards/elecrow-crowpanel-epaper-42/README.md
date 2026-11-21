@@ -17,6 +17,16 @@ qualified yet, see the [bench record](bench-verified.md).
   listed once in `firmware/esp-idf-crowpanel-epaper/board_io.h` and
   `display/epd_uc8276c.h`.
 
+## Internal flash archive
+
+With 8 MB flash the `spiffs` data partition sits at 0x7a0000 and is only
+0x60000 bytes (384 KiB). It is a FAT volume mounted at `/flash`. With no usable
+card the logger writes Parquet there and copies each file to the card once one
+is Ready, see [decision record 0004](../../shared/decisions/0004-flash-fallback-archive.md). After the 128 KiB reserve and the FAT and wear levelling
+overhead it holds about 3 to 4 windows of 15 minutes, about an hour. That is far
+less than the 16 MB boards. `firmware/esp-idf-crowpanel-epaper/sdkconfig.defaults`
+enables it. Nothing is proven on the bench yet.
+
 ## Wiring the SEN63C
 
 The SEN63C uses a 6 pin 1.25 mm connector (cable side JST GHR-06V-S or ACES

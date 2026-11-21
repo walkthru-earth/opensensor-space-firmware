@@ -27,6 +27,14 @@ The development guide describes the native workflow; dated Arduino API/build com
 
 The [shared contracts](../../README.md#shared-contracts) apply to both board targets. Results in the CoreS3 bench record do not establish Waveshare behavior.
 
+## Internal flash archive
+
+The `spiffs` data partition at 0xc20000 (0x3e0000 bytes, 3.875 MiB) is a FAT
+volume mounted at `/flash`. With no usable card the logger writes Parquet there
+and copies each file to the card once one is Ready, see [decision record 0004](../../shared/decisions/0004-flash-fallback-archive.md).
+`firmware/esp-idf-cores3/sdkconfig.defaults` enables it. It holds roughly 19
+hours of the CoreS3 schema. Nothing is proven on the bench yet.
+
 ## Stack and heap budgets
 
 Task stacks are sized from two numbers, the method of issue #37. The static worst case comes from

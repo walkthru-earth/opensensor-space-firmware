@@ -235,7 +235,7 @@ See [the observation model and Mermaid workflows](../../docs/shared/table-and-ob
 
 The historical dependency lock in Git history recorded these versions. The old FQBN selected 16 MB flash, QIO flash, **QSPI/Quad PSRAM**, hardware USB CDC and 115200 upload speed. `build.sh` checks the generated SDK configuration and fails if it finds Octal PSRAM, the wrong flash size or a non-custom partition table.
 
-The custom 16 MB partition table has two 6 MB OTA application slots, NVS, OTA state, a core-dump partition and a remaining SPIFFS partition. Measurement data belongs on microSD; the flash filesystem is not the primary sample store.
+The custom 16 MB partition table has two 6 MB OTA application slots, NVS, OTA state, a core-dump partition and a data partition labelled `spiffs` (3.875 MiB at 0xc20000). That partition is a FAT volume holding the internal flash fallback archive, used only while no card is usable ([decision record 0004](../../docs/shared/decisions/0004-flash-fallback-archive.md)). Measurement data belongs on microSD.
 
 ## Commands
 

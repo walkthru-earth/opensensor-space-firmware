@@ -27,12 +27,33 @@ or digest changes. Decision record 0004.
 - `LIST_SINCE` answers `full` while flash holds files or no card can be
   listed, and STATUS `ls` steps by one for each file copied back this boot,
   so a saved cursor from before a copy reads as stale.
-- New log lines `OS STORAGE target=<card|flash|none>`, `OS FLASH full
-  free=<n> reserve=<n>`, `OS FLASH room free=<n>`, `OS FLASH copy name=<n>
-  bytes=<n> result=<copied|identical|conflict|error|cancelled>`, `OS FLASH
-  copy held files=<n>`, `OS FLASH copy done files=<n>`, `OS FLASH ERROR
-  operation=<space|write|directory|allocate|copy-walk>` and `PARQUET RECOVERY
-  quarantined=<n> repaired=0 deleted=0 root=flash`.
+- New serial log lines. A phone or log reader may see these on the console
+  and in a captured log. None of them is a wire frame.
+  - Boot mount. `OS FLASH mount ok=1 label=<l> total=<bytes> free=<bytes>
+    formatted=<0|1>`, or `OS FLASH mount ok=0 err=<name> formatted_flag=<0|1>`
+    when the volume stays off. `OS FLASH ERROR operation=mount err=<name>
+    retry=1` marks the one retry before a format, and `OS FLASH ERROR
+    operation=<flag-read|flag-save>` marks an NVS flag fault.
+  - Root choice. `OS STORAGE target=<card|flash|none>` on each change.
+  - Space. `OS FLASH full free=<bytes> reserve=<bytes>` when flash falls below
+    its reserve and `OS FLASH room free=<bytes>` when room returns. Each prints
+    once per transition. `full` reports the flash volume, so it can print
+    while a card is the target.
+  - Copy back. `OS FLASH copy name=<relative> bytes=<n>
+    result=<copied|identical|conflict|error|cancelled>`, with `reason=` on
+    `error` and `cancelled` and `errno=` on `error`. Then `OS FLASH copy
+    held files=<n>` when only held files stay and `OS FLASH copy done
+    files=<n>` once flash is empty.
+  - Suspects. `PARQUET RECOVERY crosslink-suspect file=<relative> action=none`
+    follows a copy line with `result=error reason=crosslink-suspect`. It means
+    the card holds both a final name and its `.copy` temporary, which may share
+    clusters after a power cut. Both card entries and the flash file stay for
+    the owner, and it prints once per file and boot.
+  - Faults. `OS FLASH ERROR operation=<space|write|directory|allocate|
+    copy-walk>`. A `write` fault also pauses new flash files for 60 s
+    (`retry_s=60`).
+  - Quarantine. `PARQUET RECOVERY quarantined=<n> repaired=0 deleted=0
+    root=flash` for flash `.partial` files moved aside at boot.
 
 **Why.** A Thing with no card, or a pulled card, kept its rows in RAM only and
 dropped them once the batch filled. Flash keeps a few windows (about an hour

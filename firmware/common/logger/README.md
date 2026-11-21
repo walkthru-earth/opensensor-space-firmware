@@ -62,6 +62,15 @@ copy done files=<n>` once flash is empty. Only a file whose identical copy is
 verified on the card is removed from flash. A conflict or crosslink suspect
 stays on both roots for the owner. ERASE_ARCHIVE erases card roots only.
 
+Limits. The open card file at the moment a card is pulled does not move to
+flash. With the optional `storage_remount` hook the first Retry probe
+finalizes that file or quarantines it, and new rows go to a flash file from the
+next create. All four boards (CoreS3, Waveshare V2, CrowPanel and ePaper-3.97)
+set `storage_remount` and `storage_present`. A board with no remount hook never
+finalizes the open card file on a pull, so it falls back to flash only from the
+next file, as it handles card loss today. Flash holds only a few windows, see
+decision record 0004 for the sizes per board.
+
 `Config::sample_interval_ms` sets the sample period and the footer
 `acquisition.sample_interval_ms`. The default is 10 s, which both boards keep.
 It must pass `cadence::valid_sample_interval()` in `os_logger_cadence.h`, 1 s
