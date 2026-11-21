@@ -1,6 +1,6 @@
 # LAN transfer scheduling and qualification
 
-The current applications are pure ESP-IDF 6.1 and retain the shared socket,
+The current applications are pure ESP-IDF 6.1.1 and retain the shared socket,
 worker-queue and diagnostic-ring policies described here. Native board and
 fixture builds and host contracts pass; native throughput and console/radio
 behavior require physical qualification. See [native validation](development.md#native-migration-validation-2026-10-09).

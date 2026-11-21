@@ -1,6 +1,6 @@
 # CoreS3 hardware: pins, ownership, power
 
-Current firmware uses native ESP-IDF 6.1 with M5Unified 0.3.0/M5GFX 0.3.0.
+Current firmware uses native ESP-IDF 6.1.1 with M5Unified 0.3.0/M5GFX 0.3.0.
 Pins, power and controller ownership remain board-specific. Native builds pass;
 the [native bench record](bench-verified.md#board-1-first-native-esp-idf-flash-and-readback)
 adds a short SD/USB/sensor/network-time run. Earlier dependency/source snapshots
@@ -136,5 +136,5 @@ Serialize complete read-modify-write operations: an unrelated whole-port write c
 [power-example]: https://docs.m5stack.com/en/arduino/m5cores3/power
 [bsp]: https://github.com/espressif/esp-bsp/blob/master/bsp/m5stack_core_s3/include/bsp/m5stack_core_s3.h
 [camera]: https://github.com/espressif/esp32-camera/blob/master/README.md
-[gpio]: https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32s3/api-reference/peripherals/gpio.html
+[gpio]: https://docs.espressif.com/projects/esp-idf/en/v6.1.1/esp32s3/api-reference/peripherals/gpio.html
 [soc]: https://www.espressif.com/sites/default/files/documentation/esp32-s3_datasheet_en.pdf

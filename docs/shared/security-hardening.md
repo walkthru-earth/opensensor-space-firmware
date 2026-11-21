@@ -1,6 +1,6 @@
 # Firmware security and deployment hardening
 
-This boundary applies to both native ESP-IDF 6.1 logger adapters. The retained
+This boundary applies to both native ESP-IDF 6.1.1 logger adapters. The retained
 Waveshare diagnostic starts no BLE/LAN/file-sync service. Native source/build
 and host tests establish the controls below; physical native pairing, flash/NVS
 retention, radio and storage behavior still require qualification. Historical
@@ -85,10 +85,10 @@ what that does and does not protect.
 - Rollback is off. `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE` changes the
   bootloader too, so it waits on the same reflash. Without it the bootloader
   boots a staged image even when it crashes, and a crash loop needs USB to
-  recover. In ESP-IDF 6.1 the rollback transitions exist only under that option
-  (`bootloader_utility.c` lines 393 to 449).
+  recover. In ESP-IDF 6.1.1 the rollback transitions exist only under that option
+  (`bootloader_utility.c` lines 392 to 448).
 - The boot self test still marks a healthy app valid. This is safe with
-  rollback off. In ESP-IDF 6.1 `esp_ota_set_boot_partition` writes the new
+  rollback off. In ESP-IDF 6.1.1 `esp_ota_set_boot_partition` writes the new
   otadata entry as `ESP_OTA_IMG_UNDEFINED` (`esp_ota_ops.c` lines 127 to 135),
   and `esp_ota_mark_app_valid_cancel_rollback` only rewrites the running
   slot's state to `ESP_OTA_IMG_VALID` (lines 1179 to 1222). After a USB flash

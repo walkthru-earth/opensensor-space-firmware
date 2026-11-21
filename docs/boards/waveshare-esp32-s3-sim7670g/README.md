@@ -1,7 +1,7 @@
 # Waveshare ESP32-S3-SIM7670G-4G V2
 
 The current [V2.0 application](../../../firmware/esp-idf-waveshare-sim7670g/README.md)
-is native **ESP-IDF 6.1**, with logger and UART/read-only TF diagnostic variants.
+is native **ESP-IDF 6.1.1**, with logger and UART/read-only TF diagnostic variants.
 The logger retains UART1 PMS5003T, one-bit SDMMC, OPI PSRAM, UART0 console,
 MAX17048 and the 62-column v6 schema with dictionary v8, including battery
 health state, gauge diagnostics and the location columns.

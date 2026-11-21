@@ -1,6 +1,6 @@
 # ELECROW CrowPanel ESP32-S3 4.2" E-paper HMI v1.2 with SEN63C
 
-The [native ESP-IDF 6.1 application](../../../firmware/esp-idf-crowpanel-epaper/README.md)
+The [native ESP-IDF 6.1.1 application](../../../firmware/esp-idf-crowpanel-epaper/README.md)
 logs a Sensirion SEN63C (PM1, PM2.5, PM4, PM10, temperature, humidity and CO2)
 to Parquet on the microSD card every 10 seconds and draws the readings, 2 hour
 sparklines and 24 hour charts on the 400 x 300 e-paper panel. **The owner unit

@@ -10,27 +10,27 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See
 the License for the specific language governing permissions and limitations
 under the License.
 
-Backport to esp-nimble 139cada (ESP-IDF v6.1) of the stale ack drain in
+Backport to esp-nimble 544bb66 (ESP-IDF v6.1.1) of the stale ack drain in
 ble_hs_hci_cmd_tx() from espressif/esp-nimble
   d7061976e9a10b18ddd41ecdf118f039b8d34477 (free a stale ack before sending)
   79316193f942060e9c79200ddd032157453b041d (always drain the semaphore)
-Both are on nimble-1.10.0-idf and in ESP-IDF master, not in release/v6.1.
+Both are on nimble-1.10.0-idf, not in the v6.1.1 tag.
 
 A command that times out after BLE_HCI_CMD_TIMEOUT_MS schedules a host reset.
 When its ack arrives late, ble_hs_hci_rx_ack() stores it and releases the
 semaphore, then the timed out call frees the ack and leaves the semaphore at 1.
 The reset's HCI_Reset takes that stale count at once and
 ble_hs_hci_process_ack() reads the NULL ack (LoadProhibited, CoreS3 bench
-2026-10-18). Draining first makes the reset wait for its own ack. As
-upstream, the assert before the lock goes, because with BLE_HS_DEBUG a late
-ack would trip it before the free runs.
+2026-10-18). Draining first makes the reset wait for its own ack. In 544bb66
+the assert already sits after the lock, so the free and the drain go between
+the lock and the assert, and with BLE_HS_DEBUG a late ack no longer trips it.
 
 --- a/nimble/host/src/ble_hs_hci.c
 +++ b/nimble/host/src/ble_hs_hci.c
-@@ -592,6 +592,16 @@ ble_hs_hci_cmd_tx(uint16_t opcode, const void *cmd, uint8_t cmd_len,
-
--    BLE_HS_DBG_ASSERT(l_ble_hs_hci_ack == NULL);
-     ble_hs_hci_lock();
+@@ -643,6 +643,16 @@
+     if (rc != 0) {
+         return rc;
+     }
 +    if (l_ble_hs_hci_ack != NULL) {
 +#if MYNEWT_VAL(MP_RUNTIME_ALLOC)
 +        ble_transport_free(BLE_HCI_EVT, (uint8_t *)l_ble_hs_hci_ack);
@@ -41,7 +41,6 @@ ack would trip it before the free runs.
 +    }
 +    /* A late ack of a timed out command left the count at 1. */
 +    ble_npl_sem_pend(&ble_hs_hci_sem, 0);
-+    BLE_HS_DBG_ASSERT(l_ble_hs_hci_ack == NULL);
-
-     rc = ble_hs_hci_cmd_send_buf(opcode, cmd, cmd_len);
-     if (rc != 0) {
+     /* Assert after lock: when BLE_STATIC_TO_DYNAMIC is enabled, l_ble_hs_hci_ack
+      * expands to (ble_hs_hci_ctx->hci_ack). Evaluating this before ble_hs_hci_lock()
+      * would dereference ble_hs_hci_ctx before its NULL guard is checked. */

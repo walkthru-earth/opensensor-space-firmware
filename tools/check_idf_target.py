@@ -190,7 +190,7 @@ CONFIG_LINE = re.compile(r"^(?:(CONFIG_\w+)=.*|# (CONFIG_\w+) is not set)$")
 COREDUMP_SETTINGS = ["CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y", "CONFIG_ESP_COREDUMP_ENABLE=y",
                      "CONFIG_ESP_COREDUMP_CHECK_BOOT=y", "CONFIG_ESP_COREDUMP_STACK_SIZE=2560",
                      "# CONFIG_ESP_COREDUMP_CAPTURE_DRAM is not set"]
-# ESP-IDF 6.1 only writes ELF dumps with a SHA-256 checksum. Its Kconfig still
+# ESP-IDF 6.1.1 only writes ELF dumps with a SHA-256 checksum. Its Kconfig still
 # selects ESP_COREDUMP_DATA_FORMAT_ELF and ESP_COREDUMP_CHECKSUM_SHA256, but
 # neither symbol is defined or written to sdkconfig, so prove both by symbol.
 # Only global symbols, which survive any optimization level. The checksum one

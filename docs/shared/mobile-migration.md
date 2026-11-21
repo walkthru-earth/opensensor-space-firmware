@@ -50,6 +50,39 @@ not be able to set it again.
   "Settings storage error", point to the recovery steps in that board's guide.
   Never suggest erasing the board, NVS holds its Thing id.
 
+## ESP-IDF 6.1.1 (chore/esp-idf-6.1.1)
+
+**Needs a matched reflash of all four boards. The app needs no code change
+unless it pins `configuration_id`.** CoreS3 moves to
+`idf-cores3-parquet-v6.34`, Waveshare to `idf-waveshare-parquet-v2.27`, the
+CrowPanel to `idf-crowpanel-parquet-v0.2` and the ePaper-3.97 to
+`idf-epaper397-parquet-v0.2`. Columns, field ids, LIVE keys, decimals, the
+schema and dictionary strings, the `dict` and `desc` digests, the wire
+protocol, log lines and the Parquet layout do not change.
+
+**What changed.**
+
+- Every image now builds with ESP-IDF 6.1.1 in place of 6.1. It brings NimBLE
+  `544bb66`, Mbed TLS 4.1.1 and new Wi-Fi and PHY libraries. The board BLE
+  controller library is unchanged.
+- The CoreS3 footer `acquisition.config_id` moves from `cores3-acquisition-v5`
+  to `cores3-acquisition-v6`, and the `acquisition.config` JSON now records
+  `"esp_idf":"6.1.1"`. It said 6.1 before. The other boards do not record the
+  SDK in their config.
+- The NimBLE host now refuses a re-pair that would weaken an existing bond
+  (`BT_NIMBLE_SMP_HARDENED_REPAIRING`, new SDK default). A phone that deleted
+  its bond and pairs again at the same strength is still accepted, so the
+  usual forget and pair again flow is unchanged. A re-pair with less
+  protection than the stored bond, for example after the board pairing mode
+  moved from `random` to `none`, now fails until the board bonds are cleared.
+
+**Why.** ESP-IDF 6.1.1 is the latest stable bugfix release of 6.1, with NimBLE,
+Wi-Fi supplicant, SD and event loop fixes.
+
+**What the app must do.** Accept the new firmware strings. If the app pins
+`configuration_id`, accept `cores3-acquisition-v6`. Reflash all four boards
+with the matched build.
+
 ## CoreS3 DIAG power line prints null for a failed read (fix/cores3-power-readouts)
 
 **Needs a matched reflash of the CoreS3. No app change is required.** No

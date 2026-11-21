@@ -135,7 +135,8 @@
           ],
           "to": [
             "firmware/esp-idf-*/bringup/*::*::_FUN(*",
-            "firmware/esp-idf-*/components/*::*::_FUN(*"
+            "firmware/esp-idf-*/components/*::*::_FUN(*",
+            "firmware/esp-idf-*/logger/*::*::_FUN(*"
           ]
         }
       ]
@@ -293,7 +294,8 @@
             "*{anonymous}::rtc_read(int64_t&, void*)",
             "*{anonymous}::rtc_write(int64_t, void*)",
             "firmware/esp-idf-*/bringup/*::*::_FUN(*",
-            "firmware/esp-idf-*/components/*::*::_FUN(*"
+            "firmware/esp-idf-*/components/*::*::_FUN(*",
+            "firmware/esp-idf-*/logger/*::*::_FUN(*"
           ]
         }
       ]
@@ -402,8 +404,8 @@
       "tasks": {
         "parquet-sd": {
           "stack_bytes": 24576,
-          "measured": 11136,
-          "budget": 12288
+          "measured": 11280,
+          "budget": 12416
         },
         "nimble_host": {
           "measured": 5840,
@@ -492,8 +494,8 @@
       "tasks": {
         "parquet-sd": {
           "stack_bytes": 24576,
-          "measured": 11136,
-          "budget": 12288
+          "measured": 11344,
+          "budget": 12480
         },
         "nimble_host": {
           "measured": 5840,
@@ -551,8 +553,8 @@
       "tasks": {
         "parquet-sd": {
           "stack_bytes": 24576,
-          "measured": 11136,
-          "budget": 12288
+          "measured": 11280,
+          "budget": 12416
         },
         "nimble_host": {
           "measured": 5840,

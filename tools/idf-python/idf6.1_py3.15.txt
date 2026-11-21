@@ -5,13 +5,13 @@
 # lock pins its sdist, and pip builds it with the locked setuptools.
 # `pixi run idf-python-check` fails when the venv differs from this list.
 # esp-idf-version: 6.1
-# esp-idf-commit: fff9895c82d744c7237be8847347bdd1b07c6643
+# esp-idf-commit: 051e4c4eb20346e043cdd47bc388fde75ff8af63
 # python: 3.15
 # platforms: osx-arm64 linux-64
 # requirements: tools/requirements/requirements.core.txt sha256=af4edb1866f022dcffdb8ee4aa3ccc8ed58a107e1e4648483dfd501616dd78c6
 # constraints: https://dl.espressif.com/dl/esp-idf/espidf.constraints.v6.1.txt sha256=fa2846f1e93ec3e604553a0b8a576a61c47737055360871b7be08523e1e47325
 # from-source: esptool pyyaml tree-sitter
-# generated: 2026-11-18
+# generated: 2026-11-21
 annotated-types==0.8.0 \
     --hash=sha256:f072f4d804ea359e4eaf198b1af7a8b0943881a87f31bb764f8bf219bb9419e0
 boolean-py==5.0 \

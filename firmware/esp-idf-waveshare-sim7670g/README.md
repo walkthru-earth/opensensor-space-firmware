@@ -1,7 +1,7 @@
 # Waveshare V2 native ESP-IDF / PMS5003T logger
 
-The current source is pure **ESP-IDF 6.1**, firmware identity
-**`idf-waveshare-parquet-v2.26`**, with **62-column** schema
+The current source is pure **ESP-IDF 6.1.1**, firmware identity
+**`idf-waveshare-parquet-v2.27`**, with **62-column** schema
 `waveshare-sim7670g-telemetry-v6` and dictionary `waveshare-sim7670g-telemetry-v8`.
 The original 52 columns retain their order and types, with four nullable
 location fields (`h3_cell_id`, `h3_resolution`, `location_source` and the WKB
@@ -113,7 +113,7 @@ shared connectivity prefers PSRAM for Wi-Fi/lwIP packets and uses **sixteen
 static RX and eight static TX DMA buffers**, **32 dynamic RX buffers** and
 **32 cached TX buffers**, with a TCP send buffer and window of **23,040 bytes**
 each. The diagnostic has no radios or PSRAM. These changes
-use the pinned SDK's [SD buffer API](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32s3/api-reference/storage/sdmmc.html#unaligned-buffer-performance);
+use the pinned SDK's [SD buffer API](https://docs.espressif.com/projects/esp-idf/en/v6.1.1/esp32s3/api-reference/storage/sdmmc.html#unaligned-buffer-performance);
 native Waveshare throughput/coexistence remains unqualified.
 
 Location starts unset. Owner provisioning supplies a cell and optional

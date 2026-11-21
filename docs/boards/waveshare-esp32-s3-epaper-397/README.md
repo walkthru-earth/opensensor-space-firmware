@@ -1,6 +1,6 @@
 # Waveshare ESP32-S3-ePaper-3.97 with SEN63C
 
-The native ESP-IDF 6.1 application in
+The native ESP-IDF 6.1.1 application in
 [firmware/esp-idf-waveshare-epaper-397](../../../firmware/esp-idf-waveshare-epaper-397/AGENTS.md)
 logs a Sensirion SEN63C (PM1, PM2.5, PM4, PM10, temperature, humidity and CO2)
 to Parquet on the microSD card every 10 seconds. The 800 x 480 SSD1677 panel
