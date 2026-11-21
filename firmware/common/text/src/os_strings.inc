@@ -169,3 +169,11 @@ OS_TEXT(BandSensitive, "Sensitive groups", "مش كويس للحساسين")
 OS_TEXT(BandUnhealthy, "Unhealthy", "وحش")
 OS_TEXT(BandVeryUnhealthy, "Very unhealthy", "وحش قوي")
 OS_TEXT(BandHazardous, "Hazardous", "خطر")
+
+// The settings storage fault page (#177), drawn when NVS cannot start. Both
+// languages show at once, because the language setting lives in NVS too.
+// StorageFaultCodeFmt takes the ESP-IDF error as %d.
+OS_TEXT(StorageFaultTitle, "Settings storage error", "مشكلة في ذاكرة الإعدادات")
+OS_TEXT(StorageFaultOff, "Logging is off", "التسجيل واقف")
+OS_TEXT(StorageFaultHelp, "Read the USB serial log and see the board guide", "اقرا سجل USB وشوف دليل الجهاز")
+OS_TEXT_LTR(StorageFaultCodeFmt, "nvs-init error=%d")

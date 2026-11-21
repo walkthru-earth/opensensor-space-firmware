@@ -2541,6 +2541,39 @@ void test_language_switch() {
 
 // The Arabic words fit where the pages put them, at every size class, in
 // landscape and portrait.
+// The storage fault page draws inside the frame at every size class and
+// rotation, and leaves the active language alone (#177).
+void test_storage_fault() {
+  for (const Language lang : {Language::English, Language::Arabic}) {
+    for (const DisplayProfile *prof : {&kHost400x300, &kHost800x480}) {
+      for (const Rotation r : {Rotation::R0, Rotation::R90}) {
+        set_language(lang);
+        Buffer b(*prof, r);
+        b.canvas.fill({0, 0, b.canvas.width(), b.canvas.height()});
+        render_storage_fault(b.canvas, 4365);
+        CHECK(language() == lang);
+        const int w = b.canvas.width();
+        const int h = b.canvas.height();
+        CHECK(ink_count(b.canvas, {0, 0, w, h}) > 500);
+        // Nothing reaches the edge rows, so no line clipped off the frame.
+        CHECK(ink_count(b.canvas, {0, 0, w, 2}) == 0);
+        CHECK(ink_count(b.canvas, {0, h - 2, w, 2}) == 0);
+        // The same page whatever language was active.
+        Buffer other(*prof, r);
+        set_language(lang == Language::English ? Language::Arabic
+                                               : Language::English);
+        render_storage_fault(other.canvas, 4365);
+        CHECK(other.bytes == b.bytes);
+        // The error code is drawn.
+        Buffer code(*prof, r);
+        render_storage_fault(code.canvas, 261);
+        CHECK(code.bytes != b.bytes);
+      }
+    }
+  }
+  set_language(Language::English);
+}
+
 void test_arabic_fit() {
   // Every value a row can show, across settings and boards.
   std::vector<std::pair<Settings, SettingsInfo>> variants;
@@ -2627,6 +2660,20 @@ void test_arabic_fit() {
                    c.width() - 2 * edge, tr(Str::PairTitle), c);
         CHECK_FITS(text_width(fs.label, tr(Str::PairPrompt)),
                    c.width() - 2 * edge, tr(Str::PairPrompt), c);
+        // The storage fault page (#177). The title and the off line are one
+        // line each, the help at most two.
+        CHECK_FITS(text_width(fs.title, tr(Str::StorageFaultTitle)),
+                   c.width() - 2 * edge, tr(Str::StorageFaultTitle), c);
+        CHECK_FITS(text_width(fs.label, tr(Str::StorageFaultOff)),
+                   c.width() - 2 * edge, tr(Str::StorageFaultOff), c);
+        {
+          const std::string_view help = tr(Str::StorageFaultHelp);
+          std::string_view rest =
+              help.substr(line_break(fs.label, help, c.width() - 2 * edge));
+          while (!rest.empty() && rest.front() == ' ')
+            rest.remove_prefix(1);
+          CHECK_FITS(text_width(fs.label, rest), c.width() - 2 * edge, help, c);
+        }
         // A status name ends before its value starts.
         for (const Str id : kStatusRows)
           CHECK_FITS(text_width(fs.small, tr(id)) + 4,
@@ -2680,6 +2727,7 @@ int main() {
   test_arabic_strings_and_glyphs();
   test_language_switch();
   test_arabic_fit();
+  test_storage_fault();
   std::printf("epaper ui, %d checks passed\n", g_checks);
   return 0;
 }

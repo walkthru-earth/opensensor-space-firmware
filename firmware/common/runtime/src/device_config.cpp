@@ -44,7 +44,13 @@ bool owner_unsure = false;
 bool setup_unsure = false;
 SensorPolicy sensor_policy; // installed by the board before load()
 
-std::uint32_t random_pin() { return esp_random() % 1000000U; }
+// Never the retired default, which SET_CONFIG refuses and load() rotates.
+std::uint32_t random_pin() {
+  std::uint32_t pin = esp_random() % 1000000U;
+  while (pin == kFactoryDefaultPin)
+    pin = esp_random() % 1000000U;
+  return pin;
+}
 
 bool committed(nvs_handle_t store, esp_err_t result) {
   return result == ESP_OK && nvs_commit(store) == ESP_OK;
@@ -1320,16 +1326,25 @@ bool apply_lines(const char *text, std::size_t length, char *bad_key,
     std::memcpy(line, text + position, line_length);
     line[line_length] = '\0';
     position = end + 1;
+    // The detail never echoes request text the firmware does not know (#220).
+    // A line with no '=' may be a secret the phone sent whole, such as
+    // "wifi.psk secret", and an unknown key may hold one before a stray '='.
+    // Only a key the firmware names itself goes back as the detail.
     char *equals = std::strchr(line, '=');
     if (!equals) {
-      std::snprintf(bad_key, bad_key_size, "%s", line);
+      std::snprintf(bad_key, bad_key_size, "no-equals");
       return false;
     }
     *equals = '\0';
     const char *key = line;
     const char *value = equals + 1;
+    // Only for a key the firmware knows by name.
     auto reject = [&]() {
       std::snprintf(bad_key, bad_key_size, "%s", key);
+      return false;
+    };
+    auto reject_unknown = [&]() {
+      std::snprintf(bad_key, bad_key_size, "unknown-key");
       return false;
     };
     any = true;
@@ -1374,8 +1389,15 @@ bool apply_lines(const char *text, std::size_t length, char *bad_key,
     // A board key (#184). The board checks it into its draft and keeps it once
     // the rest of the request is saved.
     if (!reserved_key(key)) {
-      if (!board_keys_installed() || !board_keys.stage(key, value))
-        return reject();
+      if (!board_keys_installed())
+        return reject_unknown();
+      const auto staged = board_keys.stage(key, value);
+      if (!staged) {
+        // Value means the board owns the key by name, so it is safe to echo.
+        if (staged.error() == BoardKeyError::Value)
+          return reject();
+        return reject_unknown();
+      }
       ++board_sent;
       continue;
     }
@@ -1393,8 +1415,9 @@ bool apply_lines(const char *text, std::size_t length, char *bad_key,
       pending.ble_changed = pending.ble_changed || mode != next.pair;
       next.pair = mode;
     } else if (std::strcmp(key, "ble.pin") == 0) {
+      // The retired default is refused, as load() rotates it away (#177).
       std::uint32_t pin;
-      if (!parse_pin(value, pin))
+      if (!parse_pin(value, pin) || pin == kFactoryDefaultPin)
         return reject();
       pending.ble_changed = pending.ble_changed || pin != next.pin;
       next.pin = pin;
@@ -1504,7 +1527,7 @@ bool apply_lines(const char *text, std::size_t length, char *bad_key,
       sensor_candidate_explicit = true;
       next.sensor_batch_candidate = flag;
     } else {
-      return reject();
+      return reject_unknown();
     }
   }
   if (!any) {

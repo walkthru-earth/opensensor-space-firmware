@@ -1003,7 +1003,53 @@ static void board_poll() {
 }
 
 namespace {
-void board_task(void *) {
+constexpr const char *kNvsFaultLine =
+    "DIAG ERROR operation=nvs-init error=%d erased=false\n";
+
+// NVS did not start, so the board has no settings and does not log. The
+// screen needs no NVS, so the fault goes there in red, and the serial line
+// repeats every 30 s. Never erase NVS here, it holds the owner's settings
+// and the Thing id.
+[[noreturn]] void storage_fault(esp_err_t error) {
+  auto config = M5.config();
+  config.clear_display = true;
+  config.output_power = true;
+  config.internal_imu = false;
+  config.internal_rtc = false;
+  config.internal_mic = false;
+  config.internal_spk = false;
+  config.external_imu = false;
+  config.external_rtc = false;
+  config.external_display_value = 0;
+  config.fallback_board = m5::board_t::board_M5StackCoreS3;
+  M5.begin(config);
+  M5.Display.fillScreen(TFT_BLACK);
+  M5.Display.setTextColor(TFT_RED, TFT_BLACK);
+  M5.Display.setTextSize(2);
+  M5.Display.setCursor(8, 48);
+  M5.Display.print("Settings storage error");
+  M5.Display.setCursor(8, 80);
+  M5.Display.print("Logging is off");
+  M5.Display.setCursor(8, 112);
+  M5.Display.printf("nvs-init error=%d", error);
+  M5.Display.setTextColor(TFT_WHITE, TFT_BLACK);
+  M5.Display.setTextSize(1);
+  M5.Display.setCursor(8, 152);
+  M5.Display.print("Read the USB serial log and see the board guide");
+  for (;;) {
+    wait_ms(30000);
+    opensensor::console::printf(kNvsFaultLine, error);
+  }
+}
+
+// The parameter is the NVS init error, ESP_OK when NVS started. FreeRTOS
+// fixes the callback signature.
+// cppcheck-suppress constParameterCallback
+void board_task(void *parameter) {
+  const auto nvs =
+      static_cast<esp_err_t>(reinterpret_cast<std::intptr_t>(parameter));
+  if (nvs != ESP_OK)
+    storage_fault(nvs);
   board_begin();
   for (;;)
     board_poll();
@@ -1017,12 +1063,14 @@ extern "C" void app_main() {
                                         // otherwise
   const esp_err_t nvs = nvs_flash_init();
   if (nvs != ESP_OK) {
-    oslog.printf("DIAG ERROR operation=nvs-init error=%d erased=false\n", nvs);
-    return;
+    oslog.printf(kNvsFaultLine, nvs);
+  } else {
+    opensensor::log::report_coredump();
+    opensensor::power::configure_dfs();
   }
-  opensensor::log::report_coredump();
-  opensensor::power::configure_dfs();
-  if (xTaskCreate(board_task, "cores3-board", 16 * 1024, nullptr,
+  // Without NVS the board task shows the fault on the screen and stops.
+  if (xTaskCreate(board_task, "cores3-board", 16 * 1024,
+                  reinterpret_cast<void *>(static_cast<std::intptr_t>(nvs)),
                   oslogger::kBoardTaskPriority, nullptr) != pdPASS)
     oslog.println("DIAG ERROR operation=board-task-create");
 }

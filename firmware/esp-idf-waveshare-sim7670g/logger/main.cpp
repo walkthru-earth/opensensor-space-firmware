@@ -205,13 +205,32 @@ const oslogger::Hooks kHooks{
 };
 } // namespace
 
+namespace {
+// NVS that cannot start leaves the board with no settings and no logging
+// (#177). The LED blinks red once a second, unlike the steady red of a PSRAM
+// fault or a missing card, and the serial line repeats every 30 s for a USB
+// reader that attaches late. NVS is never erased, see the board README.
+[[noreturn]] void nvs_fault(esp_err_t error) {
+  constexpr const char *kLine =
+      "OS ERROR operation=nvs-init error=%d logging=false\n";
+  oslog.printf(kLine, error);
+  if (!board::start_indicator())
+    oslog.println("OS ERROR operation=indicator-start");
+  for (unsigned tick = 1;; ++tick) {
+    board::indicator(tick % 2 ? 8 : 0, 0, 0);
+    vTaskDelay(pdMS_TO_TICKS(500));
+    // The physical console only, so the repeats never push the first line
+    // out of the persistent log ring.
+    if (tick % 60 == 0)
+      opensensor::console::printf(kLine, error);
+  }
+}
+} // namespace
+
 bool init_board() {
   const auto nvs_result = nvs_flash_init();
-  if (nvs_result != ESP_OK) {
-    oslog.printf("OS ERROR operation=nvs-init error=%d logging=false\n",
-                 nvs_result);
-    return false;
-  }
+  if (nvs_result != ESP_OK)
+    nvs_fault(nvs_result);
   opensensor::log::report_coredump();
   board::start_indicator();
   vTaskDelay(pdMS_TO_TICKS(500));
