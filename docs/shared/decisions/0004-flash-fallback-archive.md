@@ -50,7 +50,18 @@ and the files move to the card once a card is back.
    is mounted and has room, otherwise no file (rows stay in the RAM batch as
    today). A file keeps its root until it is finalized. A storage probe that
    finds the card back finalizes an open flash file, so the rows waiting in
-   RAM write a card file before the card counts as Ready. Paths below each root
+   RAM write a card file before the card counts as Ready. The probe closes
+   the flash file only when the card will take files after it, so a card
+   that stays Full in the band above its reserve leaves the flash file and
+   its rows on flash. After a failed write test the probe keeps the flash
+   file open and defers, and the card is tested again by rows that wait
+   while no file is open, or by closing the flash file at most once an hour
+   (#219). With no rows waiting the probe writes nothing and keeps the flash
+   file open. The card then counts as Ready on its mount and free space, as
+   it did before this record, unless its last write test failed, and its
+   first card write, a new card file or a copy back write, is the test. A
+   copy back write the card refuses before any card write has passed puts
+   the card in Retry like a failed commit (#218). Paths below each root
    are the same Hive layout, `thing=<id>/year=/month=/day=/` or
    `thing=<id>/unsynced/boot=<boot>/`, with the same file names.
 5. **Finalize is unchanged.** Flash files use the same `.partial`, fsync,

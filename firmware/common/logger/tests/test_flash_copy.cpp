@@ -786,6 +786,28 @@ void copy_order() {
   assert(!fc::copy_before("a.parquet", "a.parquet"));
   assert(fc::copy_before("z.parquet", "a.json"));
 }
+
+// Only a write the card refused says the card cannot take writes (#218).
+// Every other failure is about one file or the flash side.
+void card_write_failures() {
+  for (const Failure failure :
+       {Failure::Directory, Failure::TempOpen, Failure::TempWrite,
+        Failure::TempSync, Failure::TempClose}) {
+    assert(fc::card_write_failure(failure, EIO));
+    assert(fc::card_write_failure(failure, 0));
+  }
+  assert(fc::card_write_failure(Failure::Rename, EIO));
+  assert(fc::card_write_failure(Failure::Rename, EROFS));
+  assert(!fc::card_write_failure(Failure::Rename, EEXIST));
+  for (const Failure failure :
+       {Failure::Idle, Failure::Scratch, Failure::SourceMissing,
+        Failure::SourceStat, Failure::SourceOpen, Failure::SourceRead,
+        Failure::SourceSize, Failure::TempRemove, Failure::CardStat,
+        Failure::TempRead, Failure::CardRead, Failure::Hash, Failure::Verify,
+        Failure::SourceUnlink, Failure::CrosslinkSuspect})
+    assert(!fc::card_write_failure(failure, EIO));
+  static_assert(fc::card_write_failure(Failure::TempWrite, EIO));
+}
 } // namespace
 
 int main() {
@@ -803,5 +825,6 @@ int main() {
   begin_rules();
   cancel_mid_copy();
   copy_order();
+  card_write_failures();
   return 0;
 }

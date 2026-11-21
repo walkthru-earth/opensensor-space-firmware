@@ -86,6 +86,20 @@ constexpr State next_space_state(State current, std::uint64_t free_bytes,
   return State::Retry;
 }
 
+// Ready and Degraded take new rows, Full and Retry do not.
+constexpr bool writable(State state) {
+  return state == State::Ready || state == State::Degraded;
+}
+
+// The state a successful probe leaves. A probe clears Retry, and a Full or
+// Degraded card keeps its hysteresis across a remount. The worker asks it
+// before the probe writes, so it can tell whether the card will take files.
+constexpr State probe_state(State current, std::uint64_t free_bytes,
+                            const Thresholds &t) {
+  return next_space_state(current == State::Retry ? State::Ready : current,
+                          free_bytes, t);
+}
+
 // A remount may expose another card, so its active tree is scanned for
 // partials before any file can be created there. A Full recheck remount only
 // finds files this device closed before it, so it rescans only when the probe
@@ -161,9 +175,7 @@ public:
     attempts_ = 0;
     free_ = measured_free;
     checked_ = now_seconds;
-    // A Full or Degraded card keeps its hysteresis across a remount.
-    state_ = next_space_state(state_ == State::Retry ? State::Ready : state_,
-                              free_, limits_);
+    state_ = probe_state(state_, free_, limits_);
   }
 
   // Explicit FLUSH or codec/interval changes retry immediately.
@@ -178,9 +190,7 @@ public:
     return (state_ == State::Degraded || state_ == State::Full) &&
            now_seconds - checked_ >= kRecheckSeconds;
   }
-  bool writable() const {
-    return state_ == State::Ready || state_ == State::Degraded;
-  }
+  bool writable() const { return storage::writable(state_); }
   State state() const { return state_; }
   std::uint64_t free_bytes() const { return free_; }
   std::uint32_t retry_attempts() const { return attempts_; }

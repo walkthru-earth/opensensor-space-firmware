@@ -44,7 +44,13 @@ above `fallback_reserve_bytes` (128 KiB by default), else the rows wait in RAM.
 A file keeps its root until it finalizes, so a card that leaves mid-file keeps
 today's handling. A probe that finds the card back finalizes an open flash
 file, and the rows waiting in RAM then open a card file as the write test
-before Retry clears. Each change prints `OS STORAGE
+before Retry clears. `archive_target::probe_action()` closes the flash file
+only for a card that will take files after the probe, never for one that
+stays Full, and after a failed write test only once an hour, so a bad card
+does not cut flash files short (#219). Without rows waiting nothing is
+written and the flash file stays open. A card whose last test failed then
+stays in Retry, any other card counts as Ready and its first copy back
+write is the test, a refused one puts it in Retry (#218). Each change prints `OS STORAGE
 target=<card|flash|none>`, and the flash volume crossing its reserve prints
 `OS FLASH full free=<n> reserve=<n>` or `OS FLASH room free=<n>` once per
 transition. Nothing is deleted to make room. Boot quarantine also moves flash

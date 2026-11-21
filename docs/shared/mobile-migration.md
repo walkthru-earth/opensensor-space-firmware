@@ -9,6 +9,34 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## Flash fallback hardening (fix/flash-fallback-hardening)
+
+**Needs a matched reflash of all four boards. No app change is required.**
+No column, field id, LIVE key, STATUS key, response, config key, dictionary
+or digest changes. Decision record 0004, items 4 and 7.
+
+**What changed.**
+
+- STATUS `ls` on a boot whose flash mount failed, or on an image with the
+  fallback off, now includes the copies earlier boots made (#217). Before it
+  was the bare volume serial and could repeat an epoch a saved cursor holds.
+- A storage probe no longer closes an open flash file for a card that stays
+  Full, or again within an hour for a card that just failed its write test
+  (#219). Flash files then keep their whole window, and STATUS `sd_state` stays
+  3 (retry) after a failed write test until a later test passes.
+- A copy back write the card refuses moves STATUS `sd_state` from 0 to 3
+  (retry) when no card write passed since the card came back (#218). The
+  serial console prints the existing `PARQUET STORAGE state=retry` line after
+  the `OS FLASH copy ... result=error` line.
+
+**Why.** A Full card in the band above its reserve took the waiting rows into
+a card file that then held every later row off flash, and a card that cannot
+write cut each flash file at every probe. A card with no rows to test reached
+Ready on its mount alone.
+
+**What the app must do.** Nothing. `sd_state` keeps its values and the app
+already treats 3 (retry) as not logging.
+
 ## Internal flash fallback archive (feat/flash-fallback-archive)
 
 **Needs a matched reflash of all four boards. No app change is required.**

@@ -266,6 +266,11 @@ std::int64_t flash_retry_at = 0;
 const char *next_root = nullptr;
 archive_target::Target storage_target = archive_target::Target::None;
 bool storage_target_logged = false;
+// What the card showed at its last write, and the uptime second of a failed
+// probe write test. A probe asks it before it closes a flash file to test
+// the card, and a copy back failure asks it before it fails the card.
+archive_target::CardWrites card_writes = archive_target::CardWrites::Untested;
+std::int64_t card_failed_at = 0;
 // Files copied back over the life of the board, kept in NVS. A mount shifts
 // the volume serial by them, so a LIST_SINCE cursor from before a copy never
 // reads as current, not even after a reboot.
@@ -2446,6 +2451,8 @@ bool governed_commit(std::size_t &count, bool finalize,
   bool ok = commit(count, finalize);
   if (written)
     *written = ok;
+  if (ok)
+    card_writes = archive_target::CardWrites::Passed;
   std::uint64_t free_bytes = 0;
   if (ok && measure_free(free_bytes)) {
     governor.observe_free(free_bytes, uptime_seconds());
@@ -2762,6 +2769,8 @@ bool service_copy_back(bool storage_ready) {
         outcome == flash_copy::Outcome::Copied ? "copied" : "identical");
     if (drain.moved != UINT32_MAX)
       ++drain.moved;
+    if (outcome == flash_copy::Outcome::Copied)
+      card_writes = archive_target::CardWrites::Passed;
     // A LIST_SINCE cursor from before the move never reads as current.
     copy_count.copied();
     mount_epoch = list_since::next_epoch(mount_epoch.load());
@@ -2782,6 +2791,17 @@ bool service_copy_back(bool storage_ready) {
                  "errno=%d\n",
                  relative, bytes, flash_copy::failure_name(failure),
                  drain.copier.error());
+    // A card that reached Ready without a write test fails it here, so it
+    // leaves Ready like after a failed commit (#218). The flash file stays.
+    if (archive_target::copy_fails_card(
+            card_writes,
+            flash_copy::card_write_failure(failure, drain.copier.error()))) {
+      const auto previous = governor.state();
+      card_writes = archive_target::CardWrites::Failed;
+      card_failed_at = now;
+      governor.write_failed(now);
+      publish_storage(previous);
+    }
     if (failure == flash_copy::Failure::CrosslinkSuspect) {
       // Both card entries and the flash source stay for the owner, once
       // per file and boot.
@@ -2894,19 +2914,41 @@ void probe_storage(std::size_t &count, bool &storage_ready,
                  quarantined);
   }
   // Waiting rows are the real write test. Committed while still in Retry so
-  // a card that mounts but cannot write keeps its growing backoff. An open
-  // flash file is finalized first, so the waiting rows open a card file and
-  // the card is written before Retry clears. A failed flash finalize is
-  // logged and paused by flash_commit and never fails the card probe. With
-  // no rows waiting the next card file is the write test, as without flash.
-  if (ok && free_bytes >= governor.limits().reserve) {
-    if (on_flash(writer_state->telemetry)) {
+  // a card that mounts but cannot write keeps its growing backoff.
+  // probe_action() decides whether an open flash file is finalized first, so
+  // the rows open a card file, or stays open because the card stays Full or
+  // failed its last test (#219). A failed flash finalize is logged and
+  // paused by flash_commit and never fails the card probe. With no rows
+  // waiting nothing is written, and the next card write is the test (#218).
+  if (ok) {
+    const auto plan = archive_target::probe_action(
+        {.space_ok = free_bytes >= governor.limits().reserve,
+         .card_writable = storage::writable(
+             storage::probe_state(previous, free_bytes, governor.limits())),
+         .rows_waiting = count != 0,
+         .flash_open = on_flash(writer_state->telemetry),
+         .flash_takes_rows = commit_to_flash(),
+         .writes = card_writes,
+         .failed_age_s = now - card_failed_at});
+    using enum archive_target::ProbeAction;
+    if (plan == FinalizeWrite) {
       std::size_t none = 0;
       flash_commit(none, true, nullptr);
     }
-    if (count) {
+    if (plan == Write || plan == FinalizeWrite) {
       next_root = kDirectory;
-      ok = commit(count, false) && measure_free(free_bytes);
+      if (commit(count, false)) {
+        card_writes = archive_target::CardWrites::Passed;
+        ok = measure_free(free_bytes);
+      } else {
+        card_writes = archive_target::CardWrites::Failed;
+        card_failed_at = now;
+        ok = false;
+      }
+    } else if (plan == Defer) {
+      ok = false;
+    } else if (card_writes != archive_target::CardWrites::Failed) {
+      card_writes = archive_target::CardWrites::Untested;
     }
   }
   if (ok)

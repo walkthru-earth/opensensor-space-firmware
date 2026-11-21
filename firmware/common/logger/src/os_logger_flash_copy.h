@@ -148,6 +148,26 @@ enum class [[nodiscard]] Failure : std::uint8_t {
   return "unknown";
 }
 
+// True when the card refused a write the copy made: its directory, the
+// temporary or the rename into place. A rename refused with EEXIST lost a
+// race with another file of that name, not a write. Reads, a verify
+// mismatch, a stale temporary that stays and anything on the flash side are
+// about one file, not about whether the card takes writes (#218).
+[[nodiscard]] constexpr bool card_write_failure(Failure failure, int error) {
+  switch (failure) {
+  case Failure::Directory:
+  case Failure::TempOpen:
+  case Failure::TempWrite:
+  case Failure::TempSync:
+  case Failure::TempClose:
+    return true;
+  case Failure::Rename:
+    return error != EEXIST;
+  default:
+    return false;
+  }
+}
+
 enum class [[nodiscard]] BeginError : std::uint8_t {
   Busy,    // a copy is in progress
   BadName, // a missing root, or a relative name that is not a plain path

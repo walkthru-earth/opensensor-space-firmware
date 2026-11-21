@@ -69,12 +69,32 @@ def check_wiring(source: str) -> None:
             r"in\.card_listable = card_listable\(\);",
         "LIST and OPEN answer while either root is usable":
             r"archive_session\.handle\(request, archive_ready\(state\.storage_ready\)\)",
-        "a probe finalizes an open flash file so the waiting rows test the card":
-            r"if \(ok && free_bytes >= governor\.limits\(\)\.reserve\) \{ "
-            r"if \(on_flash\(writer_state->telemetry\)\) \{ std::size_t none = 0; "
-            r"flash_commit\(none, true, nullptr\); \} if \(count\) \{ "
-            r"next_root = kDirectory; ok = commit\(count, false\) && "
-            r"measure_free\(free_bytes\); \} \}",
+        "a probe asks probe_action whether to close the flash file and test the card (#219)":
+            r"const auto plan = archive_target::probe_action\("
+            r"\{\.space_ok = free_bytes >= governor\.limits\(\)\.reserve, "
+            r"\.card_writable = storage::writable\(storage::probe_state\("
+            r"previous, free_bytes, governor\.limits\(\)\)\), "
+            r"\.rows_waiting = count != 0, "
+            r"\.flash_open = on_flash\(writer_state->telemetry\), "
+            r"\.flash_takes_rows = commit_to_flash\(\), "
+            r"\.writes = card_writes, \.failed_age_s = now - card_failed_at\}\);",
+        "only FinalizeWrite closes the open flash file at a probe":
+            r"if \(plan == FinalizeWrite\) \{ std::size_t none = 0; "
+            r"flash_commit\(none, true, nullptr\); \}",
+        "the probe write test records what the card showed":
+            r"if \(plan == Write \|\| plan == FinalizeWrite\) \{ next_root = kDirectory; "
+            r"if \(commit\(count, false\)\) \{ card_writes = archive_target::CardWrites::Passed; "
+            r"ok = measure_free\(free_bytes\); \} else \{ "
+            r"card_writes = archive_target::CardWrites::Failed; card_failed_at = now; ok = false; \} "
+            r"\} else if \(plan == Defer\) \{ ok = false; \}",
+        "a card commit that wrote marks the card as passed":
+            r"\*written = ok; if \(ok\) card_writes = archive_target::CardWrites::Passed;",
+        "a refused copy write fails an untested card (#218)":
+            r"if \(archive_target::copy_fails_card\(card_writes, "
+            r"flash_copy::card_write_failure\(failure, drain\.copier\.error\(\)\)\)\) \{ "
+            r"const auto previous = governor\.state\(\); "
+            r"card_writes = archive_target::CardWrites::Failed; card_failed_at = now; "
+            r"governor\.write_failed\(now\); publish_storage\(previous\); \}",
         "a mount shifts the volume serial by the stored copy count, with or "
         "without a flash root (#217)":
             r"std::uint32_t volume_epoch\(std::uint32_t serial\) \{ "
