@@ -9,6 +9,32 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## ePaper-3.97 battery detection and OS POWER on change (fix/epaper397-battery-detect)
+
+**Log lines only, no app change.** Needs a reflash of the Waveshare
+ePaper-3.97. No column, field id, LIVE key, STATUS key, response, config key,
+version, dictionary or digest changes. CoreS3, Waveshare V2 and CrowPanel do
+not change.
+
+**What changed.**
+
+- `OS PMIC chip=tg28 ...` gains `bat_det=<0xNN|null>`, the TG28 register
+  0x68 as found before boot sets its bit 0, and
+  `battery_detect=<on|failed>`, both between `ldo_enables=` and `adc=`.
+- `OS POWER vbus=... battery=... battery_mv=... battery_percent=...` and
+  `OS POWER error=...` can now repeat after boot. The 30 s power poll prints
+  the line again when the read result, `vbus`, `battery` or the presence of
+  a percent differs from the last line. The format is unchanged.
+- `battery_mv` takes 5 bits from register 0x34 instead of 6, as XPowersLib
+  does. A value under 8,192 mV prints the same.
+
+**Why.** With a LiPo attached the board printed `battery=0`, so the header
+drew no battery icon. The firmware never turned on battery detection, which
+the Waveshare demo does at start.
+
+**What the app must do.** Nothing. A log reader that takes the first
+`OS POWER` line as the only one should take the latest instead.
+
 ## H3 4.6.0 through embedded-h3-location v2.1.0 (chore/224-h3-460)
 
 **Needs a reflash with the matched app build. The app needs no code change.**
