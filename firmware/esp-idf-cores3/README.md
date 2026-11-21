@@ -14,7 +14,7 @@ SHA-256 `f4f81218…` covers the LIVE key map and precision. `bringup/main.cpp` 
 UART; `bringup/telemetry_logger.cpp` supplies the OSLogger adapter. M5Unified
 **0.3.0** and M5GFX **0.3.0** are native IDF components; there are no Arduino
 APIs or Arduino component in the application. Location uses the optional shared
-component over embedded-h3-location **v2.0.0** with official H3 **4.5.0**.
+component over embedded-h3-location **v2.1.0** with official H3 **4.6.0**.
 Shared connectivity uses native
 NimBLE/Wi-Fi/netif/SNTP and managed mDNS **1.15.1**. These stable release pins
 were checked on **2026-11-09**. M5 0.3.0 renumbers display rotation, so the

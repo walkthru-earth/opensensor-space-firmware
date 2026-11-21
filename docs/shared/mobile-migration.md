@@ -9,6 +9,36 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## H3 4.6.0 through embedded-h3-location v2.1.0 (chore/224-h3-460)
+
+**Needs a reflash with the matched app build. The app needs no code change.**
+No column, field id, LIVE key, STATUS key, config key, frame layout,
+dictionary or digest changes. H3 cell ids are the same.
+
+**What changed.** The firmware now pins embedded-h3-location v2.1.0, which
+vendors official H3 4.6.0 in place of 4.5.0. H3 4.6.0 computes latitude with
+`atan2` (uber/h3 #1255), so the outline points H3 returns can differ in their
+last bits, most near the poles. The STAC File Item sidecar builds its
+`geometry` and `bbox` from those outlines, so a sidecar written after the
+reflash can show coordinates that differ in the last digits from one written
+before it for the same cells.
+
+The cell centre takes the same path. It is the row `GEOMETRY` point (E7, so
+the GeoParquet bbox follows it) and the config page 1 `lat`. A host scan of
+all 691,776,122 res 8 cells, computing the latitude both ways from the same
+H3 vector and rounding to E7 as `center_e7` does, found 40 cells whose centre
+latitude moves by exactly one E7 unit (1e-7 degree, about 1 cm). They lie
+between 9.8 and 89.1 degrees from the equator. Longitude does not change.
+The scan used the host libm, and the board libm can round differently in the
+last bits, so treat 40 as the host count, not a device proof.
+
+**Why.** #224. Policy is to pin the latest stable release of every dependency.
+
+**What the app must do.** Nothing in the code. Do not compare sidecar
+coordinates or row centres across firmware versions bit for bit. If the app or its tests
+compute cell outlines with h3-js, that stays at 4.5.0 for now and can differ
+in the same last bits, so compare with a small tolerance.
+
 ## LIST and OPEN carry the STAC sidecar next to its Parquet (feat/143-sidecar-sync)
 
 **Needs a matched app build (opensensor-space-mobile#265) and a reflash.** No

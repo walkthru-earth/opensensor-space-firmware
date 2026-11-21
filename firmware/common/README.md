@@ -143,7 +143,7 @@ Floats print with the decimals each board sets per field. Without an RTC,
 
 OSLocation holds the res 8 policy and PSRAM allocator hooks over the pinned
 [embedded-h3-location](https://github.com/walkthru-earth/embedded-h3-location)
-v2.0.0 library, which vendors unmodified official H3 4.5.0 with verified
+v2.1.0 library, which vendors unmodified official H3 4.6.0 with verified
 hashes. OSRuntime
 stores one coherent location record containing only the resolution 8 cell, the
 fixed resolution 8 and optional owner-declared ISO country. OSLogger captures it at acquisition and

@@ -39,8 +39,8 @@ and Waveshare led_strip **3.1.1**. `pixi run telemetry-contract-test` fails
 when the CoreS3 M5 versions in `dependencies.env`, the `os_cores3` manifest,
 the footer `kConfiguration` and `dependencies.lock` disagree. The location
 component pins [embedded-h3-location](https://github.com/walkthru-earth/embedded-h3-location)
-**v2.0.0** as a git dependency, and each board `dependencies.lock` records its
-commit. The library vendors official H3 **4.5.0** with exact source and license
+**v2.1.0** as a git dependency, and each board `dependencies.lock` records its
+commit. The library vendors official H3 **4.6.0** with exact source and license
 hashes in its own `vendor/h3/manifest.json`. Host tests build the same commit
 through `tools/h3_library.py`, which clones it once per locked commit into
 `${XDG_CACHE_HOME:-~/.cache}/opensensor-space-firmware/embedded-h3-location/<commit>/`
@@ -49,9 +49,9 @@ the board registry.
 Policy is to pin the latest stable release of every dependency. Rechecking on
 **2026-11-21** confirmed mDNS **1.15.1**, led_strip **3.1.1** and ESP-IDF
 **6.1.1** as latest, and M5Unified and M5GFX **0.3.0** as their latest
-releases. H3 **4.6.0** came out on 2026-11-18 and the pin stays at **4.5.0**
-until embedded-h3-location tags a release that vendors it (#224). Dated device evidence records which component versions each
-qualified image used. LZ4 is vendored **1.11.0** with checked hashes.
+releases. H3 **4.6.0**, released 2026-11-18, came in through
+embedded-h3-location **v2.1.0** (#224). Dated device evidence records which
+component versions each qualified image used. LZ4 is vendored **1.11.0** with checked hashes.
 [LZ4 1.11.1](https://github.com/lz4/lz4/releases/tag/v1.11.1) came out on
 2026-11-10. Its `lz4.c` and `lz4.h` change only turns on the fast decode loop
 for `__PPC64__` and bumps the version number, and its main fix is in

@@ -123,8 +123,8 @@ def checkout(root: Path) -> Path:
 def verify_vendor(vendor: Path) -> None:
     """Check the vendored H3 against its manifest, as the library CMake does."""
     manifest = json.loads((vendor / "manifest.json").read_text())
-    assert manifest["tag"] == "v4.5.0"
-    assert manifest["commit"] == "1b536c34225191ba24a75a840f634d4a48c3b206"
+    assert manifest["tag"] == "v4.6.0"
+    assert manifest["commit"] == "33ec62807261311a26eb59f8a1c95163c988efff"
     present = {path.relative_to(vendor).as_posix()
                for path in vendor.rglob("*") if path.is_file()}
     present -= {"manifest.json"}

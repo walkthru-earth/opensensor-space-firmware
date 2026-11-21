@@ -4,5 +4,5 @@
 dependencies:
   walkthru-earth/embedded-h3-location:
     git: "https://github.com/walkthru-earth/embedded-h3-location.git"
-    version: "v2.0.0"
+    version: "v2.1.0"
     require: public

@@ -2,7 +2,7 @@
 
 The H3 work lives in the pinned library
 [walkthru-earth/embedded-h3-location](https://github.com/walkthru-earth/embedded-h3-location)
-v2.0.0, fetched by the component manager from `idf_component.yml`. This
+v2.1.0, fetched by the component manager from `idf_component.yml`. This
 component keeps only the firmware policy over it. `src/os_location.h` holds the
 res 8 rule and `src/os_h3_alloc.cpp` holds the H3 allocator hooks. Nothing here
 initializes controllers, reads GPS, performs network lookups, writes NVS or
