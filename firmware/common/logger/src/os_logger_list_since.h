@@ -379,6 +379,10 @@ struct Inputs {
   // fallback root holds files the incremental walk never reads (decision
   // record 0004, list_merge::since_needs_full).
   bool force_full = false;
+  // False while the card cannot be walked and the full walk reads the flash
+  // root only. The cursor then carries epoch 0, so the card coming back with
+  // the same epoch never takes it as current.
+  bool card_listable = true;
 };
 
 // The epoch after a copy back moved files onto the card. Every cursor of the
@@ -420,7 +424,7 @@ struct Plan {
 
 constexpr Plan plan(const Inputs &in) {
   Plan out;
-  out.full = in.force_full || !in.mount_epoch ||
+  out.full = in.force_full || !in.card_listable || !in.mount_epoch ||
              in.cursor.mount_epoch != in.mount_epoch;
   const std::uint32_t request_day = out.full ? 0 : in.cursor.day;
   const std::uint32_t floor =
@@ -429,7 +433,7 @@ constexpr Plan plan(const Inputs &in) {
           : 0;
   out.floor = floor;
   auto &next = out.result.next;
-  next.mount_epoch = in.mount_epoch;
+  next.mount_epoch = in.card_listable ? in.mount_epoch : 0;
   next.day = cursor_day(in.yesterday ? min_known(in.yesterday, in.lowest_dated)
                                      : floor);
   const bool ring_trusted = in.ring && !in.current_unlisted;

@@ -549,6 +549,41 @@ void check_flash_fallback() {
   assert(ls::shifted_epoch(5, 0xffffffffU) == 5);
 }
 
+// A pulled card sits out Retry while flash answers, so the full walk reads
+// flash only. Its cursor carries epoch 0, never the pulled card's epoch, so
+// the same card back with the same epoch never reads that cursor as current
+// and the next LIST_SINCE lists the card in full.
+void check_card_not_listable() {
+  ls::Ring ring;
+  ring.append(boot_of(1));
+  ring.append(boot_of(2));
+  auto in = inputs(
+      {.mount_epoch = 0xcafe, .day = 20260310, .boot = boot_of(1), .seq = 3},
+      &ring, boot_of(2));
+  assert(!ls::plan(in).full);
+  assert(ls::plan(in).result.next.mount_epoch == 0xcafe);
+  in.card_listable = false;
+  auto plan = ls::plan(in);
+  assert(plan.full && plan.result.flags == ossync::kListSinceFull);
+  assert(plan.result.next.mount_epoch == 0);
+  // The rest of the cursor is as the full card walk hands it out.
+  assert(plan.result.next.day == 20260314);
+  assert(plan.result.next.boot == boot_of(2) && plan.result.next.seq == 0);
+  // A forced full walk without the card hands out epoch 0 as well.
+  in.force_full = true;
+  assert(ls::plan(in).result.next.mount_epoch == 0);
+  // The same card is back with epoch 0xcafe. The cursor of the flash only
+  // walk does not match it, so the card is listed in full.
+  in.force_full = false;
+  in.card_listable = true;
+  in.cursor = plan.result.next;
+  plan = ls::plan(in);
+  assert(plan.full && plan.result.next.mount_epoch == 0xcafe);
+  // Only the cursor of that full card walk is incremental again.
+  in.cursor = plan.result.next;
+  assert(!ls::plan(in).full);
+}
+
 void check_walks() {
   const auto old_boot = boot_of(1);
   const auto current = boot_of(2);
@@ -709,5 +744,6 @@ int main(int argc, char **argv) {
   check_tracker();
   check_plan();
   check_flash_fallback();
+  check_card_not_listable();
   check_walks();
 }

@@ -1467,11 +1467,13 @@ public:
       }
       auto in = since_state.inputs(cursor, mount_epoch.load(), utc_yesterday(),
                                    boot_ring, ring_store);
-      // A flash file carries no card epoch, and a card that sits out Retry
-      // cannot be walked, so both answer with the full listing. A copy back
-      // moves the epoch instead (copy_bumps), see list_merge::since_needs_full.
-      in.force_full = list_merge::since_needs_full(flash_holds_files, false) ||
-                      !card_listable();
+      // A flash file carries no card epoch, so it answers with the full
+      // listing. A card that sits out Retry cannot be walked, so the full
+      // walk reads flash only and hands out epoch 0, never the pulled card's
+      // epoch. A copy back moves the epoch instead (copy_bumps), see
+      // list_merge::since_needs_full.
+      in.card_listable = card_listable();
+      in.force_full = list_merge::since_needs_full(flash_holds_files, false);
       const auto plan = list_since::plan(in);
       result = plan.result;
       oslog.printf("LIST_SINCE plan full=%u floor=%lu unsynced_full=%u "

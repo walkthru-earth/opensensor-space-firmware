@@ -42,7 +42,7 @@ def check_wiring(source: str) -> None:
             r"if \(start\) \{ cancel\(\); if \(!since_\) \{ errno = ENOTSUP; return fail\(\); \} "
             r"auto in = since_state\.inputs\(cursor, "
             r"mount_epoch\.load\(\), utc_yesterday\(\), boot_ring, ring_store\); "
-            r"in\.force_full = [^;]*; "
+            r"in\.card_listable = card_listable\(\); in\.force_full = [^;]*; "
             r"const auto plan = list_since::plan\(in\); result = plan\.result;",
         "a widened walk reports unsynced_full":
             r"if \(since_->widened\(\)\) result\.flags \|= ossync::kListSinceUnsyncedFull;",
