@@ -106,6 +106,15 @@ Clean state first, then the contracts in this repo and stac-opensensor, then
 the mobile refactor. There is no backward compatibility. Firmware and app
 move in lockstep (owner decision 14). Portolan adoption comes later.
 
+## Template mirror
+
+The four board templates (CoreS3, Waveshare V2, CrowPanel e-paper and
+Waveshare ePaper-3.97) are mirrored to stac-opensensor `templates/` and
+re-bundled in the app by hand, after the matching firmware PR lands. The
+mirror is not done yet. It waits on the order in
+[#184](https://github.com/walkthru-earth/opensensor-space-firmware/issues/184),
+and a mirrored file must keep the bytes whose SHA-256 is the board `desc`.
+
 ## Open questions for the owner
 
 1. **CrowPanel air bands.** The CrowPanel screen colours PM2.5 with the US

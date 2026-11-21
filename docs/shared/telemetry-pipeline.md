@@ -76,7 +76,7 @@ Schema versions: **v1** 73 columns; **v2** 77 columns (`cores3-telemetry-v2`, fi
 
 ## Deployment cell and country (native schemas)
 
-Both boards hold four nullable location leaves next to each other. From the
+Every board holds four nullable location leaves next to each other. From the
 Thing release (#83, CoreS3 schema `cores3-telemetry-v6`, Waveshare schema
 `waveshare-sim7670g-telemetry-v6`) they are
 
@@ -235,7 +235,7 @@ code in `firmware/common/upload/src/`, mainly `os_upload_policy`,
   Today the uploader sends only `.parquet` names, and the BLE and LAN name rule
   accepts only `.parquet` too. Sidecar transport is future work, over the
   uploader in [#144](https://github.com/walkthru-earth/opensensor-space-firmware/issues/144) and over BLE and LAN in [#143](https://github.com/walkthru-earth/opensensor-space-firmware/issues/143). The File Item
-  writer is built and both boards opt in. The decision also gives the board
+  writer is built and all four boards opt in. The decision also gives the board
   the Thing Collection, written from its upload ledger, and that writer is
   decided and not built. The File Item is [#142](https://github.com/walkthru-earth/opensensor-space-firmware/issues/142) and the Thing Collection is [#145](https://github.com/walkthru-earth/opensensor-space-firmware/issues/145).
 

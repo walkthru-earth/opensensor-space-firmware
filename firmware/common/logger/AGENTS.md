@@ -17,7 +17,7 @@ initialization and each board's schema/provenance remain in its own trial.
 - Only the worker accesses the filesystem after startup. Acquisition and RTC
   callbacks run only on the main task through begin/poll; a host clock command
   must enqueue an RTC request rather than performing hardware IO on the worker.
-- Preserve 10-second monotonic sampling on both boards (the
+- Preserve 10-second monotonic sampling on every board (the
   `Config::sample_interval_ms` default, which `begin()` rejects unless
   `cadence::valid_sample_interval()` passes), absent-field/type-safe runtime setters,
   null UTC before a real anchor, visible drop/deadline/error counts, and immutable
