@@ -22,6 +22,8 @@ TESTS = {
     "flash-copy": ("test_flash_copy.cpp", [], ["src/sha256_stream.cpp"]),
     "list-merge": ("test_list_merge.cpp", ["os_logger_list_merge.h"], []),
     "roots": ("test_roots.cpp", ["os_logger_roots.h"], []),
+    "copy-candidates": ("test_copy_candidates.cpp", ["os_logger_copy_candidates.h"], []),
+    "thing-id": ("test_thing_id.cpp", [], []),
 }
 
 FORBIDDEN = re.compile(
@@ -90,11 +92,14 @@ def check_wiring(source: str) -> None:
         "a card commit that wrote marks the card as passed":
             r"\*written = ok; if \(ok\) card_writes = archive_target::CardWrites::Passed;",
         "a refused copy write fails an untested card (#218)":
+            r"void copy_failed\(flash_copy::Failure failure, int error, std::int64_t now\) \{ "
             r"if \(archive_target::copy_fails_card\(card_writes, "
-            r"flash_copy::card_write_failure\(failure, drain\.copier\.error\(\)\)\)\) \{ "
+            r"flash_copy::card_write_failure\(failure, error\)\)\) \{ "
             r"const auto previous = governor\.state\(\); "
             r"card_writes = archive_target::CardWrites::Failed; card_failed_at = now; "
-            r"governor\.write_failed\(now\); publish_storage\(previous\); \}",
+            r"governor\.write_failed\(now\); publish_storage\(previous\); \} \}",
+        "every failed copy reaches the card check with the copier error":
+            r"worker::copy_failed\(failure, drain\.copier\.error\(\), now\);",
         "a mount shifts the volume serial by the stored copy count, with or "
         "without a flash root (#217)":
             r"std::uint32_t volume_epoch\(std::uint32_t serial\) \{ "
@@ -102,18 +107,26 @@ def check_wiring(source: str) -> None:
         "every mount takes its epoch from the copy count":
             r"mount_epoch = volume_epoch\(serial\);",
         "the copy count is stored before a file moves":
-            r"if \(!copy_count\.reserve\(copy_count_store\)\) \{ log_copy_count_error\(\); "
-            r"drain\.next_at = now \+ kCopyWaitSeconds; return false; \} "
-            r"const auto begun = drain\.copier\.begin\(",
+            r"if \(!worker::reserve_copy_count\(\)\) \{ wait_a_pass\(drain, now\); "
+            r"return false; \} const auto begun = drain\.copier\.begin\(",
+        "a refused copy count store logs once and holds the file":
+            r"bool reserve_copy_count\(\) \{ if \(copy_count\.reserve\(copy_count_store\)\) "
+            r"return true; log_copy_count_error\(\); return false; \}",
         "the copy count lives in the osflash namespace":
             r"nvs_set_u32\(flags, opensensor::storage::kFlashCopiesKey, count\)",
         "a committed copy measures card free space before the next pass (#213)":
-            r"measure_flash\(\); if \(outcome == flash_copy::Outcome::Copied\) \{ "
+            r"measure_flash\(\); if \(copied\) \{ "
             r"const auto previous = governor\.state\(\); std::uint64_t free_bytes = 0; "
             r"if \(measure_free\(free_bytes\)\) governor\.observe_free\(free_bytes, now\); "
             r"else governor\.write_failed\(now\); publish_storage\(previous\); \}",
         "a copy back moves the mount epoch":
             r"copy_count\.copied\(\); mount_epoch = list_since::next_epoch\(mount_epoch\.load\(\)\);",
+        "a finalized or failed flash file refreshes the copy candidates (#215)":
+            r"if \(!ok \|\| !writer_state->telemetry\.open\(\)\) copy_back::flash_changed\(\);",
+        "a cancelled copy drops the copy candidates (#215)":
+            r"void cancel\(const char \*reason\) \{",
+        "the copy candidates are filled from one walk and taken in order (#215)":
+            r"drain\.candidates\.offer\(",
         "the copier hashes with its own stream":
             r"return sha\.begin\(\);",
         "the copy back state lives in PSRAM":
@@ -126,10 +139,16 @@ def check_wiring(source: str) -> None:
             r"const auto aside = drain\.copier\.set_aside\(drain\.io\); if \(aside\) \{ "
             r"oslog\.printf\(\"OS FLASH conflict name=%s moved=%s%s sidecar=%d\\n\", "
             r"relative, flash_copy::kConflictPrefix, relative, \*aside \? 1 : 0\); "
-            r"remove_empty_flash_directories\(relative\); break; \}",
+            r"remove_empty_flash_directories\(relative\); drain\.candidates\.clear\(\); "
+            r"break; \}",
+        "only a committed copy counts as a card write":
+            r"const bool copied = outcome == flash_copy::Outcome::Copied;",
+        "a moved file moves the epoch, then the governor measures":
+            r"worker::file_moved\(copied\); remove_empty_flash_directories\(relative\); "
+            r"worker::measure_after_move\(copied, now\);",
         "a set aside that may pass later is retried, any other is held":
             r"if \(flash_copy::aside_retries\(aside\.error\(\)\)\) \{ "
-            r"if \(!drain\.failed\.add\(hash\)\) drain\.next_at = now \+ kCopyWaitSeconds; "
+            r"if \(!drain\.failed\.add\(hash\)\) wait_a_pass\(drain, now\); "
             r"\} else if \(!drain\.held\.add\(hash\)\)",
         "a set aside sidecar waits for its Parquet under either name":
             r"if \(flash_copy::set_aside_name\(relative\)\) \{ "
@@ -139,7 +158,7 @@ def check_wiring(source: str) -> None:
             r"if \(!drain\.held\.add\(hash\)\)",
     }
     for what, pattern in rules.items():
-        assert len(re.findall(pattern, code)) == 1, f"os_logger.cpp wiring: {what}"
+        assert len(re.findall(pattern, code)) == 1, f"storage worker wiring: {what}"
     # The copier never borrows the STAC writer's hash state.
     stac_uses = re.findall(r"stac_state->sha\b", code)
     assert len(stac_uses) == 2, f"stac_state->sha uses {len(stac_uses)}"
@@ -152,7 +171,9 @@ def main() -> None:
     root = Path(__file__).resolve().parent.parent
     common = root / "firmware/common"
     logger = common / "logger"
-    check_wiring((logger / "src/os_logger.cpp").read_text())
+    # Copy back has its own translation unit since #215, the rules read both.
+    check_wiring("\n".join((logger / "src" / name).read_text() for name in
+                           ("os_logger.cpp", "os_logger_copy_back.cpp")))
     with tempfile.TemporaryDirectory(prefix="os-flash-fallback-") as directory:
         for name, (source, read_only, extra) in TESTS.items():
             for header in read_only:

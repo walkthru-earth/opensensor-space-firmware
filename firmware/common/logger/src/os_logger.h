@@ -1,6 +1,7 @@
 #pragma once
 
 #include "os_logger_cadence.h"
+#include "os_logger_thing_id.h"
 #include <ble_sync.h>
 #include <cstddef>
 #include <cstdint>
@@ -164,6 +165,13 @@ struct Hooks {
   // fixed Thing ignores both for rows. nullptr means the board has no receiver,
   // and page 1 then omits location.gnss_cell.
   bool (*gnss_fix)(opensensor::gnss::Fix &fix, void *) = nullptr;
+  // Optional. Called once from begin(), on its task, when the Thing id in
+  // NVS parquet/thing cannot load (#225), after the PARQUET ERROR
+  // operation=thing-identity line and before begin() returns false. The
+  // error names the stage and the ESP-IDF error, so the board can show the
+  // fault on its screen or LED. Logging stays off for the boot and the
+  // stored value is never rewritten. Must not block.
+  void (*thing_id_fault)(const thing_id::Error &, void *) = nullptr;
 };
 // One singleton per firmware image; call once after hardware/storage setup.
 bool begin(const Config &, const Hooks &, bool sd_mounted);

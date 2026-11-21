@@ -240,6 +240,15 @@ void refresh_capacity() {
 }
 } // namespace
 
+namespace {
+// Set by the thing_id_fault hook, on the main task inside oslogger::begin.
+std::optional<oslogger::thing_id::Error> thing_fault;
+} // namespace
+
+std::optional<oslogger::thing_id::Error> thing_id_fault() {
+  return thing_fault;
+}
+
 bool begin_logger(bool sd_mounted, const char *fallback_directory) {
   for (std::size_t i = 0; i < field_count; ++i) {
     const auto &field = kFields[i];
@@ -293,6 +302,8 @@ bool begin_logger(bool sd_mounted, const char *fallback_directory) {
       .storage_present = [](void *) { return sd_present(); },
       .rtc_read = rtc_read,
       .rtc_write = rtc_write,
+      .thing_id_fault = [](const oslogger::thing_id::Error &error,
+                           void *) { thing_fault = error; },
   };
   const bool light = light_sensor.begin();
   oslog.printf("PARQUET HARDWARE board=cores3 light_available=%s\n",

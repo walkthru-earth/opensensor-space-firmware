@@ -1,9 +1,11 @@
 #pragma once
 
 #include "ble_sync.h"
+#include "os_logger_thing_id.h"
 #include "power_registers.h"
 
 #include <cstdint>
+#include <optional>
 
 namespace telemetry {
 struct PmsSnapshot {
@@ -23,6 +25,9 @@ struct PmsSnapshot {
 // start, so no row is ever written.
 [[nodiscard]] bool begin_logger(bool sd_mounted,
                                 const char *fallback_directory);
+// The Thing id fault that stopped begin_logger() (#225), or nullopt. Main
+// task only. The screen and the repeated serial line show it.
+[[nodiscard]] std::optional<oslogger::thing_id::Error> thing_id_fault();
 // The row's PMS status (telemetry_contract.h pms_status_of) for the screen and
 // the MEAS line, so neither shows a value the row nulls (#165). `status`
 // follows the pms_status codes, 4 is valid. `age_ms` is the saturated
