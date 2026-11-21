@@ -12,6 +12,13 @@ The logger depends on `gnss` only. A board that has a receiver adds
 - A raw latitude or longitude lives only on the stack between `parse_fix()`
   and `to_fix()`. Never log, persist, queue or send a `Reading`. Only the H3
   res 8 cell, its resolution and the fix monotonic time leave this code (#139).
+- Keep raw positions out of a core dump (#172). The dump saves the live part
+  of each task stack, never .bss or the heap. The reader keeps its one reply
+  line in the .bss `line_buffer` and wipes it after each line. `parse_line` is
+  the only caller of `parse_fix()`, and only `line_fix` calls it, followed at
+  once by `scrub_stack()` from the same frame. Keep `CONFIG_ESP_COREDUMP_CAPTURE_DRAM`
+  off. `pixi run gnss-test` checks this and `stack-budget --check` checks that
+  the scrub frame still covers the `parse_line` subtree.
 - On a moving Thing a phone cell (`location.phone_cell`, source 3) wins on
   every row while it is set (#140). The runtime clears it 300 s after the last
   SET of the key, so `select_location` never checks its age. Without it, a
