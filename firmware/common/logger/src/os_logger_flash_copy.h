@@ -393,13 +393,13 @@ public:
   [[nodiscard]] std::expected<bool, AsideError> set_aside(IO &io) {
     if (stage_ != Stage::Idle || !conflicted_)
       return std::unexpected(AsideError::NotConflict);
-    const char *relative = this->relative();
-    if (set_aside_name(relative))
+    const char *name = relative();
+    if (set_aside_name(name))
       return std::unexpected(AsideError::AlreadyAside);
-    const auto kind = copy_kind(relative);
+    const auto kind = copy_kind(name);
     if (!kind || *kind == Kind::Quarantined)
       return std::unexpected(AsideError::NotCopied);
-    const std::size_t length = std::char_traits<char>::length(relative);
+    const std::size_t length = std::char_traits<char>::length(name);
     if (kConflictPrefixLength + length >= kRelativeBytes)
       return std::unexpected(AsideError::TooLong);
     bool sidecar = false;
@@ -541,15 +541,15 @@ private:
   // then puts the temporary back. errno is set when the inspect failed.
   template <class IO> std::expected<bool, int> aside_pair(IO &io) {
     const std::size_t root = relative_at_;
-    const char *relative = this->relative();
+    const char *name = relative();
     const int length =
-        set_aside_name(relative)
+        set_aside_name(name)
             ? std::snprintf(temp_.data(), temp_.size(), "%.*s%s",
                             static_cast<int>(root), source_.data(),
-                            relative + kConflictPrefixLength)
+                            name + kConflictPrefixLength)
             : std::snprintf(temp_.data(), temp_.size(), "%.*s%s%s",
                             static_cast<int>(root), source_.data(),
-                            kConflictPrefix, relative);
+                            kConflictPrefix, name);
     bool pair = false;
     int code = 0;
     if (length >= 0 && static_cast<std::size_t>(length) < temp_.size()) {
