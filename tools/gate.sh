@@ -59,6 +59,7 @@ tasks=(
   "secrets-check-test"
   "release-sign-test"
   "release-workflow-test"
+  "release-identity-test"
   "telemetry-contract-test --sanitize"
   "waveshare-contract-test --sanitize"
   "crowpanel-contract-test --sanitize"
