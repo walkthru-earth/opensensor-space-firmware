@@ -9,6 +9,7 @@
 #include <array>
 #include <atomic>
 #include <cstddef>
+#include <expected>
 #include <optional>
 #include <string_view>
 #include <type_traits>
@@ -38,14 +39,19 @@ void store(const std::optional<Fix> &fix) {
 
 uart_port_t port() { return static_cast<uart_port_t>(settings.uart_port); }
 
-// A receiver reply line and a parsed Reading hold the raw position. Zeroes
-// one on every exit path of its scope, so a later core dump of this task's
-// stack does not find them there. Copies left in the frames of called
-// functions are not wiped, so this narrows exposure and does not remove it
-// (#172). The stores go through a volatile pointer so they are
-// not dropped, as opensensor::upload::text::secure_zero does for secrets.
-// Declare it right after the object it wipes. For a parse result it wipes
-// the contained Reading, an error result holds no position.
+// Keeps raw receiver positions out of a panic core dump (#172). With
+// CONFIG_ESP_COREDUMP_CAPTURE_DRAM off, which check_idf_target.py enforces,
+// the dump saves each task's TCB and the live part of its stack, from the
+// saved stack pointer up, plus the coredump sections. It never saves .bss,
+// .data or the heap. So the reply line lives in `line_buffer` in .bss, and
+// the UART driver keeps its ring buffer on the heap. The parse, the Reading
+// and the H3 conversion run in parse_line and below it. line_fix scrubs that
+// dead stack right after each parse, so the next blocking read, whose frames
+// reuse those addresses, finds zeros there. The stores go through a volatile
+// pointer so they are not dropped, as opensensor::upload::text::secure_zero
+// does for secrets. Declare a WipeOnExit right after the object it wipes.
+// For a parse result it wipes the contained Reading, an error result holds no
+// position.
 template <typename T> void wipe_bytes(T &object) {
   static_assert(std::is_trivially_copyable_v<T>);
   volatile auto *bytes = reinterpret_cast<volatile unsigned char *>(&object);
@@ -68,6 +74,24 @@ public:
 private:
   T &object_;
 };
+
+// Bytes scrub_stack zeroes below its caller. The os-gnss scrub entry in
+// tools/stack_budget.json fails `stack-budget --check` when the parse_line
+// subtree plus a margin no longer fits in the scrub frame.
+constexpr std::size_t kScrubBytes = 2048;
+
+// Overwrites the stack below its caller, where parse_line just ran. It is its
+// own frame, never a write below the stack pointer, which an interrupt may
+// use at any time.
+[[gnu::noinline]] void scrub_stack() {
+  std::array<unsigned char, kScrubBytes> frame;
+  wipe_bytes(frame);
+  // Keeps the array, and so the frame, from being optimised away.
+  asm volatile("" : : "r"(frame.data()) : "memory");
+}
+
+// One reader task owns the line. .bss is not in the core dump.
+std::array<char, kLineBytes> line_buffer{};
 
 void send(std::string_view command) {
   uart_flush_input(port());
@@ -117,16 +141,16 @@ Reply exchange(std::string_view command, std::uint32_t timeout_ms,
   send(command);
   const auto deadline =
       esp_timer_get_time() + static_cast<std::int64_t>(timeout_ms) * 1000;
-  std::array<char, kLineBytes> buffer{};
-  const WipeOnExit wipe_buffer(buffer);
+  const WipeOnExit wipe_buffer(line_buffer);
   std::size_t length = 0;
-  while (read_line(buffer, length, deadline) == Line::Text) {
-    const std::string_view line(buffer.data(), length);
+  while (read_line(line_buffer, length, deadline) == Line::Text) {
+    const std::string_view line(line_buffer.data(), length);
     if (line == "OK")
       return Reply::Ok;
     if (line == "ERROR" || line.starts_with("+CME ERROR"))
       return Reply::Error;
     on_line(line);
+    wipe_bytes(line_buffer);
   }
   return Reply::Timeout;
 }
@@ -154,20 +178,39 @@ void report(State &shown, State now) {
                settings.tx_pin, settings.rx_pin);
 }
 
+// Parses one receiver line and converts it at once to a res 8 cell. The
+// Reading lives only in this frame and the parse below it, and is zeroed on
+// every exit. NotThisLine means the line is not a position reply.
+[[nodiscard, gnu::noinline]] std::expected<Fix, ParseError>
+parse_line(const Dialect &dialect, std::string_view line) {
+  auto reading = dialect.parse_fix(line);
+  const WipeOnExit wipe_reading(reading);
+  if (!reading)
+    return std::unexpected(reading.error());
+  return to_fix(*reading, esp_timer_get_time());
+}
+
+// parse_line, then a scrub of the dead stack it used. Both calls leave from
+// this one frame, so the scrub frame lies on the addresses the parse used
+// wherever the compiler inlines this function.
+[[nodiscard]] std::expected<Fix, ParseError> line_fix(const Dialect &dialect,
+                                                      std::string_view line) {
+  const auto fix = parse_line(dialect, line);
+  scrub_stack();
+  return fix;
+}
+
 // One AT poll. Converts at once to a res 8 cell and keeps only the cell.
 bool poll_fix(const Dialect &dialect, State &shown) {
   bool answered = false;
   std::optional<Fix> fix;
   exchange(dialect.fix_query(), kReplyTimeoutMs, [&](std::string_view line) {
-    auto reading = dialect.parse_fix(line);
-    const WipeOnExit wipe_reading(reading);
-    if (!reading && reading.error() == ParseError::NotThisLine)
+    const auto parsed = line_fix(dialect, line);
+    if (!parsed && parsed.error() == ParseError::NotThisLine)
       return;
     answered = true;
-    if (!reading)
-      return;
-    if (auto converted = to_fix(*reading, esp_timer_get_time()))
-      fix = *converted;
+    if (parsed)
+      fix = *parsed;
   });
   // No CGNSSINFO line, a timeout or ERROR, counts as a silent poll.
   if (!answered)
@@ -182,20 +225,16 @@ void stream_fix(const Dialect &dialect, State &shown) {
   const auto deadline =
       esp_timer_get_time() +
       static_cast<std::int64_t>(settings.poll_period_ms) * 1000;
-  std::array<char, kLineBytes> buffer{};
-  const WipeOnExit wipe_buffer(buffer);
+  const WipeOnExit wipe_buffer(line_buffer);
   std::size_t length = 0;
-  while (read_line(buffer, length, deadline) == Line::Text) {
-    auto reading = dialect.parse_fix(std::string_view(buffer.data(), length));
-    const WipeOnExit wipe_reading(reading);
-    if (!reading && reading.error() == ParseError::NotThisLine)
+  while (read_line(line_buffer, length, deadline) == Line::Text) {
+    const auto parsed =
+        line_fix(dialect, std::string_view(line_buffer.data(), length));
+    wipe_bytes(line_buffer);
+    if (!parsed && parsed.error() == ParseError::NotThisLine)
       continue;
-    std::optional<Fix> fix;
-    if (reading)
-      if (auto converted = to_fix(*reading, esp_timer_get_time()))
-        fix = *converted;
-    store(fix);
-    report(shown, fix ? State::Fix : State::NoFix);
+    store(parsed ? std::optional<Fix>(*parsed) : std::nullopt);
+    report(shown, parsed ? State::Fix : State::NoFix);
   }
 }
 
