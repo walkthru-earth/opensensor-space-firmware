@@ -12,6 +12,13 @@ commit. Host tests build the same commit through `tools/h3_library.py`, which
 fails when the locks disagree. Unused H3 functions are removed by linker
 section collection.
 
+To move to a new library tag, change the tag in `idf_component.yml` and
+delete the `walkthru-earth/embedded-h3-location` entry from every board
+`dependencies.lock`, then build every board. The component manager keeps a
+locked git commit even after the ref changes, so without that step the locks
+still name the old commit. Deleting only that entry leaves the registry pins
+alone, unlike `idf.py update-dependencies`.
+
 What stays in this repository
 
 - `src/os_location.h` re-exports the library names the firmware uses under
