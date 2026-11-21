@@ -68,6 +68,8 @@ struct FakeIO {
 
   // Failure injection.
   std::string fail_inspect, fail_open_read, fail_open_write, fail_unlink;
+  std::string fail_read;         // a read of this open file fails with EIO
+  unsigned fail_hash_finish = 0; // the hash_finish call to fail, 1 based
   int fail_inspect_errno = EIO;
   bool fail_dirs = false, fail_sync = false, fail_hash_begin = false;
   bool fail_close_write = false;
@@ -78,7 +80,7 @@ struct FakeIO {
   std::optional<std::size_t> corrupt_at;
 
   // What happened.
-  unsigned data_reads = 0, syncs = 0;
+  unsigned data_reads = 0, syncs = 0, hash_finishes = 0;
   std::size_t largest_read = 0;
   std::vector<std::string> unlinked, made;
 
@@ -167,7 +169,7 @@ struct FakeIO {
   std::ptrdiff_t read(std::span<std::uint8_t> out) {
     assert(reader_open);
     const auto file = files.find(reader_path);
-    if (file == files.end()) {
+    if (file == files.end() || fail_read == reader_path) {
       errno = EIO;
       return -1;
     }
@@ -266,7 +268,11 @@ struct FakeIO {
   }
   std::expected<opensensor::hash::Sha256Digest, opensensor::hash::Sha256Error>
   hash_finish() {
-    return sha.stream.finish();
+    // The stream is finished either way, as a failed finish leaves it.
+    const auto digest = sha.stream.finish();
+    if (++hash_finishes == fail_hash_finish)
+      return std::unexpected(opensensor::hash::Sha256Error::Finish);
+    return digest;
   }
 };
 
@@ -306,6 +312,14 @@ Run run(fc::Copier &copier, FakeIO &io, unsigned limit = 10000) {
     }
   }
   return out;
+}
+
+// Runs the copy and checks how it ended. The run stays outside assert(), so
+// a build without asserts still runs every copy.
+void expect_outcome(fc::Copier &copier, FakeIO &io, Outcome want,
+                    unsigned limit = 10000) {
+  [[maybe_unused]] const Run result = run(copier, io, limit);
+  assert(result.outcome == want);
 }
 
 void happy_path() {
@@ -348,7 +362,7 @@ void multi_chunk() {
   small.buffer.resize(1000);
   fc::Copier again;
   begin(again);
-  assert(run(again, small).outcome == Outcome::Copied);
+  expect_outcome(again, small, Outcome::Copied);
   assert(small.largest_read == 1000);
   assert(small.files.at(kFinal) == bytes);
 
@@ -357,7 +371,7 @@ void multi_chunk() {
   none.buffer.clear();
   fc::Copier empty;
   begin(empty);
-  assert(run(empty, none).outcome == Outcome::IoError);
+  expect_outcome(empty, none, Outcome::IoError);
   assert(empty.failure() == Failure::Scratch);
   assert(none.files.contains(kSource) && !none.files.contains(kTemp));
 }
@@ -376,7 +390,6 @@ void reset_mid_copy() {
       assert(io.files.contains(kTemp) && io.files.contains(kSource));
       io.reset();
     }
-    const Bytes stale = io.files.at(kTemp);
     fc::Copier second;
     begin(second);
     const Run result = run(second, io);
@@ -384,7 +397,6 @@ void reset_mid_copy() {
     assert(io.unlinked.front() == kTemp);
     assert(io.files.at(kFinal) == bytes);
     assert(!io.files.contains(kSource) && !io.files.contains(kTemp));
-    (void)stale;
   }
 }
 
@@ -405,7 +417,8 @@ void verify_mismatch() {
   // A step while idle keeps the cause and errno of the failed copy for the
   // caller's log line.
   const int failed_errno = copier.error();
-  assert(copier.step(io) == Outcome::IoError);
+  [[maybe_unused]] const Outcome idle = copier.step(io);
+  assert(idle == Outcome::IoError);
   assert(copier.failure() == Failure::Verify);
   assert(copier.error() == failed_errno);
   assert(std::strcmp(copier.relative(), kName.c_str()) == 0);
@@ -457,7 +470,7 @@ void crosslink_suspect() {
       assert(io.files.at(kFinal) == final_bytes && io.files.at(kTemp) == temp);
       // Every later pass finds the same pair and still deletes nothing.
       begin(copier);
-      assert(run(copier, io).outcome == Outcome::IoError);
+      expect_outcome(copier, io, Outcome::IoError);
       assert(copier.failure() == Failure::CrosslinkSuspect);
       assert(io.unlinked.empty() && io.files.contains(kSource));
     }
@@ -470,7 +483,7 @@ void crosslink_suspect() {
   io.fail_inspect = kTemp;
   fc::Copier copier;
   begin(copier);
-  assert(run(copier, io).outcome == Outcome::IoError);
+  expect_outcome(copier, io, Outcome::IoError);
   assert(copier.failure() == Failure::CardStat && copier.error() == EIO);
   assert(io.unlinked.empty() && io.files.contains(kSource));
 }
@@ -511,7 +524,7 @@ void existing_different() {
   folder.add_dirs(kFinal);
   fc::Copier other;
   begin(other);
-  assert(run(other, folder).outcome == Outcome::Conflict);
+  expect_outcome(other, folder, Outcome::Conflict);
   assert(folder.files.at(kSource) == bytes && folder.unlinked.empty());
 }
 
@@ -534,7 +547,7 @@ void source_vanished() {
   FakeIO later = with_source(bytes);
   fc::Copier mid;
   begin(mid);
-  assert(run(mid, later, 2).outcome == Outcome::InProgress);
+  expect_outcome(mid, later, Outcome::InProgress, 2);
   later.files.erase(kSource);
   const Run gone = run(mid, later);
   assert(gone.outcome == Outcome::IoError);
@@ -547,7 +560,7 @@ void source_vanished() {
   broken.fail_inspect = kSource;
   fc::Copier stat_error;
   begin(stat_error);
-  assert(run(stat_error, broken).outcome == Outcome::IoError);
+  expect_outcome(stat_error, broken, Outcome::IoError);
   assert(stat_error.failure() == Failure::SourceStat);
   assert(broken.unlinked.empty());
 }
@@ -571,7 +584,7 @@ void rename_refused() {
   fc::Copier racer;
   begin(racer);
   // Start, two source reads and EOF, seal, two verify reads and EOF.
-  assert(run(racer, race, 8).outcome == Outcome::InProgress);
+  expect_outcome(racer, race, Outcome::InProgress, 8);
   const Bytes other = pattern(4, 3);
   race.files[kFinal] = other;
   const Run raced = run(racer, race);
@@ -581,7 +594,7 @@ void rename_refused() {
   assert(race.files.contains(kTemp) && race.unlinked.empty());
   // The next pass finds the pair and leaves it for the owner.
   begin(racer);
-  assert(run(racer, race).outcome == Outcome::IoError);
+  expect_outcome(racer, race, Outcome::IoError);
   assert(racer.failure() == Failure::CrosslinkSuspect);
   assert(race.unlinked.empty() && race.files.at(kSource) == bytes);
 
@@ -598,7 +611,7 @@ void rename_refused() {
   assert(both.files.at(kSource) == bytes && both.unlinked.empty());
   both.rename_leaves_both = false;
   begin(half);
-  assert(run(half, both).outcome == Outcome::IoError);
+  expect_outcome(half, both, Outcome::IoError);
   assert(half.failure() == Failure::CrosslinkSuspect);
   assert(both.unlinked.empty() && both.files.at(kSource) == bytes);
 }
@@ -608,32 +621,26 @@ void rename_refused() {
 void io_failures() {
   const Bytes bytes = pattern(fc::kChunkBytes + 1);
   struct Case {
-    const char *what;
     void (*arm)(FakeIO &);
     Failure failure;
     bool temp_made;
   };
   const std::array<Case, 8> cases = {{
-      {"directory", [](FakeIO &io) { io.fail_dirs = true; }, Failure::Directory,
+      {[](FakeIO &io) { io.fail_dirs = true; }, Failure::Directory, false},
+      {[](FakeIO &io) { io.fail_open_read = kSource; }, Failure::SourceOpen,
        false},
-      {"source open", [](FakeIO &io) { io.fail_open_read = kSource; },
-       Failure::SourceOpen, false},
-      {"temp open", [](FakeIO &io) { io.fail_open_write = kTemp; },
-       Failure::TempOpen, false},
-      {"hash", [](FakeIO &io) { io.fail_hash_begin = true; }, Failure::Hash,
+      {[](FakeIO &io) { io.fail_open_write = kTemp; }, Failure::TempOpen,
+       false},
+      {[](FakeIO &io) { io.fail_hash_begin = true; }, Failure::Hash, true},
+      {[](FakeIO &io) { io.fail_sync = true; }, Failure::TempSync, true},
+      {[](FakeIO &io) { io.fail_close_write = true; }, Failure::TempClose,
        true},
-      {"sync", [](FakeIO &io) { io.fail_sync = true; }, Failure::TempSync,
-       true},
-      {"close", [](FakeIO &io) { io.fail_close_write = true; },
-       Failure::TempClose, true},
-      {"card stat",
-       [](FakeIO &io) {
+      {[](FakeIO &io) {
          io.fail_inspect = kFinal;
          io.fail_inspect_errno = EIO;
        },
        Failure::CardStat, false},
-      {"stale temp",
-       [](FakeIO &io) {
+      {[](FakeIO &io) {
          io.add_dirs(std::string(kCard) + "/" + kDay);
          io.files[kTemp] = pattern(3);
          io.fail_unlink = kTemp;
@@ -655,7 +662,6 @@ void io_failures() {
       assert(!io.files.contains(kTemp));
     assert(c.temp_made ==
            (std::count(io.unlinked.begin(), io.unlinked.end(), kTemp) == 1));
-    (void)c.what;
   }
 
   // The copy is on the card but the source cannot be freed. The next pass
@@ -664,12 +670,12 @@ void io_failures() {
   io.fail_unlink = kSource;
   fc::Copier copier;
   begin(copier);
-  assert(run(copier, io).outcome == Outcome::IoError);
+  expect_outcome(copier, io, Outcome::IoError);
   assert(copier.failure() == Failure::SourceUnlink);
   assert(io.files.at(kFinal) == bytes && io.files.contains(kSource));
   io.fail_unlink.clear();
   begin(copier);
-  assert(run(copier, io).outcome == Outcome::AlreadyIdentical);
+  expect_outcome(copier, io, Outcome::AlreadyIdentical);
   assert(!io.files.contains(kSource) && io.files.at(kFinal) == bytes);
 }
 
@@ -682,7 +688,7 @@ void same_relative_path() {
   FakeIO io = with_source(bytes, name);
   fc::Copier copier;
   begin(copier, name);
-  assert(run(copier, io).outcome == Outcome::Copied);
+  expect_outcome(copier, io, Outcome::Copied);
   assert(io.files.at(std::string(kCard) + "/" + name) == bytes);
   assert(io.made.front() ==
          std::string(kCard) + "/quarantine/thing=t1/year=2026_month=11_day=21");
@@ -690,7 +696,7 @@ void same_relative_path() {
   FakeIO top = with_source(bytes, "top.parquet");
   fc::Copier flat;
   begin(flat, "top.parquet");
-  assert(run(flat, top).outcome == Outcome::Copied);
+  expect_outcome(flat, top, Outcome::Copied);
   assert(top.made.size() == 1 && top.made[0] == kCard);
   assert(top.files.at(std::string(kCard) + "/top.parquet") == bytes);
 }
@@ -953,7 +959,8 @@ void begin_rules() {
   }
   // A name that fits every path, the temporary included.
   const std::string fits(fc::kRelativeBytes - 1, 'b');
-  assert(copier.begin(kFlash, kCard, fits.c_str()).has_value());
+  const auto fit = copier.begin(kFlash, kCard, fits.c_str());
+  assert(fit.has_value());
   const auto busy = copier.begin(kFlash, kCard, "a.parquet");
   assert(!busy.has_value() && busy.error() == Busy);
   assert(std::strcmp(copier.relative(), fits.c_str()) == 0);
@@ -963,10 +970,73 @@ void begin_rules() {
     FakeIO io = with_source(pattern(10));
     fc::Copier done;
     begin(done);
-    assert(run(done, io).outcome == Outcome::Copied);
+    expect_outcome(done, io, Outcome::Copied);
     assert(std::strcmp(done.relative(), kName.c_str()) == 0);
-    assert(!done.begin(kFlash, kCard, refused).has_value());
+    const auto again = done.begin(kFlash, kCard, refused);
+    assert(!again.has_value());
     assert(*done.relative() == '\0' && !done.active());
+  }
+}
+
+// The read and hash failures the io_failures table does not reach (#209).
+// Each keeps the flash file and leaves the card as it was, apart from the
+// temporary this attempt made.
+void read_and_hash_failures() {
+  const Bytes bytes = pattern(2 * fc::kChunkBytes + 9);
+  const auto with_final = [&] {
+    FakeIO io = with_source(bytes);
+    io.add_dirs(std::string(kCard) + "/" + kDay);
+    io.files[kFinal] = bytes;
+    return io;
+  };
+  const auto expect_failure = [&](fc::Copier &copier, FakeIO &io,
+                                  Failure failure, const char *name,
+                                  int error) {
+    expect_outcome(copier, io, Outcome::IoError);
+    assert(copier.failure() == failure && copier.error() == error);
+    assert(std::strcmp(fc::failure_name(failure), name) == 0);
+    assert(io.files.at(kSource) == bytes && !io.files.contains(kTemp));
+  };
+  // The source read fails while it is hashed against an existing final
+  // file of the same size (Stage::HashSource).
+  {
+    FakeIO io = with_final();
+    io.fail_read = kSource;
+    fc::Copier copier;
+    begin(copier);
+    expect_failure(copier, io, Failure::SourceRead, "source-read", EIO);
+    assert(io.files.at(kFinal) == bytes && io.unlinked.empty());
+  }
+  // The existing final file cannot be opened, or read, for the comparison.
+  for (const bool open_fails : {true, false}) {
+    FakeIO io = with_final();
+    (open_fails ? io.fail_open_read : io.fail_read) = kFinal;
+    fc::Copier copier;
+    begin(copier);
+    expect_failure(copier, io, Failure::CardRead, "card-read", EIO);
+    assert(io.files.at(kFinal) == bytes && io.unlinked.empty());
+  }
+  // A hash that cannot finish, for the source or for the file it is checked
+  // against, on the comparison path. Nothing is removed.
+  for (const unsigned call : {1U, 2U}) {
+    FakeIO io = with_final();
+    io.fail_hash_finish = call;
+    fc::Copier copier;
+    begin(copier);
+    expect_failure(copier, io, Failure::Hash, "hash", 0);
+    assert(io.hash_finishes == call);
+    assert(io.files.at(kFinal) == bytes && io.unlinked.empty());
+  }
+  // The same on the copy path, after the source read or after the readback.
+  // Only the temporary of this attempt goes and no final name appears.
+  for (const unsigned call : {1U, 2U}) {
+    FakeIO io = with_source(bytes);
+    io.fail_hash_finish = call;
+    fc::Copier copier;
+    begin(copier);
+    expect_failure(copier, io, Failure::Hash, "hash", 0);
+    assert(io.hash_finishes == call && !io.files.contains(kFinal));
+    assert(io.unlinked == std::vector<std::string>{kTemp});
   }
 }
 
@@ -977,14 +1047,15 @@ void cancel_mid_copy() {
   FakeIO io = with_source(bytes);
   fc::Copier copier;
   begin(copier);
-  assert(run(copier, io, 3).outcome == Outcome::InProgress);
+  expect_outcome(copier, io, Outcome::InProgress, 3);
   assert(io.reader_open && io.writer_open);
   copier.cancel(io);
   assert(!copier.active() && !io.reader_open && !io.writer_open);
   assert(!io.files.contains(kTemp) && io.files.at(kSource) == bytes);
   // Idle cancel and step do nothing. A cancelled copy has no failure.
   copier.cancel(io);
-  assert(copier.step(io) == Outcome::IoError);
+  [[maybe_unused]] const Outcome idle = copier.step(io);
+  assert(idle == Outcome::IoError);
   assert(!copier.failure().has_value());
   assert(io.files.at(kSource) == bytes);
 }
@@ -1054,6 +1125,7 @@ int main() {
   io_failures();
   same_relative_path();
   begin_rules();
+  read_and_hash_failures();
   cancel_mid_copy();
   copy_order();
   card_write_failures();
