@@ -2672,8 +2672,7 @@ void test_arabic_fit() {
               help.substr(line_break(fs.label, help, c.width() - 2 * edge));
           while (!rest.empty() && rest.front() == ' ')
             rest.remove_prefix(1);
-          CHECK_FITS(text_width(fs.label, rest), c.width() - 2 * edge, help,
-                     c);
+          CHECK_FITS(text_width(fs.label, rest), c.width() - 2 * edge, help, c);
         }
         // A status name ends before its value starts.
         for (const Str id : kStatusRows)
