@@ -116,3 +116,19 @@ No board was connected to a serial port, flashed or captured for this entry.
 Not shown yet. The keys and the settings popup on the glass, SEN63C values
 against a reference, the bus with the 10 k pull-ups, BLE and LAN sync,
 endurance and power-cut durability.
+
+## Fixed digit slots, 2026-11-21
+
+- Owner unit on `/dev/cu.usbserial-112130`. `chip`, `flash-id` and `efuse`
+  read MAC `1c:db:d4:53:f6:a4` and 8 MB flash. No eFuse was written. Full
+  8,388,608 byte backup
+  `backup/crowpanel-epaper-42-flash-20261121T191137Z.bin`, SHA-256
+  `b4b93eb2eb0ec3db3cab7b869f6c0170c1d33edb55e0f6ab2a094e52a0f1ccbc`.
+- Image `App version: a662d1a` (main after #242), app 1,850,192 bytes,
+  written with `pixi run crowpanel-flash`, every region hash verified.
+- The 75 s capture (`artifacts/flash-a662d1a-20261121/crowpanel-boot.log`,
+  ignored) shows `SELFTEST result=healthy reason=ok sd=pass sensor=pass
+  radio=pass` at about 50 s, rows at 10 s with `dropped=0`, and partial
+  refreshes of 484 ms.
+- Not shown yet. The digits on the glass, whether a change from one to two
+  whole digits leaves no half digit behind, and any energy saving.
