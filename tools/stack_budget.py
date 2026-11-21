@@ -40,6 +40,12 @@ task name pass the one site rule only when they sit in different branches of
 the same `#if` group, since at most one of them is compiled. Calls in sibling
 files, or in the same branch, still count as two sites.
 
+A task may name a `scrub`, a function that zeroes its own frame to wipe
+dead frames under its caller (the GNSS reader after each position parse,
+#172). `--check` fails when that frame is smaller than the deepest subtree of
+any `covers` pattern plus `margin_bytes`, or when a pattern matches nothing,
+so a parse that grows past the scrub cannot pass unnoticed.
+
 Usage:
   pixi run stack-budget                         # every image with a build
   pixi run stack-budget --image cores3/bringup --path
@@ -375,6 +381,8 @@ class ImageReport:
     stack_memory: list[str] = field(default_factory=list)
     stack_memory_checked: bool = True
     task_sites: list[str] = field(default_factory=list)
+    scrubs: list[str] = field(default_factory=list)
+    scrub_findings: list[str] = field(default_factory=list)
 
 
 # NVS and SPI flash writes disable the cache, so a task that writes NVS must
@@ -587,6 +595,30 @@ def task_site_findings(graph: Graph, spec: dict, budgets: dict, sites: list[Task
     return findings
 
 
+def scrub_check(graph: Graph, task_name: str, scrub: dict,
+                indirect: list[IndirectRule], depth: int) -> tuple[str | None, list[str]]:
+    """A summary line, and a finding for each way the scrub fails to cover."""
+    titles = pattern_matches(graph, scrub["function"])
+    if len(titles) != 1:
+        return None, [f"{task_name}: the scrub pattern {scrub['function']} matches {len(titles)} functions, "
+                      "it must match one"]
+    frame = graph.functions[titles[0]].frame
+    margin = int(scrub.get("margin_bytes", 0))
+    findings, deepest = [], 0
+    for pattern in scrub["covers"]:
+        covered = pattern_matches(graph, pattern)
+        if not covered:
+            findings.append(f"{task_name}: the scrub cover {pattern} matches nothing, update the pattern "
+                            "if the function was renamed or inlined")
+            continue
+        worst = analyse(graph, covered, indirect, depth).worst
+        deepest = max(deepest, worst)
+        if worst + margin > frame:
+            findings.append(f"{task_name}: {pattern} uses {worst} B below its caller, past the {frame} B "
+                            f"scrub frame less its {margin} B margin")
+    return (f"{task_name} scrub frame {frame} B covers {deepest} B with {margin} B margin", findings)
+
+
 def measure_image(name: str, spec: dict, budgets: dict, require_objdump: bool,
                   scan: SourceScan | None = None) -> ImageReport:
     build = ROOT / spec["build"]
@@ -611,6 +643,8 @@ def measure_image(name: str, spec: dict, budgets: dict, require_objdump: bool,
     scan = scan or SourceScan()
     sites = task_site_findings(graph, spec, budgets, scan.sites)
     tasks = {}
+    scrubs: list[str] = []
+    scrub_findings: list[str] = []
     for task_name, image_task in spec["tasks"].items():
         task = budgets["tasks"][task_name]
         entries = [title for pattern in image_task.get("entry", task.get("entry", []))
@@ -620,13 +654,18 @@ def measure_image(name: str, spec: dict, budgets: dict, require_objdump: bool,
         indirect = indirect_rules(graph, budgets.get("shared_indirect", []) + task.get("indirect", [])
                                   + image_task.get("indirect", []))
         result = analyse(graph, entries, indirect, int(task.get("indirect_depth", 2)))
+        if "scrub" in task:
+            line, findings = scrub_check(graph, task_name, task["scrub"], indirect,
+                                         int(task.get("indirect_depth", 2)))
+            scrubs += [line] if line else []
+            scrub_findings += findings
         stack = image_task.get("stack_bytes")
         if stack is None and "stack_sdkconfig" in task:
             stack = int(config.get(task["stack_sdkconfig"], "0")) or None
         tasks[task_name] = {"result": result, "stack": stack, "indirect_targets": len({t for _, targets in indirect for t in targets})}
     sections = elf_sections(elf)
     return ImageReport(name, tasks, sections, stack_memory_findings(config, scan.external),
-                       config.get(EXTERNAL_STACK_CONFIG) == "y", sites)
+                       config.get(EXTERNAL_STACK_CONFIG) == "y", sites, scrubs, scrub_findings)
 
 
 def headroom(value: int, percent: float, step: int) -> int:
@@ -681,6 +720,11 @@ def render(report: ImageReport, spec: dict, budgets: dict, show_path: bool) -> t
     else:
         lines += ["", "Task source check passed. Every xTaskCreate in a file this image links is tracked with its "
                   "stack size."]
+    if report.scrub_findings:
+        failures += [f"{report.name} scrub: {item}" for item in report.scrub_findings]
+        lines += ["", *[f"Scrub check failed. {item}." for item in report.scrub_findings]]
+    elif report.scrubs:
+        lines += ["", *[f"Scrub check passed. {item}." for item in report.scrubs]]
     if report.stack_memory:
         failures += [f"{report.name} internal stack: {item}" for item in report.stack_memory]
         lines += ["", *[f"Internal stack check failed. {item}." for item in report.stack_memory]]

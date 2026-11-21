@@ -16,6 +16,14 @@
 #
 # No cache is restored or written, so a release image never depends on a
 # cache entry that another run wrote.
+#
+# SOURCE_DATE_EPOCH is the commit time, so the build date and time in the app
+# description come from the commit and two builds of one tag give the same
+# image, as the CI repro-paths job checks. tools/release_identity.py then
+# fails the leg unless the image's app version is the tag, its project, ESP-IDF
+# version and ELF hash match the build, and it holds the board's kFirmware and
+# no other firmware identity. The identity goes into each board's
+# <asset>.identity.json and the release notes.
 name: Release
 
 on:
@@ -46,21 +54,25 @@ jobs:
       matrix:
         include:
           - name: cores3
+            board: cores3
             task: cores3-build
             project: firmware/esp-idf-cores3
             variant: bringup
             app: opensensor_cores3
           - name: waveshare-logger
+            board: waveshare
             task: waveshare-build logger
             project: firmware/esp-idf-waveshare-sim7670g
             variant: logger
             app: opensensor_waveshare
           - name: crowpanel-logger
+            board: crowpanel
             task: crowpanel-build
             project: firmware/esp-idf-crowpanel-epaper
             variant: logger
             app: opensensor_crowpanel
           - name: epaper397-logger
+            board: epaper397
             task: epaper397-build
             project: firmware/esp-idf-waveshare-epaper-397
             variant: logger
@@ -80,6 +92,8 @@ jobs:
         env:
           TASK: ${{ matrix.task }}
         run: |
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct HEAD)"
+          export SOURCE_DATE_EPOCH
           read -r -a task <<<"${TASK}"
           pixi run "${task[@]}"
           # A build that rewrites a committed lock means the lock is stale.
@@ -97,9 +111,11 @@ jobs:
             --partitions "${PROJECT}/${VARIANT}/partitions.csv" \
             --build "${PROJECT}/build/${VARIANT}" >> "$GITHUB_STEP_SUMMARY"
       # Asset names carry the board variant and the tag, so files from two
-      # releases never share a name. A dry run uses dev-<commit> instead.
+      # releases never share a name. A dry run uses dev-<commit> instead, and
+      # its identity check expects the git describe output the SDK wrote.
       - name: Stage release files
         env:
+          BOARD: ${{ matrix.board }}
           PROJECT: ${{ matrix.project }}
           VARIANT: ${{ matrix.variant }}
           APP: ${{ matrix.app }}
@@ -113,14 +129,27 @@ jobs:
               exit 1
             fi
             label="${REF_NAME}"
+            expect="${REF_NAME}"
           else
             label="dev-${GITHUB_SHA:0:12}"
+            expect="$(git describe --always --tags --dirty)"
           fi
           build="${PROJECT}/build/${VARIANT}"
           stem="${APP}-${VARIANT}-${label}"
           mkdir -p dist
+          {
+            echo "### Release identity ${BOARD}"
+            echo
+            echo '| Project | Variant | kFirmware | App version | ESP-IDF | ELF SHA-256 |'
+            echo '| --- | --- | --- | --- | --- | --- |'
+            pixi run release-identity --board "${BOARD}" --app "${APP}" --build "${build}" \
+              --expect-version "${expect}" --out "dist/${stem}.identity.json"
+          } >> "$GITHUB_STEP_SUMMARY"
           cp "${build}/${APP}.bin" "dist/${stem}.bin"
           # sbom-create reruns the app target first, which is a no-op here.
+          # It gets the same SOURCE_DATE_EPOCH as the build.
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct HEAD)"
+          export SOURCE_DATE_EPOCH
           pixi run idf -C "${PROJECT}" -B "${build}" \
             sbom-create --format spdx-json --file "${PWD}/dist/${stem}.spdx.json"
           ls -l dist
@@ -213,6 +242,8 @@ jobs:
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-checksums: dist/SHA256SUMS
+      # Each board's identity file must name this tag, so the notes list
+      # what every image reports about itself.
       - name: Create draft release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -221,6 +252,20 @@ jobs:
           notes="Unsigned app images built from ${TAG} at ${GITHUB_SHA}. "
           notes+="Signed images are added by the owner before publishing, "
           notes+="see docs/shared/development.md#cutting-a-release."
+          notes+=$'\n\n| Board | Image | kFirmware | ESP-IDF |\n| --- | --- | --- | --- |'
+          shopt -s nullglob
+          identities=(dist/*.identity.json)
+          if (( ${#identities[@]} == 0 )); then
+            echo "::error::no identity file in the release files"
+            exit 1
+          fi
+          for file in "${identities[@]}"; do
+            jq -e --arg tag "${TAG}" '.app_version == $tag' "${file}" >/dev/null || {
+              echo "::error::${file} does not name ${TAG}"
+              exit 1
+            }
+            notes+=$'\n'"$(jq -r '"| \(.board) | \(.project_name)-\(.variant) | `\(.firmware)` | `\(.idf_version)` |"' "${file}")"
+          done
           gh release create "${TAG}" dist/* \
             --repo "${GITHUB_REPOSITORY}" \
             --draft \

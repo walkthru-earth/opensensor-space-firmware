@@ -108,15 +108,29 @@ what that does and does not protect.
   Both wait on an owner decision.
 - A staged image can be cancelled only by the session that staged it while
   that session is open. Once it closed, any token holder may cancel it.
-- There is no LAN or BLE core dump endpoint. A core dump holds task stacks,
-  which can hold the Wi-Fi PSK, the LAN token or the device PIN. On a board
-  running the GNSS reader it can also hold the raw receiver reply line with
-  coordinates, because the reader keeps that line on its task stack (#172).
+- There is no LAN or BLE core dump endpoint. A core dump holds each task's
+  TCB and the live part of its stack, from the saved stack pointer up, which
+  can hold the Wi-Fi PSK, the LAN token or the device PIN. It does not hold
+  .bss, .data or the heap, because `CONFIG_ESP_COREDUMP_CAPTURE_DRAM` stays
+  off and `tools/check_idf_target.py` fails a board build that turns it on.
   `pixi run coredump-read` reads it over USB serial only and prints the backtraces
   without memory. esp_coredump writes the flash read to a temporary file and
   leaves it behind when decoding fails, so the tool points TMPDIR at a private
   0700 folder and removes it on every path. The partition stays on the board
   unless the owner passes `--erase`, and the erase runs only after a good
   read.
+- The GNSS reader keeps raw coordinates out of the dump (#172). Only Waveshare
+  V2 runs it. The reply line lives in a .bss buffer, and the UART driver ring
+  buffer is on the heap. The only parse runs in `parse_line`, which zeroes its
+  `Reading` on every exit, and `line_fix` then calls `scrub_stack` from the
+  same frame, which zeroes 2 KiB of the dead parse and H3 frames before the
+  task reads or blocks again. `pixi run stack-budget --check` fails a board
+  build whose scrub frame no longer covers the `parse_line` subtree with a
+  256 B margin (2080 B over 1472 B on the 2026-11-21 build), and
+  `pixi run gnss-test` checks the source with mutants. A dump can still hold
+  a position when the panic hits during a parse, in the reader task or in a
+  task on the other core while the reader parses. The 32 B at the top of the
+  scrub frame are register save area and are not zeroed. No board run has
+  decoded a dump to confirm any of this yet.
 
 Before production, define a manufacturing/provisioning ceremony, unique device ownership transfer and reset behavior, debug-port policy, TLS trust lifecycle, update signing/rollback, secret rotation/revocation, and destructive power-cut/full-card/removal tests on the exact board and card SKUs.
