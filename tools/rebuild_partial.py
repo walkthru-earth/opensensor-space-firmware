@@ -10,7 +10,10 @@ writes a new footer that mirrors firmware/common/src/parquet_writer.cpp.
 
 The schema comes from the board field table, never from the bytes, so a page
 is accepted only when its header has exactly the writer shape and its payload
-decodes to the declared row count with the declared value width. The input is
+decodes to the declared row count with the declared value width. INT32 and
+INT64 pages may be PLAIN or DELTA_BINARY_PACKED in the writer's 128 value
+block of four miniblocks, the same for every integer page of the file, as
+CONFIG_OS_LOGGER_DELTA_INTEGERS writes them (#135, #229). The input is
 never modified. The output goes to a separate directory, never overwrites an
 existing file, and is checked with parquet_device.validate_file, which makes
 PyArrow and DuckDB agree before the tool reports success.
@@ -65,6 +68,12 @@ UTC_MICROS_UNIT = "us_since_unix_epoch"
 UINT8_CODE_UNIT = "uint8_code"
 WKB_POINT_UNIT = "wkb_point_crs84"
 UNCOMPRESSED, LZ4_RAW = 0, 7
+# Value encodings. RLE is the definition level encoding of every page.
+PLAIN, RLE, DELTA_BINARY_PACKED = 0, 3, 5
+ENCODING_NAMES = {PLAIN: "PLAIN", DELTA_BINARY_PACKED: "DELTA_BINARY_PACKED"}
+# The writer's DELTA_BINARY_PACKED block, kDeltaBlock and kDeltaMiniblocks in
+# firmware/common/src/parquet_writer.cpp.
+DELTA_BLOCK, DELTA_MINIBLOCKS = 128, 4
 CODECS = {"none": UNCOMPRESSED, "lz4": LZ4_RAW}
 CODEC_NAMES = {UNCOMPRESSED: "none", LZ4_RAW: "lz4"}
 
@@ -128,6 +137,7 @@ class Chunk:
     uncompressed_size: int  # header + raw payload
     present: list[bool]
     values: list  # ints, float bit patterns or (lon, lat) points, present rows only
+    encoding: int = PLAIN  # value encoding of the page
 
 
 @dataclass
@@ -136,10 +146,11 @@ class Group:
     end: int
     rows: int
     chunks: list[Chunk] = field(default_factory=list)
+    integers: int | None = None  # value encoding of its INT32 and INT64 pages
 
 
-def page_header(data: bytes, pos: int) -> tuple[int, int, int, int]:
-    """Return (payload_start, raw_size, stored_size, rows) or raise Torn."""
+def page_header(data: bytes, pos: int) -> tuple[int, int, int, int, int]:
+    """Return (payload_start, raw_size, stored_size, rows, encoding) or raise Torn."""
     reader = Reader(data, pos)
     try:
         header = reader.struct()
@@ -151,16 +162,96 @@ def page_header(data: bytes, pos: int) -> tuple[int, int, int, int]:
         or header[1] != 0
         or not isinstance(body, dict)
         or set(body) != {1, 2, 3, 4}
-        or (body[2], body[3], body[4]) != (0, 3, 3)
+        or body[2] not in ENCODING_NAMES
+        or (body[3], body[4]) != (RLE, RLE)
     ):
         raise Torn(f"page header at {pos} is not a writer DATA_PAGE")
     raw, stored, rows = header[2], header[3], body[1]
     if not (0 < rows <= MAX_ROWS) or raw <= 0 or stored <= 0:
         raise Torn(f"page header at {pos} has impossible sizes")
-    return reader.pos, raw, stored, rows
+    return reader.pos, raw, stored, rows, body[2]
 
 
-def decode_payload(raw: bytes, rows: int, kind: int) -> tuple[list[bool], list]:
+def uleb128(data: bytes, pos: int) -> tuple[int, int]:
+    """One ULEB128 of at most 64 bits, as Encodings.md DELTA_BINARY_PACKED uses."""
+    value = 0
+    for i in range(10):
+        if pos >= len(data):
+            raise Torn("DELTA stream ends inside a varint")
+        byte = data[pos]
+        pos += 1
+        if i == 9 and byte > 1:
+            raise Torn("DELTA varint is longer than 64 bits")
+        value |= (byte & 0x7F) << (7 * i)
+        if not byte & 0x80:
+            return value, pos
+    raise Torn("DELTA varint is longer than 64 bits")
+
+
+def unzigzag(value: int) -> int:
+    return (value >> 1) ^ -(value & 1)
+
+
+def delta_values(stream: bytes, count: int, kind: int) -> list[int]:
+    """Decode a writer DELTA_BINARY_PACKED stream of exactly `count` values.
+
+    apache/parquet-format Encodings.md: a header of block size, miniblocks,
+    total count and zigzag first value, then blocks of a zigzag min delta, one
+    width byte per miniblock and the miniblocks bit packed LSB first, padded to
+    full size. Widths of miniblocks past the last value may hold anything and
+    have no bytes. Arithmetic wraps at the column width.
+    """
+    bits = 32 if kind == INT32 else 64
+    low, high, mask = -(1 << (bits - 1)), (1 << (bits - 1)) - 1, (1 << bits) - 1
+    block, pos = uleb128(stream, 0)
+    miniblocks, pos = uleb128(stream, pos)
+    total, pos = uleb128(stream, pos)
+    first, pos = uleb128(stream, pos)
+    first = unzigzag(first)
+    if (block, miniblocks) != (DELTA_BLOCK, DELTA_MINIBLOCKS):
+        raise Torn("DELTA header is not the writer block shape")
+    if total != count:
+        raise Torn("DELTA value count differs from the present rows")
+    if not low <= first <= high:
+        raise Torn("DELTA first value is outside the column width")
+    per = block // miniblocks
+    values = [first] if count else []
+    last = first & mask
+    while len(values) < count:
+        min_delta, pos = uleb128(stream, pos)
+        min_delta = unzigzag(min_delta)
+        if not low <= min_delta <= high:
+            raise Torn("DELTA min delta is outside the column width")
+        if pos + miniblocks > len(stream):
+            raise Torn("DELTA block ends inside its bit widths")
+        widths = stream[pos : pos + miniblocks]
+        pos += miniblocks
+        for width in widths:
+            if len(values) == count:
+                continue
+            if width > bits:
+                raise Torn("DELTA bit width is wider than the column")
+            size = per * width // 8
+            if pos + size > len(stream):
+                raise Torn("DELTA miniblock ends past the payload")
+            body = int.from_bytes(stream[pos : pos + size], "little")
+            pos += size
+            for i in range(min(per, count - len(values))):
+                last = (last + min_delta + ((body >> (i * width)) & ((1 << width) - 1))) & mask
+                values.append(last - (1 << bits) if last > high else last)
+    if pos != len(stream):
+        raise Torn("DELTA stream has bytes after its last miniblock")
+    return values
+
+
+def delta_bound(values: int, width: int) -> int:
+    """delta_binary_packed_bound() in firmware/common/src/parquet_writer.h."""
+    blocks = (max(values - 1, 0) + DELTA_BLOCK - 1) // DELTA_BLOCK
+    count_bytes = max(1, (values.bit_length() + 6) // 7)
+    return 2 + 1 + count_bytes + 10 + blocks * (10 + DELTA_MINIBLOCKS + DELTA_BLOCK * width)
+
+
+def decode_payload(raw: bytes, rows: int, kind: int, encoding: int = PLAIN) -> tuple[list[bool], list]:
     """Decode an OPTIONAL flat column payload exactly as the writer lays it out."""
     if len(raw) < 4:
         raise Torn("payload shorter than its level length")
@@ -184,6 +275,10 @@ def decode_payload(raw: bytes, rows: int, kind: int) -> tuple[list[bool], list]:
         raise Torn("definition levels do not cover the page rows")
     width = WIDTH[kind]
     count = sum(present)
+    if encoding == DELTA_BINARY_PACKED:
+        if kind not in (INT32, INT64):
+            raise Torn("DELTA_BINARY_PACKED on a column that is not INT32 or INT64")
+        return present, delta_values(raw[4 + length :], count, kind)
     if len(raw) != 4 + length + count * width:
         raise Torn("payload size does not match the present values")
     if kind == BYTE_ARRAY:
@@ -201,16 +296,29 @@ def decode_payload(raw: bytes, rows: int, kind: int) -> tuple[list[bool], list]:
     return present, values
 
 
-def parse_page(data: bytes, pos: int, kind: int, codec: int, rows: int | None) -> Chunk:
-    start, raw_size, stored_size, page_rows = page_header(data, pos)
+def parse_page(data: bytes, pos: int, kind: int, codec: int, rows: int | None,
+               integers: int | None = None) -> Chunk:
+    """One writer page. `integers` is the value encoding the file's INT32 and
+    INT64 pages already use, or None when no integer page has been read."""
+    start, raw_size, stored_size, page_rows, encoding = page_header(data, pos)
     if rows is not None and page_rows != rows:
         raise Torn(f"page at {pos} has {page_rows} rows, the group has {rows}")
+    if encoding != PLAIN and kind not in (INT32, INT64):
+        raise Torn(f"page at {pos} is {ENCODING_NAMES[encoding]} on a column the writer keeps PLAIN")
+    if kind in (INT32, INT64) and integers is not None and encoding != integers:
+        raise Torn(f"page at {pos} is {ENCODING_NAMES[encoding]}, the file's integer pages are "
+                   f"{ENCODING_NAMES[integers]}")
     if start + stored_size > len(data):
         raise Torn(f"page at {pos} ends past the bytes on the card")
     # The writer emits at most one RLE run per row (a varint of at most 3
-    # bytes for 65536 rows, plus the value byte) and one value per row, so a
-    # larger raw size is not a writer page and is never allocated.
-    if raw_size > 4 + page_rows * (4 + WIDTH[kind]):
+    # bytes for 65536 rows, plus the value byte) and one value per row, or a
+    # DELTA stream within delta_binary_packed_bound, so a larger raw size is
+    # not a writer page and is never allocated.
+    if encoding == DELTA_BINARY_PACKED:
+        limit = 4 + page_rows * 4 + delta_bound(page_rows, WIDTH[kind])
+    else:
+        limit = 4 + page_rows * (4 + WIDTH[kind])
+    if raw_size > limit:
         raise Torn(f"page at {pos} declares more bytes than the writer layout allows")
     stored = data[start : start + stored_size]
     if codec == UNCOMPRESSED:
@@ -231,16 +339,18 @@ def parse_page(data: bytes, pos: int, kind: int, codec: int, rows: int | None) -
             pass
         else:
             raise Torn(f"page at {pos} decompresses to fewer bytes than its header says")
-    present, values = decode_payload(raw, page_rows, kind)
+    present, values = decode_payload(raw, page_rows, kind, encoding)
     header_size = start - pos
-    return Chunk(pos, header_size + stored_size, header_size + raw_size, present, values)
+    return Chunk(pos, header_size + stored_size, header_size + raw_size, present, values, encoding)
 
 
-def parse_group(data: bytes, pos: int, fields: list[Field], codec: int) -> Group:
-    group = Group(pos, pos, 0)
+def parse_group(data: bytes, pos: int, fields: list[Field], codec: int, integers: int | None = None) -> Group:
+    group = Group(pos, pos, 0, integers=integers)
     rows = None
     for f in fields:
-        chunk = parse_page(data, group.end, f.type, codec, rows)
+        chunk = parse_page(data, group.end, f.type, codec, rows, group.integers)
+        if f.type in (INT32, INT64):
+            group.integers = chunk.encoding
         rows = len(chunk.present)
         group.chunks.append(chunk)
         group.end = chunk.offset + chunk.size
@@ -402,8 +512,8 @@ def column_chunk(out: Out, f: Field, chunk: Chunk, rows: int, codec: int) -> Non
     meta.number(1, I32, f.type)
     meta.field(2, LIST)
     out.list(I32, 2)
-    out.integer(0)
-    out.integer(3)
+    out.integer(chunk.encoding)
+    out.integer(RLE)
     meta.field(3, LIST)
     out.list(BINARY, 1)
     out.binary(f.name.encode())
@@ -556,6 +666,7 @@ class Plan:
     tail_bytes: int
     tail: str
     reason: str
+    integers: int | None = None  # value encoding of the INT32 and INT64 pages
 
 
 def has_footer(data: bytes) -> bool:
@@ -595,7 +706,7 @@ def plan(data: bytes, fields: list[Field], codec: str = "auto") -> Plan:
         pos = groups[0].end
         while len(groups) < MAX_ROW_GROUPS:
             try:
-                group = parse_group(data, pos, fields, chosen)
+                group = parse_group(data, pos, fields, chosen, groups[0].integers)
             except Torn as error:
                 reason = str(error)
                 break
@@ -605,7 +716,8 @@ def plan(data: bytes, fields: list[Field], codec: str = "auto") -> Plan:
             reason = "row group capacity reached"
     tail = data[pos:]
     status = "rebuilt" if groups else "empty"
-    return Plan(status, chosen, groups, pos, len(tail), tail_kind(tail), reason)
+    integers = groups[0].integers if groups else None
+    return Plan(status, chosen, groups, pos, len(tail), tail_kind(tail), reason, integers)
 
 
 def output_name(source: Path) -> str:
@@ -639,6 +751,7 @@ def rebuild(
         tail=p.tail,
         stop_reason=p.reason,
         codec=CODEC_NAMES.get(p.codec),
+        integers=ENCODING_NAMES.get(p.integers),
     )
     if p.status == "empty":
         return result
