@@ -9,6 +9,44 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## LAN OTA staged image ownership, OTA_END heartbeat and IMAGE_REJECTED (fix/ota-lan-hardening)
+
+**Needs a matched reflash and an app check of its OTA cancel and error
+handling.** No column, field id, LIVE key, STATUS key, config key, frame
+layout, dictionary or digest changes.
+
+**What changed.**
+
+- `OTA_CANCEL` of a staged image (phase `ready`) from a LAN session other
+  than the one that staged it now answers `ERROR` 7 `detail="ota-owner"`
+  while the staging session is open, and the image stays staged. Before, any
+  session could cancel it. Once the staging session closed, the next OTA
+  request from any session releases the image and any session may cancel it.
+  `OTA_CANCEL` with nothing staged still answers phase `idle` for anyone.
+- A new log line, `OTA RELEASE reason=session-closed`, marks that release.
+- `OTA_END` keeps the storage worker heartbeat and sample intake moving while
+  it checks and reads back the image. The answer and its 120 s budget are
+  unchanged.
+- No wire change for `ERROR` 18. It is now spelled out for the app, see
+  below.
+
+**Why.** A second phone or laptop with the token could undo an update the
+first one had just staged. The OTA_END read back of a 6 MiB slot ran with no
+heartbeat stamp on the worker (#40).
+
+**What the app must do.**
+
+- Cancel a staged image from the same LAN session that pushed it. If the app
+  reconnects first, it gets `ERROR` 7 `detail="ota-owner"` only while the old
+  session is still open on the device. Show it as "another session holds
+  this update" and retry after that session closes.
+- Add `IMAGE_REJECTED` (18) to the error table if the app does not have it.
+  Its `detail` is `header`, `chip`, `project`, `verify` or `digest`. Each
+  means the file is not an image for this board or is damaged, so the app
+  says so and does not retry the same file.
+- The device still accepts an older image. The app should show the image's
+  version before the push and ask the owner to confirm a downgrade.
+
 ## Flash fallback hardening (fix/flash-fallback-hardening)
 
 **Needs a matched reflash of all four boards and an app that accepts

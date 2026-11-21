@@ -9,8 +9,11 @@ secrets/.env names the key
 
 Each unsigned app .bin is signed with `espsecure sign-data --version 2` into
 the output directory as <stem>.signed.bin, then checked with
-`espsecure verify-signature --version 2`. SHA256SUMS in the output directory
-lists every signed image, in sha256sum format.
+`espsecure verify-signature --version 2`. The public half of the key is
+written as app_signing_public_key.pem, and every signed image is checked
+against that file too, so anyone holding it can check the release. SHA256SUMS
+in the output directory lists every signed image and the public key, in
+sha256sum format.
 
 It refuses to run when secrets/.env is missing, when anything under secrets/
 is tracked by git, when the key or secrets/.env is open to group or other,
@@ -18,7 +21,8 @@ when the key is not an RSA-3072 PEM private key inside secrets/, or when the
 output directory is inside secrets/. It never prints the key, the .env values
 or any file content. The key is named only as secrets/<name>.
 
-Firmware does not check app signatures yet. That waits on #40.
+Firmware does not check app signatures yet. That waits on #40. Publishing
+the public key is the owner's step, see the docs above.
 
 Usage:
   pixi run release-sign --out <dir> <app.bin> [<app.bin> ...]
@@ -44,6 +48,7 @@ SCHEMES = {"rsa3072": 3072}
 DEFAULT_SCHEME = "rsa3072"
 ENV_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 SUMS = "SHA256SUMS"
+PUBLIC_KEY = "app_signing_public_key.pem"
 ESPSECURE = [sys.executable, "-m", "espsecure"]
 
 
@@ -96,8 +101,9 @@ def private_mode(path: Path, label: str) -> None:
                       f"run chmod {'700' if stat.S_ISDIR(mode) else '600'} {label}")
 
 
-def check_key(key: Path, label: str, bits: int) -> None:
-    """The key must be an unencrypted RSA PEM private key of the scheme size."""
+def check_key(key: Path, label: str, bits: int) -> bytes:
+    """The key must be an unencrypted RSA PEM private key of the scheme size.
+    Returns its public key as a PEM SubjectPublicKeyInfo, which holds no secret."""
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric import rsa
 
@@ -113,10 +119,13 @@ def check_key(key: Path, label: str, bits: int) -> None:
         raise Refused(f"{label} is not a PEM private key") from None
     if not isinstance(loaded, rsa.RSAPrivateKey) or loaded.key_size != bits:
         raise Refused(f"{label} is not an RSA-{bits} private key")
+    return loaded.public_key().public_bytes(serialization.Encoding.PEM,
+                                            serialization.PublicFormat.SubjectPublicKeyInfo)
 
 
-def load_config(repo: Path) -> tuple[Path, str, str]:
-    """Check secrets/ and return the key path, its printable label and the scheme."""
+def load_config(repo: Path) -> tuple[Path, str, str, bytes]:
+    """Check secrets/ and return the key path, its printable label, the scheme
+    and the public key PEM."""
     secrets = repo / "secrets"
     env_file = secrets / ".env"
     if not env_file.is_file():
@@ -147,8 +156,8 @@ def load_config(repo: Path) -> tuple[Path, str, str]:
     if not key.is_file():
         raise Refused(f"{label} does not exist")
     private_mode(key, label)
-    check_key(key, label, SCHEMES[scheme])
-    return key, label, scheme
+    public = check_key(key, label, SCHEMES[scheme])
+    return key, label, scheme, public
 
 
 def espsecure(args: list[str], key: Path, label: str) -> None:
@@ -168,6 +177,23 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def write_replace(out_real: Path, name: str, data: bytes) -> Path:
+    """Write a fresh file and rename it over out_real/name. The rename replaces
+    a link that appeared since the check, it never writes through one. A failed
+    write or rename removes the temp file, so no .<name>.* is left."""
+    target = out_real / name
+    handle = tempfile.NamedTemporaryFile("wb", dir=out_real, prefix=f".{name}.", delete=False)
+    try:
+        with handle:
+            handle.write(data)
+        os.chmod(handle.name, 0o644)
+        os.replace(handle.name, target)
+    except BaseException:
+        Path(handle.name).unlink(missing_ok=True)
+        raise
+    return target
+
+
 def sign(repo: Path, out: Path, images: list[Path]) -> list[str]:
     secrets_real = (repo / "secrets").resolve()
     out_real = out.resolve()
@@ -185,16 +211,17 @@ def sign(repo: Path, out: Path, images: list[Path]) -> list[str]:
         names[signed] = image
     # No output may replace an input, including one signed later in the run.
     inputs = {image.resolve() for image in images}
-    for written in [*names, SUMS]:
+    for written in [*names, PUBLIC_KEY, SUMS]:
         if (out_real / written).resolve() in inputs:
             raise Refused(f"{out_real / written} is also an input, choose another --out")
         # A write through a symlink would land on whatever it points at.
         if (out_real / written).is_symlink():
             raise Refused(f"{out_real / written} is a symlink, remove it or choose another --out")
-    key, label, scheme = load_config(repo)
+    key, label, scheme, public = load_config(repo)
     out_real.mkdir(parents=True, exist_ok=True)
     print(f"signing {len(images)} image(s) with {label} ({scheme}, Secure Boot v2)")
-    lines = []
+    public_path = write_replace(out_real, PUBLIC_KEY, public)
+    lines = [f"{sha256(public_path)}  {PUBLIC_KEY}"]
     for signed, image in names.items():
         target = out_real / signed
         target.unlink(missing_ok=True)
@@ -202,25 +229,19 @@ def sign(repo: Path, out: Path, images: list[Path]) -> list[str]:
             espsecure(["sign-data", "--version", "2", "--keyfile", str(key), "--output", str(target),
                        str(image)], key, label)
             espsecure(["verify-signature", "--version", "2", "--keyfile", str(key), str(target)], key, label)
+            # The published public key alone must verify it too.
+            espsecure(["verify-signature", "--version", "2", "--keyfile", str(public_path), str(target)], key,
+                      label)
         except Refused:
+            # A refused run leaves no public key next to images it did not sign.
             target.unlink(missing_ok=True)
+            public_path.unlink(missing_ok=True)
             raise
         lines.append(f"{sha256(target)}  {signed}")
         print(f"signed and verified {target}")
-    sums = out_real / SUMS
     text = "".join(f"{line}\n" for line in sorted(lines, key=lambda line: line.split("  ", 1)[1]))
-    # Write a fresh file and rename it over SHA256SUMS. The rename replaces a
-    # link that appeared since the check, it never writes through one.
-    # A failed write or rename removes the temp file, so no .SHA256SUMS.* is left.
-    handle = tempfile.NamedTemporaryFile("w", dir=out_real, prefix=f".{SUMS}.", delete=False)
-    try:
-        with handle:
-            handle.write(text)
-        os.chmod(handle.name, 0o644)
-        os.replace(handle.name, sums)
-    except BaseException:
-        Path(handle.name).unlink(missing_ok=True)
-        raise
+    sums = write_replace(out_real, SUMS, text.encode("ascii"))
+    print(f"wrote {public_path}, sha256 {lines[0].split('  ', 1)[0]}")
     print(f"wrote {sums}")
     return lines
 
