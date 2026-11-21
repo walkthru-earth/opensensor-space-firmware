@@ -50,7 +50,18 @@ and the files move to the card once a card is back.
    is mounted and has room, otherwise no file (rows stay in the RAM batch as
    today). A file keeps its root until it is finalized. A storage probe that
    finds the card back finalizes an open flash file, so the rows waiting in
-   RAM write a card file before the card counts as Ready. Paths below each root
+   RAM write a card file before the card counts as Ready. The probe closes
+   the flash file only when the card will take files after it, so a card
+   that stays Full in the band above its reserve leaves the flash file and
+   its rows on flash. After a failed write test the probe keeps the flash
+   file open and defers, and the card is tested again by rows that wait
+   while no file is open, or by closing the flash file at most once an hour
+   (#219). With no rows waiting the probe writes nothing and keeps the flash
+   file open. The card then counts as Ready on its mount and free space, as
+   it did before this record, unless its last write test failed, and its
+   first card write, a new card file or a copy back write, is the test. A
+   copy back write the card refuses before any card write has passed puts
+   the card in Retry like a failed commit (#218). Paths below each root
    are the same Hive layout, `thing=<id>/year=/month=/day=/` or
    `thing=<id>/unsynced/boot=<boot>/`, with the same file names.
 5. **Finalize is unchanged.** Flash files use the same `.partial`, fsync,
@@ -72,7 +83,10 @@ and the files move to the card once a card is back.
    full listing. A copy moves the mount epoch by one, and the count of
    copies is kept in NVS (namespace `osflash`, key `copies`, u32, stored a
    block of 16 ahead before a file moves), so the epoch never repeats across
-   reboots. A walk without the card hands out epoch 0.
+   reboots. Every mount reads the count, also on a boot whose flash mount
+   failed or an image with the fallback off, so a count an earlier boot
+   stored still shifts the epoch (#217). A walk without the card hands out
+   epoch 0.
 8. **Copy back.** When the card is Ready and the flash volume holds files,
    the worker copies them one at a time in small chunks, between its other
    jobs, never during a LIST job or an emergency close. Each copy goes to a
@@ -84,7 +98,17 @@ and the files move to the card once a card is back.
    flash file. This is the only automatic delete of owner data, and it
    happens only when an identical copy is on the card. If the card already
    holds a file of that name with different bytes, both stay, the worker logs
-   a conflict and never overwrites either. A stale temporary copy on the card
+   a conflict and never overwrites either. It then renames the flash file,
+   and its sidecar first, to `flash-conflict/<name>` on the flash volume
+   (#212). Nothing is copied or deleted by that rename. LIST names the file
+   there, so the phone can fetch both, and the next copy takes it to the same
+   name on the card, which frees flash and ends the `full` LIST_SINCE answer.
+   The folder sits beside the Thing tree, so a reader that globs `thing=*`
+   never counts its rows twice. A name already under `flash-conflict/`, a
+   quarantined file, a name too long for the prefix or a taken set aside name
+   stays held on flash for the owner. While flash holds a file under both
+   names, which a power cut inside that rename can leave sharing clusters,
+   neither is copied or freed. A stale temporary copy on the card
    holds no unique rows, because its source is still on flash, so the worker
    removes it and starts that copy again.
 10. **Cloud stays out.** Upload from the board is #144 and is not part of

@@ -69,13 +69,35 @@ def check_wiring(source: str) -> None:
             r"in\.card_listable = card_listable\(\);",
         "LIST and OPEN answer while either root is usable":
             r"archive_session\.handle\(request, archive_ready\(state\.storage_ready\)\)",
-        "a probe finalizes an open flash file so the waiting rows test the card":
-            r"if \(ok && free_bytes >= governor\.limits\(\)\.reserve\) \{ "
-            r"if \(on_flash\(writer_state->telemetry\)\) \{ std::size_t none = 0; "
-            r"flash_commit\(none, true, nullptr\); \} if \(count\) \{ "
-            r"next_root = kDirectory; ok = commit\(count, false\) && "
-            r"measure_free\(free_bytes\); \} \}",
-        "a mount shifts the volume serial by the stored copy count":
+        "a probe asks probe_action whether to close the flash file and test the card (#219)":
+            r"const auto plan = archive_target::probe_action\("
+            r"\{\.space_ok = free_bytes >= governor\.limits\(\)\.reserve, "
+            r"\.card_writable = storage::writable\(storage::probe_state\("
+            r"previous, free_bytes, governor\.limits\(\)\)\), "
+            r"\.rows_waiting = count != 0, "
+            r"\.flash_open = on_flash\(writer_state->telemetry\), "
+            r"\.flash_takes_rows = commit_to_flash\(\), "
+            r"\.writes = card_writes, \.failed_age_s = now - card_failed_at\}\);",
+        "only FinalizeWrite closes the open flash file at a probe":
+            r"if \(plan == FinalizeWrite\) \{ std::size_t none = 0; "
+            r"flash_commit\(none, true, nullptr\); \}",
+        "the probe write test records what the card showed":
+            r"if \(plan == Write \|\| plan == FinalizeWrite\) \{ next_root = kDirectory; "
+            r"if \(commit\(count, false\)\) \{ card_writes = archive_target::CardWrites::Passed; "
+            r"ok = measure_free\(free_bytes\); \} else \{ "
+            r"card_writes = archive_target::CardWrites::Failed; card_failed_at = now; ok = false; \} "
+            r"\} else if \(plan == Defer\) \{ ok = false; \}",
+        "a card commit that wrote marks the card as passed":
+            r"\*written = ok; if \(ok\) card_writes = archive_target::CardWrites::Passed;",
+        "a refused copy write fails an untested card (#218)":
+            r"if \(archive_target::copy_fails_card\(card_writes, "
+            r"flash_copy::card_write_failure\(failure, drain\.copier\.error\(\)\)\)\) \{ "
+            r"const auto previous = governor\.state\(\); "
+            r"card_writes = archive_target::CardWrites::Failed; card_failed_at = now; "
+            r"governor\.write_failed\(now\); publish_storage\(previous\); \}",
+        "a mount shifts the volume serial by the stored copy count, with or "
+        "without a flash root (#217)":
+            r"std::uint32_t volume_epoch\(std::uint32_t serial\) \{ "
             r"const std::uint32_t epoch = copy_count\.epoch\(copy_count_store, serial\);",
         "every mount takes its epoch from the copy count":
             r"mount_epoch = volume_epoch\(serial\);",
@@ -85,6 +107,11 @@ def check_wiring(source: str) -> None:
             r"const auto begun = drain\.copier\.begin\(",
         "the copy count lives in the osflash namespace":
             r"nvs_set_u32\(flags, opensensor::storage::kFlashCopiesKey, count\)",
+        "a committed copy measures card free space before the next pass (#213)":
+            r"measure_flash\(\); if \(outcome == flash_copy::Outcome::Copied\) \{ "
+            r"const auto previous = governor\.state\(\); std::uint64_t free_bytes = 0; "
+            r"if \(measure_free\(free_bytes\)\) governor\.observe_free\(free_bytes, now\); "
+            r"else governor\.write_failed\(now\); publish_storage\(previous\); \}",
         "a copy back moves the mount epoch":
             r"copy_count\.copied\(\); mount_epoch = list_since::next_epoch\(mount_epoch\.load\(\)\);",
         "the copier hashes with its own stream":
@@ -95,6 +122,18 @@ def check_wiring(source: str) -> None:
             r"if \(\*kind == flash_copy::Kind::Sidecar && sidecar_waits\(name\)\) return true;",
         "the boot quarantine also covers the flash root":
             r"quarantine_directory\(flash_root, quarantined\);",
+        "a copy conflict sets the flash file aside under its own name (#212)":
+            r"const auto aside = drain\.copier\.set_aside\(drain\.io\); if \(aside\) \{ "
+            r"oslog\.printf\(\"OS FLASH conflict name=%s moved=%s%s sidecar=%d\\n\", "
+            r"relative, flash_copy::kConflictPrefix, relative, \*aside \? 1 : 0\); "
+            r"remove_empty_flash_directories\(relative\); break; \}",
+        "a set aside that may pass later is retried, any other is held":
+            r"if \(flash_copy::aside_retries\(aside\.error\(\)\)\) \{ "
+            r"if \(!drain\.failed\.add\(hash\)\) drain\.next_at = now \+ kCopyWaitSeconds; "
+            r"\} else if \(!drain\.held\.add\(hash\)\)",
+        "a set aside sidecar waits for its Parquet under either name":
+            r"if \(flash_copy::set_aside_name\(relative\)\) \{ "
+            r"stem\.remove_prefix\(flash_copy::kConflictPrefixLength\); names = 2; \}",
         "a crosslink suspect is logged and held once per file":
             r"PARQUET RECOVERY crosslink-suspect file=%s action=none\\n\", relative\); "
             r"if \(!drain\.held\.add\(hash\)\)",
