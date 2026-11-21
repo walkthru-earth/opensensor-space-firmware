@@ -37,8 +37,9 @@ or digest changes. Decision record 0004.
 - New serial log lines. A phone or log reader may see these on the console
   and in a captured log. None of them is a wire frame.
   - Boot mount. `OS FLASH mount ok=1 label=<l> total=<bytes> free=<bytes>
-    formatted=<0|1>`, or `OS FLASH mount ok=0 err=<name> formatted_flag=<0|1>`
-    when the volume stays off. `OS FLASH ERROR operation=mount err=<name>
+    formatted=<0|1>`, or `OS FLASH mount ok=0 err=<name> formatted_flag=<0|1|unknown>`
+    when the volume stays off. `unknown` means the NVS flag could not be read,
+    and the board treats it as set, so it never formats. `OS FLASH ERROR operation=mount err=<name>
     retry=1` marks the one retry before a format, and `OS FLASH ERROR
     operation=<flag-read|flag-save>` marks an NVS flag fault.
   - Root choice. `OS STORAGE target=<card|flash|none>` on each change.

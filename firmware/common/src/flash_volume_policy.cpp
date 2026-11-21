@@ -2,6 +2,7 @@
 
 #include <cstdarg>
 #include <cstdio>
+#include <string_view>
 #include <utility>
 
 namespace opensensor::storage {
@@ -26,9 +27,11 @@ append(std::span<char, kFlashLineBytes> line, std::size_t &used,
 }
 
 void append_failure(const FlashOps &ops, std::span<char, kFlashLineBytes> line,
-                    std::size_t &used, FlashMountCode code, bool flag_set) {
-  append(line, used, "OS FLASH mount ok=0 err=%s formatted_flag=%d\n",
-         ops.error_name(code), flag_set ? 1 : 0);
+                    std::size_t &used, FlashMountCode code,
+                    std::string_view flag_text) {
+  append(line, used, "OS FLASH mount ok=0 err=%s formatted_flag=%.*s\n",
+         ops.error_name(code), static_cast<int>(flag_text.size()),
+         flag_text.data());
 }
 
 [[nodiscard]] FlashVolume mounted(const FlashOps &ops, std::int32_t handle,
@@ -78,24 +81,27 @@ mount_flash_policy(const FlashOps &ops, std::span<char, kFlashLineBytes> line) {
   if (!flag)
     append(line, used, "OS FLASH ERROR operation=flag-read\n");
   const bool flag_set = !flag || *flag == 1;
+  // The log reports what was read. An unreadable flag is "unknown" even though
+  // it blocks a format like a set one.
+  const std::string_view flag_text = !flag ? "unknown" : flag_set ? "1" : "0";
 
   if (std::to_underlying(first.error()) != kEspFail) {
     // A missing partition or no memory is not cured by a format.
-    append_failure(ops, line, used, first.error(), flag_set);
+    append_failure(ops, line, used, first.error(), flag_text);
     return std::unexpected(FlashMountError::NotFormattable);
   }
   if (!flag) {
-    append_failure(ops, line, used, first.error(), flag_set);
+    append_failure(ops, line, used, first.error(), flag_text);
     return std::unexpected(FlashMountError::FlagUnreadable);
   }
   if (flag_set) {
-    append_failure(ops, line, used, first.error(), flag_set);
+    append_failure(ops, line, used, first.error(), flag_text);
     return std::unexpected(FlashMountError::AlreadyFormatted);
   }
 
   const auto second = ops.mount(ops.context, true);
   if (!second) {
-    append_failure(ops, line, used, second.error(), false);
+    append_failure(ops, line, used, second.error(), "0");
     return std::unexpected(FlashMountError::FormatFailed);
   }
   // The volume is formatted and mounted. A flag that fails to save leaves it

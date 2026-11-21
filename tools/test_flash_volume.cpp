@@ -190,7 +190,7 @@ void unreadable_flag_never_formats() {
   assert(device.saves == 0);
   assert(text(line) == RETRY "OS FLASH ERROR operation=flag-read\n"
                              "OS FLASH mount ok=0 err=ESP_FAIL "
-                             "formatted_flag=1\n");
+                             "formatted_flag=unknown\n");
 }
 
 void missing_partition_never_formats() {
