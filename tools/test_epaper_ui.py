@@ -46,39 +46,40 @@ SOURCES = sorted((COMPONENT / "src").glob("*.cpp")) + sorted(TEXT.glob("*.cpp"))
 # The size class whose r0 frames must not move.
 GOLDEN_DIR = "400x300/r0"
 # sha256 of each 400x300 r0 PBM, header and frame. The four settings popups
-# moved when the Rotation row was added and again when the Language row was,
-# every other frame is the one the CrowPanel drew before the UI became
-# shared.
+# moved when the Rotation row was added and again when the Language row was.
+# Every frame that shows a reading moved when digits got fixed slots, the
+# settings popups with them as the dashboard shows behind them. Every other
+# frame is the one the CrowPanel drew before the UI became shared.
 GOLDEN = {
     "asleep-dark": "126b725c87cc81fadf7efd504174090c6fa87c82f162d6d5fbb9265f4ce91ca5",
     "asleep": "126b725c87cc81fadf7efd504174090c6fa87c82f162d6d5fbb9265f4ce91ca5",
-    "chart-Humidity": "65fa61a9c42099cf890f9648f356e87271b73f89e00ab4df89bb165cdab43608",
-    "chart-PM1": "44a3a1d82b410d8c281e1bd240d20e6a003542b64f281cf7e068168538df1297",
-    "chart-PM10": "2efc353ce92026ea46a669e07fe4d89f2cc4fdd5ab41a7df46f8ddf9ac916c09",
-    "chart-PM2.5-dark": "c811104c312afafc4c92302d4361a1a2fcc7ab784ab17790ad612afab0632c16",
-    "chart-PM2.5": "ec43e625516fc102911eb76a1eed6513e87591657824ce66073e248af19080e7",
-    "chart-PM4": "42bc691f4d6adf8abda6a20543f6144561a61e074dca3d612f6d869cbcfdbe0d",
-    "chart-Temp": "eecea52926d9e66afb8f90cf1f99acc5acbe4abfb248270d4cd79a3a5011deb3",
-    "chart-co2": "8b8fa1115c478c2158e6ee3986344bb7f1de61f615ddcad2d00eac733001dae2",
+    "chart-Humidity": "2c1b632abd234a05e5b0487dfdefbd18753a581e02f5067875ea625b341a03b9",
+    "chart-PM1": "ff0864161d28824c37f25b68b95feda9ad8874730d6abf0fefa52ede1c89f936",
+    "chart-PM10": "398c8abb98e6356f20fbdb7ae470574597ba749b23be00e7dc5f10e51fec3adc",
+    "chart-PM2.5-dark": "ba1ae2aae4bf0090233076a03e352850025920e91c1867ab626b1afa70b7bed7",
+    "chart-PM2.5": "2ae45dc3f64a5c04f52b582719a3b0c3f24f38d253f0dddf4dd23e688c932dab",
+    "chart-PM4": "7c1d67992079c084101e277db2bd653dff61490de171bf4e97b4f4c3f9c67921",
+    "chart-Temp": "48de46fa13230a67f9ee422cb6fa0a4723d5ebef6fd619eeed10177870c85f17",
+    "chart-co2": "4a0314753a47f45a380756cf5daf017e03f7c93e9598ec046738eaa3adc14f3d",
     "chart-empty": "cb762aa7e3973f4e91cd317dafb79406e8703e38db2c325fee8e2103bc018b95",
-    "chart-gap": "2d7372de43afeb0d4ecc8533b5d53f96f7896ad9e7ca672785b351c857062523",
-    "chart-restart-dark": "fe141a2ba70995b947f95d0ce2a8aeacdc42b9650dbf63826d060c2d4d403951",
-    "chart-restart": "58cd1aa0e5f7c21407b63c750876751abe8318b5e760893a0667ece2ba786906",
+    "chart-gap": "4b99e275ae6bf5250f6a6aa31f98f2528fdf5f9620188fe6c3ffb877a430b65d",
+    "chart-restart-dark": "34ae15c7776f41b00c65b2516d785b796725cb93fb6eab742483d0342b40ced5",
+    "chart-restart": "5ab5c199eacb02a1078b02f989c5c986c660073b2bafd3925f4f6ee554a0a816",
     "chart-warming": "500d28a2327c70507e2b404dd6ee514be0a7722b6cba8c9851cb26f5aa768e1f",
-    "dashboard-bad-air": "455384a4ebd7484f031199e8b3cdf4b4d57c6f7a427a68e3dd3710baaa23b332",
-    "dashboard-dark": "b82ec9f7383b4b2ef48430b361316f9d9409c30f4bb082673711b5b191c6fa63",
-    "dashboard-gap": "51650090ca783f7be56d8696a4e241b124a1b3b4968b61d35237228a031208a7",
-    "dashboard-no-sensor": "a848a17c215b79e83d400d8145d62bb379db26667e9ab19c9a9c97a55e9dafb9",
-    "dashboard-restart-dark": "1de41aa57e28c5890f32e37608f27c55bdb8c13b9ef7f5c18d9910a37d048538",
-    "dashboard-restart": "ef016444096fe4f5613322cfd8c14637c8fd86367dfac43b6d932fad2c214cab",
-    "dashboard-warming": "f230688d53d64141a65faab5306edc3c873d4bde00961d3273ac8b3b2127bd5f",
-    "dashboard": "d893d0c6acfc764dedad63f56ade78314f5ea65497a9f79eb346fbcc288d93a6",
+    "dashboard-bad-air": "88db9db31e920f41779de4a54a1a3f9b5c33ae79703652a9d7cf6d0af7008448",
+    "dashboard-dark": "4cd9bdb214b52bf50dd4d02f4a87216c3958387bafe632305bd848f638b12135",
+    "dashboard-gap": "caeb56d85b9e30e7e79fcff817caf0cdb5ef314629da0b20e19b6993a95db625",
+    "dashboard-no-sensor": "fcbea4371dea810a9556bde5fc8dc8375514d1ed678de02d3ad1d2c0f37083b2",
+    "dashboard-restart-dark": "088164f0684e5e7cbb9b010cc882794ab25eb2f6d4534b280030ea7eb55796d1",
+    "dashboard-restart": "01aeff0f6efcfbc96808085bc89f13e1a7f6e5924c5eb4757594d7b5717fe3ba",
+    "dashboard-warming": "90dec131a399082b8dc061c3b7d3f028a669aa5ff547260927f38f9c5c4ae4de",
+    "dashboard": "472f9f7d4fdbe9bc655994fe64b2b99a28fbe58e4e91d6deaf7d11b6634a8a31",
     "pairing-dark": "d93fc4c58df213a0f03ee4c668743837d1782e44f9f093cbd018f43774e5f6a9",
     "pairing": "30c93f6ca15036d4add6f5bf5b36a1c034bb85a421df628d4fc14a69d804970e",
-    "settings-edit-altitude": "a086ffb791d215ae139dbc2df4d0154a440aef164b329a39373571f4edb5184c",
+    "settings-edit-altitude": "6b01295158a1060e12458e77b5514bd86b44a79251ad7e7542b2653ea7ca36e8",
     "settings-no-wifi-no-sensor": "46ddc56238550e22841bbd93f97ed4d440f0f4ee968613702f0edd128757d4e2",
-    "settings-theme-dark": "3feef32b81b4ef8e2267260172293889f201e9657db4304b1a1f92648da1b155",
-    "settings": "74403a4ff4a1d08a05e9069491474dc8de364716f002ce8bc8118598b3018752",
+    "settings-theme-dark": "935bfc0fa01358206ef9440d7aa95d4be2d8facc580910211e630bdb7cd3db23",
+    "settings": "a57a55a8161b17967155fdb25287f904f1296164d63ce9831c2874fd403b8e98",
     "status-dark": "a0af7f50991ae40ec3e62b30dd4659e90eecbcb6dfc177e888053abcad7bf5b2",
     "status-fault": "35f039edd6ce4d2d1e9f940d053149ab5632e18a728d0aaf9504b3b755ef96ae",
     "status-warming": "c71ce893885c2b861f6806d9bfa399eea86ae707c6cb9588e81ab65fb1d87373",
@@ -87,19 +88,19 @@ GOLDEN = {
     "thing-id-fault": "3e6ffb8df4b7eb628ecac12c6bd22e96c45b6122e9f8a83a4059e331acf1b3ab",
     # No CrowPanel reports a battery, so it never draws these. They pin the
     # header battery icon a board with a PMIC adds.
-    "chart-battery-empty": "ea96b9c213e00d1eeb80371d30066a897454237ba746061c8c42347492572482",
-    "dashboard-battery-dark": "4b7091c397c78f5501ecf3b4d3e7fd8582a36f22c64bceaf93e6a10c838a3464",
-    "dashboard-battery": "e85252377a3d74cd2e9a3e3e4d11c7fd0b6ca60ff64495500524910ec400d49c",
-    "dashboard-gap-battery": "1ffa4a20c79d76551a9d3a69b355d425d4f0610e661007399b6927805366e207",
+    "chart-battery-empty": "fc602b5d2864e1896380ce975f888a8cef5630d71a2cb6de77237adb6c4fb33d",
+    "dashboard-battery-dark": "ea648ac0569fe9076a1fec4601dca1354fbcb4db6cb251efa47c7f5e710f267c",
+    "dashboard-battery": "d9afb75af2c3be8ff138f42617e4af24cced477566f0874fc0c8c71aead977ce",
+    "dashboard-gap-battery": "9f07559487e7e358ab8575c747ea3d8a4d1b7e15985f17058ba239c0d2755afc",
     "status-battery-charging": "073c7f3b6b3fca5af41cc13f4021c8180b718ab0274c9d2ec57786da11c18300",
 }
 # A few Arabic 400x300 r0 frames, one of each kind of page, so a change to
 # the bidi pass, the Arabic fonts or the mirroring shows up here.
 AR_GOLDEN_DIR = "ar/400x300/r0"
 AR_GOLDEN = {
-    "chart-PM2.5": "7ee1ba60ef7f43311ef59133f56efb08dc2e21b41d440995fd53b6b0d08814af",
-    "dashboard": "7870d88986f8054bb857bf484dbd8fd7aa516c674e1cdee455733a09829e729a",
-    "settings": "e87201533012041d7932bca04f9c08be77251384ce2848a135e25d15fd7d466a",
+    "chart-PM2.5": "ff9083d985159f88a8a835add40dae1b1371a6f9ef341581232fe3f87ac80304",
+    "dashboard": "600be9948b1080715ef6d5a49d1ed379cf22013804bb63d028f7b576bac02d85",
+    "settings": "4152e7d6ae7dc4bd3f5b608f73f50302e4e1da56f756f280ab684d8d6f343ca4",
     "status": "2c3c77122de04ab8a6e7bf5a43d7f273832df2a255970edf9ac6cf260bdc5ba5",
 }
 
