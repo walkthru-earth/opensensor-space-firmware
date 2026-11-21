@@ -96,10 +96,14 @@ Listing run(const ls::Plan &plan, const ls::Ring &ring, unsigned budget = 32) {
   ls::IncrementalWalk<CountingIO> walk;
   const std::string root = root_path.string();
   Listing out;
-  assert(walk.begin(io, root.c_str(), kThing, plan, ring));
+  [[maybe_unused]] const bool begun =
+      walk.begin(io, root.c_str(), kThing, plan, ring);
+  assert(begun);
   auto visit = [&](const char *name, const struct stat &info) {
-    if (S_ISREG(info.st_mode))
-      assert(out.names.insert(name).second);
+    if (S_ISREG(info.st_mode)) {
+      [[maybe_unused]] const bool added = out.names.insert(name).second;
+      assert(added);
+    }
     return true;
   };
   using Status = ls::IncrementalWalk<CountingIO>::Status;
@@ -122,7 +126,9 @@ std::set<std::string> everything() {
   DirectoryWalk<CountingIO> walk;
   const std::string root = root_path.string();
   std::set<std::string> names;
-  assert(walk.begin(io, root.c_str(), thing_dir().c_str(), 1));
+  [[maybe_unused]] const bool begun =
+      walk.begin(io, root.c_str(), thing_dir().c_str(), 1);
+  assert(begun);
   auto visit = [&](const char *name, const struct stat &) {
     names.insert(name);
     return true;
@@ -623,6 +629,20 @@ bool copy_one(ls::CopyCounter &counter, const ls::CopyCountStore &store) {
   return true;
 }
 
+// The copy and reserve run outside assert(), so a build without asserts
+// still moves the count the later checks read.
+void expect_copy(ls::CopyCounter &counter, const ls::CopyCountStore &store,
+                 bool want) {
+  [[maybe_unused]] const bool copied = copy_one(counter, store);
+  assert(copied == want);
+}
+
+void expect_reserve(ls::CopyCounter &counter, const ls::CopyCountStore &store,
+                    bool want) {
+  [[maybe_unused]] const bool reserved = counter.reserve(store);
+  assert(reserved == want);
+}
+
 // The count of files copied back survives a reboot, so the shifted epoch of
 // a later boot never repeats an epoch a cursor from before a copy carries.
 void check_copy_count() {
@@ -638,12 +658,12 @@ void check_copy_count() {
     handed_out.insert(serial);
     // One store write covers a block of copies.
     for (std::uint32_t i = 0; i < ls::kCopyCountBlock; ++i) {
-      assert(copy_one(boot, store));
+      expect_copy(boot, store, true);
       handed_out.insert(boot.epoch(store, serial));
     }
     assert(nvs.saves == 1 && nvs.value == ls::kCopyCountBlock);
     assert(boot.count() == ls::kCopyCountBlock);
-    assert(copy_one(boot, store));
+    expect_copy(boot, store, true);
     assert(nvs.saves == 2 && nvs.value == 2 * ls::kCopyCountBlock);
     last = boot.epoch(store, serial);
     handed_out.insert(last);
@@ -659,7 +679,7 @@ void check_copy_count() {
     assert(epoch != last && !handed_out.contains(epoch));
     // Its first copy stores a new block before it moves a file.
     const unsigned saves = nvs.saves;
-    assert(copy_one(boot, store));
+    expect_copy(boot, store, true);
     assert(nvs.saves == saves + 1 && nvs.value == 3 * ls::kCopyCountBlock);
     assert(!handed_out.contains(boot.epoch(store, serial)));
   }
@@ -667,7 +687,8 @@ void check_copy_count() {
     // A reset between the reserve and the copy. The next boot starts above
     // the reserved block, so the copy it does again moves the epoch too.
     ls::CopyCounter boot;
-    assert(boot.reserve(store) && nvs.value == 4 * ls::kCopyCountBlock);
+    expect_reserve(boot, store, true);
+    assert(nvs.value == 4 * ls::kCopyCountBlock);
     ls::CopyCounter after;
     assert(after.count() == 0);
     assert(after.epoch(store, serial) ==
@@ -682,13 +703,14 @@ void check_copy_count() {
     const auto failing = broken.store();
     ls::CopyCounter boot;
     assert(boot.epoch(failing, serial) == 0);
-    assert(!boot.reserve(failing));
+    expect_reserve(boot, failing, false);
     assert(broken.saves == 0);
     // The read is tried again, and a key that reads later counts from it.
     broken.mode = ls::Load::Found;
     broken.value = 40;
     assert(boot.epoch(failing, serial) == ls::shifted_epoch(serial, 40));
-    assert(boot.reserve(failing) && broken.value == 40 + ls::kCopyCountBlock);
+    expect_reserve(boot, failing, true);
+    assert(broken.value == 40 + ls::kCopyCountBlock);
   }
   {
     // A store that cannot be written holds the copy, so no reboot can come
@@ -698,10 +720,30 @@ void check_copy_count() {
     const auto failing = full.store();
     ls::CopyCounter boot;
     assert(boot.epoch(failing, serial) == serial);
-    assert(!copy_one(boot, failing));
+    expect_copy(boot, failing, false);
     assert(boot.count() == 0 && boot.epoch(failing, serial) == serial);
     full.fail_save = false;
-    assert(copy_one(boot, failing) && boot.count() == 1);
+    expect_copy(boot, failing, true);
+    assert(boot.count() == 1);
+  }
+  {
+    // A boot with no flash root, because the flash mount failed or the image
+    // has the fallback off, still reads the stored count (#217). Copies an
+    // earlier boot made moved its epochs, so the serial alone could repeat
+    // an epoch a cursor from before those copies carries.
+    FakeCount stored;
+    stored.mode = ls::Load::Found;
+    stored.value = 3 * ls::kCopyCountBlock;
+    ls::CopyCounter no_flash;
+    const std::uint32_t epoch = no_flash.epoch(stored.store(), serial);
+    assert(epoch == ls::shifted_epoch(serial, 3 * ls::kCopyCountBlock));
+    assert(epoch != serial);
+    assert(stored.saves == 0);
+    // Without a key the serial stays the epoch, as on a board that never
+    // copied a file.
+    FakeCount none;
+    ls::CopyCounter fresh;
+    assert(fresh.epoch(none.store(), serial) == serial);
   }
   {
     // Serial 0 is unknown whatever the count.

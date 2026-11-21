@@ -1,5 +1,7 @@
 #pragma once
 
+#include "os_logger_paths.h"
+
 #include <cerrno>
 #include <cstdint>
 #include <cstdio>
@@ -143,7 +145,7 @@ public:
         errno = error;
         return next;
       };
-      char path[416];
+      char path[paths::kPathBytes];
       length = std::snprintf(path, sizeof(path), "%s/%s", base_, relative_);
       if (length < 0 || static_cast<std::size_t>(length) >= sizeof(path)) {
         if (skipped(ENAMETOOLONG))
@@ -196,7 +198,7 @@ private:
 
   // Opens "<base>/<relative_>" as the new innermost level.
   bool push() {
-    char path[416];
+    char path[paths::kPathBytes];
     const int length =
         std::snprintf(path, sizeof(path), "%s/%s", base_, relative_);
     if (length < 0 || static_cast<std::size_t>(length) >= sizeof(path)) {
@@ -231,7 +233,7 @@ private:
   unsigned first_depth_ = 0;
   // Relative path of the innermost open directory, extended in place by the
   // entry being visited.
-  char relative_[384]{};
+  char relative_[paths::kRelativeBytes]{};
 };
 
 // The whole walk in one call. True only when every entry was read.
@@ -446,7 +448,7 @@ template <class IO>
 bool quarantine_partial(IO &io, const char *root, const char *relative,
                         const char *boot, std::uint32_t counter,
                         char *destination, std::size_t destination_size) {
-  char directory[416], source[416];
+  char directory[paths::kPathBytes], source[paths::kPathBytes];
   if (!quarantine_target(root, relative, boot, counter, directory,
                          sizeof(directory), destination, destination_size))
     return false;
