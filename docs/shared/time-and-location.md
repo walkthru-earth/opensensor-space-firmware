@@ -200,7 +200,7 @@ on its own. The owner confirms the cell on the map first.
 
 ## Parquet provenance
 
-From the Thing release (#83) both boards hold four nullable location columns
+From the Thing release (#83) every board holds four nullable location columns
 next to each other:
 
 | Column | Physical type | Meaning |
