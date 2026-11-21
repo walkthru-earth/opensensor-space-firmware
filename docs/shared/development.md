@@ -781,9 +781,9 @@ Run these from the repository root, with `v1.2.0` standing for the new tag.
    gh release edit v1.2.0 --draft=false
    ```
 
-The attestation covers the unsigned images and SBOMs as CI built them. The
-signed images are those bytes plus the owner signature block, and the owner
-key is their proof of origin. The joined `SHA256SUMS` and the public key are
+The attestation covers the unsigned images, SBOMs and identity files as CI
+built them. The signed images are those bytes plus the owner signature block,
+and the owner key is their proof of origin. The joined `SHA256SUMS` and the public key are
 uploaded by the owner, so the attestation does not cover them. A reader checks
 a signed image with the public key from the release.
 
