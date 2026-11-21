@@ -1,3 +1,4 @@
+#include "os_logger_flash_copy.h"
 #include "os_logger_list_merge.h"
 
 #include <cassert>
@@ -10,6 +11,12 @@
 namespace {
 namespace lm = opensensor::logger::list_merge;
 using lm::FlashName;
+
+// The LIST merge and the copy back share one path bound, so a flash name the
+// merge lists always fits the copy (#210).
+static_assert(&lm::kPathBytes == &opensensor::logger::paths::kPathBytes);
+static_assert(&opensensor::logger::flash_copy::kPathBytes ==
+              &opensensor::logger::paths::kPathBytes);
 
 constexpr const char *kCard = "/sd/output";
 constexpr const char *kLegacy = "/sd/parquet";
@@ -123,6 +130,20 @@ void since_rule() {
 }
 } // namespace
 
+// A flash file set aside after a conflict (#212) is listed under its
+// "flash-conflict/" name, which the card does not hold, so the peer can fetch
+// it next to the card file of the old name. Once the card holds that name
+// too, the card walk lists it.
+void set_aside_listed() {
+  const std::string aside = std::string("flash-conflict/") + kName;
+  Probe probe;
+  probe.entries[on_card(kName)] = S_IFREG;
+  assert(lm::flash_name(probe, kCard, aside.c_str()) == FlashName::Emit);
+  assert(probe.probed == std::vector<std::string>{on_card(aside.c_str())});
+  probe.entries[on_card(aside.c_str())] = S_IFREG;
+  assert(lm::flash_name(probe, kCard, aside.c_str()) == FlashName::OnCard);
+}
+
 int main() {
   duplicate();
   unique();
@@ -130,5 +151,6 @@ int main() {
   card_unusable();
   bad_names();
   since_rule();
+  set_aside_listed();
   return 0;
 }

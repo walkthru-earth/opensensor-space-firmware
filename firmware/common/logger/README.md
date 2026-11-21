@@ -44,7 +44,13 @@ above `fallback_reserve_bytes` (128 KiB by default), else the rows wait in RAM.
 A file keeps its root until it finalizes, so a card that leaves mid-file keeps
 today's handling. A probe that finds the card back finalizes an open flash
 file, and the rows waiting in RAM then open a card file as the write test
-before Retry clears. Each change prints `OS STORAGE
+before Retry clears. `archive_target::probe_action()` closes the flash file
+only for a card that will take files after the probe, never for one that
+stays Full, and after a failed write test only once an hour, so a bad card
+does not cut flash files short (#219). Without rows waiting nothing is
+written and the flash file stays open. A card whose last test failed then
+stays in Retry, any other card counts as Ready and its first copy back
+write is the test, a refused one puts it in Retry (#218). Each change prints `OS STORAGE
 target=<card|flash|none>`, and the flash volume crossing its reserve prints
 `OS FLASH full free=<n> reserve=<n>` or `OS FLASH room free=<n>` once per
 transition. Nothing is deleted to make room. Boot quarantine also moves flash
@@ -55,7 +61,7 @@ flash, and ERROR 8 means neither root is usable. OPEN and READ try the card
 first, then flash. LIST_SINCE answers `full` while flash holds files or after
 a copy moved one. A copy moves the mount epoch by one, and NVS
 `osflash/copies` keeps the count across reboots, stored a block of 16 ahead
-before a file moves. When the count cannot be read or stored the epoch is 0,
+before a file moves. Every mount reads it, with or without a flash root. When the count cannot be read or stored the epoch is 0,
 copy back waits and `OS FLASH ERROR operation=copy-count list_since=full
 copy_back=held` prints once per boot. A walk without the card hands out
 epoch 0.
@@ -64,9 +70,19 @@ While the card is Ready, no LIST runs and no emergency close is pending, the
 idle worker copies flash files back one chunk per pass, Parquet before its
 sidecar, verified by SHA-256, and prints `OS FLASH copy name=<relative>
 bytes=<n> result=<copied|identical|conflict|error|cancelled>`, then `OS FLASH
-copy done files=<n>` once flash is empty. Only a file whose identical copy is
-verified on the card is removed from flash. A conflict or crosslink suspect
-stays on both roots for the owner. ERASE_ARCHIVE erases card roots only. The
+copy done files=<n>` once flash is empty. Each copied file reads the card free
+space again, so a copy that takes the card below a governor band pauses the
+copy back before the next file until the card is Ready again (#213). Only a file whose identical copy is
+verified on the card is removed from flash. After a conflict both files
+stay, and the flash one, its sidecar first, is renamed on flash to
+`flash-conflict/<relative>` and printed as `OS FLASH conflict name=<relative>
+moved=flash-conflict/<relative> sidecar=<0|1>` (#212). LIST names it there and
+the next copy takes it to that name on the card. When the rename cannot
+happen the line ends `moved=none reason=<why> errno=<n>`, where the reason is
+`already-aside`, `not-copied`, `too-long`, `stat`, `directory`, `taken` or
+`rename`, and the file stays on flash. It is tried again later after `stat`,
+`directory` and `rename`. A crosslink suspect, on the card or a
+flash file under both names, stays for the owner. ERASE_ARCHIVE erases card roots only. The
 serial `parquet erase-archive CONFIRM` closes an open flash telemetry file
 without a finalize, and the next boot quarantines its `.partial` on flash.
 
