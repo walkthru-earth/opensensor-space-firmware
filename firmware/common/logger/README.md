@@ -42,8 +42,9 @@ With a fallback root the worker picks a root for each new file. The card
 takes it while the governor can write, else flash while its free space stays
 above `fallback_reserve_bytes` (128 KiB by default), else the rows wait in RAM.
 A file keeps its root until it finalizes, so a card that leaves mid-file keeps
-today's handling and a card that comes back leaves an open flash file on flash
-until its window rotates. Each change prints `OS STORAGE
+today's handling. A probe that finds the card back finalizes an open flash
+file, and the rows waiting in RAM then open a card file as the write test
+before Retry clears. Each change prints `OS STORAGE
 target=<card|flash|none>`, and the flash volume crossing its reserve prints
 `OS FLASH full free=<n> reserve=<n>` or `OS FLASH room free=<n>` once per
 transition. Nothing is deleted to make room. Boot quarantine also moves flash

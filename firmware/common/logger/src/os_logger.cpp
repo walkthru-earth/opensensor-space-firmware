@@ -2819,12 +2819,19 @@ void probe_storage(std::size_t &count, bool &storage_ready,
   }
   // Waiting rows are the real write test. Committed while still in Retry so
   // a card that mounts but cannot write keeps its growing backoff. An open
-  // flash file keeps its rows until its window rotates, so then the next
-  // card file is the write test.
-  if (ok && count && free_bytes >= governor.limits().reserve &&
-      !on_flash(writer_state->telemetry)) {
-    next_root = kDirectory;
-    ok = commit(count, false) && measure_free(free_bytes);
+  // flash file is finalized first, so the waiting rows open a card file and
+  // the card is written before Retry clears. A failed flash finalize is
+  // logged and paused by flash_commit and never fails the card probe. With
+  // no rows waiting the next card file is the write test, as without flash.
+  if (ok && free_bytes >= governor.limits().reserve) {
+    if (on_flash(writer_state->telemetry)) {
+      std::size_t none = 0;
+      flash_commit(none, true, nullptr);
+    }
+    if (count) {
+      next_root = kDirectory;
+      ok = commit(count, false) && measure_free(free_bytes);
+    }
   }
   if (ok)
     governor.probe_succeeded(free_bytes, now);

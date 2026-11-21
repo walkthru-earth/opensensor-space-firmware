@@ -48,7 +48,9 @@ and the files move to the card once a card is back.
 4. **Where a new file goes.** The worker picks the root when it creates a
    file. The card while storage is Ready, otherwise the flash volume while it
    is mounted and has room, otherwise no file (rows stay in the RAM batch as
-   today). A file keeps its root until it is finalized. Paths below each root
+   today). A file keeps its root until it is finalized. A storage probe that
+   finds the card back finalizes an open flash file, so the rows waiting in
+   RAM write a card file before the card counts as Ready. Paths below each root
    are the same Hive layout, `thing=<id>/year=/month=/day=/` or
    `thing=<id>/unsynced/boot=<boot>/`, with the same file names.
 5. **Finalize is unchanged.** Flash files use the same `.partial`, fsync,

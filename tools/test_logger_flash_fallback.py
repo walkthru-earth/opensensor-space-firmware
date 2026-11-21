@@ -69,6 +69,12 @@ def check_wiring(source: str) -> None:
             r"in\.card_listable = card_listable\(\);",
         "LIST and OPEN answer while either root is usable":
             r"archive_session\.handle\(request, archive_ready\(state\.storage_ready\)\)",
+        "a probe finalizes an open flash file so the waiting rows test the card":
+            r"if \(ok && free_bytes >= governor\.limits\(\)\.reserve\) \{ "
+            r"if \(on_flash\(writer_state->telemetry\)\) \{ std::size_t none = 0; "
+            r"flash_commit\(none, true, nullptr\); \} if \(count\) \{ "
+            r"next_root = kDirectory; ok = commit\(count, false\) && "
+            r"measure_free\(free_bytes\); \} \}",
         "a remount shifts the volume serial by the files copied back":
             r"mount_epoch = list_since::shifted_epoch\(",
         "a copy back moves the mount epoch":
