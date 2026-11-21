@@ -37,6 +37,11 @@ SECRETS_EXPR = re.compile(r"\$\{\{[^}]*\bsecrets\b")
 # releases/latest skips drafts, so a narrower read would miss an earlier draft.
 GUARD_API = 'tags="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" --jq \'.[].tag_name\')"'
 TAG_CHECK = re.compile(r'^if \[\[ ! "\$\{[A-Z_]+\}" =~ (\S+) \]\]; then$')
+# The commit time, so __DATE__ and __TIME__ in the app description come from
+# the commit and not from the runner clock.
+EPOCH = 'SOURCE_DATE_EPOCH="$(git log -1 --format=%ct HEAD)"'
+IDENTITY = re.compile(r'^pixi run release-identity --board "\$\{BOARD\}" --app "\$\{APP\}" --build "\$\{build\}" \\$')
+IDENTITY_TAG = re.compile(r'^jq -e --arg tag "\$\{TAG\}" \'\.app_version == \$tag\' "\$\{file\}" >/dev/null \|\| \{$')
 PERMISSIONS = {
     "build": {"contents": "read"},
     "assemble": {},
@@ -74,6 +79,51 @@ def if_blocks(run: str, opener: re.Pattern[str]) -> list[list[str]]:
     if body is not None:
         blocks.append(body)
     return blocks
+
+
+def epoch_before(run: str, command: str) -> bool:
+    """SOURCE_DATE_EPOCH is set and exported before the first line holding command."""
+    lines = [line.strip() for line in run.splitlines()]
+    at = next((i for i, line in enumerate(lines) if command in line), None)
+    if at is None:
+        return False
+    head = lines[:at]
+    return EPOCH in head and "export SOURCE_DATE_EPOCH" in head[head.index(EPOCH):]
+
+
+def check_identity(build: dict, release: dict) -> list[str]:
+    """Each image is checked against the tag before staging, and the release
+    job refuses an identity file that names another version."""
+    found = []
+    by_name = {step.get("name"): str(step.get("run", "")) for step in steps(build)}
+    if not epoch_before(by_name.get("Build", ""), 'pixi run "${task[@]}"'):
+        found.append(f"the Build step must export {EPOCH} before the board build")
+    stage = by_name.get("Stage release files", "")
+    if not epoch_before(stage, "sbom-create --format"):
+        found.append(f"the Stage step must export {EPOCH} before sbom-create")
+    lines = [line.strip() for line in stage.splitlines()]
+    calls = [i for i, line in enumerate(lines) if "release-identity" in line]
+    if len(calls) != 1 or not IDENTITY.match(lines[calls[0]]) or calls[0] + 1 >= len(lines) or \
+            lines[calls[0] + 1] != '--expect-version "${expect}" --out "dist/${stem}.identity.json"':
+        found.append("the Stage step must run release-identity once on the board build with the expected version")
+    elif not any(line.startswith("cp ") and ".bin" in line for line in lines[calls[0]:]):
+        found.append("the Stage step must check the identity before it copies the image")
+    tag_then = if_blocks(stage, TAG_CHECK)
+    branch = stage.split('label="${REF_NAME}"', 1)
+    if len(branch) != 2 or branch[1].split("else", 1)[0].strip() != 'expect="${REF_NAME}"':
+        found.append("a tag build must expect the tag as the app version")
+    if not tag_then:
+        found.append("the Stage step lost its tag check")
+    notes = next((str(step.get("run", "")) for step in steps(release) if step.get("name") == "Create draft release"), "")
+    note_lines = [line.strip() for line in notes.splitlines()]
+    hits = [i for i, line in enumerate(note_lines) if IDENTITY_TAG.match(line)]
+    if len(hits) != 1 or "exit 1" not in note_lines[hits[0]:hits[0] + 4] or \
+            'identities=(dist/*.identity.json)' not in note_lines:
+        found.append("the release job must fail when an identity file does not name the tag")
+    empty = if_blocks(notes, re.compile(r'^if \(\( \$\{#identities\[@\]\} == 0 \)\); then$'))
+    if len(empty) != 1 or "exit 1" not in empty[0]:
+        found.append("the release job must fail when no identity file was staged")
+    return found
 
 
 def check(text: str) -> list[str]:
@@ -153,6 +203,8 @@ def check(text: str) -> list[str]:
     if len(blocks) != 1 or "exit 1" not in blocks[0]:
         found.append("the existing release guard must fail when the tag has a release")
 
+    found += check_identity(jobs.get("build") or {}, release)
+
     # The board artifacts and the joined artifact must not share a pattern.
     uploaded = {name: [str((step.get("with") or {}).get("name", "")) for step in steps(job)
                        if uses(step) == "actions/upload-artifact"] for name, job in jobs.items()}
@@ -214,6 +266,22 @@ MUTATIONS = [
      "      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9\n"
      "        with:\n          path: ~/.espressif\n          key: k\n"
      "      - name: Install pinned ESP-IDF\n"),
+    ("build epoch lost", '          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct HEAD)"\n          export SOURCE_DATE_EPOCH\n'
+     '          read -r -a task', "          read -r -a task"),
+    ("build epoch not exported", '          export SOURCE_DATE_EPOCH\n          read -r -a task', "          read -r -a task"),
+    ("sbom epoch lost", '          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct HEAD)"\n          export SOURCE_DATE_EPOCH\n'
+     '          pixi run idf -C', "          pixi run idf -C"),
+    ("build epoch from the clock", 'SOURCE_DATE_EPOCH="$(git log -1 --format=%ct HEAD)"\n          export SOURCE_DATE_EPOCH\n'
+     '          read -r -a task', 'SOURCE_DATE_EPOCH="$(date +%s)"\n          export SOURCE_DATE_EPOCH\n          read -r -a task'),
+    ("identity check removed", '            pixi run release-identity --board "${BOARD}" --app "${APP}" --build "${build}" \\\n'
+     '              --expect-version "${expect}" --out "dist/${stem}.identity.json"\n', "            true\n"),
+    ("identity check expects nothing", '--expect-version "${expect}"', '--expect-version "${label}"'),
+    ("tag build expects describe", '            expect="${REF_NAME}"\n', '            expect="$(git describe --always --tags)"\n'),
+    ("identity after copy", '          cp "${build}/${APP}.bin" "dist/${stem}.bin"\n', ""),
+    ("release skips the tag check", ".app_version == $tag", ".app_version != null"),
+    ("release ignores a wrong tag", 'does not name ${TAG}"\n              exit 1', 'does not name ${TAG}"\n              true'),
+    ("release accepts no identity", 'no identity file in the release files"\n            exit 1',
+     'no identity file in the release files"\n            true'),
 ]
 
 

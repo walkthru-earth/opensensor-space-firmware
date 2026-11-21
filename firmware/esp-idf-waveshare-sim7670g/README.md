@@ -159,7 +159,7 @@ The separate trial is justified by a concrete board change: Waveshare V2 uses GP
 
 ```sh
 pixi install
-pixi run waveshare-setup
+pixi run idf-setup
 pixi run waveshare-build               # logger, 16 MB Quad flash / OPI PSRAM
 pixi run waveshare-diagnostic-build    # retained UART/read-only TF diagnostic
 pixi run waveshare-contract-test --sanitize
