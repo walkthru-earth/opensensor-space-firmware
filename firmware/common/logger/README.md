@@ -142,7 +142,11 @@ Hive tree and rotates on the same window measured on the boot's monotonic clock.
 An empty `unsynced/ringless=<boot>/` folder marks a boot whose NVS boot ring
 append failed, so a later `LIST_SINCE` still lists that boot's unsynced files.
 The logger removes it, best effort, when a later append in the same boot
-succeeds. Otherwise it stays until the archive is erased.
+succeeds. Otherwise it stays until the archive is erased. The marker goes on
+the card only, since copy back moves regular files and never an empty folder.
+A flash file of such a boot prints `PARQUET WARN operation=boot-ring-marker
+root=flash action=none` instead, and its copy back moves the mount epoch, so
+every cursor from before the copy lists in full.
 Finalization writes/syncs the
 footer, checks structure and CRC, then renames to immutable `.parquet`. Interrupted
 `.partial` files are retained under `quarantine/<thing>/<partition>/`, at boot

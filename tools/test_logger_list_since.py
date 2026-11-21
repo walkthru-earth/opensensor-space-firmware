@@ -22,10 +22,11 @@ def check_wiring(source: str) -> None:
     rules = {
         "a dated file lowers the floor before its folder is made":
             r"target\.dated = true; since_state\.dated\([^;]*\); \} else \{ .*?"
-            r"note_unsynced_boot\(\); \} char directory\[192\];.*?"
+            r"note_unsynced_boot\(target\.root\); \} char directory\[192\];.*?"
             r"if \(!make_directories\(directory\)\)",
         "the unsynced boot joins the ring, or gets a marker, before its folder":
-            r"void note_unsynced_boot\(\) \{ if \(boot_ring\.appended\(\)\) return; "
+            r"void note_unsynced_boot\(const char \*root\) \{ "
+            r"if \(boot_ring\.appended\(\)\) return; "
             r"boot_ring\.note_unsynced\(ring_store\); char marker\[192\] = \{\}; "
             r"const bool named = list_since::marker_path\(marker, kDirectory, "
             r"thing_text, boot_text\); if \(boot_ring\.appended\(\)\) \{.*?"
@@ -33,6 +34,8 @@ def check_wiring(source: str) -> None:
             r"if \(::rmdir\(marker\) != 0\).*?"
             r"else boot_ring\.marker_removed\(\); return; \}.*?"
             r"if \(!boot_ring\.needs_marker\(\)\) return;.*?"
+            r"if \(root != kDirectory\) \{ oslog\.println\(\"PARQUET WARN "
+            r"operation=boot-ring-marker root=flash action=none\"\); return; \}.*?"
             r"if \(named && make_directories\(marker\)\) boot_ring\.marker_made\(\);",
         "a renamed unsynced file moves the cursor seq":
             r"::rename\(target\.partial, ready\) == 0;.*?\+\+finalized; "

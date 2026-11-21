@@ -766,7 +766,10 @@ incremental walk reads the entries of `unsynced/` once and lists each marked
 boot that is not in the ring in full, so a later boot still finds it. The
 phone drops the names it already holds. The logger removes the marker, best
 effort, when a later ring append in the same boot succeeds. Otherwise it stays
-until the serial archive reset, `parquet erase-archive CONFIRM`. More than 4
+until the serial archive reset, `parquet erase-archive CONFIRM`. A file on the
+internal flash root gets no marker, because copy back never moves an empty
+folder. The board answers `full` while flash holds it, and its copy moves the
+mount epoch. More than 4
 such markers widen the
 walk to the whole unsynced tree and set `unsynced_full`. A boot that could not
 make its marker either, after both NVS and the card failed, can still be

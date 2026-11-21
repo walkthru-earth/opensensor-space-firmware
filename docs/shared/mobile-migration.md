@@ -60,6 +60,9 @@ or digest changes. Decision record 0004.
     (`retry_s=60`).
   - Quarantine. `PARQUET RECOVERY quarantined=<n> repaired=0 deleted=0
     root=flash` for flash `.partial` files moved aside at boot.
+  - Boot ring. `PARQUET WARN operation=boot-ring-marker root=flash
+    action=none` when a boot whose ring append failed writes an unsynced file
+    to flash. The `ringless=` marker is made on the card only.
 
 **Why.** A Thing with no card, or a pulled card, kept its rows in RAM only and
 dropped them once the batch filled. Flash keeps a few windows (about an hour

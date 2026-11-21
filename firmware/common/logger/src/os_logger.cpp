@@ -778,7 +778,8 @@ std::uint32_t volume_epoch(std::uint32_t serial) {
 
 // Names this boot in the ring before its first unsynced folder exists. A
 // failure only widens the next LIST_SINCE, so the file is still written.
-void note_unsynced_boot() {
+// `root` is the new file's root. The marker goes on the card only.
+void note_unsynced_boot(const char *root) {
   if (boot_ring.appended())
     return;
   boot_ring.note_unsynced(ring_store);
@@ -811,6 +812,16 @@ void note_unsynced_boot() {
   oslog.println("PARQUET WARN operation=boot-ring list_since=unsynced-full");
   if (!boot_ring.needs_marker())
     return;
+  // Copy back moves regular files only, so a marker on flash would never
+  // reach the card. None is made there. LIST_SINCE answers full while flash
+  // holds the file, and its copy moves the stored mount epoch, so every
+  // cursor from before the copy lists in full. The next card file of this
+  // boot makes the marker.
+  if (root != kDirectory) {
+    oslog.println(
+        "PARQUET WARN operation=boot-ring-marker root=flash action=none");
+    return;
+  }
   // A later boot's ring will not name this boot, so its LIST_SINCE finds
   // the boot folder through this marker.
   if (named && make_directories(marker))
@@ -858,7 +869,7 @@ bool create_file(OutputFile &target, Codec codec, bool benchmark) {
         std::snprintf(partition, sizeof(partition), "thing=%s/unsynced/boot=%s",
                       thing_text, boot_text);
     std::strcpy(prefix, "data_unsynced");
-    note_unsynced_boot();
+    note_unsynced_boot(target.root);
   }
   char directory[192];
   const int directory_length = std::snprintf(directory, sizeof(directory),
