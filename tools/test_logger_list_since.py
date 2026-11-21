@@ -54,7 +54,7 @@ def check_wiring(source: str) -> None:
         "a remount forgets the mount epoch":
             r"archive_session\.remounted\(\);.*?mount_epoch = 0;",
         "only the radio list owns the incremental walk":
-            r"ArchiveList archive_list\{&archive_since\};",
+            r"ArchiveList archive_list\{&archive_since, true\};",
         "list_all keeps the incremental walk off the worker stack":
             r"bool list_all\(FileEmitter emit, void \*context, unsigned &partials\) \{ ArchiveList list;",
         "STATUS reports the mount epoch":

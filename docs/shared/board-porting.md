@@ -207,9 +207,10 @@ Use the Waveshare V2 files as the example.
    only fields from setup config. That writer is decided and not built
    ([#145](https://github.com/walkthru-earth/opensensor-space-firmware/issues/145)). The File Item writer follows the stac-opensensor PROFILE Writers and
    Canonical form sections, and the Collection writer must follow them too. A new board measures the flash,
-   internal RAM and PSRAM cost of the writer on that board. Sidecar transport is future
-   work, over the uploader in [#144](https://github.com/walkthru-earth/opensensor-space-firmware/issues/144) and over BLE and LAN in [#143](https://github.com/walkthru-earth/opensensor-space-firmware/issues/143). Today
-   both accept only `.parquet` names.
+   internal RAM and PSRAM cost of the writer on that board. BLE and LAN sync
+   list and serve the sidecar next to its Parquet ([#143](https://github.com/walkthru-earth/opensensor-space-firmware/issues/143)). Sidecar
+   transport over the uploader is future work in [#144](https://github.com/walkthru-earth/opensensor-space-firmware/issues/144), which today
+   accepts only `.parquet` names.
 9. Builds. Build every existing board and the new one, `pixi run cores3-build`,
    `pixi run waveshare-build`, `pixi run crowpanel-build`,
    `pixi run epaper397-build` and the new board
