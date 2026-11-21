@@ -537,6 +537,42 @@ repeat in order. It refuses secret commands and `parquet erase-archive`, and
 exits 130 when stopped with Ctrl-C. Flash a shipped build back after the run, then power cycle
 once so the RTC stall count returns to `consecutive=0`.
 
+### DELTA integer switch
+
+`CONFIG_OS_LOGGER_DELTA_INTEGERS` (default n, #135) picks the value encoding
+of every INT32 and INT64 column in every file the logger writes. Off writes
+PLAIN, byte for byte as before. On writes DELTA_BINARY_PACKED for those
+columns only. FLOAT columns, the GEOMETRY column, the RLE definition levels,
+the columns, field ids, statistics, footer keys, digests and the codec choice
+stay the same. `os_logger_encoding.h` maps the switch to the
+`IntegerEncoding` that `create_file()` passes to `Writer::begin`, and the
+boot line `PARQUET BEGIN` ends with `integers=PLAIN` or
+`integers=DELTA_BINARY_PACKED`. A board turns it on with one line in its
+`sdkconfig.defaults`, and no board does until decision record 0002 records
+the board measurement (#61). The CrowPanel stops the build when it is on,
+because its chart history restore decodes PLAIN values only
+(`parquet_columns.h`).
+
+`pixi run logger-encoding-test` fails when the Kconfig default is not n, when
+a shipped `sdkconfig.defaults` sets it, when `os_logger.cpp` takes the
+encoding from anywhere else, or when a board that decodes its own files lacks
+the build stop. It builds `tests/test_encoding.cpp` with the switch off and
+on and writes files through the real writer, with and without LZ4_RAW. Off
+must equal the writer default byte for byte. On must list DELTA_BINARY_PACKED
+for integer chunks only, keep every statistic and read back the same values
+in PyArrow and DuckDB.
+
+The bench image for the #61 measurement comes from the overlay
+`tools/idf-delta-sdkconfig.defaults`, which `OS_BENCH=delta` appends after the
+board defaults, in its own `build/<variant>-bench-delta` directory. The flash
+script only writes it with the same `OS_BENCH=delta`.
+
+```sh
+OS_BENCH=delta pixi run cores3-build
+OS_BENCH=delta pixi run waveshare-build logger
+OS_BENCH=delta pixi run waveshare-flash <checked port> <full backup> logger
+```
+
 ## Verification
 
 `pixi run logger-build-test` compiles the minimal generic ESP32-S3

@@ -9,6 +9,29 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## PARQUET BEGIN names the integer encoding (feat/delta-integer-switch)
+
+**No app change needed. No reflash needed for files to stay readable.** No
+column, field id, LIVE key, STATUS key, config key, dictionary, digest, file
+encoding or wire frame changes.
+
+**What changed.** The boot serial line `PARQUET BEGIN` gains one last field,
+`integers=PLAIN` on every shipped image, or `integers=DELTA_BINARY_PACKED` on
+a bench image built with `OS_BENCH=delta` (#135). A new Kconfig switch,
+`CONFIG_OS_LOGGER_DELTA_INTEGERS`, picks the encoding of INT32 and INT64
+columns at build time. It defaults to off and no board turns it on, so every
+file a board writes is byte for byte as before.
+
+**Why.** The #61 bench compares PLAIN and DELTA images on the same board, and
+the capture must say which one wrote each file.
+
+**What the app must do.** Nothing for now. A tool that parses `PARQUET BEGIN`
+must accept a trailing key it does not know. The phone reader already decodes
+DELTA_BINARY_PACKED (mobile PR #103). If a board turns the switch on later,
+that change ships with its own entry here, a matched app build and a reflash,
+and the phone History over BLE and LAN on Android and iOS is part of the
+owner bench in #61.
+
 ## SET_CONFIG error details, the retired PIN and the settings storage fault (fix/config-error-detail-and-nvs-recovery)
 
 **Needs a matched reflash and an app check of its ERROR 12 handling.** No
