@@ -2,8 +2,8 @@
 
 The ELECROW CrowPanel ESP32-S3 4.2" E-paper HMI v1.2 logs a Sensirion SEN63C
 to Parquet on the microSD card every 10 seconds and shows the readings on its
-400 x 300 black and white panel. The source is pure **ESP-IDF 6.1**, firmware
-identity **`idf-crowpanel-parquet-v0.1`**, with the **39-column** schema and
+400 x 300 black and white panel. The source is pure **ESP-IDF 6.1.1**, firmware
+identity **`idf-crowpanel-parquet-v0.2`**, with the **39-column** schema and
 dictionary `crowpanel-epaper-telemetry-v1`. There are no Arduino APIs or
 Arduino component. BLE and LAN sync, the storage worker, the clock and
 location rules are the shared ones the other boards use.

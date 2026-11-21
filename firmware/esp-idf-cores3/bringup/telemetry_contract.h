@@ -38,7 +38,7 @@ namespace contract {
 constexpr std::int32_t kSchemaVersion = 6;
 constexpr const char *kSchemaName = "cores3-telemetry-v6";
 constexpr const char *kDictionaryVersion = "cores3-telemetry-v8";
-constexpr const char *kFirmware = "idf-cores3-parquet-v6.33";
+constexpr const char *kFirmware = "idf-cores3-parquet-v6.34";
 constexpr const char *kCreatedBy = "opensensor-space-firmware version 0.3";
 // Raw telemetry_fields.inc at a pinned commit on main (#89), so the bytes at
 // the URI hash to kDictionarySha256. It is also the template describedby href.
@@ -53,14 +53,14 @@ static_assert(opensensor::pinned::names(kDictionaryUri,
                                         "telemetry_fields.inc"),
               "kDictionaryUri is the raw field table at a full commit");
 // Version the acquisition procedure separately from the physical file codec.
-constexpr const char *kConfigurationId = "cores3-acquisition-v5";
+constexpr const char *kConfigurationId = "cores3-acquisition-v6";
 // kConfiguration embeds the same numbers.
 constexpr std::int64_t kPmsWarmupUs = 30000000;
 constexpr std::uint32_t kPmsStaleAfterMs = 5000;
 constexpr const char *kConfiguration =
     "{\"sample_interval_ms\":10000,\"pms_warmup_us\":30000000,"
     "\"pms_stale_after_ms\":5000,\"pms_uart_rx\":18,\"pms_uart_tx\":17,"
-    "\"pms_baud\":9600,\"m5unified\":\"0.3.0\",\"esp_idf\":\"6.1\",\"ltr553\":"
+    "\"pms_baud\":9600,\"m5unified\":\"0.3.0\",\"esp_idf\":\"6.1.1\",\"ltr553\":"
     "\"raw-v1\","
     "\"snapshot\":\"latest-available-not-average\"}";
 constexpr const char *kUnknown = "unknown";

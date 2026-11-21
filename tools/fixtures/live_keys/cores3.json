@@ -6,7 +6,7 @@
       "note": "Dictionary cores3-telemetry-v8 (#184). light_status gains the LIVE key lst after als. Older digests are retired and no longer listed.",
       "builds": [
         {
-          "firmware": "idf-cores3-parquet-v6.33",
+          "firmware": "idf-cores3-parquet-v6.34",
           "emitter": "board field table through oslogger::format_live",
           "fields": {
             "seq": "sequence",

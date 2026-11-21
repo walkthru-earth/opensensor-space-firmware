@@ -6,7 +6,7 @@
       "note": "Dictionary waveshare-epaper-397-telemetry-v1, the first Waveshare ESP32-S3-ePaper-3.97 table, SEN63C PM, ambient temperature, humidity and CO2.",
       "builds": [
         {
-          "firmware": "idf-epaper397-parquet-v0.1",
+          "firmware": "idf-epaper397-parquet-v0.2",
           "emitter": "board field table through oslogger::format_live",
           "fields": {
             "seq": "sequence",
