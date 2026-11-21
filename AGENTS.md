@@ -18,7 +18,8 @@ in `firmware/common/`. Device protocol and telemetry contracts live in
 - Every component we own also calls `os_map_source_paths()` from
   `firmware/cmake/os_source_paths.cmake`, so the image holds no checkout path.
   The board build fails when a repo C or C++ file misses it, and the CI job
-  `repro-paths` builds one board from two paths and compares the images.
+  `repro-paths` builds each board's telemetry image from two paths and
+  compares the images.
 - The dialect is pinned because ESP-IDF 6.1.1 defaults to `gnu++26` and a later
   SDK may move it again. An SDK upgrade must never change the dialect silently.
 - Not C++26 yet. As of 2026-10 ISO has not published it, and GCC 15, the host clang and

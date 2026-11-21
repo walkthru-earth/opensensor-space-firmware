@@ -5,8 +5,9 @@
 # not part of the check. Their paths differ in length, so an absolute path
 # that leaks into the image shifts every later byte. SOURCE_DATE_EPOCH is the
 # HEAD commit time for both builds, which pins the __DATE__ and __TIME__ the
-# SDK writes into the app description without changing sdkconfig. Release
-# builds keep the real build time.
+# SDK writes into the app description without changing sdkconfig. The release
+# workflow pins the same commit time, so a release image is the image this
+# check builds.
 #
 # tools/repro_paths.py compares the two os-build-sha256.json manifests. The
 # compiler database and project description hold absolute paths by design,
@@ -14,8 +15,8 @@
 #
 # Usage: tools/check_repro_paths.sh <board> [variant]
 #   The board is any name tools/boards.py resolves, read from board.json
-#   (#141). There is no default board. CI runs waveshare logger, which builds
-#   every common component. No variant means the board's telemetry app.
+#   (#141). There is no default board. CI runs one leg per board, each the
+#   telemetry app a release ships. No variant means the board's telemetry app.
 #   OS_REPRO_KEEP=1 keeps both worktrees for inspection.
 set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
