@@ -182,6 +182,21 @@ int emit_storage_fault(const Target &t) {
   return 0;
 }
 
+// The same page when the Thing id cannot load (#225), here a stored value
+// of another type.
+int emit_thing_id_fault(const Target &t) {
+  auto b = std::make_unique<Buffer>(t);
+  set_language(g_language);
+  render_thing_id_fault(b->canvas, "read", 4355);
+  const std::string path = t.dir + "/thing-id-fault.pbm";
+  if (!write_pbm(path, b->canvas)) {
+    std::fprintf(stderr, "cannot write %s\n", path.c_str());
+    return 1;
+  }
+  std::printf("%s\n", path.c_str());
+  return 0;
+}
+
 // The page through render_screen() with the dark theme, as the panel draws
 // it once Theme is set to Dark.
 int emit_dark(const Target &t, const char *name, std::uint8_t page,
@@ -274,6 +289,7 @@ int scenes(const Target &target) {
     fall_asleep(ui);
     rc |= emit_screen(target, "asleep", ui, s, info, m, *h);
     rc |= emit_storage_fault(target);
+    rc |= emit_thing_id_fault(target);
   }
 
   // Just booted, 12 s in, no clock, PM and CO2 still warming.

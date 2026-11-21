@@ -177,3 +177,6 @@ OS_TEXT(StorageFaultTitle, "Settings storage error", "مشكلة في ذاكرة
 OS_TEXT(StorageFaultOff, "Logging is off", "التسجيل واقف")
 OS_TEXT(StorageFaultHelp, "Read the USB serial log and see the board guide", "اقرا سجل USB وشوف دليل الجهاز")
 OS_TEXT_LTR(StorageFaultCodeFmt, "nvs-init error=%d")
+// The same page when the Thing id cannot load (#225). ThingIdFaultCodeFmt
+// takes the stage name as %s and the ESP-IDF error as %d.
+OS_TEXT_LTR(ThingIdFaultCodeFmt, "thing-id stage=%s error=%d")

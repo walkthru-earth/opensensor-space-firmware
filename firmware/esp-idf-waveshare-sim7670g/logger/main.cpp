@@ -25,6 +25,7 @@
 #include <sdkconfig.h>
 
 #include <array>
+#include <optional>
 #include <utility>
 
 #ifndef CONFIG_SPIRAM
@@ -182,6 +183,8 @@ const opensensor::gnss::ReaderConfig kGnss{
     .dialect = &opensensor::gnss::simcom_dialect(),
     .power_on = modem_power_on,
 };
+// Set by the thing_id_fault hook when the Thing id cannot load (#225).
+std::optional<oslogger::thing_id::Error> thing_fault;
 const oslogger::Hooks kHooks{
     .collect = collect,
     .storage_total_bytes = [](void *) { return board::storage_total_bytes(); },
@@ -202,6 +205,8 @@ const oslogger::Hooks kHooks{
     .storage_present = [](void *) { return board::card_present(); },
     .gnss_fix = [](opensensor::gnss::Fix &fix,
                    void *) { return opensensor::gnss::latest(fix); },
+    .thing_id_fault = [](const oslogger::thing_id::Error &error,
+                         void *) { thing_fault = error; },
 };
 } // namespace
 
@@ -223,6 +228,28 @@ namespace {
     // out of the persistent log ring.
     if (tick % 60 == 0)
       opensensor::console::printf(kLine, error);
+  }
+}
+// A Thing id that cannot load leaves logging off for the boot (#225). The
+// LED alternates red and blue every 500 ms, unlike the red blink of an NVS
+// fault, and the serial line repeats every 30 s for a USB reader that
+// attaches late. The stored value is never rewritten, see the board README.
+void show_thing_id_fault(const oslogger::thing_id::Error &error,
+                         std::int64_t now) {
+  static unsigned previous_phase = 2;
+  static std::int64_t last_line = now;
+  const unsigned phase = static_cast<unsigned>(now / 500000) % 2;
+  if (phase != previous_phase) {
+    board::indicator(phase ? 0 : 8, 0, phase ? 8 : 0);
+    previous_phase = phase;
+  }
+  // The physical console only, so the repeats never push the first line out
+  // of the persistent log ring.
+  if (now - last_line >= 30000000LL) {
+    last_line = now;
+    opensensor::console::printf(oslogger::thing_id::kFaultLine,
+                                oslogger::thing_id::stage_name(error.stage),
+                                error.code);
   }
 }
 } // namespace
@@ -309,6 +336,12 @@ void poll_board() {
   // Board-local indicator only: startup/card state and latest sensor validity.
   // It does not promise that a file was finalized or copied to another device.
   const auto now = esp_timer_get_time();
+  if (thing_fault) {
+    show_thing_id_fault(*thing_fault, now);
+    const auto ticks = pdMS_TO_TICKS(2);
+    vTaskDelay(ticks ? ticks : 1);
+    return;
+  }
   const bool fresh =
       latest.present && now - latest.received_mono_us <= 5000000LL;
   const bool warming = pms_warming(now, latest.last_wake_mono_us);

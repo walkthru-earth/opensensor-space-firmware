@@ -58,4 +58,10 @@ void render_asleep(Canvas &c, const Model &model);
 // and names the ESP-IDF error. It leaves the active language as it found it.
 void render_storage_fault(Canvas &c, int error);
 
+// The same page for a Thing id that cannot load (#225), drawn by a board
+// whose logger reported the fault. The code line names the stage ("open",
+// "read", "write" or "format") and the ESP-IDF error, 0 for a stored value
+// that failed the format check.
+void render_thing_id_fault(Canvas &c, const char *stage, int error);
+
 } // namespace opensensor::ui

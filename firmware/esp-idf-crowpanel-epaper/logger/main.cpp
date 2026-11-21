@@ -507,6 +507,8 @@ const oslogger::Config kLoggerConfig{
     .stac_columns = kStatColumns.data(),
     .stac_column_count = kStatColumns.size(),
 };
+// Set by the thing_id_fault hook when the Thing id cannot load (#225).
+std::optional<oslogger::thing_id::Error> thing_fault;
 const oslogger::Hooks kHooks{
     .collect = collect,
     .storage_total_bytes = [](void *) { return board::storage_total_bytes(); },
@@ -527,6 +529,8 @@ const oslogger::Hooks kHooks{
           return ok;
         },
     .storage_present = [](void *) { return board::card_present(); },
+    .thing_id_fault = [](const oslogger::thing_id::Error &error,
+                         void *) { thing_fault = error; },
 };
 
 bool logging = false;
@@ -1181,12 +1185,56 @@ void update_indicator(std::int64_t now) {
   const bool card = board::card_mounted();
   const bool valid =
       board_modules::status_of(snapshot, now) == ossensor::sen63c::kStatusValid;
-  const bool on = logging && card && (valid || (now / 500000) % 2 == 0);
+  // A Thing id fault double blinks once a second (#225), unlike the 1 Hz
+  // warm up blink and the 4 Hz NVS fault blink.
+  const auto ms = (now / 1000) % 1000;
+  const bool on = thing_fault
+                      ? ms < 125 || (ms >= 250 && ms < 375)
+                      : logging && card && (valid || (now / 500000) % 2 == 0);
   static int previous = -1;
   if (static_cast<int>(on) != previous) {
     board::indicator(on);
     previous = on;
   }
+}
+
+// One full refresh of a fault page drawn by `draw`, then the panel sleeps.
+// The display is started and no UI task runs.
+template <class Draw> void show_fault_page(ui::Rotation rotation, Draw &&draw) {
+  auto canvas = presenter->canvas(rotation);
+  if (!canvas)
+    return;
+  draw(*canvas);
+  static_cast<void>(presenter->compose());
+  const auto plan = presenter->plan(true, true);
+  const auto result = presenter->present(panel, plan);
+  if (!result)
+    oslog.printf("OS ERROR operation=display-show error=%s mode=%s\n",
+                 epd::to_string(result.error()), epd::to_string(plan.mode));
+  panel.sleep();
+}
+
+// The Thing id did not load, so logging is off for the boot (#225). NVS
+// works, so the page takes the owner's rotation. It stays on the glass with
+// no UI task, the LED double blinks and the serial line repeats every 30 s.
+// The stored value is never rewritten.
+void thing_id_fault_page(const oslogger::thing_id::Error &error) {
+  show_fault_page(
+      ui::effective_rotation(panel_settings, kProfile, ui::Rotation::R0),
+      [&error](ui::Canvas &canvas) {
+        ui::render_thing_id_fault(
+            canvas, oslogger::thing_id::stage_name(error.stage), error.code);
+      });
+}
+
+void repeat_thing_id_fault(std::int64_t now) {
+  static std::int64_t last_line = now;
+  if (!thing_fault || now - last_line < 30000000LL)
+    return;
+  last_line = now;
+  opensensor::console::printf(
+      oslogger::thing_id::kFaultLine,
+      oslogger::thing_id::stage_name(thing_fault->stage), thing_fault->code);
 }
 
 // NVS did not start, so the board has no settings and does not log. The
@@ -1199,20 +1247,12 @@ void update_indicator(std::int64_t now) {
       "OS ERROR operation=nvs-init error=%d logging=false\n";
   oslog.printf(kLine, error);
   board::start_indicator();
-  if (esp_psram_is_initialized() && start_display()) {
-    const auto rotation = ui::effective_rotation(
-        ui::defaults(kOrientationSource), kProfile, ui::Rotation::R0);
-    if (auto canvas = presenter->canvas(rotation)) {
-      ui::render_storage_fault(*canvas, error);
-      static_cast<void>(presenter->compose());
-      const auto plan = presenter->plan(true, true);
-      const auto result = presenter->present(panel, plan);
-      if (!result)
-        oslog.printf("OS ERROR operation=display-show error=%s mode=%s\n",
-                     epd::to_string(result.error()), epd::to_string(plan.mode));
-      panel.sleep();
-    }
-  }
+  if (esp_psram_is_initialized() && start_display())
+    show_fault_page(ui::effective_rotation(ui::defaults(kOrientationSource),
+                                           kProfile, ui::Rotation::R0),
+                    [error](ui::Canvas &canvas) {
+                      ui::render_storage_fault(canvas, error);
+                    });
   // 4 Hz, faster than the 1 Hz warm up and sensor fault blink.
   for (unsigned tick = 1;; ++tick) {
     board::indicator(tick % 2 != 0);
@@ -1284,10 +1324,14 @@ bool init_board() {
     opensensor::crowpanel::restore_history(*history,
                                            kLoggerConfig.output_directory);
   logging = oslogger::begin(logger_config, kHooks, mounted);
+  if (thing_fault && display_ok)
+    thing_id_fault_page(*thing_fault);
   // The phone keys are applied by the UI task, so they are registered only
-  // once it runs, and before start_links so no link sees them change.
-  const bool ui_ok = display_ok && start_ui_task();
-  if (display_ok && !ui_ok)
+  // once it runs, and before start_links so no link sees them change. A
+  // Thing id fault keeps its page, so no UI task starts.
+  const bool ui_wanted = display_ok && !thing_fault;
+  const bool ui_ok = ui_wanted && start_ui_task();
+  if (ui_wanted && !ui_ok)
     oslog.println("OS ERROR operation=ui-task-create");
   if (ui_ok)
     config::set_board_keys(kBoardKeys);
@@ -1311,6 +1355,7 @@ void poll_board() {
     oslogger::poll();
   poll_feed(esp_timer_get_time());
   update_indicator(now);
+  repeat_thing_id_fault(now);
   const auto ticks = pdMS_TO_TICKS(2);
   vTaskDelay(ticks ? ticks : 1);
 }
