@@ -70,6 +70,16 @@ BOARDS = {
         "example": "examples/thing=b4d9e2a7-5c31-4f08-9e6a-1a7c3f2d8e54/year=2026/month=11/day=14/"
                    "data_0900_c81d4e2f9a3b47d6b0e5f1a2c7d93e48_1-90-0.json",
     },
+    # stac-opensensor has no ePaper-3.97 example yet. The board writes the same
+    # SEN63C measurement columns and valid_when gates as the CrowPanel, which
+    # the template_table check proves, so it builds from the CrowPanel rows.
+    # TODO: switch to its own fixture once stac-opensensor publishes one.
+    "epaper397": {
+        "rows": "fixtures/thing=b4d9e2a7-5c31-4f08-9e6a-1a7c3f2d8e54/"
+                "data_0900_c81d4e2f9a3b47d6b0e5f1a2c7d93e48_1-90-0.rows.json",
+        "example": "examples/thing=b4d9e2a7-5c31-4f08-9e6a-1a7c3f2d8e54/year=2026/month=11/day=14/"
+                   "data_0900_c81d4e2f9a3b47d6b0e5f1a2c7d93e48_1-90-0.json",
+    },
 }
 
 

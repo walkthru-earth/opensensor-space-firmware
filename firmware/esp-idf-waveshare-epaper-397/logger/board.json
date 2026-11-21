@@ -1,0 +1,106 @@
+{
+  "type": "OpenSensorBoard",
+  "board_version": "0.1.0",
+  "board": "waveshare-esp32-s3-epaper-397",
+  "schema": "waveshare-epaper-397-telemetry-v1",
+  "sample_interval_s": 10,
+  "title": "Waveshare ESP32-S3-ePaper-3.97 with Sensirion SEN63C",
+  "keywords": [
+    "air quality",
+    "particulate matter",
+    "PM2.5",
+    "carbon dioxide",
+    "air temperature",
+    "relative humidity",
+    "low-cost sensor"
+  ],
+  "primary": "pm25_mass_ug_m3",
+  "setup": [
+    {
+      "id": "name",
+      "req": false
+    },
+    {
+      "id": "mobility",
+      "req": false
+    },
+    {
+      "id": "location",
+      "req": true
+    },
+    {
+      "id": "site",
+      "req": false
+    },
+    {
+      "id": "wifi",
+      "req": false
+    }
+  ],
+  "settings": [
+    {
+      "id": "location"
+    },
+    {
+      "id": "site"
+    },
+    {
+      "id": "wifi"
+    },
+    {
+      "id": "pairing"
+    },
+    {
+      "id": "lan"
+    },
+    {
+      "id": "bonds"
+    }
+  ],
+  "segments": [
+    {
+      "module": "system",
+      "segment": "head"
+    },
+    {
+      "module": "sen63c",
+      "segment": "core"
+    },
+    {
+      "module": "system",
+      "segment": "runtime"
+    },
+    {
+      "module": "system",
+      "segment": "clock_close"
+    },
+    {
+      "module": "system",
+      "segment": "clock_anchor"
+    },
+    {
+      "module": "system",
+      "segment": "location"
+    }
+  ],
+  "tooling": {
+    "alias": "epaper397",
+    "variants": [
+      "logger"
+    ],
+    "backup_prefixes": [
+      "waveshare-epaper-397"
+    ],
+    "flash_bytes": 16777216,
+    "psram_mode": "OCT",
+    "sdkconfig": [
+      "CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y",
+      "CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y"
+    ],
+    "components_required": [],
+    "components_forbidden": [
+      "m5",
+      "led_strip"
+    ]
+  }
+}

@@ -114,6 +114,10 @@ jobs:
             task: crowpanel-build
             project: firmware/esp-idf-crowpanel-epaper
             variant: logger
+          - name: epaper397-logger
+            task: epaper397-build
+            project: firmware/esp-idf-waveshare-epaper-397
+            variant: logger
           # Generic component fixtures. They prove the shared components build
           # without Arduino or M5 dependencies and have no image to size.
           - name: component-fixtures
@@ -129,6 +133,9 @@ jobs:
             bench: stall
           - name: bench-stall-crowpanel
             task: crowpanel-build
+            bench: stall
+          - name: bench-stall-epaper397
+            task: epaper397-build
             bench: stall
     env:
       IDF_CCACHE_ENABLE: "1"

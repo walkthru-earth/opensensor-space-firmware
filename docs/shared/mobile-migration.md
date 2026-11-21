@@ -9,10 +9,95 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## Shared e-paper UI on the Waveshare ePaper-3.97
+
+**Log lines only, no app change.** The ePaper-3.97 replaces its bring-up
+screen with the shared e-paper UI the CrowPanel runs. No column, LIVE key,
+response, config key, version, dictionary or digest changes. CoreS3,
+Waveshare V2 and CrowPanel do not change.
+
+**What changed.**
+
+- `OS BOARD waveshare-esp32-s3-epaper-397 ...` ends with `keys=<0|1>`, as on
+  the CrowPanel.
+- `OS DISPLAY ready=... panel=ssd1677 ...` now reads `screen=ui
+  history_bytes=<n>` where it read `screen=bringup`. `OS DISPLAY refresh=`
+  can now also report `partial`.
+- New `OS PANEL settings operation=<load|save> error=<n> refresh_s=...
+  start_page=... sleep_s=... altitude_m=... co2_asc=... temp_offset_dc=...
+  theme=<light|dark> rotation=<0|90|180|270|auto>` on each settings load and
+  save, and `OS PANEL rotation=<0|90|180|270> source=<auto|setting>` each time
+  the shown rotation changes.
+- New `OS ERROR operation=ui-task-create` and `OS ERROR
+  operation=display-show error=... mode=...`, the CrowPanel lines.
+- The board declares no `panel.*` or `sen6x.*` phone keys yet, so
+  `GET_CONFIG` page 7 stays empty on this board.
+
+**Why.** The board gets the dashboard, charts, status page and settings
+popup, and its accelerometer turns the picture when Rotation is Auto.
+
+**What the app must do.** Nothing. A log viewer that matches `screen=bringup`
+should match `screen=ui` instead.
+
+## Waveshare ESP32-S3-ePaper-3.97 board with the SEN63C (feat/waveshare-epaper-397)
+
+**A new board. Needs app update to bundle its template, no change for the
+other three boards.** The new board is `waveshare-esp32-s3-epaper-397`, the
+Waveshare ESP32-S3-ePaper-3.97 (SKU 33810) with a Sensirion SEN63C on the
+GPIO43/44 sensor bus. CoreS3, Waveshare V2 and CrowPanel do not change.
+
+**What changed.**
+
+- Firmware `idf-epaper397-parquet-v0.1`, schema and dictionary
+  `waveshare-epaper-397-telemetry-v1`, dict digest
+  `a19c450b6fc5bc4bb76e9b52e03aa75bee05cd3c1505d961771279366c820439`, desc
+  digest `5ef08e04a98cc572a350914b10ae554e85a2823ac923e8c0037b7d376e93f3ac`.
+  The template is in
+  [`templates/waveshare-esp32-s3-epaper-397/`](templates/waveshare-esp32-s3-epaper-397/)
+  and listed in [`templates/index.json`](templates/index.json).
+- 39 columns in the same order and with the same names as the CrowPanel
+  table. The SEN63C columns are `sen6x_status`, `sen6x_device_status`,
+  `pm1_mass_ug_m3`, `pm25_mass_ug_m3`, `pm4_mass_ug_m3`, `pm10_mass_ug_m3`,
+  `ambient_temperature_c`, `relative_humidity_percent` and `co2_ppm`.
+- `clock_status` gains the class `rtc` (code 2) for rows anchored by the
+  onboard PCF85063 RTC. `none` 0, `host` 1 and `network` 3 keep their
+  CrowPanel codes. The codes come from the template
+  `classification:classes`, never from a table in the app.
+- LIVE keys `seq`, `mono`, `utc`, `sen`, `m1`, `m25`, `m4`, `m10`, `t`, `rh`
+  and `co2`, the same keys, decimals and null rules as the CrowPanel.
+- The board writes the STAC File Item sidecar `<file>.json` next to each
+  finalized dated file, the same as the CrowPanel, and logs
+  `PARQUET STAC sidecar=true ...` at boot.
+- The board advertises `OS-xxxx` and speaks proto 3 like the others. It has
+  no settings screen yet, and the e-paper shows a bring-up screen only.
+- New boot log lines, all prefixed `OS`. `OS BOARD
+  waveshare-esp32-s3-epaper-397 firmware=idf-epaper397-parquet-v0.1 ...`,
+  `OS PMIC bus ...`, `OS PMIC chip=tg28 ...`, `OS POWER ...`,
+  `OS I2C scan bus=... count=... addresses=...`, `OS DISPLAY ready=...
+  panel=ssd1677 ...` and `OS DISPLAY refresh=... ok=... ms=... error=...`.
+  The `OS SEN6X ...`, `OS TF mounted=...` and `OS READY ...` lines match the
+  CrowPanel ones, and `OS TF` reports `bus=sdmmc`.
+- `OS BOARD` carries `imu=qmi8658`. The board logs
+  `OS IMU chip=qmi8658 found=... addr=0x6b ... error=...` once at boot, then
+  `OS IMU ax=... ay=... az=... quarter=<0..3|null>` on each quarter turn
+  change and every 30 s, and `OS IMU error=...` when a read fails. These are
+  log lines only. No column, LIVE key or response changes. The firmware hook
+  `board::read_orientation()` feeds the on device UI, not the phone.
+
+**Why.** A second e-paper air quality Thing with 16 MB flash, 8 MB PSRAM, a
+battery charger and a real time clock that keeps UTC across power loss.
+
+**What the app must do.** Bundle the new template and show LIVE for this
+board once it verifies, with no per board LIVE profile
+([decision 0003](decisions/0003-metadata-driven-apps.md)). Read labels,
+units, scales and `clock_status` classes from the template, as for the
+CrowPanel. Read the columns by name when it opens a file from this board.
+
 ## A pulled card shows as not logging within about 5 s (#165, fix/165-card-presence)
 
 **What changed.** While the card may take rows, the storage worker now asks it
-for its status (SD CMD13) about every 5 s on CoreS3, Waveshare and CrowPanel.
+for its status (SD CMD13) about every 5 s on CoreS3, Waveshare V2, CrowPanel
+and the Waveshare ePaper-3.97.
 A card that does not answer is a write failure. `sd_state` goes to 3 (retry)
 and `fail` to 1 before the next batch commit, and the log shows
 `PARQUET ERROR operation=card-status action=retry`. Before, a card pulled in
