@@ -507,6 +507,8 @@ const oslogger::Config kLoggerConfig{
     .stac_columns = kStatColumns.data(),
     .stac_column_count = kStatColumns.size(),
 };
+// Set by the thing_id_fault hook when the Thing id cannot load (#225).
+std::optional<oslogger::thing_id::Error> thing_fault;
 const oslogger::Hooks kHooks{
     .collect = collect,
     .storage_total_bytes = [](void *) { return board::storage_total_bytes(); },
@@ -527,6 +529,8 @@ const oslogger::Hooks kHooks{
     .storage_present = [](void *) { return board::card_present(); },
     .rtc_read = board::rtc_read,
     .rtc_write = board::rtc_write,
+    .thing_id_fault = [](const oslogger::thing_id::Error &error,
+                         void *) { thing_fault = error; },
 };
 
 bool logging = false;
@@ -1292,6 +1296,46 @@ void poll_orientation(std::int64_t now) {
   imu_log = {.logged = true, .turn = turn, .next_us = now + kImuLogUs};
 }
 
+// One full refresh of a fault page drawn by `draw`, then the panel sleeps.
+// The display is started and no UI task runs.
+template <class Draw> void show_fault_page(ui::Rotation rotation, Draw &&draw) {
+  auto canvas = presenter->canvas(rotation);
+  if (!canvas)
+    return;
+  draw(*canvas);
+  static_cast<void>(presenter->compose());
+  const auto plan = presenter->plan(true, true);
+  const auto result = presenter->present(panel, plan);
+  if (!result)
+    oslog.printf("OS ERROR operation=display-show error=%s mode=%s\n",
+                 epd::to_string(result.error()), epd::to_string(plan.mode));
+  panel.sleep();
+}
+
+// The Thing id did not load, so logging is off for the boot (#225). NVS
+// works, so the page takes the owner's rotation setting at the mount turn,
+// as the UI task starts. It stays on the glass with no UI task. The board
+// has no LED, so the serial line repeats every 30 s. The stored value is
+// never rewritten.
+void thing_id_fault_page(const oslogger::thing_id::Error &error) {
+  show_fault_page(
+      ui::effective_rotation(panel_settings, kProfile, kProfile.mount),
+      [&error](ui::Canvas &canvas) {
+        ui::render_thing_id_fault(
+            canvas, oslogger::thing_id::stage_name(error.stage), error.code);
+      });
+}
+
+void repeat_thing_id_fault(std::int64_t now) {
+  static std::int64_t last_line = now;
+  if (!thing_fault || now - last_line < 30000000LL)
+    return;
+  last_line = now;
+  opensensor::console::printf(
+      oslogger::thing_id::kFaultLine,
+      oslogger::thing_id::stage_name(thing_fault->stage), thing_fault->code);
+}
+
 // NVS did not start, so the board has no settings and does not log. The
 // panel needs no NVS, only the PMIC rail, so the fault goes on the glass in
 // both languages, because the language setting lives in NVS too. The board
@@ -1302,20 +1346,12 @@ void poll_orientation(std::int64_t now) {
       "OS ERROR operation=nvs-init error=%d logging=false\n";
   oslog.printf(kLine, error);
   if (esp_psram_is_initialized() && board::start_internal_bus() &&
-      start_display()) {
-    const auto rotation = ui::effective_rotation(
-        ui::defaults(kOrientationSource), kProfile, ui::Rotation::R0);
-    if (auto canvas = presenter->canvas(rotation)) {
-      ui::render_storage_fault(*canvas, error);
-      static_cast<void>(presenter->compose());
-      const auto plan = presenter->plan(true, true);
-      const auto result = presenter->present(panel, plan);
-      if (!result)
-        oslog.printf("OS ERROR operation=display-show error=%s mode=%s\n",
-                     epd::to_string(result.error()), epd::to_string(plan.mode));
-      panel.sleep();
-    }
-  }
+      start_display())
+    show_fault_page(ui::effective_rotation(ui::defaults(kOrientationSource),
+                                           kProfile, ui::Rotation::R0),
+                    [error](ui::Canvas &canvas) {
+                      ui::render_storage_fault(canvas, error);
+                    });
   for (;;) {
     vTaskDelay(pdMS_TO_TICKS(30000));
     opensensor::console::printf(kLine, error);
@@ -1382,8 +1418,12 @@ bool init_board() {
   logger_config.fallback_directory = opensensor::storage::mount_flash_fallback(
       [](const char *text) { oslog.printf("%s", text); });
   logging = oslogger::begin(logger_config, kHooks, mounted);
-  const bool ui_ok = display_ok && start_ui_task();
-  if (display_ok && !ui_ok)
+  if (thing_fault && display_ok)
+    thing_id_fault_page(*thing_fault);
+  // A Thing id fault keeps its page, so no UI task starts.
+  const bool ui_wanted = display_ok && !thing_fault;
+  const bool ui_ok = ui_wanted && start_ui_task();
+  if (ui_wanted && !ui_ok)
     oslog.println("OS ERROR operation=ui-task-create");
   if (logging) {
     links_started = oslogger::start_links(display_ok);
@@ -1405,6 +1445,7 @@ void poll_board() {
   if (logging)
     oslogger::poll();
   poll_feed(esp_timer_get_time());
+  repeat_thing_id_fault(now);
   const auto ticks = pdMS_TO_TICKS(2);
   vTaskDelay(ticks ? ticks : 1);
 }

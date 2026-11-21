@@ -65,6 +65,29 @@ To recover, follow these steps in order.
 | 4368 (0x1110) | `ESP_ERR_NVS_NEW_VERSION_FOUND` | A newer firmware wrote NVS. Flash the current release. |
 | 261 (0x105) | `ESP_ERR_NOT_FOUND` | The partition table has no NVS. The helper refuses such a backup. Contact the owner. |
 
+## Thing id fault
+
+The Thing id lives in NVS `parquet/thing`. When NVS starts but the Thing id
+cannot load, the Waveshare V2 logger records no data and starts no radio for that boot.
+The status LED alternates red and blue every 500 ms, a pattern no other state uses.
+The serial console prints this line at boot and again every 30 seconds.
+
+```text
+PARQUET ERROR operation=thing-identity stage=<stage> error=<code> logging=false
+```
+
+| Stage | Meaning |
+| --- | --- |
+| `open` | The `parquet` NVS namespace did not open. |
+| `read` | The stored value did not read. 4355 (0x1103) `ESP_ERR_NVS_TYPE_MISMATCH` is a key of another type, 4364 (0x110c) `ESP_ERR_NVS_INVALID_LENGTH` a value longer than a Thing id. |
+| `write` | A first boot could not store its new Thing id. |
+| `format` | The stored value is not a 36 character lowercase UUID. The code is 0. |
+
+The firmware writes the Thing id only when the key does not exist. It never
+rewrites or repairs a stored value that failed to load, that value is the
+owner's Thing id. Note the line, never erase the flash or the NVS partition,
+and contact the owner with the serial capture.
+
 ## Stack and heap budgets
 
 Task stacks are sized from two numbers, the method of issue #37. The static worst case comes from

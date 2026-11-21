@@ -72,7 +72,10 @@ sidecar, verified by SHA-256, and prints `OS FLASH copy name=<relative>
 bytes=<n> result=<copied|identical|conflict|error|cancelled>`, then `OS FLASH
 copy done files=<n>` once flash is empty. Each copied file reads the card free
 space again, so a copy that takes the card below a governor band pauses the
-copy back before the next file until the card is Ready again (#213). Only a file whose identical copy is
+copy back before the next file until the card is Ready again (#213). One
+walk of the flash root lists up to 16 files in copy order, and the next
+copies take them without a walk until the list empties or a flash commit,
+conflict, cancel, mount or wait clears it (#215). Only a file whose identical copy is
 verified on the card is removed from flash. After a conflict both files
 stay, and the flash one, its sidecar first, is renamed on flash to
 `flash-conflict/<relative>` and printed as `OS FLASH conflict name=<relative>

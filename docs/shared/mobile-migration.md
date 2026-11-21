@@ -9,6 +9,50 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## Thing id fault detail and the copy back module (refactor/copy-back-module-thing-id)
+
+**Needs a matched reflash of all four boards.** No column, field id, LIVE key,
+STATUS key, response layout, config key, dictionary or digest changes. Issues
+#225 and #215.
+
+**What changed.**
+
+- The serial line of a Thing id that cannot load now names where it stopped
+  and the ESP-IDF error (#225). `PARQUET ERROR operation=thing-identity
+  logging=false` becomes `PARQUET ERROR operation=thing-identity
+  stage=<open|read|write|format> error=<n> logging=false`. `error` is the
+  signed decimal `esp_err_t`, and 0 for `stage=format`, a stored value that
+  read fine but is not a lowercase UUID. The line prints once at boot as
+  before and then repeats every 30 s on the physical console only, so the
+  persistent log ring keeps one copy.
+- The board now shows that fault. CoreS3 draws red screen text with
+  `thing-id stage=<stage>` and `error=<n>`. The Waveshare V2 LED alternates red
+  and blue every 500 ms. The CrowPanel and the ePaper-3.97 draw the settings
+  storage fault page in English and Arabic with the new code line `thing-id
+  stage=<stage> error=<n>` and start no UI task, and the CrowPanel LED double
+  blinks once a second. The new e-paper string is ASCII and kept left to
+  right in both languages.
+- The board still records nothing and starts no radio on such a boot, as
+  before. The firmware never rewrites or repairs a stored value that failed
+  to load, it is the owner's Thing id.
+- Copy back of the flash fallback root moved into its own source file and
+  takes up to 16 files from one walk of the flash root (#215). The order of
+  the copies and every `OS FLASH` line keep their text. Only the `bytes=` value
+  of `OS FLASH ERROR operation=allocate mem=psram bytes=<n> purpose=copy-back`
+  grows, by the 6 KiB of that list.
+
+**Why.** A Thing id fault looked the same for a broken NVS page, a key of the
+wrong type and a hand written value, and a board without a serial reader
+showed nothing at all. The copy back walk read every flash directory before
+each file it copied.
+
+**What the app must do.** Nothing on the wire. A board with this fault never
+advertises. When the owner reports "Settings storage error" with a
+`thing-id` code, point to the Thing id fault steps in that board's guide and
+never suggest erasing the board. A tool that parses the serial log must
+accept the two new fields between `operation=thing-identity` and
+`logging=false`.
+
 ## PARQUET BEGIN names the integer encoding (feat/delta-integer-switch)
 
 **No app change needed. No reflash needed for files to stay readable.** No
