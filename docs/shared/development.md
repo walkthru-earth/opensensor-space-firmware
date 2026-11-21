@@ -482,6 +482,7 @@ job name `CI result` stable. If a merge queue is enabled later, add a
 | Changed area | Additional Pixi tasks |
 | --- | --- |
 | Writer, codec, footer or schema | `parquet-test --sanitize`, `reader-test`, `waveshare-contract-test --sanitize` |
+| Host compactor or DR 0002 measurements | `compact-test --sanitize`, `compact measure` on a local tree |
 | Plantower, LTR553 or MAX17048 | `pms-frame-test`, `ltr553-test`, `max17048-test` |
 | Battery health or logger power hooks | `battery-health-test`, `logger-power-test`, `waveshare-contract-test --sanitize` |
 | Disconnects, LAN rings or BLE policy | `disconnect-test`, `frame-ring-test`, `ble-policy-test`, `ble-advert-test`, `ble-sync-test`, `lan-concurrency-bench` |
