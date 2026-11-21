@@ -12,7 +12,7 @@ dependencies:
   idf:
     source:
       type: idf
-    version: 6.1.0
+    version: 6.1.1
   m5stack/m5gfx:
     component_hash: 7fc88fe4b0f25e76678a4f1731231f6361422ad763f2549d53840c76fd9ee769
     dependencies: []
@@ -47,6 +47,6 @@ direct_dependencies:
 - m5stack/m5gfx
 - m5stack/m5unified
 - walkthru-earth/embedded-h3-location
-manifest_hash: 20751eff09bab16fd530fb42864437dc76f29611ba35e660c543f4fb5b0404d3
+manifest_hash: 10aad30945c9a1bb74920daebc0e75b0bfc07f26e98251207c9b793f04af0e3f
 target: esp32s3
 version: 3.0.0
