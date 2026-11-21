@@ -3,7 +3,9 @@
 // The 400 x 300 class turned to portrait, 300 x 400, for R90 and R270. The
 // same compact fonts. The hero plot moves under the band pill and the six
 // tiles stack 2 x 3, the pages keep their order and their words. Footers
-// and the popup hint wrap to two lines where one is too wide.
+// and the popup hint wrap to two lines where one is too wide. A chart page
+// shows now on one line and min and max on the next, the three value boxes
+// and the Arabic names do not fit one line.
 
 namespace opensensor::ui {
 
@@ -53,10 +55,11 @@ const Layout kLayout300x400{
              .footer_rule_y = 356,
              .footer_y = 373},
     .chart_page = {.sub_gap = 8,
-                   .stats_y = 68,
-                   .stats_step = 96,
+                   .stats = {{{.x = 10, .y = 68},
+                              {.x = 10, .y = 88},
+                              {.x = 150, .y = 88}}},
                    .stat_gap = 5,
-                   .chart = {.x = 46, .y = 82, .w = 244, .h = 286}},
+                   .chart = {.x = 46, .y = 102, .w = 244, .h = 266}},
     .chart = {.x_tick = 3,
               .x_label_gap = 4,
               .y_tick_dx = 4,

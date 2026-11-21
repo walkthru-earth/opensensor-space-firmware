@@ -4,6 +4,7 @@
 // each cycle, the pages never read hardware. A value that is not Valid is
 // never printed, so a warming or missing sensor shows a dash, not a guess.
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -26,6 +27,11 @@ struct MetricInfo {
   Str label; // Tile and chart title.
   Str unit;
   int decimals = 0;
+  // The lowest and highest value a board can hand the UI. The value box
+  // reserves a digit cell for each whole digit of the wider one and a sign
+  // when the lowest is negative, see value_slots().
+  float lowest = 0.0F;
+  float highest = 0.0F;
   // Seconds after the measurement starts before a value is shown. SEN63C PM
   // settles after 30 s and its CO2 reads unknown for up to 24 s.
   std::uint16_t warmup_s = 0;
@@ -35,46 +41,74 @@ struct MetricInfo {
   bool zero_floor = false; // Chart axes start at 0.
 };
 
+// The value ranges the boards feed the UI today, all from the SEN63C.
+// PM mass is a uint16 word over 10 with 0xFFFF as unknown, datasheet table
+// 32 and os_sen6x.h, so at most 6553.4 ug/m3, past the 0 to 1000 plausible
+// range of sen63c/module.json and four whole digits either way. CO2 is an
+// int16 word with 0x7FFF as unknown, so at most 32766 ppm, past the 380 to
+// 32000 plausible range. The boards keep T in -40 to 80 C and RH in 0 to
+// 100 percent and null anything outside (#169, kTemperatureMinC and its
+// neighbours in each board's logger/sensor_modules.h).
+inline constexpr float kPmHighest = 6553.4F;
+inline constexpr float kCo2Highest = 32766.0F;
+inline constexpr float kTempLowest = -40.0F;
+inline constexpr float kTempHighest = 80.0F;
+inline constexpr float kRhHighest = 100.0F;
+
 inline constexpr std::array<MetricInfo, kMetricCount> kMetricInfo{{
     {.label = Str::MetricPm1,
      .unit = Str::UnitUgM3,
      .decimals = 1,
+     .lowest = 0.0F,
+     .highest = kPmHighest,
      .warmup_s = 30,
      .min_span = 5.0F,
      .zero_floor = true},
     {.label = Str::MetricPm25,
      .unit = Str::UnitUgM3,
      .decimals = 1,
+     .lowest = 0.0F,
+     .highest = kPmHighest,
      .warmup_s = 30,
      .min_span = 5.0F,
      .zero_floor = true},
     {.label = Str::MetricPm4,
      .unit = Str::UnitUgM3,
      .decimals = 1,
+     .lowest = 0.0F,
+     .highest = kPmHighest,
      .warmup_s = 30,
      .min_span = 5.0F,
      .zero_floor = true},
     {.label = Str::MetricPm10,
      .unit = Str::UnitUgM3,
      .decimals = 1,
+     .lowest = 0.0F,
+     .highest = kPmHighest,
      .warmup_s = 30,
      .min_span = 5.0F,
      .zero_floor = true},
     {.label = Str::MetricCo2,
      .unit = Str::UnitPpm,
      .decimals = 0,
+     .lowest = 0.0F,
+     .highest = kCo2Highest,
      .warmup_s = 24,
      .min_span = 100.0F,
      .zero_floor = false},
     {.label = Str::MetricTemp,
      .unit = Str::UnitCelsius,
      .decimals = 1,
+     .lowest = kTempLowest,
+     .highest = kTempHighest,
      .warmup_s = 2,
      .min_span = 2.0F,
      .zero_floor = false},
     {.label = Str::MetricRh,
      .unit = Str::UnitPercentRh,
      .decimals = 0,
+     .lowest = 0.0F,
+     .highest = kRhHighest,
      .warmup_s = 2,
      .min_span = 10.0F,
      .zero_floor = false},
@@ -83,6 +117,44 @@ inline constexpr std::array<MetricInfo, kMetricCount> kMetricInfo{{
 [[nodiscard]] constexpr const MetricInfo &info(Metric m) {
   return kMetricInfo[index(m)];
 }
+
+// The digit cells a metric's value reserves on screen, so each digit of a
+// value keeps one place from refresh to refresh. `whole` cells left of the
+// decimal point, `frac` right of it, and room for a minus sign before them
+// when `sign`.
+struct ValueSlots {
+  int whole = 1;
+  int frac = 0;
+  bool sign = false;
+};
+
+// The whole digits format_reading() prints for `v` with `decimals`.
+[[nodiscard]] constexpr int whole_digits(float v, int decimals) {
+  double rounded = v < 0.0F ? -static_cast<double>(v) : static_cast<double>(v);
+  double half = 0.5;
+  for (int i = 0; i < decimals; ++i)
+    half /= 10.0;
+  rounded += half;
+  int digits = 1;
+  for (double d = 10.0; rounded >= d; d *= 10.0)
+    ++digits;
+  return digits;
+}
+
+[[nodiscard]] constexpr ValueSlots value_slots(Metric m) {
+  const MetricInfo &mi = info(m);
+  return {.whole = std::max(whole_digits(mi.lowest, mi.decimals),
+                            whole_digits(mi.highest, mi.decimals)),
+          .frac = mi.decimals,
+          .sign = mi.lowest < 0.0F};
+}
+
+static_assert(value_slots(Metric::Pm25).whole == 4);
+static_assert(value_slots(Metric::Co2).whole == 5);
+static_assert(value_slots(Metric::Temp).whole == 2 &&
+              value_slots(Metric::Temp).sign);
+static_assert(value_slots(Metric::Rh).whole == 3 &&
+              !value_slots(Metric::Rh).sign);
 
 enum class Quality : std::uint8_t { Valid, Warming, Absent };
 

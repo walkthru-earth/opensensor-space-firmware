@@ -1,6 +1,7 @@
 #include "../firmware/esp-idf-crowpanel-epaper/logger/sensor_modules.h"
 #include "../firmware/esp-idf-crowpanel-epaper/logger/telemetry_contract.h"
 #include "board_template.h"
+#include "epaper_ui/ui_model.h"
 #include "footer_fixture.h"
 #include "live_sample.h"
 #include "live_widest.h"
@@ -21,6 +22,25 @@
 using namespace telemetry;
 using namespace telemetry::contract;
 namespace sen63c = ossensor::sen63c;
+
+// The e-paper UI reserves digit cells for the widest value the board can
+// hand it, so its ranges follow the board's T and RH limits (#169) and the
+// largest PM and CO2 words the SEN63C decode passes.
+namespace ui = opensensor::ui;
+static_assert(ui::info(ui::Metric::Temp).lowest ==
+              board_modules::kTemperatureMinC);
+static_assert(ui::info(ui::Metric::Temp).highest ==
+              board_modules::kTemperatureMaxC);
+static_assert(ui::info(ui::Metric::Rh).lowest ==
+              board_modules::kHumidityMinPercent);
+static_assert(ui::info(ui::Metric::Rh).highest ==
+              board_modules::kHumidityMaxPercent);
+static_assert(*opensensor::Sen6x::decode_sen63c({0xFFFE, 0xFFFE, 0xFFFE, 0xFFFE,
+                                                 0, 0, 0x7FFE})
+                   .pm25_ug_m3 == ui::info(ui::Metric::Pm25).highest);
+static_assert(*opensensor::Sen6x::decode_sen63c({0xFFFE, 0xFFFE, 0xFFFE, 0xFFFE,
+                                                 0, 0, 0x7FFE})
+                   .co2_ppm == ui::info(ui::Metric::Co2).highest);
 
 namespace {
 bool sink(void *context, const std::uint8_t *bytes, std::size_t count) {

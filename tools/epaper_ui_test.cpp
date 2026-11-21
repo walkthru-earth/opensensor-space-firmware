@@ -15,6 +15,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -2832,6 +2833,325 @@ void test_arabic_fit() {
   CHECK(g_misfits == 0);
 }
 
+// True when `a` and `b` hold the same ink everywhere in `r`.
+bool same_ink(const Canvas &a, const Canvas &b, Rect r) {
+  for (int y = r.y; y < r.bottom(); ++y)
+    for (int x = r.x; x < r.right(); ++x)
+      if (a.get(x, y) != b.get(x, y))
+        return false;
+  return true;
+}
+
+// The rows the digits of `font` ink on the baseline `y`, `w` wide from `x`.
+Rect digit_rows(const Font &font, int x, int y, int w) {
+  int top = 0;
+  int bottom = 0;
+  for (const auto &g : font.glyphs) {
+    if (g.codepoint < '0' || g.codepoint > '9')
+      continue;
+    top = std::min(top, static_cast<int>(g.y_offset));
+    bottom = std::max(bottom, g.y_offset + g.height);
+  }
+  return {x, y + top, w, bottom - top};
+}
+
+// The widest text a metric can show, every reserved cell filled.
+std::string widest_value(Metric m) {
+  const ValueSlots slots = value_slots(m);
+  std::string v = slots.sign ? "-" : "";
+  v.append(static_cast<std::size_t>(slots.whole), '8');
+  if (slots.frac > 0) {
+    v += '.';
+    v.append(static_cast<std::size_t>(slots.frac), '8');
+  }
+  return v;
+}
+
+void test_tabular_digits() {
+  const Font &hero = fonts::compact.hero;
+  CHECK(digit_cell(hero) == 42);
+  CHECK(digit_cell(fonts::large.hero) == 74);
+  const int dot = text_width(hero, ".");
+  CHECK(tabular_width(hero, "7.6") == 42 + dot + 42);
+  CHECK(tabular_width(hero, "1") == 42);
+  CHECK(tabular_width(hero, "11.1") == tabular_width(hero, "88.8"));
+  CHECK(tabular_width(hero, "--") == text_width(hero, "--"));
+  CHECK(tabular_width(hero, "") == 0);
+  // A run with an Arabic letter measures as text() does.
+  set_language(Language::Arabic);
+  const std::string_view word = tr(Str::StatNow);
+  CHECK(tabular_width(fonts::compact.label, word) ==
+        text_width(fonts::compact.label, word));
+  set_language(Language::English);
+
+  // The box of each metric, in every role a value draws with.
+  for (const FontSet *set : {&fonts::compact, &fonts::large}) {
+    for (const Font *f : {&set->hero, &set->value, &set->label}) {
+      const int cell = digit_cell(*f);
+      CHECK(cell > 0);
+      for (std::size_t i = 0; i < kMetricCount; ++i) {
+        const auto m = static_cast<Metric>(i);
+        const ValueSlots slots = value_slots(m);
+        const int sign = slots.sign ? text_width(*f, "-") : 0;
+        const int frac =
+            slots.frac > 0 ? text_width(*f, ".") + slots.frac * cell : 0;
+        const ValueBox b = value_box(*f, m, 10, false);
+        CHECK(b.x == 10);
+        CHECK(b.w == sign + slots.whole * cell + frac);
+        CHECK(b.anchor == 10 + sign + slots.whole * cell);
+        CHECK(b.w == tabular_width(*f, widest_value(m)));
+        const ValueBox mb = value_box(*f, m, 300, true);
+        CHECK(mb.x + mb.w == 300 && mb.w == b.w);
+        CHECK(mb.anchor - mb.x == b.anchor - b.x);
+        // The lowest and highest value the range allows land in the box.
+        const MetricInfo &mi = info(m);
+        for (const float v : {mi.lowest, mi.highest}) {
+          std::array<char, 16> buf{};
+          const std::string_view text = format_reading(
+              buf, m,
+              {.value = v, .quality = Quality::Valid, .warm_left_s = 0});
+          const int left =
+              b.anchor - tabular_width(*f, text.substr(0, text.find('.')));
+          CHECK(left >= b.x);
+          CHECK(left + tabular_width(*f, text) <= b.x + b.w);
+        }
+      }
+    }
+  }
+
+  // The point of 7.6 and 123.4 draws at one x, the decimal after it in one
+  // cell, and 7.6 leaves the cells left of its 7 blank.
+  for (const bool mirrored : {false, true}) {
+    const ValueBox box =
+        value_box(hero, Metric::Pm25, mirrored ? 392 : 8, mirrored);
+    const int y = 106;
+    Buffer a;
+    Buffer b;
+    a.canvas.clear();
+    b.canvas.clear();
+    draw_value(a.canvas, hero, box, y, "7.6", mirrored);
+    draw_value(b.canvas, hero, box, y, "123.4", mirrored);
+    const Rect point = digit_rows(hero, box.anchor, y, dot);
+    CHECK(ink_count(a.canvas, point) > 0);
+    CHECK(same_ink(a.canvas, b.canvas, point));
+    const Rect seven = digit_rows(hero, box.anchor - 42, y, 42);
+    CHECK(ink_count(a.canvas, seven) > 0);
+    CHECK(ink_count(a.canvas,
+                    digit_rows(hero, box.x, y, box.anchor - 42 - box.x)) == 0);
+    CHECK(ink_count(a.canvas, {0, 0, box.x, kHeight}) == 0);
+    CHECK(ink_count(a.canvas,
+                    {box.x + box.w, 0, kWidth - box.x - box.w, kHeight}) == 0);
+  }
+
+  // A value that is not a number draws as plain text from the box start.
+  for (const bool mirrored : {false, true}) {
+    const ValueBox box =
+        value_box(hero, Metric::Pm25, mirrored ? 392 : 8, mirrored);
+    Buffer a;
+    Buffer b;
+    a.canvas.clear();
+    b.canvas.clear();
+    draw_value(a.canvas, hero, box, 106, "--", mirrored);
+    if (mirrored)
+      b.canvas.text(hero, box.x + box.w, 106, "--", Align::Right);
+    else
+      b.canvas.text(hero, box.x, 106, "--", Align::Left);
+    CHECK(a.bytes == b.bytes);
+    CHECK(ink_count(a.canvas, {0, 0, kWidth, kHeight}) > 0);
+  }
+
+  // A number past the range, a negative CO2 the int16 word allows, starts
+  // at the box start instead of left of it.
+  {
+    const Font &value = fonts::compact.value;
+    const ValueBox box = value_box(value, Metric::Co2, 8, false);
+    CHECK(tabular_width(value, "-32768") > box.w);
+    Buffer a;
+    a.canvas.clear();
+    draw_value(a.canvas, value, box, 100, "-32768", false);
+    CHECK(ink_count(a.canvas, {0, 0, box.x, kHeight}) == 0);
+    CHECK(ink_count(a.canvas, {0, 0, kWidth, kHeight}) > 0);
+  }
+}
+
+// A digit that does not change keeps its pixels when the digits before it
+// do, 7.6 to 17.6 and 541 to 1541, on the hero, a tile and a chart stat, in
+// every size class and orientation and both languages.
+void test_digit_slots_on_pages() {
+  auto h = std::make_unique<History>();
+  for (std::uint32_t t = 0; t < 3600; t += 10)
+    h->push(t, all(static_cast<float>(t % 300) / 10.0F));
+  const auto frame = [&](Buffer &b, std::uint8_t page, float pm, float co2) {
+    Model m{};
+    for (std::size_t i = 0; i < kMetricCount; ++i)
+      m.now[i] = {.value = 21.0F, .quality = Quality::Valid, .warm_left_s = 0};
+    m.now[index(Metric::Pm25)].value = pm;
+    m.now[index(Metric::Pm1)].value = pm;
+    m.now[index(Metric::Co2)].value = co2;
+    m.status.utc_s = 1795437120;
+    render(b.canvas, page, m, *h);
+  };
+  std::uint8_t co2_page = 0;
+  for (std::size_t i = 0; i < kChartOrder.size(); ++i)
+    if (kChartOrder[i] == Metric::Co2)
+      co2_page = static_cast<std::uint8_t>(i + 1);
+  CHECK(co2_page != 0);
+  for (const Language lang : {Language::English, Language::Arabic}) {
+    set_language(lang);
+    for (const DisplayProfile *p : {&kHost400x300, &kHost800x480}) {
+      for (const Rotation r : {Rotation::R0, Rotation::R90}) {
+        Buffer a(*p, r);
+        Buffer b(*p, r);
+        const Canvas &c = a.canvas;
+        const Layout &l = c.layout();
+        const FontSet &fs = c.fonts();
+
+        frame(a, kDashboardPage, 7.6F, 541.0F);
+        frame(b, kDashboardPage, 17.6F, 1541.0F);
+        // The hero, 7.6 keeps its cells and the cell left of them takes
+        // the 1.
+        const HeroLayout &hl = l.hero;
+        const ValueBox hero =
+            value_box(fs.hero, Metric::Pm25, hl.value.x, false);
+        const int hc = digit_cell(fs.hero);
+        const Rect hero_shared =
+            digit_rows(fs.hero, hero.anchor - hc, hl.value.y,
+                       hero.x + hero.w - hero.anchor + hc);
+        CHECK(ink_count(c, hero_shared) > 0);
+        CHECK(same_ink(a.canvas, b.canvas, hero_shared));
+        const Rect hero_one =
+            digit_rows(fs.hero, hero.anchor - 2 * hc, hl.value.y, hc);
+        CHECK(ink_count(a.canvas, hero_one) == 0);
+        CHECK(ink_count(b.canvas, hero_one) > 0);
+
+        // The CO2 tile and the PM1 tile.
+        const TileLayout &tl = l.tiles;
+        const auto cols = static_cast<std::size_t>(tl.cols);
+        for (const auto &[metric, decimals] :
+             {std::pair{Metric::Co2, false}, std::pair{Metric::Pm1, true}}) {
+          std::size_t i = 0;
+          while (i < 6 &&
+                 std::array{Metric::Co2, Metric::Temp, Metric::Rh, Metric::Pm1,
+                            Metric::Pm4, Metric::Pm10}[i] != metric)
+            ++i;
+          if (i >= cols * static_cast<std::size_t>(tl.rows))
+            continue;
+          const int col = static_cast<int>(i % cols);
+          const int row = static_cast<int>(i / cols);
+          const Rect box{col * (tl.w + 1), tl.top + row * (tl.h + 1), tl.w,
+                         tl.h};
+          const int start = rtl() ? box.right() - tl.pad : box.x + tl.pad;
+          const ValueBox vb = value_box(fs.value, metric, start, rtl());
+          const int vc = digit_cell(fs.value);
+          const int y = box.y + tl.value_dy;
+          // 541 keeps three cells, 7.6 one cell, the point and the decimal.
+          const int lead = decimals ? 1 : 3;
+          const Rect shared = digit_rows(fs.value, vb.anchor - lead * vc, y,
+                                         vb.x + vb.w - vb.anchor + lead * vc);
+          CHECK(ink_count(c, shared) > 0);
+          CHECK(same_ink(a.canvas, b.canvas, shared));
+          const Rect one =
+              digit_rows(fs.value, vb.anchor - (lead + 1) * vc, y, vc);
+          CHECK(ink_count(a.canvas, one) == 0);
+          CHECK(ink_count(b.canvas, one) > 0);
+        }
+
+        // The now stat on the CO2 chart page.
+        frame(a, co2_page, 7.6F, 541.0F);
+        frame(b, co2_page, 17.6F, 1541.0F);
+        const ChartPageLayout &cl = l.chart_page;
+        const int nw = text_width(fs.small, tr(Str::StatNow));
+        const int left = cl.stats[0].x + nw + cl.stat_gap;
+        const ValueBox sb = value_box(fs.label, Metric::Co2,
+                                      rtl() ? c.width() - left : left, rtl());
+        const int lc = digit_cell(fs.label);
+        const Rect stat =
+            digit_rows(fs.label, sb.anchor - 3 * lc, cl.stats[0].y, 3 * lc);
+        CHECK(ink_count(c, stat) > 0);
+        CHECK(same_ink(a.canvas, b.canvas, stat));
+      }
+    }
+  }
+  set_language(Language::English);
+}
+
+// The widest value of every metric fits where it draws, in every size class
+// and orientation and both languages. The hero box ends before a plot beside
+// it, a tile box inside the tile's inset, and each chart stat before the
+// next stat starts or the frame margin.
+void test_value_boxes_fit() {
+  constexpr int kGap = 4;
+  for (const Language lang : {Language::English, Language::Arabic}) {
+    set_language(lang);
+    for (const DisplayProfile *p : {&kHost400x300, &kHost800x480}) {
+      for (const Rotation r : {Rotation::R0, Rotation::R90}) {
+        Buffer b(*p, r);
+        const Canvas &c = b.canvas;
+        const Layout &l = c.layout();
+        const FontSet &fs = c.fonts();
+        const int margin = l.header.margin;
+
+        const HeroLayout &hl = l.hero;
+        const ValueBox hero =
+            value_box(fs.hero, Metric::Pm25, hl.value.x, false);
+        // A plot whose top sits above the hero baseline is beside it.
+        const bool beside = hl.plot.y < hl.value.y && hl.plot.x > hl.value.x;
+        CHECK_FITS(hero.x + hero.w,
+                   beside ? hl.plot.x - kGap : c.width() - margin, "hero value",
+                   c);
+        // The label line ends before the plot caption beside it.
+        const MetricInfo &pm = info(Metric::Pm25);
+        if (beside)
+          CHECK_FITS(hl.label.x + text_width(fs.label, tr(pm.label)) +
+                         hl.unit_gap + text_width(fs.small, tr(pm.unit)),
+                     hl.plot.x - kGap, "hero label", c);
+        // The plot captions share its width at the widest PM.
+        std::array<char, 32> buf{};
+        const int n = std::snprintf(buf.data(), buf.size(), tr_fmt(Str::MaxFmt),
+                                    static_cast<double>(pm.highest));
+        CHECK(n > 0);
+        CHECK_FITS(
+            text_width(fs.small, tr(Str::Last2Hours)) + kGap +
+                text_width(fs.small, {buf.data(), static_cast<std::size_t>(n)}),
+            hl.plot.w, "hero plot captions", c);
+
+        const ChartPageLayout &cl = l.chart_page;
+        const std::array<Str, 3> stats{Str::StatNow, Str::StatMin,
+                                       Str::StatMax};
+        // Each stat line sits below the title, a line under the one before,
+        // and above the chart.
+        for (std::size_t i = 0; i < cl.stats.size(); ++i) {
+          CHECK(cl.stats[i].x >= l.page.title.x);
+          CHECK(cl.stats[i].y > l.page.title.y);
+          CHECK(cl.stats[i].y + fs.label.descent < cl.chart.y);
+          if (i > 0 && cl.stats[i].y != cl.stats[i - 1].y)
+            CHECK(cl.stats[i].y - cl.stats[i - 1].y >=
+                  fs.label.ascent + fs.label.descent);
+        }
+        for (std::size_t m = 0; m < kMetricCount; ++m) {
+          const auto metric = static_cast<Metric>(m);
+          CHECK_FITS(value_box(fs.value, metric, 0, false).w,
+                     l.tiles.w - 2 * l.tiles.pad, tr(info(metric).label), c);
+          const int vw = value_box(fs.label, metric, 0, false).w;
+          for (std::size_t i = 0; i < stats.size(); ++i) {
+            const Point at = cl.stats[i];
+            const int end =
+                at.x + text_width(fs.small, tr(stats[i])) + cl.stat_gap + vw;
+            // The next stat on the same line, or the frame margin.
+            const bool same_line =
+                i + 1 < stats.size() && cl.stats[i + 1].y == at.y;
+            CHECK_FITS(
+                end, same_line ? cl.stats[i + 1].x - kGap : c.width() - margin,
+                tr(stats[i]), c);
+          }
+        }
+      }
+    }
+  }
+  set_language(Language::English);
+  CHECK(g_misfits == 0);
+}
+
 } // namespace
 
 int main() {
@@ -2868,6 +3188,9 @@ int main() {
   test_arabic_strings_and_glyphs();
   test_language_switch();
   test_arabic_fit();
+  test_tabular_digits();
+  test_digit_slots_on_pages();
+  test_value_boxes_fit();
   test_storage_fault();
   test_thing_id_fault();
   std::printf("epaper ui, %d checks passed\n", g_checks);

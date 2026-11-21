@@ -258,9 +258,10 @@ void hero(Canvas &c, const Model &m, const History &h) {
   const int lw = c.text(fs.label, hl.label.x, hl.label.y, tr(mi.label));
   c.text(fs.small, hl.label.x + lw + hl.unit_gap, hl.label.y, tr(mi.unit));
 
+  // The hero stays left to right in either language.
   Text t{};
-  const std::string_view v = format_reading(t, Metric::Pm25, r);
-  c.text(fs.hero, hl.value.x, hl.value.y, v);
+  draw_value(c, fs.hero, value_box(fs.hero, Metric::Pm25, hl.value.x, false),
+             hl.value.y, format_reading(t, Metric::Pm25, r), false);
 
   // The band pill, or what is missing. `word` may view `cap`, so it lives
   // at this scope.
@@ -332,8 +333,8 @@ void tile(Canvas &c, Rect box, Metric metric, const Model &m,
   c.text(fs.label, start, box.y + tl.label_dy, tr(mi.label), ma(Align::Left));
   c.text(fs.small, end, box.y + tl.label_dy, tr(mi.unit), ma(Align::Right));
   Text t{};
-  c.text(fs.value, start, box.y + tl.value_dy, format_reading(t, metric, r),
-         ma(Align::Left));
+  draw_value(c, fs.value, value_box(fs.value, metric, start, rtl()),
+             box.y + tl.value_dy, format_reading(t, metric, r), rtl());
   if (r.quality != Quality::Valid) {
     Text cap{};
     c.text(fs.small, end, box.y + tl.value_dy,
@@ -429,14 +430,15 @@ void chart_page(Canvas &c, std::uint8_t page, const Model &m,
              .quality = range.valid ? Quality::Valid : Quality::Absent,
              .warm_left_s = 0}},
   }};
-  int x = l.page.title.x;
-  for (const auto &st : stats) {
+  for (std::size_t i = 0; i < stats.size(); ++i) {
+    const Point at = cl.stats[i];
     const int nw =
-        c.text(fs.small, mx(c, x), cl.stats_y, tr(st.name), ma(Align::Left));
+        c.text(fs.small, mx(c, at.x), at.y, tr(stats[i].name), ma(Align::Left));
     Text t{};
-    c.text(fs.label, mx(c, x + nw + cl.stat_gap), cl.stats_y,
-           format_reading(t, metric, st.r), ma(Align::Left));
-    x += cl.stats_step;
+    draw_value(
+        c, fs.label,
+        value_box(fs.label, metric, mx(c, at.x + nw + cl.stat_gap), rtl()),
+        at.y, format_reading(t, metric, stats[i].r), rtl());
   }
 
   const std::array<std::string_view, 5> labels{
@@ -677,6 +679,39 @@ int asleep_line(Canvas &c, int y, Str name, std::string_view value) {
 }
 
 } // namespace
+
+ValueBox value_box(const Font &font, Metric m, int edge, bool mirrored) {
+  const ValueSlots slots = value_slots(m);
+  const int cell = digit_cell(font);
+  const int sign = slots.sign ? text_width(font, "-") : 0;
+  const int whole = slots.whole * cell;
+  const int frac =
+      slots.frac > 0 ? text_width(font, ".") + slots.frac * cell : 0;
+  const int w = sign + whole + frac;
+  const int x = mirrored ? edge - w : edge;
+  return {.x = x, .w = w, .anchor = x + sign + whole};
+}
+
+void draw_value(Canvas &c, const Font &font, const ValueBox &box, int y,
+                std::string_view v, bool mirrored) {
+  const bool number =
+      v.find_first_of("0123456789") != std::string_view::npos &&
+      v.find_first_not_of("0123456789.-") == std::string_view::npos;
+  if (!number) {
+    if (mirrored)
+      c.text(font, box.x + box.w, y, v, Align::Right);
+    else
+      c.text(font, box.x, y, v, Align::Left);
+    return;
+  }
+  // The whole digits end on the anchor, so the decimal point, or the last
+  // digit of a metric with none, stays put however many digits lead.
+  const int w = tabular_width(font, v);
+  int x = box.anchor - tabular_width(font, v.substr(0, v.find('.')));
+  if (x < box.x || x + w > box.x + box.w)
+    x = mirrored ? box.x + box.w - w : box.x;
+  c.tabular_text(font, x, y, v);
+}
 
 void render_asleep(Canvas &c, const Model &model) {
   c.clear();
