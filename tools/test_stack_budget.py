@@ -303,6 +303,56 @@ def check_cli(root: Path) -> None:
     assert run(["--budgets", str(path), "--image", "fake/app"])[0] == 2
 
 
+def check_scrub(root: Path) -> None:
+    """A scrub frame must cover each named subtree plus its margin (#172)."""
+    build, budgets = make_build(root, {".flash.text": 10_000, ".dram0.bss": 300})
+    write_ci(build / "gnss.ci", [
+        node("scrub", "void ns::scrub_stack()", 600),
+        node("on_line", "ns::poll(int)::<lambda(int)>", 100),
+        node("parse", "int ns::Dialect::parse(int)", 300),
+        node("convert", "int ns::convert(int)", 150),
+        node("deep", "int ns::deep(int)", 90),
+        edge("on_line", "parse"), edge("on_line", "convert"), edge("convert", "deep"),
+    ])
+    path = root / "budgets.json"
+    path.write_text(json.dumps(budgets))
+    assert run(["--budgets", str(path), "--write-budgets"])[0] == 0
+    budgets = json.loads(path.read_text())
+    budgets["tasks"]["main"]["scrub"] = {"function": "*ns::scrub_stack()", "margin_bytes": 128,
+                                         "covers": ["*ns::poll(int)::<lambda*", "*ns::convert(*"]}
+    path.write_text(json.dumps(budgets))
+    code, out, err = run(["--budgets", str(path), "--check"])
+    assert code == 0, err
+    assert "Scrub check passed. main scrub frame 600 B covers 400 B with 128 B margin." in out, out
+
+    graph = sb.load_ci([build / "gnss.ci"])
+    spec = budgets["tasks"]["main"]["scrub"]
+    line, findings = sb.scrub_check(graph, "main", spec, [], 2)
+    assert line and not findings, findings
+    # Mutation: a parse that grows past the frame less the margin fails.
+    line, findings = sb.scrub_check(graph, "main", {**spec, "margin_bytes": 256}, [], 2)
+    assert findings == ["main: *ns::poll(int)::<lambda* uses 400 B below its caller, past the 600 B "
+                        "scrub frame less its 256 B margin"], findings
+    # Mutation: a renamed or inlined cover, and a scrub pattern that is not unique.
+    _, findings = sb.scrub_check(graph, "main", {**spec, "covers": ["*ns::gone(*"]}, [], 2)
+    assert findings and "the scrub cover *ns::gone(* matches nothing" in findings[0], findings
+    _, findings = sb.scrub_check(graph, "main", {**spec, "function": "*ns::*"}, [], 2)
+    assert findings and "matches 5 functions, it must match one" in findings[0], findings
+    # A pointer call reaches the parse only through the task's indirect rules.
+    graph.functions["on_line"].calls.discard("parse")
+    graph.functions["on_line"].indirect = True
+    _, findings = sb.scrub_check(graph, "main", spec, [(None, ["parse"])], 2)
+    assert not findings, findings
+    assert sb.analyse(graph, ["on_line"], [(None, ["parse"])], 2).worst == 400
+
+    # The CLI fails --check when the scrub stops covering.
+    budgets["tasks"]["main"]["scrub"]["margin_bytes"] = 256
+    path.write_text(json.dumps(budgets))
+    code, out, err = run(["--budgets", str(path), "--check"])
+    assert code == 1 and "fake/app scrub: main: *ns::poll(int)::<lambda* uses 400 B" in err, err
+    assert "Scrub check failed." in out, out
+
+
 def check_internal_stacks(root: Path) -> None:
     source = root / "firmware" / "common" / "x.cpp"
     source.parent.mkdir(parents=True)
@@ -495,6 +545,8 @@ def main() -> None:
         (root / "alias").mkdir()
         check_aliases_and_cycles(root / "alias")
         check_cli(root / "cli")
+        (root / "scrub").mkdir()
+        check_scrub(root / "scrub")
         check_internal_stacks(root / "src")
     check_runtime_report()
     check_committed_budgets()
