@@ -39,7 +39,7 @@ if [[ ! -f "${build_dir}/os-build-target.txt" ]] || [[ "$(cat "${build_dir}/os-b
 fi
 python "${repo_root}/tools/check_idf_target.py" "${build_dir}" --board "${board}" --variant "${variant}" --verify-manifest --backup "${backup}"
 # flash the reviewed build without silently rebuilding it; never erase NVS.
-# ESP-IDF 6.1 has no --no-deps option. Its normal flash action depends on a
+# ESP-IDF 6.1.1 has no --no-deps option. Its normal flash action depends on a
 # build, so consume the checked generated response file with pinned Pixi
 # esptool directly. Only the manifest-verified four regions are written.
 cd "${build_dir}"

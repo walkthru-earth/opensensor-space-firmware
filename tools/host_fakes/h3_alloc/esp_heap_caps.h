@@ -2,8 +2,8 @@
 // Host stand-in for the ESP-IDF heap_caps calls that
 // firmware/common/location/src/os_h3_alloc.cpp makes, so h3-polygon-test
 // compiles the real device hooks. tools/test_h3_polygon.cpp defines the four
-// functions over its counting heap with the ESP-IDF 6.1 semantics at commit
-// fff9895c (components/heap/heap_caps_base.c). A zero size returns NULL
+// functions over its counting heap with the ESP-IDF 6.1.1 semantics at commit
+// 051e4c4e (components/heap/heap_caps_base.c). A zero size returns NULL
 // (heap_caps_aligned_alloc_base lines 113-116), calloc checks n * size for
 // overflow and then allocates the product, so a zero argument also returns
 // NULL (heap_caps_calloc_base), realloc of NULL allocates and realloc to

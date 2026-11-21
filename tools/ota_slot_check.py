@@ -57,7 +57,7 @@ def parse_size(text: str) -> int:
     return value
 
 
-# The type keywords gen_esp32part.py in ESP-IDF 6.1 accepts, in any case.
+# The type keywords gen_esp32part.py in ESP-IDF 6.1.1 accepts, in any case.
 TYPE_KEYWORDS = {"app": 0x00, "data": 0x01, "bootloader": 0x02, "partition_table": 0x03}
 
 

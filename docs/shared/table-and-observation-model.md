@@ -1,7 +1,7 @@
 # Table publication and observation semantics
 
 
-> **Board scope:** Both native ESP-IDF 6.1 logger adapters consume these shared
+> **Board scope:** Both native ESP-IDF 6.1.1 logger adapters consume these shared
 > observation/archive semantics. CoreS3 and the Waveshare V2 PMS5003T logger each
 > write their own schema, named by `kSchemaName` in the board's
 > `telemetry_contract.h`. Board acquisition and schema

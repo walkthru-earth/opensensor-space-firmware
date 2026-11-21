@@ -22,7 +22,7 @@ dependencies:
   idf:
     source:
       type: idf
-    version: 6.1.0
+    version: 6.1.1
   walkthru-earth/embedded-h3-location:
     component_hash: 832d32762f2af5c5a1748dc99d8122c932812191ef803a8d52f64523142a2bcc
     dependencies:
@@ -38,6 +38,6 @@ direct_dependencies:
 - espressif/mdns
 - idf
 - walkthru-earth/embedded-h3-location
-manifest_hash: bf51f219c0d018071ad6297a2127c1d4e4a1a1f492a21f5bf8eb5673c6742784
+manifest_hash: 8dc996b81c0d12a17713be24735848d499f02dfea9b02996aacd7fd4f38eac11
 target: esp32s3
 version: 3.0.0

@@ -1,6 +1,6 @@
 # Waveshare ESP32-S3-SIM7670G-4G V2 hardware
 
-The current board adapter uses native ESP-IDF 6.1 UART, I²C and SDMMC drivers,
+The current board adapter uses native ESP-IDF 6.1.1 UART, I²C and SDMMC drivers,
 with led_strip 3.1.1 for GPIO38. Native builds pass. A short native USB and SD readback of v2.15 on 2026-10-26 is in the
 [bench record](bench-verified.md#main-689bb61-usb-reflash-thing-id-and-first-geo-footer-2026-10-26).
 Phone sync, GNSS fix, endurance and power-cut durability remain unqualified.

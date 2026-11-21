@@ -16,7 +16,7 @@ below, and keep the visible Walkthru.Earth credit described in the
 The firmware inventory below was taken from the ESP32-S3 linker maps of the
 `esp-idf-cores3` and `esp-idf-waveshare-sim7670g` builds against the pinned
 ESP-IDF in [`tools/idf-dependencies.lock`](tools/idf-dependencies.lock)
-(ESP-IDF v6.1, commit `fff9895c82d744c7237be8847347bdd1b07c6643`), and each
+(ESP-IDF v6.1.1, commit `051e4c4eb20346e043cdd47bc388fde75ff8af63`), and each
 license was checked against the license files, SPDX headers and `sbom.yml`
 manifests in that source tree. Only ESP32-S3 is hardware verified.
 
@@ -25,7 +25,7 @@ manifests in that source tree. Only ESP32-S3 is hardware verified.
 | Component | Path | Version | License | Copyright |
 | :--- | :--- | :--- | :--- | :--- |
 | LZ4 library | [`firmware/common/vendor/lz4`](firmware/common/vendor/lz4) | 1.11.0 | BSD-2-Clause, see [`LICENSE`](firmware/common/vendor/lz4/LICENSE) | Copyright (c) Yann Collet (source headers), Copyright (c) 2011-2020, Yann Collet (`LICENSE`) |
-| esp-nimble host patch | [`firmware/common/vendor/esp-nimble`](firmware/common/vendor/esp-nimble) | backport of esp-nimble `d7061976e9` and `79316193f9` onto `139cada` | Apache-2.0, see [`LICENSE`](firmware/common/vendor/esp-nimble/LICENSE) and [`NOTICE`](firmware/common/vendor/esp-nimble/NOTICE) | Copyright 2015-2022 The Apache Software Foundation, modifications Copyright 2017-2022 Espressif Systems (Shanghai) CO., LTD. |
+| esp-nimble host patch | [`firmware/common/vendor/esp-nimble`](firmware/common/vendor/esp-nimble) | backport of esp-nimble `d7061976e9` and `79316193f9` onto `544bb66` | Apache-2.0, see [`LICENSE`](firmware/common/vendor/esp-nimble/LICENSE) and [`NOTICE`](firmware/common/vendor/esp-nimble/NOTICE) | Copyright 2015-2022 The Apache Software Foundation, modifications Copyright 2017-2022 Espressif Systems (Shanghai) CO., LTD. |
 | Inter typeface | [`firmware/common/epaper_ui/vendor/inter`](firmware/common/epaper_ui/vendor/inter) | 4.1, baked into glyph bitmaps in `fonts_compact_gen.cpp` and `fonts_large_gen.cpp` | SIL OFL 1.1, see [`OFL.txt`](firmware/common/epaper_ui/vendor/inter/OFL.txt) | Copyright (c) 2016 The Inter Project Authors |
 | Cairo typeface | [`firmware/common/text/vendor/cairo`](firmware/common/text/vendor/cairo) | 3.130, baked into glyph bitmaps in `os_arabic_fonts_s_gen.cpp` and `os_arabic_fonts_l_gen.cpp` | SIL OFL 1.1, see [`OFL.txt`](firmware/common/text/vendor/cairo/OFL.txt) | Copyright 2009 The Cairo Project Authors |
 
@@ -58,7 +58,7 @@ Notes
 | :--- | :--- | :--- |
 | Howard Hinnant `days_from_civil` date algorithm | [`firmware/common/src/utc_clock.h`](firmware/common/src/utc_clock.h) | Public domain, per the author ("Consider these donated to the public domain", [chrono-Compatible Low-Level Date Algorithms](https://howardhinnant.github.io/date_algorithms.html)) |
 
-## 3. ESP-IDF v6.1 framework linked into the firmware
+## 3. ESP-IDF v6.1.1 framework linked into the firmware
 
 ESP-IDF is Copyright Espressif Systems (Shanghai) CO LTD and is licensed under
 Apache-2.0 unless a component states otherwise. Espressif components used by the
@@ -69,20 +69,20 @@ in the linked image are listed below.
 
 | Component | ESP-IDF path | Version | License | Copyright |
 | :--- | :--- | :--- | :--- | :--- |
-| ESP-IDF | `/` | 6.1 | Apache-2.0 | Copyright Espressif Systems (Shanghai) CO LTD |
+| ESP-IDF | `/` | 6.1.1 | Apache-2.0 | Copyright Espressif Systems (Shanghai) CO LTD |
 | Apache Mynewt NimBLE (BLE host) | `components/bt/host/nimble/nimble` | 1.6.0 | Apache-2.0, with `NOTICE` | Copyright 2015-2022 The Apache Software Foundation, modifications Copyright 2017-2022 Espressif Systems (Shanghai) CO., LTD. |
 | TinyCrypt (used by NimBLE security manager) | `components/bt/common/tinycrypt` | Espressif fork | BSD-3-Clause, ECC files BSD-2-Clause | Copyright (c) 2017 Intel Corporation, ECC code Copyright (c) 2014 Kenneth MacKay, Espressif changes Apache-2.0 |
 | lwIP TCP/IP stack | `components/lwip/lwip` | 2.2.0 | BSD-3-Clause | Copyright (c) 2001, 2002 Swedish Institute of Computer Science and lwIP contributors |
-| Mbed TLS and TF-PSA-Crypto | `components/mbedtls/mbedtls` | 4.1.0 | Apache-2.0 OR GPL-2.0-or-later, used here under Apache-2.0 | Copyright The Mbed TLS Contributors |
+| Mbed TLS and TF-PSA-Crypto | `components/mbedtls/mbedtls` | 4.1.1, with TF-PSA-Crypto 1.1.1 | Apache-2.0 OR GPL-2.0-or-later, used here under Apache-2.0 | Copyright The Mbed TLS Contributors |
 | FreeRTOS kernel | `components/freertos/FreeRTOS-Kernel` | 10.5.1 | MIT, Espressif SMP additions Apache-2.0 | Copyright (C) 2021 Amazon.com, Inc. or its affiliates |
 | FatFs | `components/fatfs/src` | R0.16 | FatFs license (1-clause BSD style) | Copyright (C) 2025 ChaN |
 | wpa_supplicant | `components/wpa_supplicant` | 2.10 | BSD-3-Clause | Copyright (c) 2002-2022 Jouni Malinen and contributors |
 | TLSF allocator | `components/heap/tlsf` | Espressif fork | BSD-3-Clause | Copyright (c) 2006-2016 Matthew Conte |
-| Wi-Fi, PHY, coexistence and BLE controller libraries (binary) | `components/esp_wifi/lib`, `components/esp_phy/lib`, `components/esp_coex/lib`, `components/bt/controller/lib_esp32c3_family` | ESP-IDF 6.1 | Apache-2.0 | Copyright Espressif Systems (Shanghai) CO LTD |
+| Wi-Fi, PHY, coexistence and BLE controller libraries (binary) | `components/esp_wifi/lib`, `components/esp_phy/lib`, `components/esp_coex/lib`, `components/bt/controller/lib_esp32c3_family` | ESP-IDF 6.1.1 | Apache-2.0 | Copyright Espressif Systems (Shanghai) CO LTD |
 
 ## 4. Toolchain runtime libraries linked into the firmware
 
-ESP-IDF v6.1 builds this firmware with picolibc (`CONFIG_LIBC_PICOLIBC=y`), not
+ESP-IDF v6.1.1 builds this firmware with picolibc (`CONFIG_LIBC_PICOLIBC=y`), not
 newlib. The libraries below come from the Espressif `xtensa-esp-elf` GCC 15.2.0
 toolchain. Their license texts ship with the toolchain under
 `xtensa-esp-elf/share/licenses/`.

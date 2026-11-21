@@ -231,7 +231,7 @@ std::expected<void, Error> Uc8276c::begin(const Pins &p) {
     return std::unexpected(Error::Gpio);
   delay_ms(50);
 
-  // Every field is named, in ESP-IDF v6.1 declaration order, so
+  // Every field is named, in ESP-IDF v6.1.1 declaration order, so
   // -Wmissing-field-initializers stays quiet and a field the SDK adds shows.
   const spi_bus_config_t bus{
       .mosi_io_num = p.mosi,

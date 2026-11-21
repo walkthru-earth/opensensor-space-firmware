@@ -3,7 +3,7 @@
 // compiled with H3_ALLOC_PREFIX=os_h3_, the device setting. The script links
 // the real device hooks, firmware/common/location/src/os_h3_alloc.cpp, built
 // against tools/host_fakes/h3_alloc. This file defines the heap_caps calls
-// those hooks make over a counting heap with the ESP-IDF 6.1 semantics, so a
+// those hooks make over a counting heap with the ESP-IDF 6.1.1 semantics, so a
 // zero size returns NULL. The heap counts every H3 allocation, can fail any
 // one of them, and proves nothing is left after each call. Host numbers are
 // 64-bit. They bound, not measure, the device heap.
@@ -75,7 +75,7 @@ void reset_heap(std::size_t fail_at = SIZE_MAX) {
 
 constexpr std::size_t kHeader = alignof(std::max_align_t);
 
-// heap_caps_malloc(0) returns NULL on ESP-IDF 6.1 (heap_caps_base.c), so a
+// heap_caps_malloc(0) returns NULL on ESP-IDF 6.1.1 (heap_caps_base.c), so a
 // zero size fails here too.
 void *take(std::size_t size, bool zero) {
   if (size == 0)
@@ -130,8 +130,8 @@ void note_caps(std::uint32_t caps) {
 }
 } // namespace
 
-// The heap_caps calls os_h3_alloc.cpp makes, ESP-IDF 6.1 semantics at
-// fff9895c (components/heap/heap_caps_base.c), see esp_heap_caps.h here.
+// The heap_caps calls os_h3_alloc.cpp makes, ESP-IDF 6.1.1 semantics at
+// 051e4c4e (components/heap/heap_caps_base.c), see esp_heap_caps.h here.
 extern "C" {
 void *heap_caps_malloc(std::size_t size, std::uint32_t caps) {
   note_caps(caps);

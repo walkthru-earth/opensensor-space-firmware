@@ -13,7 +13,7 @@
 
 | Interface | Decision / trap |
 | --- | --- |
-| I²C | Scan only the intended powered bus; ACK is not chip identification. Address collisions require an address strap, isolated branch/multiplexer, or physical rerouting. A second software instance on the same wires does not isolate devices. [M5 address table](https://docs.m5stack.com/en/product_i2c_addr), [IDF bus constraints](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32s3/api-reference/peripherals/i2c.html). |
+| I²C | Scan only the intended powered bus; ACK is not chip identification. Address collisions require an address strap, isolated branch/multiplexer, or physical rerouting. A second software instance on the same wires does not isolate devices. [M5 address table](https://docs.m5stack.com/en/product_i2c_addr), [IDF bus constraints](https://docs.espressif.com/projects/esp-idf/en/v6.1.1/esp32s3/api-reference/peripherals/i2c.html). |
 | SPI | Dedicated CS per device; verify inactive MISO is high impedance, per-device mode/clock and common arbitration. CoreS3 GPIO35 has a display-specific direction change; see [SD/SPI](cores3-storage.md). |
 | UART | Cross TX→RX; reserve a hardware UART and explicit pins; keep console output out of device protocols. Multiple talkers cannot share ordinary UART RX without switching/arbitration. |
 | CAN/RS485/RS232 | Peripheral capability is not a line transceiver. Lookup: TWAI transceiver + termination; RS485 DE/RE half-duplex; RS232 level converter. |

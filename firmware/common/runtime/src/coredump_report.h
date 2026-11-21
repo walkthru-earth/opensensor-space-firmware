@@ -20,7 +20,7 @@
 
 namespace opensensor::coredump {
 
-// ESP-IDF 6.1 always uses SHA-256 for core dumps in flash.
+// ESP-IDF 6.1.1 always uses SHA-256 for core dumps in flash.
 inline constexpr std::size_t kChecksumBytes = 32;
 inline constexpr std::size_t kTaskNameBytes = 16;
 // At most this many hex characters of the crashed application's ELF SHA-256

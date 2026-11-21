@@ -1,7 +1,7 @@
 # CoreS3 native ESP-IDF logger
 
-The current source is a pure **ESP-IDF 6.1** application, firmware identity
-**`idf-cores3-parquet-v6.33`**, with an **81-column** CoreS3 schema
+The current source is a pure **ESP-IDF 6.1.1** application, firmware identity
+**`idf-cores3-parquet-v6.34`**, with an **81-column** CoreS3 schema
 `cores3-telemetry-v6` and dictionary `cores3-telemetry-v8`. The original 77
 columns retain their order and types. Four nullable location fields follow,
 `h3_cell_id`, `h3_resolution`, `location_source` and the WKB Point `geometry`.
@@ -98,7 +98,7 @@ CoreS3 bench run (#168). If no buffer could be reserved, the first failed
 remount logs `DIAG sd remount=false status=dma_buffer_unavailable`, and only
 that one. Once a reservation succeeds, it lasts for the rest of the boot.
 This follows the pinned
-[ESP-IDF 6.1 SD transfer guidance](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32s3/api-reference/storage/sdmmc.html#unaligned-buffer-performance);
+[ESP-IDF 6.1.1 SD transfer guidance](https://docs.espressif.com/projects/esp-idf/en/v6.1.1/esp32s3/api-reference/storage/sdmmc.html#unaligned-buffer-performance);
 the automatic allocation flag applies to non-SPI initialization, so this
 SDSPI adapter supplies its own buffer.
 
@@ -109,7 +109,7 @@ Software packets and TCP allocations use PSRAM first, with internal fallback.
 The TCP send buffer and window are **23,040 bytes per socket** each, for three LAN
 clients, plus SDK metadata. Startup and finalized-file logs report DMA free,
 largest-block and minimum-free values. These bounds follow the SDK's
-[PSRAM Wi-Fi guidance](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32s3/api-guides/wifi-driver/wifi-performance-and-power-save.html#using-psram);
+[PSRAM Wi-Fi guidance](https://docs.espressif.com/projects/esp-idf/en/v6.1.1/esp32s3/api-guides/wifi-driver/wifi-performance-and-power-save.html#using-psram);
 actual peak memory, radio coexistence and transfer rates require board evidence.
 
 Location starts unset. Owner provisioning supplies a cell and optional

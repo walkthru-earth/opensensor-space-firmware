@@ -13,7 +13,7 @@
 // caller reports it.
 //
 // H3 can ask for zero bytes (the whole globe, cellsToMultiPoly.c), and
-// heap_caps_malloc(0) returns NULL on ESP-IDF 6.1, which H3 reads as a failed
+// heap_caps_malloc(0) returns NULL on ESP-IDF 6.1.1, which H3 reads as a failed
 // allocation. Every size, both calloc arguments included, goes through the
 // library's nonzero_alloc_size, which rounds 0 up to 1.
 #include <embedded_h3/location.h>

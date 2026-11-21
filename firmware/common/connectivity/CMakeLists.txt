@@ -10,6 +10,6 @@ os_pin_cxx_standard(${COMPONENT_LIB})
 os_map_source_paths(${COMPONENT_LIB})
 
 # Match both endpoint and request originate timestamp before accepting SNTP.
-# ESP-IDF 6.1's lwIP default is zero; no SDK/vendor source edit is required.
+# ESP-IDF 6.1.1's lwIP default is zero; no SDK/vendor source edit is required.
 idf_component_get_property(os_lwip_lib lwip COMPONENT_LIB)
 target_compile_definitions(${os_lwip_lib} PRIVATE SNTP_CHECK_RESPONSE=2)
