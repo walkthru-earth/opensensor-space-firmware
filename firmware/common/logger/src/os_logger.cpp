@@ -107,6 +107,9 @@ using opensensor::utc::days_from_civil;
 namespace paths = opensensor::logger::paths;
 // The "%.384s" name bounds below print at most one relative name.
 static_assert(paths::kRelativeBytes == 384);
+// OPEN refuses a sidecar over the largest Item the STAC sink writes (#143).
+static_assert(opensensor::sync::kMaxSidecarBytes ==
+              opensensor::stac::kMaxItemBytes);
 constexpr std::size_t kMaxRows = cadence::kMaxBatchRows;
 static_assert(kMaxRows <= telemetry::kLz4PageRows,
               "the LZ4 page scratch must hold a full RAM batch");
@@ -387,6 +390,34 @@ bool crc_key(const char *path, opensensor::storage::CrcKey &key) {
   return opensensor::storage::crc_stat_key(path, key);
 }
 
+// CRC-32 of check.size bytes of `file` from its current position, into
+// check.crc. A short read sets check.io_error. A started `sha` gets the same
+// bytes.
+bool crc_file(FILE *file, ossync::FileCheck &check,
+              opensensor::hash::Sha256Stream *sha) {
+  std::uint32_t crc = 0xffffffffU, read_bytes = 0;
+  while (read_bytes < check.size) {
+    std::size_t count;
+    {
+      BusLock lock;
+      count = std::fread(writer_state->crc_scratch, 1, kCrcScratchBytes, file);
+    }
+    if (!count) {
+      check.io_error = true;
+      return false;
+    }
+    crc = crc32_update(crc, writer_state->crc_scratch, count);
+    if (sha)
+      sha->update({writer_state->crc_scratch, count});
+    read_bytes += count;
+    stamp_heartbeat(); // a 1 MiB CRC pass is progress, not a stall
+  }
+  if (read_bytes != check.size)
+    return false;
+  check.crc = crc ^ 0xffffffffU;
+  return true;
+}
+
 // Structural completion check and CRC-32 of `file`, an open stream. PyArrow +
 // DuckDB perform conformance. With use_cache, an entry matching path, size
 // and mtime replaces the full read, and a computed CRC is remembered. A
@@ -424,26 +455,8 @@ bool check_file(const char *path, FILE *file, ossync::FileCheck &check,
   check.cached = keyed && cache.lookup(key, check.crc);
   if (check.cached)
     return true;
-  std::uint32_t crc = 0xffffffffU, read_bytes = 0;
-  while (read_bytes < check.size) {
-    std::size_t count;
-    {
-      BusLock lock;
-      count = std::fread(writer_state->crc_scratch, 1, kCrcScratchBytes, file);
-    }
-    if (!count) {
-      check.io_error = true;
-      return false;
-    }
-    crc = crc32_update(crc, writer_state->crc_scratch, count);
-    if (sha)
-      sha->update({writer_state->crc_scratch, count});
-    read_bytes += count;
-    stamp_heartbeat(); // a 1 MiB CRC pass is progress, not a stall
-  }
-  if (read_bytes != check.size)
+  if (!crc_file(file, check, sha))
     return false;
-  check.crc = crc ^ 0xffffffffU;
   if (keyed)
     cache.insert(key, check.crc);
   return true;
@@ -1395,14 +1408,42 @@ std::uint32_t utc_yesterday() {
 
 // Emits each finalized file as `<prefix><name>` and counts the .partial
 // files. Sets bad_entry for a file the wire cannot describe. Shared by the
-// plain LIST walk and the LIST_SINCE walk.
+// plain LIST walk and the LIST_SINCE walk. With sidecars set, the STAC
+// sidecar of a dated Parquet file follows it at once, see emit_sidecar.
 struct ListVisitor {
   const char *prefix = "";
   FileEmitter emit = nullptr;
   void *context = nullptr;
   unsigned *partials = nullptr;
+  // The radio walks list sidecars. The serial list and the startup scan
+  // stay Parquet only.
+  bool sidecars = false;
+  // The walk is on the flash root.
+  bool on_flash = false;
   // Set for a file the wire cannot describe.
   bool bad_entry = false;
+
+  // Emits "<stem>.json" right after its dated Parquet `exported`, when OPEN
+  // would serve it: the card first, then flash, the pairing rule of
+  // list_merge::sidecar_pairs and the sidecar size bounds (#143). A sidecar
+  // that is absent or would be refused is left out. A root that cannot be
+  // inspected fails the walk, so a listing never quietly drops one.
+  bool emit_sidecar(const char *exported) {
+    char json[paths::kRelativeBytes];
+    if (!opensensor::sync::parquet_sidecar_name(exported, json))
+      return true;
+    ArchiveDirectoryIO probe;
+    const auto bytes =
+        list_merge::sidecar(probe, card_listable() ? kDirectory : nullptr,
+                            flash_ready ? flash_root : nullptr, json, on_flash);
+    if (bytes)
+      return emit(context, json, *bytes);
+    if (bytes.error() == list_merge::SidecarMiss::Unreadable) {
+      bad_entry = true;
+      return false;
+    }
+    return true;
+  }
 
   bool operator()(const char *name, const struct stat &info) {
     if (S_ISREG(info.st_mode) && safe_name(name)) {
@@ -1420,7 +1461,9 @@ struct ListVisitor {
         bad_entry = true;
         return false;
       }
-      return emit(context, exported, static_cast<std::uint32_t>(info.st_size));
+      return emit(context, exported,
+                  static_cast<std::uint32_t>(info.st_size)) &&
+             (!sidecars || emit_sidecar(exported));
     }
     if (std::strstr(name, ".partial") && *partials != UINT32_MAX)
       ++*partials;
@@ -1457,9 +1500,11 @@ class ArchiveList {
 public:
   // `since` holds the LIST_SINCE walk, about 1 KiB, so the full walk of
   // list_all() keeps it off the worker stack. Without it step_since fails.
+  // `sidecars` lists the STAC sidecars (#143), for the radio walks only.
   explicit ArchiveList(
-      list_since::IncrementalWalk<ArchiveDirectoryIO> *since = nullptr)
-      : since_(since) {}
+      list_since::IncrementalWalk<ArchiveDirectoryIO> *since = nullptr,
+      bool sidecars = false)
+      : since_(since), sidecars_(sidecars) {}
 
   ossync::ListStatus step(bool start, unsigned budget, FileEmitter emit,
                           void *context, unsigned &partials) {
@@ -1480,7 +1525,9 @@ public:
         .prefix = phase_ == Phase::Legacy ? list_merge::kLegacyPrefix : "",
         .emit = emit,
         .context = context,
-        .partials = &partials};
+        .partials = &partials,
+        .sidecars = sidecars_,
+        .on_flash = phase_ == Phase::Flash};
     using Walk = opensensor::logger::detail::DirectoryWalk<ArchiveDirectoryIO>;
     Walk::Status status;
     if (phase_ == Phase::Flash) {
@@ -1574,8 +1621,11 @@ public:
     }
     if (!incremental_ || !since_)
       return step(false, budget, emit, context, partials);
-    ListVisitor visit{
-        .prefix = "", .emit = emit, .context = context, .partials = &partials};
+    ListVisitor visit{.prefix = "",
+                      .emit = emit,
+                      .context = context,
+                      .partials = &partials,
+                      .sidecars = sidecars_};
     using Walk = list_since::IncrementalWalk<ArchiveDirectoryIO>;
     const auto status = since_->step(budget, visit);
     if (status == Walk::Status::More)
@@ -1625,11 +1675,12 @@ private:
   Phase phase_ = Phase::Card;
   bool card_ = true; // the card was listable when the walk started
   bool incremental_ = false;
+  bool sidecars_ = false;
 };
 
 // The radio LIST and LIST_SINCE walks. Only the storage worker touches them.
 list_since::IncrementalWalk<ArchiveDirectoryIO> archive_since;
-ArchiveList archive_list{&archive_since};
+ArchiveList archive_list{&archive_since, true};
 
 bool partial_name(const char *name) {
   const std::size_t length = std::strlen(name);
@@ -1769,8 +1820,10 @@ void list_files(bool emit_serial = true) {
 // OPEN and READ look on the card first, then on flash (decision record
 // 0004, item 7). A card that is not listable, or holds no file of this name,
 // leaves the flash file. Otherwise the card path, whose open fails as before.
+// A name is a finalized Parquet name or the STAC sidecar name of a dated one
+// (#143), never a legacy sidecar.
 bool resolve_path(const char *name, char *path, std::size_t size) {
-  if (!safe_name(name))
+  if (!safe_name(name) && !opensensor::sync::safe_sidecar_name(name))
     return false;
   const int written =
       std::strncmp(name, "legacy-parquet/", 15) == 0
@@ -1797,6 +1850,79 @@ bool resolve_path(const char *name, char *path, std::size_t size) {
   return true;
 }
 
+// The name of `path` under the card or flash root, and which root holds it.
+// Null for any other path.
+const char *archive_relative(const char *path, bool &on_flash) {
+  const std::array<const char *, 2> roots{kDirectory,
+                                          flash_ready ? flash_root : nullptr};
+  for (std::size_t at = 0; at < roots.size(); ++at) {
+    if (!roots[at])
+      continue;
+    const std::size_t length = std::strlen(roots[at]);
+    if (std::strncmp(path, roots[at], length) == 0 && path[length] == '/') {
+      on_flash = at == 1;
+      return path + length + 1;
+    }
+  }
+  return nullptr;
+}
+
+// The OPEN check of a STAC sidecar (#143), the counterpart of check_file.
+// Its Parquet must resolve to a regular file, on the same root or with only
+// the sidecar still on flash (list_merge::sidecar_pairs). The size is within
+// the sidecar bounds and the file is one JSON object, "{" first and "}"
+// last. The CRC covers every byte. Sidecars skip the CRC cache, which keeps
+// Parquet entries only.
+bool check_sidecar(const char *path, FILE *file, ossync::FileCheck &check) {
+  bool sidecar_on_flash = false;
+  const char *relative = archive_relative(path, sidecar_on_flash);
+  char parquet[paths::kRelativeBytes];
+  char parquet_path[paths::kPathBytes];
+  if (!relative || !opensensor::sync::sidecar_parquet_name(relative, parquet) ||
+      !resolve_path(parquet, parquet_path, sizeof(parquet_path)))
+    return false;
+  bool parquet_on_flash = false;
+  struct stat info{};
+  if (!archive_relative(parquet_path, parquet_on_flash) ||
+      ArchiveDirectoryIO::inspect(parquet_path, &info) != 0 ||
+      !S_ISREG(info.st_mode) ||
+      !list_merge::sidecar_pairs(sidecar_on_flash, parquet_on_flash))
+    return false;
+  std::uint8_t first = 0, last = 0;
+  bool ok = false;
+  {
+    BusLock lock;
+    check.io_error = true;
+    if (std::fseek(file, 0, SEEK_END) == 0) {
+      const long length = std::ftell(file);
+      check.io_error = length < 0;
+      if (length >= long{opensensor::sync::kMinSidecarBytes} &&
+          length <= long{opensensor::sync::kMaxSidecarBytes}) {
+        check.size = static_cast<std::uint32_t>(length);
+        const bool read = std::fseek(file, 0, SEEK_SET) == 0 &&
+                          std::fread(&first, 1, 1, file) == 1 &&
+                          std::fseek(file, -1, SEEK_END) == 0 &&
+                          std::fread(&last, 1, 1, file) == 1;
+        ok =
+            read && opensensor::sync::sidecar_complete(check.size, first, last);
+        check.io_error = !read || (ok && std::fseek(file, 0, SEEK_SET) != 0);
+        ok = ok && !check.io_error;
+      }
+    }
+  }
+  check.cached = false;
+  return ok && crc_file(file, check, nullptr);
+}
+
+// OPEN and the serial get check a sidecar name as a sidecar, anything else
+// as a Parquet file.
+bool check_archive_file(const char *path, FILE *file,
+                        ossync::FileCheck &check) {
+  return std::string_view{path}.ends_with(opensensor::sync::kSidecarSuffix)
+             ? check_sidecar(path, file, check)
+             : check_file(path, file, check, true);
+}
+
 void send_file(const char *name) {
   char path[paths::kPathBytes];
   if (!resolve_path(name, path, sizeof(path))) {
@@ -1813,7 +1939,7 @@ void send_file(const char *name) {
     return;
   }
   ossync::FileCheck check;
-  bool rewound = check_file(path, file, check, true);
+  bool rewound = check_archive_file(path, file, check);
   if (rewound) {
     BusLock lock;
     rewound = std::fseek(file, 0, SEEK_SET) == 0;
@@ -2192,7 +2318,7 @@ ossync::ArchiveSession archive_session(
        return resolve_path(name, path, size);
      },
      [](void *, const char *path, FILE *file, ossync::FileCheck &check) {
-       return check_file(path, file, check, true);
+       return check_archive_file(path, file, check);
      },
      [](void *) { return total_kib.load(); },
      [](void *) { return used_kib.load(); },

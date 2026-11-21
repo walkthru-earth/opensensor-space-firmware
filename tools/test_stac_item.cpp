@@ -6,6 +6,7 @@
 //   test_stac_item item <input>    builds one Item, prints it or the reason
 #include "numeric_sample.h"
 #include "os_stac_item.h"
+#include "sync_codec.h"
 #include "telemetry_contract.h"
 
 #include <h3api.h>
@@ -31,6 +32,8 @@
 namespace {
 namespace stac = opensensor::stac;
 namespace location = opensensor::location;
+// LIST and OPEN serve a sidecar up to this bound (#143).
+static_assert(opensensor::sync::kMaxSidecarBytes == stac::kMaxItemBytes);
 using telemetry::contract::kFields;
 using telemetry::contract::kSemantics;
 
@@ -571,6 +574,11 @@ void largest_item() {
   check(length.has_value(), "largest Item writes");
   if (length) {
     check(*length <= stac::kMaxItemBytes, "largest Item fits the limit");
+    check(!out.text.empty() &&
+              opensensor::sync::sidecar_complete(
+                  out.text.size(), static_cast<std::uint8_t>(out.text.front()),
+                  static_cast<std::uint8_t>(out.text.back())),
+          "largest Item passes the sidecar completion check");
     std::printf("largest Item %zu bytes, limit %zu\n", *length,
                 stac::kMaxItemBytes);
   }
@@ -805,6 +813,14 @@ int item(const char *path) {
   if (!second || *second != *length || again.text != out.text ||
       out.text.size() != *length) {
     std::fprintf(stderr, "staging size changed the bytes\n");
+    return 1;
+  }
+  // OPEN checks that a sidecar is "{" first and "}" last (#143).
+  if (out.text.empty() ||
+      !opensensor::sync::sidecar_complete(
+          out.text.size(), static_cast<std::uint8_t>(out.text.front()),
+          static_cast<std::uint8_t>(out.text.back()))) {
+    std::fprintf(stderr, "the Item fails the sidecar completion check\n");
     return 1;
   }
   std::fwrite(out.text.data(), 1, out.text.size(), stdout);

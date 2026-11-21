@@ -31,7 +31,7 @@ def main() -> None:
             command += ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
         subprocess.run(command, check=True)
         subprocess.run([str(executable), directory], check=True)
-    print("Shared BLE/LAN archive framing, bounds, generations, ABORT of LIST and READ, stale markers, 70000-entry u32 LIST_END, LIST_SINCE framing, cursor checks and fallback, bounded resumable LIST steps, LIST preemption, LIST worker glue with the deferred Full remount, the close ending a LIST before its remount and the parked request, busy remount, persistent read descriptors, lazy reopen, remount recheck, battery close preempt of LIST and READ with the Retry remount, EMFILE and read-only tests passed")
+    print("Shared BLE/LAN archive framing, bounds, generations, ABORT of LIST and READ, stale markers, 70000-entry u32 LIST_END, LIST_SINCE framing, cursor checks and fallback, STAC sidecar LIST, OPEN and READ with refused names and sizes, bounded resumable LIST steps, LIST preemption, LIST worker glue with the deferred Full remount, the close ending a LIST before its remount and the parked request, busy remount, persistent read descriptors, lazy reopen, remount recheck, battery close preempt of LIST and READ with the Retry remount, EMFILE and read-only tests passed")
 
 
 if __name__ == "__main__":
