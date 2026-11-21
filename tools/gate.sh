@@ -114,6 +114,7 @@ tasks=(
   "logger-live-test"
   "logger-power-test"
   "storage-governor-test"
+  "logger-flash-fallback-test"
   "crc-cache-test"
   "sd-transfer-buffer-test"
   # Offline backup publication with a fake esptool

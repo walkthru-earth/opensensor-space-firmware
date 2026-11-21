@@ -37,6 +37,7 @@ C++ contract tests and cannot prove behavior on a physical board.
 | Uploader SigV4 against the public AWS vectors, STS body and bounded XML parser, upload policy rules, append only ledger and the session on fakes (#81) | `upload-test` |
 | COREDUMP line once per saved core dump, NVS record and its read or write failures | `coredump-report-test` |
 | Internal flash volume format once policy, the NVS `osflash/formatted` flag, the OS FLASH mount and ERROR lines (decision record 0004) | `flash-volume-test` |
+| Flash fallback archive decisions (decision record 0004). The root for a new file and the flash reserve boundary | `logger-flash-fallback-test` |
 | Board-declared LIVE keys and JSON formatting | `logger-live-test` |
 | The one `opensensor` footer key, its pinned JSON bytes, string escaping, fail closed errors (missing field, range, overflow), sample period, row group cap, deployment and calibration ids, BLE name prefix and mDNS host, and a non AQ fixture board (no PMS, 30 s, `SL-`) read by PyArrow and DuckDB. A source check proves `begin()` runs `footer::check_config()` before any file work and logs `operation=footer-config` and returns false on failure, each rule proved by mutation | `logger-footer-test` |
 | POWER STATE lines, one finalize per discharge, the report wake, emergency close outcomes, retry and pass lines | `logger-power-test` |
