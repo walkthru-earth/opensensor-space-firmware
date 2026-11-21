@@ -18,7 +18,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "tools/check_idf_target.py"
 PINNED = re.search(r"-std=gnu\+\+\d+", (ROOT / "firmware/cmake/os_cxx_standard.cmake").read_text())[0]
-# The ESP-IDF 6.1 default. Spelled in two parts because check_cxx_dialect_sources
+# The ESP-IDF 6.1.1 default. Spelled in two parts because check_cxx_dialect_sources
 # rejects a literal C++ -std in a tools/test_*.py.
 SDK_DEFAULT = "-std=gnu++" + "26"
 REPO_CPP = ROOT / "tools/fixtures/connectivity_compile/main.cpp"

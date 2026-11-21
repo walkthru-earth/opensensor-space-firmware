@@ -1,6 +1,6 @@
 # Waveshare V2 software resources
 
-Current applications use pure ESP-IDF 6.1 native peripheral drivers and managed
+Current applications use pure ESP-IDF 6.1.1 native peripheral drivers and managed
 led_strip 3.1.1. Native physical qualification is pending. The upstream archive
 and resource inspection below are dated references, not active Arduino dependencies.
 Earlier physical measurements belong to historical Arduino images.
@@ -16,7 +16,7 @@ No matching unified board package was found in the [Waveshare organization](http
 | [Waveshare-ESP32-components](https://github.com/waveshareteam/Waveshare-ESP32-components/tree/30d0ac3b8b6b27ebd402c5852819cbe0dab92749) | Apache-2.0, primarily display BSPs; no SIM7670G BSP or MAX17048/modem driver found. Sensor folders contain QMI8658, PCF85063A and a custom expander. |
 | [waveshare_boards](https://github.com/waveshareteam/waveshare_boards/tree/37f2df77734b2f894c0935d9d2cf57ddf23e1079) | Apache-2.0 Board Manager definitions for four touch/display boards; no SIM7670G definition. `esp_board_manager_init()` does not configure this board. |
 
-The practical source is the product's [V2 example archive](https://files.waveshare.com/wiki/ESP32-S3-A-SIM7670X-4G-HAT/Demo/ESP32-S3-A-SIM7670X-4G-V2.zip), linked by the [official resource page](https://docs.waveshare.com/ESP32-S3-SIM7670G-4G/Resources-And-Documents). Inspected archive SHA-256: `a7e618a1cf226129d20450f4d3ce02e04be0b585f776673f07298dde320cc97a`. Internal root is `ESP32-S3-A-SIM7670X-4G-V2/`; Arduino examples are under `Arduino-V3.3.4/examples/`, IDF examples under `ESP-IDF/`. These are upstream reference examples, not installed dependencies; both native variants use the shared ESP-IDF 6.1 pin.
+The practical source is the product's [V2 example archive](https://files.waveshare.com/wiki/ESP32-S3-A-SIM7670X-4G-HAT/Demo/ESP32-S3-A-SIM7670X-4G-V2.zip), linked by the [official resource page](https://docs.waveshare.com/ESP32-S3-SIM7670G-4G/Resources-And-Documents). Inspected archive SHA-256: `a7e618a1cf226129d20450f4d3ce02e04be0b585f776673f07298dde320cc97a`. Internal root is `ESP32-S3-A-SIM7670X-4G-V2/`; Arduino examples are under `Arduino-V3.3.4/examples/`, IDF examples under `ESP-IDF/`. These are upstream reference examples, not installed dependencies; both native variants use the shared ESP-IDF 6.1.1 pin.
 
 ## Useful examples and adoption boundaries
 

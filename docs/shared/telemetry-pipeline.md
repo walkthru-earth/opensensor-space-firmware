@@ -2,7 +2,7 @@
 
 
 > **Board scope:** OSCommon/OSLogger implement the shared pipeline for both native
-> ESP-IDF 6.1 board adapters. CoreS3 uses the 81-column `cores3-telemetry-v6`
+> ESP-IDF 6.1.1 board adapters. CoreS3 uses the 81-column `cores3-telemetry-v6`
 > schema and Waveshare V2 the 62-column PMS5003T `waveshare-sim7670g-telemetry-v6`
 > schema. Firmware and dictionary versions are in the [status table](../../README.md#status). Schema identities and hardware
 > acquisition remain board-owned. Dated SD/throughput results below are historical
@@ -37,7 +37,7 @@ The [table and observation model](table-and-observation-model.md) records the st
 
 The tested conclusion is now affirmative: this CoreS3 can create interoperable Parquet directly from real ten-second rows on SD, with a full 90-row uncompressed window verified. In three identical-60-row comparisons, LZ4_RAW reduced whole-file bytes by 50.7% and median finalization time by 21.4% versus the same writer uncompressed. That is evidence for this design/workload, not a benchmark against CBOR/JSON, an energy result, a claim about allocated FAT space, or proof of production durability. [Measurements and limits](../boards/m5stack-cores3/compression-benchmark.md#hardware-result-lz4-passed)
 
-The active board applications now use pure [ESP-IDF 6.1](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32s3/get-started/index.html),
+The active board applications now use pure [ESP-IDF 6.1.1](https://docs.espressif.com/projects/esp-idf/en/v6.1.1/esp32s3/get-started/index.html),
 with native M5 components on CoreS3 and native peripheral drivers on Waveshare.
 The migration preserves dictionaries, NVS identity/config types, immutable
 archives and the phone wire contract. Use the [current development workflow](development.md)

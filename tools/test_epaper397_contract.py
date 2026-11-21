@@ -186,7 +186,7 @@ def main() -> None:
         require(not names.intersection({"pm25_atmospheric_ug_m3", "particles_gt03_per_01l", "battery_mv",
                                         "imu_temperature_c", "touch_points"}),
                 "no Plantower, battery or CoreS3 columns")
-        require(dictionary["firmware"] == "idf-epaper397-parquet-v0.1", "firmware identity")
+        require(dictionary["firmware"] == "idf-epaper397-parquet-v0.2", "firmware identity")
         footer_contract.check_board(executable, firmware, dictionary, TEMPLATES)
         live = subprocess.check_output([str(executable), "live"], text=True).strip()
         live_key_fixture.assert_rejects_drift("epaper397", dictionary["sha256"], dictionary["firmware"], live)

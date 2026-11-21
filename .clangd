@@ -58,7 +58,7 @@ CompileFlags:
 # add back the two that change what the code may use. The C++ dialect stays
 # as the database has it, our sources end with -std=gnu++23 from
 # os_pin_cxx_standard(). BuiltinHeaders reads the GCC headers through
-# --query-driver, which ESP-IDF 6.1 toolchains need.
+# --query-driver, which ESP-IDF 6.1.1 toolchains need.
 If:
   PathMatch: firmware/.*
 CompileFlags:

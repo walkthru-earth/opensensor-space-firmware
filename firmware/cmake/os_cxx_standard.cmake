@@ -1,6 +1,6 @@
 # Shared C++ dialect for every repo-owned ESP-IDF component.
 #
-# ESP-IDF 6.1 defaults chip targets to the C++26 GNU dialect, and a later SDK
+# ESP-IDF 6.1.1 defaults chip targets to the C++26 GNU dialect, and a later SDK
 # may move it again. Pin the dialect here so an SDK upgrade never changes it
 # silently. Every board and fixture project includes this file before
 # project.cmake, and every component we own calls os_pin_cxx_standard() right
