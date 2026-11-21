@@ -9,6 +9,7 @@
 
 #include <array>
 #include <cstdint>
+#include <string_view>
 
 #include "epaper_ui/canvas.h"
 #include "epaper_ui/history.h"
@@ -51,6 +52,34 @@ struct Nav {
   const int p = percent > 100 ? 100 : percent;
   return (inner_w * p + 50) / 100;
 }
+
+// Where a metric's value draws. The box holds the widest value of the
+// metric in tabular figures, value_slots() cells of digit_cell() with room
+// for a minus sign and the decimal point where the metric has them, so each
+// digit keeps its cell from refresh to refresh and a partial refresh flips
+// only the digits that changed.
+struct ValueBox {
+  int x = 0; // Left edge.
+  int w = 0;
+  // Left edge of the decimal point, or the right edge of the last digit for
+  // a metric with no decimals. The whole digits fill leftwards from it.
+  int anchor = 0;
+};
+
+// The box of metric `m` in `font` that starts at `edge` in reading order,
+// its left edge, or its right edge when `mirrored`.
+[[nodiscard]] ValueBox value_box(const Font &font, Metric m, int edge,
+                                 bool mirrored);
+
+// Draws `v` with its baseline at `y`. A number, digits with an optional
+// '-' and '.', sits in `box` on its anchor in tabular figures, its digits
+// left to right whether or not the box is `mirrored`. Anything else, such
+// as Str::NoValue, draws as plain text from the box start, the left edge or
+// the right edge when `mirrored`, as a value did before the box. A number
+// wider than the box, which only a value outside MetricInfo's range can be,
+// keeps its tabular figures and starts at the box start.
+void draw_value(Canvas &c, const Font &font, const ValueBox &box, int y,
+                std::string_view v, bool mirrored);
 
 // Draws `page` of the model into the canvas, clearing it first.
 void render(Canvas &c, std::uint8_t page, const Model &model,

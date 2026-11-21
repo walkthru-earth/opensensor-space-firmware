@@ -2,8 +2,12 @@
 
 // The 400 x 300 class, the 4.2 inch CrowPanel. Every value here reproduces
 // the frame the board drew before the UI moved to firmware/common, the golden
-// hashes in tools/test_epaper_ui.py hold it to the pixel. The settings popup
-// is the one exception, its rows are 2 px tighter since the Rotation row.
+// hashes in tools/test_epaper_ui.py hold it to the pixel. Two exceptions.
+// The settings popup rows are 2 px tighter since the Rotation row. The hero
+// value box, four whole digit cells, the point and one decimal cell of the
+// hero font, runs from x 4 to 231, so the hero plot starts at x 235, not
+// 218, and ends on the header margin at 392, not 390. Its captions fit the
+// widest PM in both languages.
 
 namespace opensensor::ui {
 
@@ -28,12 +32,12 @@ const Layout kLayout400x300{
                .battery_gap = 3},
     .hero = {.label = {.x = 10, .y = 42},
              .unit_gap = 6,
-             .value = {.x = 8, .y = 106},
+             .value = {.x = 4, .y = 106},
              .pill = {.x = 8, .y = 114},
              .pill_h = 21,
              .pill_pad = 8,
              .pill_baseline = 15,
-             .plot = {.x = 218, .y = 50, .w = 172, .h = 66},
+             .plot = {.x = 235, .y = 50, .w = 157, .h = 66},
              .plot_caption_y = 42,
              .plot_foot_dy = 16,
              .plot_rule_gap = 2,
@@ -53,8 +57,9 @@ const Layout kLayout400x300{
              .footer_rule_y = 274,
              .footer_y = 291},
     .chart_page = {.sub_gap = 8,
-                   .stats_y = 68,
-                   .stats_step = 120,
+                   .stats = {{{.x = 10, .y = 68},
+                              {.x = 130, .y = 68},
+                              {.x = 250, .y = 68}}},
                    .stat_gap = 5,
                    .chart = {.x = 46, .y = 82, .w = 344, .h = 186}},
     .chart = {.x_tick = 3,

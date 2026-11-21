@@ -10,6 +10,8 @@
 // preview, `pixi run epaper-ui-preview` writes every page at each size and
 // rotation.
 
+#include <array>
+
 #include "epaper_ui/fonts.h"
 #include "epaper_ui/geometry.h"
 #include "epaper_ui/profile.h"
@@ -89,10 +91,14 @@ struct PageLayout {
 };
 
 struct ChartPageLayout {
-  int sub_gap = 0;    // Between the title and its unit line.
-  int stats_y = 0;    // now, min and max.
-  int stats_step = 0; // From one stat to the next.
-  int stat_gap = 0;   // Between a stat name and its value.
+  int sub_gap = 0; // Between the title and its unit line.
+  // The name baseline of now, min and max, its left end, mirrored in a
+  // right to left language. Each value box, value_slots() digit cells wide,
+  // starts stat_gap after its name, so a stat on the same line starts after
+  // the widest value of the stat before it. A portrait page has no room for
+  // the three on one line in Arabic, so min and max go on a second line.
+  std::array<Point, 3> stats{};
+  int stat_gap = 0; // Between a stat name and its value.
   Rect chart;
 };
 

@@ -2,7 +2,8 @@
 
 // The 800 x 480 class turned to portrait, 480 x 800, for R90 and R270. The
 // same large fonts. The hero plot moves under the band pill and the six
-// tiles stack 2 x 3 in the tall lower half.
+// tiles stack 2 x 3 in the tall lower half. A chart page shows now on one
+// line and min and max on the next, as the 300 x 400 class does.
 
 namespace opensensor::ui {
 
@@ -52,10 +53,11 @@ const Layout kLayout480x800{
              .footer_rule_y = 730,
              .footer_y = 758},
     .chart_page = {.sub_gap = 12,
-                   .stats_y = 116,
-                   .stats_step = 150,
+                   .stats = {{{.x = 16, .y = 116},
+                              {.x = 16, .y = 146},
+                              {.x = 236, .y = 146}}},
                    .stat_gap = 8,
-                   .chart = {.x = 84, .y = 136, .w = 380, .h = 618}},
+                   .chart = {.x = 84, .y = 166, .w = 380, .h = 588}},
     .chart = {.x_tick = 5,
               .x_label_gap = 6,
               .y_tick_dx = 7,
