@@ -197,12 +197,13 @@ def main() -> None:
         directory = Path(temporary)
         executable = directory / "fixture"
         # A pure header compiles alone, so it never leans on include order.
-        for header in (firmware / "power_registers.h",):
+        # screen_header.h holds the header layout and battery icon asserts.
+        for header in (firmware / "power_registers.h", firmware / "screen_header.h"):
             alone = directory / f"{header.stem}_alone.cpp"
             alone.write_text(f'#include "{header.as_posix()}"\n')
             subprocess.run(["clang++", CXX_STD, "-Wall", "-Wextra", "-Werror", "-fsyntax-only", str(alone)],
                            check=True)
-        print("PASS power_registers.h compiles on its own", flush=True)
+        print("PASS power_registers.h and screen_header.h compile on their own", flush=True)
         command = ["clang++", CXX_STD, "-Wall", "-Wextra", "-Werror"]
         for include in (common, root / "firmware/common/logger/src",
                         root / "firmware/common/connectivity/src",
