@@ -15,7 +15,7 @@
 // bakes, so run pixi run text-fonts after changing an Arabic string. Keep
 // each row on one line with no escapes, the generator parses it.
 
-// Header. ClockFmt takes %02d hours and %02d minutes.
+// Header. ClockFmt takes %02d hours and %02d minutes, BatteryFmt %u percent.
 OS_TEXT_LTR(Brand, "OpenSensor")
 OS_TEXT_LTR(ClockFmt, "%02d:%02d UTC")
 OS_TEXT_LTR(ClockUnset, "--:-- UTC")
@@ -23,6 +23,7 @@ OS_TEXT_LTR(TagWifi, "WiFi")
 OS_TEXT_LTR(TagBle, "BLE")
 OS_TEXT_LTR(TagSd, "SD")
 OS_TEXT(TagNoSd, "no SD", "مفيش SD")
+OS_TEXT_LTR(BatteryFmt, "%u%%")
 
 // A value that is not valid, and why. WarmingFmt takes %u seconds left.
 OS_TEXT_LTR(NoValue, "--")

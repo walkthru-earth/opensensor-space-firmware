@@ -829,7 +829,8 @@ ui::Model model_of(const UiFeed &f) {
               .sensor_status = r.device_status,
               .sensor_present = f.sensor_present,
               .pairing_passkey = f.passkey,
-              .device_name = f.device_name.data()};
+              .device_name = f.device_name.data(),
+              .battery = std::nullopt}; // no battery on this board
   return m;
 }
 

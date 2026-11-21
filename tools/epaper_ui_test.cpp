@@ -756,13 +756,98 @@ void test_render_all_pages() {
                  .sensor_status = 0xFFFFFFFFU,
                  .sensor_present = true,
                  .pairing_passkey = std::nullopt,
-                 .device_name = "OS-ABCDEF"};
+                 .device_name = "OS-ABCDEF",
+                 // Past 100 percent and charging, the clamp and the mark.
+                 .battery = Battery{.percent = 255, .charging = true}};
   for (std::uint32_t t = 0; t < 3 * 3600; t += 10)
     h->push(t, all(static_cast<float>(t % 500)));
   for (std::uint8_t p = 0; p < kPageCount; ++p)
     render(b->canvas, p, full, *h);
   full.status.utc_s = -1;
   render(b->canvas, kStatusPage, full, *h);
+}
+
+// The battery charge fills in proportion and clamps past 100 percent, the
+// header without a battery draws as it did before the icon, and the icon
+// only ever adds ink to the header's right side.
+void test_battery_header() {
+  static_assert(battery_fill(26, 0) == 0);
+  static_assert(battery_fill(26, 50) == 13);
+  static_assert(battery_fill(26, 100) == 26);
+  static_assert(battery_fill(26, 150) == 26);
+  static_assert(battery_fill(26, 255) == 26);
+  static_assert(battery_fill(0, 50) == 0);
+  static_assert(battery_fill(-3, 100) == 0);
+  CHECK(battery_fill(12, 1) == 0);
+  CHECK(battery_fill(12, 5) == 1);
+  CHECK(battery_fill(12, 99) == 12);
+  for (int p = 0; p <= 255; ++p) {
+    const int f = battery_fill(26, static_cast<std::uint8_t>(p));
+    CHECK(f >= 0 && f <= 26);
+    if (p > 0)
+      CHECK(f >= battery_fill(26, static_cast<std::uint8_t>(p - 1)));
+  }
+
+  auto h = std::make_unique<History>();
+  Model m{};
+  m.status.utc_s = 1795437120;
+  m.status.sd_ok = true;
+  m.status.ble = Link::Connected;
+  m.status.wifi = Link::Waiting;
+  // The frame drawn with `battery`, at `p` and `r`.
+  const auto draw = [&](const DisplayProfile &p, Rotation r,
+                        std::optional<Battery> battery) {
+    Buffer b(p, r);
+    m.status.battery = battery;
+    render(b.canvas, kDashboardPage, m, *h);
+    return b.bytes;
+  };
+  // The rows of a frame from `y0` down, R0 rows run width / 8 bytes.
+  const auto rows_from = [](const std::vector<std::uint8_t> &f, int width,
+                            int y0) {
+    return std::vector<std::uint8_t>(
+        f.begin() + static_cast<std::ptrdiff_t>(y0 * width / 8), f.end());
+  };
+  for (const DisplayProfile *p : {&kHost400x300, &kHost800x480}) {
+    Buffer probe(*p, Rotation::R0);
+    const int w = probe.canvas.width();
+    const int rule_y = probe.canvas.layout().header.height;
+    const auto none = draw(*p, Rotation::R0, std::nullopt);
+    const auto empty = draw(*p, Rotation::R0, Battery{.percent = 0});
+    const auto half = draw(*p, Rotation::R0, Battery{.percent = 50});
+    const auto full = draw(*p, Rotation::R0, Battery{.percent = 100});
+    const auto over = draw(*p, Rotation::R0, Battery{.percent = 200});
+    const auto charging =
+        draw(*p, Rotation::R0, Battery{.percent = 50, .charging = true});
+    CHECK(none != empty);
+    CHECK(empty != half);
+    CHECK(half != full);
+    CHECK(half != charging);
+    // A percent past 100 draws as 100.
+    CHECK(full == over);
+    // Only the header moves, the rule and every row under it stay.
+    CHECK(rows_from(none, w, rule_y) == rows_from(full, w, rule_y));
+    // The percent ends on the right margin, as the last tag did, and the
+    // icon adds ink to the header.
+    Buffer with(*p, Rotation::R0);
+    m.status.battery = Battery{.percent = 100};
+    render(with.canvas, kDashboardPage, m, *h);
+    Buffer without(*p, Rotation::R0);
+    m.status.battery = std::nullopt;
+    render(without.canvas, kDashboardPage, m, *h);
+    const int margin = with.canvas.layout().header.margin;
+    CHECK(ink_count(with.canvas, {w - margin, 0, margin, rule_y}) == 0);
+    CHECK(ink_count(with.canvas, {0, 0, w, rule_y}) >
+          ink_count(without.canvas, {0, 0, w, rule_y}));
+  }
+  // At 300 x 400 the three tags leave the clock no room for even the icon,
+  // so the header draws as it does with no battery. With one tag fewer the
+  // icon comes back.
+  CHECK(draw(kHost400x300, Rotation::R90, Battery{.percent = 87}) ==
+        draw(kHost400x300, Rotation::R90, std::nullopt));
+  m.status.wifi = Link::Off;
+  CHECK(draw(kHost400x300, Rotation::R90, Battery{.percent = 87}) !=
+        draw(kHost400x300, Rotation::R90, std::nullopt));
 }
 
 // While a phone pairs every page shows the same pairing screen, the passkey
@@ -2752,6 +2837,7 @@ int main() {
   test_quality_and_format();
   test_navigation();
   test_render_all_pages();
+  test_battery_header();
   test_pairing_screen();
   test_settings_blob();
   test_popup_rows();

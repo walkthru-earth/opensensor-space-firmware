@@ -27,6 +27,14 @@ struct HeaderLayout {
   int tag_pad = 0; // Text inset on each side of a tag.
   int tag_baseline = 0;
   int tag_gap = 0; // Between two tags.
+  // The battery icon at the right edge, drawn only when the board reports a
+  // battery. Its body is centred on the tag boxes, the terminal nub sits on
+  // its right and the percent follows it in the tag font.
+  int battery_w = 0; // Body, the nub not included.
+  int battery_h = 0;
+  int battery_nub = 0;  // Nub width, its height is half the body's.
+  int battery_line = 0; // Outline thickness, also the charging mark's.
+  int battery_gap = 0;  // Between the icon and the percent.
 };
 
 // The PM2.5 hero on the dashboard, its band pill and the 2 h plot.

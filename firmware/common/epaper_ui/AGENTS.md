@@ -96,6 +96,11 @@ then paste the hash the failure prints, and say so in the PR.
   hints, the footnotes, the status names and the tile labels at 400x300,
   300x400, 800x480 and 480x800. Look at the Arabic previews after a string
   change.
+- `Status::battery` is optional. Empty, the header draws exactly as before
+  and the CrowPanel goldens hold. A board with a PMIC fills it from a cache
+  its board task keeps, never by reading the bus on the display task. The
+  header drops the percent, then the icon, before the clock would touch the
+  brand.
 - No colons, semicolons or em dashes in panel copy, in either language.
 
 ## Fonts

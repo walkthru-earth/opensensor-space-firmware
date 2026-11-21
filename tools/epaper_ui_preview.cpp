@@ -134,7 +134,8 @@ Status base_status() {
           .sensor_status = 0U,
           .sensor_present = true,
           .pairing_passkey = std::nullopt,
-          .device_name = "OS-7F3A2C"};
+          .device_name = "OS-7F3A2C",
+          .battery = std::nullopt};
 }
 
 int emit(const Target &t, const char *name, std::uint8_t page, const Model &m,
@@ -243,6 +244,20 @@ int scenes(const Target &target) {
     rc |= emit(target, "status", kStatusPage, m, *h);
     rc |= emit_dark(target, "status-dark", kStatusPage, m, *h);
 
+    // A board with a battery, the header gains the icon and the percent. A
+    // charging one shows the plus, and an empty one only the outline.
+    {
+      Model bm = m;
+      bm.status.battery = Battery{.percent = 87, .charging = false};
+      rc |= emit(target, "dashboard-battery", kDashboardPage, bm, *h);
+      rc |= emit_dark(target, "dashboard-battery-dark", kDashboardPage, bm, *h);
+      bm.status.battery = Battery{.percent = 42, .charging = true};
+      rc |= emit(target, "status-battery-charging", kStatusPage, bm, *h);
+      bm.status.battery = Battery{.percent = 0, .charging = false};
+      bm.status.wifi = Link::Off;
+      rc |= emit(target, "chart-battery-empty", 1, bm, *h);
+    }
+
     // The same day with bad air right now.
     std::array<float, kMetricCount> bad = last;
     bad[index(Metric::Pm25)] = 142.6F;
@@ -342,6 +357,10 @@ int scenes(const Target &target) {
     fill_now(m, v, 5 * 60);
     m.now[index(Metric::Co2)] = quality_for(Metric::Co2, std::nullopt, 300U);
     rc |= emit(target, "dashboard-gap", kDashboardPage, m, *h);
+    // The widest header, every tag and a full battery on its charger.
+    m.status.battery = Battery{.percent = 100, .charging = true};
+    rc |= emit(target, "dashboard-gap-battery", kDashboardPage, m, *h);
+    m.status.battery = std::nullopt;
     rc |= emit(target, "chart-gap", 1, m, *h);
     rc |= emit(target, "status-fault", kStatusPage, m, *h);
   }
