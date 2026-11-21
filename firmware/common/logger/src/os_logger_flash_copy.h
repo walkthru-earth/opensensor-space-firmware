@@ -13,7 +13,7 @@
 #include <expected>
 #include <optional>
 #include <span>
-#include <string_view>
+#include <string_view> // std::char_traits in the constexpr name checks
 #include <sys/stat.h>
 
 // Copy back of one flash archive file to the card (decision record 0004,
