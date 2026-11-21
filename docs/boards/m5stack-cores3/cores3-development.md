@@ -1,6 +1,6 @@
 # CoreS3 C/C++ development
 
-The current application is pure **ESP-IDF 6.1**, with native M5Unified
+The current application is pure **ESP-IDF 6.1.1**, with native M5Unified
 **0.3.0** and M5GFX **0.3.0** components. Native board and fixture builds plus
 host gates pass. A [short native SD/USB/network-time run](bench-verified.md#board-1-first-native-esp-idf-flash-and-readback)
 also passed; phone transfers and endurance remain pending. Use the
@@ -11,7 +11,7 @@ and [shared development guide](../../shared/development.md).
 
 | Layer | Pin observed 2026-11-09 | Integration |
 | --- | --- | --- |
-| ESP-IDF | [6.1](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32s3/get-started/index.html) | Native ESP32-S3 C/C++, Kconfig, FreeRTOS, drivers, NimBLE, Wi-Fi/netif/SNTP |
+| ESP-IDF | [6.1.1](https://docs.espressif.com/projects/esp-idf/en/v6.1.1/esp32s3/get-started/index.html) | Native ESP32-S3 C/C++, Kconfig, FreeRTOS, drivers, NimBLE, Wi-Fi/netif/SNTP |
 | M5Unified | [0.3.0](https://github.com/m5stack/M5Unified/releases/tag/0.3.0) | Native component owns board services and power; [manifest](../../../firmware/esp-idf-cores3/components/os_cores3/idf_component.yml) |
 | M5GFX | [0.3.0](https://github.com/m5stack/M5GFX/releases/tag/0.3.0) | Native display and SPI2 bus owner; SD borrows that controller |
 | mDNS | [1.15.1](https://components.espressif.com/components/espressif/mdns/versions/1.15.1) | Managed component used by shared LAN transport |
@@ -40,7 +40,7 @@ belong to each board adapter.
   NVS and VFS APIs. Every repo component builds as C++23, see the
   [C++ dialect pin](../../shared/development.md#c-dialect). Exceptions and RTTI
   remain off.
-  [C++ constraints](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32s3/api-guides/cplusplus.html).
+  [C++ constraints](https://docs.espressif.com/projects/esp-idf/en/v6.1.1/esp32s3/api-guides/cplusplus.html).
 - Initialize M5 board services once. Disable unused services through `M5.config()`
   before `M5.begin(cfg)`. M5Unified owns internal I²C; never create another
   driver on the same controller. Shared register drivers borrow board callbacks.

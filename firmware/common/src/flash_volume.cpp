@@ -36,7 +36,7 @@ std::expected<std::int32_t, FlashMountCode> mount_once(void *, bool format) {
       kFlashMountPoint, kFlashPartitionLabel, &config, &handle);
   if (result == ESP_OK)
     return static_cast<std::int32_t>(handle);
-  // ESP-IDF 6.1 leaves the wear levelling instance mounted when the FAT
+  // ESP-IDF 6.1.1 leaves the wear levelling instance mounted when the FAT
   // layer fails after wl_mount. Release it so a retry does not open a second
   // instance on the same partition. wl_mount resets the handle to
   // WL_INVALID_HANDLE on its own failure.

@@ -443,7 +443,7 @@ writes nothing looking alive.
   board table reserves the 64 KiB `coredump` partition, each board
   application requires the `espcoredump` component, and the shared defaults
   enable `CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH` with a 2660 byte dump stack
-  (2560 plus 100 bytes that IDF 6.1 always adds). The board build
+  (2560 plus 100 bytes that IDF 6.1.1 always adds). The board build
   fails when the image lacks the dump, see `tools/check_idf_target.py`. A
   bench task watchdog reset on the Waveshare board with Wi-Fi off wrote a
   24992 byte dump that `coredump-info` decoded. A dump larger than the

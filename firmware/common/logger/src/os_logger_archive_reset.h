@@ -13,7 +13,7 @@ namespace opensensor::logger::detail {
 
 struct ArchiveResetIo {
 #ifdef ESP_PLATFORM
-  // These roots are exclusively on the board's mounted FAT volume. IDF 6.1
+  // These roots are exclusively on the board's mounted FAT volume. IDF 6.1.1
   // FatFs exposes only file/directory types and has no symbolic-link/lstat
   // implementation (components/fatfs/vfs/vfs_fat.c). Never reuse this default
   // on another filesystem. Host filesystems must inspect links themselves.

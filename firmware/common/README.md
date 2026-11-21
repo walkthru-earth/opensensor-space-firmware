@@ -2,7 +2,7 @@
 
 The common tree contains eleven opt-in native ESP-IDF components, **OSCommon**,
 **OSSensors**, **OSRuntime**, **OSConnectivity**, **OSLogger**, **OSLocation**, `stac`, `gnss`, `gnss_reader`, `power` and `upload`. The target is ESP32-S3 with
-ESP-IDF 6.1; application source uses no Arduino APIs. Pure framing, encoding and
+ESP-IDF 6.1.1; application source uses no Arduino APIs. Pure framing, encoding and
 math plus the actual status/provisioning helpers remain host-testable. Boards
 own peripheral initialization and consume only the required components.
 

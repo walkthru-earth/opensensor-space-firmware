@@ -1,7 +1,7 @@
 # Background sync triggers: letting the device wake the phone
 
 
-> **Board scope:** Native ESP-IDF 6.1 CoreS3 and Waveshare logger adapters share
+> **Board scope:** Native ESP-IDF 6.1.1 CoreS3 and Waveshare logger adapters share
 > advertising/sync behavior while retaining separate schemas and board capabilities.
 > The dated OnePlus/CoreS3 wake measurements below belong to their historical
 > Arduino images; they do not establish native radio or Waveshare wake behavior.

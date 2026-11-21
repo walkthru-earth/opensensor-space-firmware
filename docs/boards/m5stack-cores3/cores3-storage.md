@@ -1,6 +1,6 @@
 # CoreS3 microSD and logging
 
-Current source uses native ESP-IDF 6.1 SDSPI on the existing M5GFX SPI2 bus.
+Current source uses native ESP-IDF 6.1.1 SDSPI on the existing M5GFX SPI2 bus.
 Native builds pass; a [short native write/USB readback](bench-verified.md#board-1-first-native-esp-idf-flash-and-readback)
 passed at 20 MHz. Sustained display/card arbitration and SD durability require
 qualification. Dated measurements below remain historical Arduino
@@ -71,8 +71,8 @@ The measured LZ4 comparison cut file bytes by 50.7% and median finalization by 2
 [gfx]: https://github.com/m5stack/M5GFX/blob/0.3.0/src/M5GFX.cpp
 [power]: https://github.com/m5stack/M5Unified/blob/0.3.0/src/utility/Power_Class.inl
 [board]: https://docs.m5stack.com/en/core/CoreS3
-[sharing]: https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32s3/api-reference/peripherals/sdspi_share.html
-[sdspi]: https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32s3/api-reference/peripherals/sdspi_host.html
-[fatfs]: https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32s3/api-reference/storage/fatfs.html
+[sharing]: https://docs.espressif.com/projects/esp-idf/en/v6.1.1/esp32s3/api-reference/peripherals/sdspi_share.html
+[sdspi]: https://docs.espressif.com/projects/esp-idf/en/v6.1.1/esp32s3/api-reference/peripherals/sdspi_host.html
+[fatfs]: https://docs.espressif.com/projects/esp-idf/en/v6.1.1/esp32s3/api-reference/storage/fatfs.html
 [appnote]: https://elm-chan.org/fsw/ff/doc/appnote.html
 [sync]: https://elm-chan.org/fsw/ff/doc/sync.html

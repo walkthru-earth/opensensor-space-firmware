@@ -1,6 +1,6 @@
 # Shared development workflow
 
-This repository targets ESP32-S3 with native **ESP-IDF 6.1**. Application source
+This repository targets ESP32-S3 with native **ESP-IDF 6.1.1**. Application source
 uses no Arduino APIs or Arduino component. Board pins, PSRAM mode, power
 sequencing, storage mounting and hardware evidence belong to the board adapter;
 the eleven opt-in components (OSCommon, OSSensors, OSRuntime, OSConnectivity,
@@ -33,7 +33,7 @@ pixi run epaper397-build
 | [CrowPanel e-paper](../../firmware/esp-idf-crowpanel-epaper/README.md) | `logger/main.cpp`, board IO adapter, UC8276C driver and the shared `common/epaper_ui` UI | 8 MB flash, OPI PSRAM, UART0 console through the USB bridge, SDSPI on SPI3, SEN63C on I2C, UC8276C e-paper on SPI2 | Flashed and booted on 2026-11-17 with no SEN63C wired. Panel, keys, sensor readings, sync and durability remain unqualified, see the [bench record](../boards/elecrow-crowpanel-epaper-42/bench-verified.md) |
 | [Waveshare ePaper-3.97](../boards/waveshare-esp32-s3-epaper-397/README.md) | `logger/main.cpp`, board IO adapter, SSD1677 driver and the shared `common/epaper_ui` UI | 16 MB flash, OPI PSRAM, USB Serial/JTAG console, 4-bit SDMMC, SEN63C on I2C, SSD1677 e-paper on SPI3, QMI8658A accelerometer | Flashed, booted and logged SEN63C rows on 2026-11-20. The shared UI is built and host tested only. Panel visuals, keys, orientation, sync and durability remain unqualified, see the [bench record](../boards/waveshare-esp32-s3-epaper-397/bench-verified.md) |
 
-`tools/idf-dependencies.lock` pins ESP-IDF 6.1 and its exact source commit.
+`tools/idf-dependencies.lock` pins ESP-IDF 6.1.1 and its exact source commit.
 Component manifests pin M5Unified **0.3.0**, M5GFX **0.3.0**, mDNS **1.15.1**
 and Waveshare led_strip **3.1.1**. `pixi run telemetry-contract-test` fails
 when the CoreS3 M5 versions in `dependencies.env`, the `os_cores3` manifest,
@@ -47,18 +47,19 @@ through `tools/h3_library.py`, which clones it once per locked commit into
 and fails when the board locks disagree. It reads the locks of every app in
 the board registry.
 Policy is to pin the latest stable release of every dependency. Rechecking on
-**2026-11-09** confirmed mDNS **1.15.1**, led_strip **3.1.1**, ESP-IDF **6.1**
-and H3 **4.5.0** as latest, and M5Unified and M5GFX **0.3.0** as their latest
-releases. Dated device evidence records which component versions each
+**2026-11-21** confirmed mDNS **1.15.1**, led_strip **3.1.1** and ESP-IDF
+**6.1.1** as latest, and M5Unified and M5GFX **0.3.0** as their latest
+releases. H3 **4.6.0** came out on 2026-11-18 and the pin stays at **4.5.0**
+until the H3 library moves to it. Dated device evidence records which component versions each
 qualified image used. LZ4 is vendored **1.11.0** with checked hashes, the
 [official latest release](https://github.com/lz4/lz4/releases/tag/v1.11.0)
 when checked on 2026-11-09.
 Commit each board’s generated `dependencies.lock` to pin transitive component
 resolution. The Waveshare diagnostic variant keeps its own in
 `diagnostic/dependencies.lock`, so building it leaves the logger lock alone. Downloaded
-`managed_components/` and build outputs are ignored. Use the [ESP-IDF 6.1 programming guide](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32s3/get-started/index.html),
-[native NimBLE APIs](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32s3/api-reference/bluetooth/nimble/index.html)
-and [netif/SNTP manual](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32s3/api-reference/network/esp_netif_programming.html)
+`managed_components/` and build outputs are ignored. Use the [ESP-IDF 6.1.1 programming guide](https://docs.espressif.com/projects/esp-idf/en/v6.1.1/esp32s3/get-started/index.html),
+[native NimBLE APIs](https://docs.espressif.com/projects/esp-idf/en/v6.1.1/esp32s3/api-reference/bluetooth/nimble/index.html)
+and [netif/SNTP manual](https://docs.espressif.com/projects/esp-idf/en/v6.1.1/esp32s3/api-reference/network/esp_netif_programming.html)
 when changing integrations.
 
 `tools/idf-env.sh` derives every SDK path for `idf-setup` and the build
@@ -100,7 +101,7 @@ require the checked character-device port and a matching backup of exactly the
 board's registered `tooling.flash_bytes`,
 and flash the verified image without an implicit rebuild or full-chip erase. They use
 Pixi's pinned esptool with the validated generated `flash_args` response file;
-ESP-IDF 6.1 has no `idf.py --no-deps` option. Only bootloader, partition table,
+ESP-IDF 6.1.1 has no `idf.py --no-deps` option. Only bootloader, partition table,
 OTA metadata and app0 regions are written. NVS is outside this plan.
 
 ```sh
@@ -203,7 +204,7 @@ host, even when decoding fails. There is no LAN core dump on purpose.
 
 ### C++ dialect
 
-Firmware and host tests are pinned to C++23. ESP-IDF 6.1 adds `-std=gnu++26`
+Firmware and host tests are pinned to C++23. ESP-IDF 6.1.1 adds `-std=gnu++26`
 for chip targets, so every repo-owned component calls
 `os_pin_cxx_standard(${COMPONENT_LIB})` from
 [`firmware/cmake/os_cxx_standard.cmake`](../../firmware/cmake/os_cxx_standard.cmake),

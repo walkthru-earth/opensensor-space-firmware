@@ -1,6 +1,6 @@
 # CoreS3 wireless: constraints and tuning
 
-The current application uses native ESP-IDF 6.1 NimBLE, Wi-Fi events/netif/SNTP
+The current application uses native ESP-IDF 6.1.1 NimBLE, Wi-Fi events/netif/SNTP
 and managed mDNS 1.15.1. See [native source and qualification](../../../firmware/esp-idf-cores3/README.md#native-board-ownership-and-qualification)
 and the [shared wire contract](../../shared/ble-sync-protocol.md). Native radio
 checks restored the original Bluetooth identity and two bonds, and observed
@@ -8,7 +8,7 @@ network UTC; bonded reconnect and transfers remain pending. Arduino APIs, perfor
 below describe historical images and are not native bench evidence.
 
 Load for Wi-Fi/BLE/ESP-NOW design or debugging. Source-checked 2026-09-06; implementation scope updated 2026-09-17; target **ESP32-S3**. Only short BLE sync sessions and one Wi-Fi scan have been bench-verified in this project; no Wi-Fi association or coexistence load has.
-SDK/library pins: [development](cores3-development.md). Linked `stable` guides currently describe IDF 6.1; select the installed SDK version before copying APIs/Kconfig.
+SDK/library pins: [development](cores3-development.md). Linked `stable` guides currently describe IDF 6.1.1; select the installed SDK version before copying APIs/Kconfig.
 
 The historical Arduino trial logged Parquet to SD without ESP-NOW, NTP or object-storage upload; since 2026-09-16 it runs a BLE GATT sync service ([contract](../../shared/ble-sync-protocol.md), [measurements](bench-verified.md#board-1-bluetooth-le-sync)) and since protocol v2 an optional Wi-Fi station with a LAN sync server ([below](#wi-fi-station-and-lan-sync-in-the-arduino-trial)). Its UTC comes from an explicit USB host or phone command, not a network clock. Separate acquisition/storage tasks and available internal heap do not establish headroom under TLS/radio traffic or a dual-core speedup. When upload is added, preserve immutable file identities, read SD in bounded chunks, release the display/SD mutex before network waits, and remeasure jitter, drops and memory under reconnect/coexistence load. The acknowledgement/retention design is still planned in the [telemetry pipeline](../../shared/telemetry-pipeline.md#upload-and-cloud-layout).
 
@@ -83,8 +83,8 @@ Source-checked 2026-09-17 against the historical board-local Wi-Fi implementatio
 [coex]: https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-guides/coexist.html
 [now]: https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-reference/network/esp_now.html
 [now55]: https://github.com/espressif/esp-idf/blob/v5.5.5/components/esp_wifi/include/esp_now.h
-[now61]: https://github.com/espressif/esp-idf/blob/v6.1/components/esp_wifi/include/esp_now.h
-[nimble-config]: https://github.com/espressif/esp-idf/blob/v6.1/components/bt/host/nimble/Kconfig.in
+[now61]: https://github.com/espressif/esp-idf/blob/v6.1.1/components/esp_wifi/include/esp_now.h
+[nimble-config]: https://github.com/espressif/esp-idf/blob/v6.1.1/components/bt/host/nimble/Kconfig.in
 [station]: https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-guides/wifi-driver/station-scenarios.html
 [power]: https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-guides/wifi-driver/wifi-performance-and-power-save.html
 [security]: https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-guides/wifi-security.html
