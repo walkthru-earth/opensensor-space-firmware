@@ -9,6 +9,39 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## SET_CONFIG error details and the retired PIN (fix/config-error-detail-and-nvs-recovery)
+
+**Needs a matched reflash and an app check of its ERROR 12 handling.** No
+column, field id, LIVE key, STATUS key, config key, dictionary or digest
+changes.
+
+**What changed.**
+
+- `SET_CONFIG` ERROR 12 never echoes request text (#220). A line with no `=`
+  now answers `detail="no-equals"` instead of the line itself. Text before the
+  first `=` that is not a key the firmware or the board knows, or is empty,
+  now answers `detail="unknown-key"` instead of that text. A known key with a
+  refused value still answers with the key. A board key goes back by name
+  only when the board owns it and refused its value.
+- `SET_CONFIG` refuses `ble.pin` set to the retired default with ERROR 12
+  `detail="ble.pin"` (#177). Every other six digit value is still accepted.
+- The serial `parquet config-hex` reply uses the same two words, so
+  `no-equals` and `unknown-key` replace `invalid-key` for those cases.
+
+**Why.** A phone that sent `wifi.psk secret` without the `=`, or a PSK with a
+stray `=` on a malformed line, got its Wi-Fi password back in the ERROR
+detail, and that detail can reach logs and screenshots. The retired default
+PIN is known to everyone, and load() already rotates it away, so a phone must
+not be able to set it again.
+
+**What the app must do.**
+
+- Map `no-equals` and `unknown-key` to a message that says the request was
+  malformed, without showing request text. Never display or log the line the
+  app sent as a stand in for the detail.
+- Before sending `ble.pin`, refuse the retired default in the app too, and on
+  ERROR 12 `detail="ble.pin"` ask the owner for another PIN.
+
 ## Internal flash fallback archive (feat/flash-fallback-archive)
 
 **Needs a matched reflash of all four boards. No app change is required.**

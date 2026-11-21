@@ -8,7 +8,7 @@ Arduino bench results remain tied to their recorded board/image identities.
 
 ## Implemented
 
-- BLE uses LE Secure Connections and bonding. Display-equipped CoreS3 devices show a fresh random passkey per pairing attempt. Display-less devices use a random per-device six-digit fixed PIN stored in NVS; operators can replace it with `ble.pin`, and legacy installations that still contain the old universal `123456` value rotate it at boot.
+- BLE uses LE Secure Connections and bonding. Display-equipped CoreS3 devices show a fresh random passkey per pairing attempt. Display-less devices use a random per-device six-digit fixed PIN stored in NVS; operators can replace it with `ble.pin`, and legacy installations that still contain the retired default rotate it at boot, and `SET_CONFIG` refuses the retired default with `ERROR` 12 `detail="ble.pin"`.
 - BLE configuration does not return the fixed PIN or Wi-Fi PSK. LAN bearer tokens are 32 random bytes, returned only over an authenticated BLE link, can be rotated, and are never included in CONFIG JSON or normal logs.
 - Wi-Fi is off until enabled/provisioned; LAN runs only while connected and `lan.on` is enabled. Driver credentials use RAM storage and `oscfg` alone persists them. Constant-time token comparison and a bounded three-client pool preserve independent sessions; rejected/full-pool challengers do not evict authenticated peers.
 - Finalized files are structurally checked and immutable. Interrupted `.partial` files are moved under `/output/quarantine/` at startup or right after a same-boot failure, never silently repaired, published, or deleted. Bounded status counters expose total quarantine files and bytes across boots without exposing filenames.

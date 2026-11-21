@@ -273,14 +273,14 @@ void validation() {
   assert(config::load(true));
   reject("wifi.on=1", "wifi.ssid");
   reject("wifi.ssid=accepted\nble.pin=wrong", "ble.pin");
-  reject("lan.rotate_token=true\nunknown=1", "unknown");
+  reject("lan.rotate_token=true\nunknown=1", "unknown-key");
   reject("ble.pair=fixed\nwifi.on=yes", "wifi.on");
   reject("ble.pin=01234", "ble.pin");
   reject("ble.pin=01234x", "ble.pin");
   reject("ble.pair=invalid", "ble.pair");
   reject("\r\n\n", "empty");
   reject(std::string(config::kNtpServerMax + 32, 'x'), "line-too-long");
-  reject("missing-equals", "missing-equals");
+  reject("missing-equals", "no-equals");
   std::string nul = "wifi.ssid=visible";
   nul.push_back('\0');
   nul += "hidden";
@@ -1295,7 +1295,7 @@ void owner_configuration() {
   reject("thing.deployment_id=giza-01\nowner.title=" + std::string(65, 't'),
          "owner.title");
   reject("owner.title=New\nble.pin=12", "ble.pin");
-  reject("owner.email=owner@example.org", "owner.email");
+  reject("owner.email=owner@example.org", "unknown-key");
   assert(std::strcmp(config::deployment_id().text.data(), "cairo-07") == 0);
 
   // Round trip through the record, with escaping characters.
@@ -1786,10 +1786,10 @@ void board_keys() {
   // No hooks. Page 7 is an empty object and every board key is refused.
   assert(config::build_page(json, sizeof(json), config::kBoardKeysPage) == 2);
   assert(std::strcmp(json, "{}") == 0);
-  reject("panel.theme=dark", "panel.theme");
+  reject("panel.theme=dark", "unknown-key");
   // Part of the hooks counts as none.
   config::set_board_keys({.begin = [] {}});
-  reject("panel.theme=dark", "panel.theme");
+  reject("panel.theme=dark", "unknown-key");
   json[0] = '\0';
   assert(config::build_page(json, sizeof(json), config::kBoardKeysPage) == 2);
   assert(std::strcmp(json, "{}") == 0);
@@ -1802,11 +1802,12 @@ void board_keys() {
   install_fake_board();
   assert(config::build_page(json, sizeof(json), config::kBoardKeysPage));
   assert(std::strcmp(json, "{\"panel\":{\"theme\":\"light\"}}") == 0);
-  // A board key the board does not know, or a bad value, is refused.
-  reject("panel.other=1", "panel.other");
+  // A board key the board does not know, or a bad value, is refused. Only a
+  // key the board owns goes back by name (#220).
+  reject("panel.other=1", "unknown-key");
   reject("panel.theme=blue", "panel.theme");
   assert(board.commits == 0);
-  reject("thing.unknown=1", "thing.unknown");
+  reject("thing.unknown=1", "unknown-key");
   // A request refused for another key never commits the staged board key.
   reject("panel.theme=dark\nwifi.on=maybe", "wifi.on");
   assert(board.commits == 0);
@@ -1836,6 +1837,57 @@ void board_keys() {
   assert(logs.find("board_keys=1") != std::string::npos);
   assert(logs.find("panel.theme") == std::string::npos);
   config::set_board_keys({});
+}
+// No ERROR 12 detail echoes request text the firmware does not know (#220),
+// and the retired default PIN is refused (#177). The secret never reaches the
+// detail or the log, and the retired default is never printed.
+void secret_free_details() {
+  assert(config::load(false));
+  constexpr const char *kSecret = "secretvalue";
+  const auto refused = [&](const std::string &lines, const char *expected) {
+    reject(lines, expected);
+    config::Actions actions;
+    char bad_key[64];
+    assert(!apply(lines, actions, bad_key));
+    assert(!std::strstr(bad_key, kSecret));
+  };
+  // A PSK sent with a space for the '='.
+  refused("wifi.psk secretvalue", "no-equals");
+  refused("wifi.ssid=home\nwifi.psk secretvalue", "no-equals");
+  refused("secretvalue", "no-equals");
+  // A stray '=' inside the secret leaves the text before it as the key.
+  refused("wifi.psk secretvalue=x", "unknown-key");
+  refused("wifi.psksecretvalue=x", "unknown-key");
+  refused("secretvalue=1", "unknown-key");
+  refused("ntp.secretvalue=1", "unknown-key");
+  refused("=secretvalue", "unknown-key");
+  // A known key with a bad value names the key, never the value.
+  refused("wifi.psk=secretvalue\x7f", "wifi.psk");
+  refused("ble.pin=secretvalue", "ble.pin");
+  // With board hooks, an unknown board key is not echoed either.
+  install_fake_board();
+  refused("panel.secretvalue=1", "unknown-key");
+  refused("panel.theme=secretvalue", "panel.theme");
+  config::set_board_keys({});
+  assert(log_text().find(kSecret) == std::string::npos);
+
+  // The retired default is refused with detail ble.pin and changes nothing.
+  // The line is built from the constant so its digits never appear here.
+  char retired[32];
+  std::snprintf(retired, sizeof(retired), "ble.pin=%06u",
+                static_cast<unsigned>(config::kFactoryDefaultPin));
+  const auto before = config::get().pin;
+  refused(retired, "ble.pin");
+  refused(std::string("ble.pair=fixed\n") + retired, "ble.pin");
+  assert(config::get().pin == before && before != config::kFactoryDefaultPin);
+  // Any other six digit PIN is still accepted.
+  const std::uint32_t other =
+      config::kFactoryDefaultPin == 654321 ? 654320 : 654321;
+  char allowed[32];
+  std::snprintf(allowed, sizeof(allowed), "ble.pin=%06u",
+                static_cast<unsigned>(other));
+  accept(allowed);
+  assert(config::get().pin == other);
 }
 } // namespace
 
@@ -1882,6 +1934,8 @@ int main(int argc, char **argv) {
     setup_unavailable();
   else if (test == "board-keys")
     board_keys();
+  else if (test == "secret-free-details")
+    secret_free_details();
   else
     assert(false);
 }
