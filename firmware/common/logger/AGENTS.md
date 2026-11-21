@@ -48,6 +48,13 @@ initialization and each board's schema/provenance remain in its own trial.
   The bench only `parquet bench-stall` command stays inside
   `#if CONFIG_OS_LOGGER_BENCH_STALL` (default n), set only by
   `tools/idf-bench-stall-sdkconfig.defaults` through `OS_BENCH=stall`.
+- Flash fallback (decision record 0004). Each new file takes its root once at
+  create, from `archive_target::choose()`, and keeps it through finalize,
+  sidecar and quarantine. Never move an open file between roots. Copy back
+  runs only in an idle worker pass with the card Ready, no LIST and no
+  emergency close, one chunk per pass with the bus lock and a heartbeat, from
+  the PSRAM `FlashDrain`. It deletes a flash file only after a verified
+  identical copy and never deletes to make room. ERASE_ARCHIVE stays card only.
 - The STAC sidecar (#142) is opt in through `Config::stac_columns`. The worker
   writes `<file>.json` only after the Parquet rename, through
   `<file>.json.partial`, fsync and rename, and never replaces an existing one.

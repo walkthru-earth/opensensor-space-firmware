@@ -32,6 +32,52 @@ bus mutex callbacks, or use the engine's `lock_bus`/`unlock_bus` around shared
 transactions; complete display DMA before unlocking. No filesystem mounting,
 formatting, peripheral or controller initialization happens here. Output defaults
 to `/sd/output`; `legacy_directory` is opt-in for previous archives.
+`fallback_directory` names the archive root on the internal flash volume, set to
+`/flash/output` by a board built with `CONFIG_OS_LOGGER_FLASH_FALLBACK` whose
+boot mount succeeded (decision record 0004). `begin()` rejects a root that is
+not absolute, is longer than 31 bytes or overlaps the card archive or the
+codec-test root.
+
+With a fallback root the worker picks a root for each new file. The card
+takes it while the governor can write, else flash while its free space stays
+above `fallback_reserve_bytes` (128 KiB by default), else the rows wait in RAM.
+A file keeps its root until it finalizes, so a card that leaves mid-file keeps
+today's handling. A probe that finds the card back finalizes an open flash
+file, and the rows waiting in RAM then open a card file as the write test
+before Retry clears. Each change prints `OS STORAGE
+target=<card|flash|none>`, and the flash volume crossing its reserve prints
+`OS FLASH full free=<n> reserve=<n>` or `OS FLASH room free=<n>` once per
+transition. Nothing is deleted to make room. Boot quarantine also moves flash
+`.partial` files into `/flash/output/quarantine/` and prints `PARQUET RECOVERY
+... root=flash`. LIST walks the card, then the legacy root, then flash, and
+skips a flash name the card already holds. Without a card LIST and OPEN serve
+flash, and ERROR 8 means neither root is usable. OPEN and READ try the card
+first, then flash. LIST_SINCE answers `full` while flash holds files or after
+a copy moved one. A copy moves the mount epoch by one, and NVS
+`osflash/copies` keeps the count across reboots, stored a block of 16 ahead
+before a file moves. When the count cannot be read or stored the epoch is 0,
+copy back waits and `OS FLASH ERROR operation=copy-count list_since=full
+copy_back=held` prints once per boot. A walk without the card hands out
+epoch 0.
+
+While the card is Ready, no LIST runs and no emergency close is pending, the
+idle worker copies flash files back one chunk per pass, Parquet before its
+sidecar, verified by SHA-256, and prints `OS FLASH copy name=<relative>
+bytes=<n> result=<copied|identical|conflict|error|cancelled>`, then `OS FLASH
+copy done files=<n>` once flash is empty. Only a file whose identical copy is
+verified on the card is removed from flash. A conflict or crosslink suspect
+stays on both roots for the owner. ERASE_ARCHIVE erases card roots only. The
+serial `parquet erase-archive CONFIRM` closes an open flash telemetry file
+without a finalize, and the next boot quarantines its `.partial` on flash.
+
+Limits. The open card file at the moment a card is pulled does not move to
+flash. With the optional `storage_remount` hook the first Retry probe
+finalizes that file or quarantines it, and new rows go to a flash file from the
+next create. All four boards (CoreS3, Waveshare V2, CrowPanel and ePaper-3.97)
+set `storage_remount` and `storage_present`. A board with no remount hook never
+finalizes the open card file on a pull, so it falls back to flash only from the
+next file, as it handles card loss today. Flash holds only a few windows, see
+decision record 0004 for the sizes per board.
 
 `Config::sample_interval_ms` sets the sample period and the footer
 `acquisition.sample_interval_ms`. The default is 10 s, which both boards keep.
@@ -98,7 +144,11 @@ Hive tree and rotates on the same window measured on the boot's monotonic clock.
 An empty `unsynced/ringless=<boot>/` folder marks a boot whose NVS boot ring
 append failed, so a later `LIST_SINCE` still lists that boot's unsynced files.
 The logger removes it, best effort, when a later append in the same boot
-succeeds. Otherwise it stays until the archive is erased.
+succeeds. Otherwise it stays until the archive is erased. The marker goes on
+the card only, since copy back moves regular files and never an empty folder.
+A flash file of such a boot prints `PARQUET WARN operation=boot-ring-marker
+root=flash action=none` instead, and its copy back moves the mount epoch, so
+every cursor from before the copy lists in full.
 Finalization writes/syncs the
 footer, checks structure and CRC, then renames to immutable `.parquet`. Interrupted
 `.partial` files are retained under `quarantine/<thing>/<partition>/`, at boot

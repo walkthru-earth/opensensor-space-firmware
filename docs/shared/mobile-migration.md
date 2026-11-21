@@ -9,6 +9,74 @@ lives in [ble-sync-protocol.md](ble-sync-protocol.md). Files already on a phone
 or SD card are never rewritten by the firmware. After a matched reflash the
 owner wipes them and starts again.
 
+## Internal flash fallback archive (feat/flash-fallback-archive)
+
+**Needs a matched reflash of all four boards. No app change is required.**
+No column, field id, LIVE key, STATUS key, response, config key, dictionary
+or digest changes. Decision record 0004.
+
+**What changed.**
+
+- Without a writable card the board writes new Parquet files and sidecars to
+  its internal flash under `/flash/output`, with the same names and paths as
+  on the card, and copies them back to the card once one is Ready. The
+  ePaper-3.97 now opts in too, so all four boards do.
+- A card that comes back finalizes the open flash file at the next storage
+  probe, so that file can hold less than a full window. The rows waiting in
+  RAM then start a card file.
+- Without a card, `LIST`, `OPEN` and `READ` now answer from flash instead of
+  ERROR 8. ERROR 8 means neither root is usable. With a card, `LIST` adds the
+  flash files the card does not hold yet, after the card entries.
+- `LIST_SINCE` answers `full` while flash holds files or no card can be
+  listed, and STATUS `ls` steps by one for each file copied back, so a saved
+  cursor from before a copy reads as stale. The count of copies is kept in
+  NVS, so after a reboot `ls` stays above every epoch the board handed out
+  before a copy. A listing taken while no card can be listed carries epoch 0
+  in its cursor, so the next `LIST_SINCE` with the card back is `full`. `ls`
+  is 0 when the count cannot be read, and copy back then waits.
+- New serial log lines. A phone or log reader may see these on the console
+  and in a captured log. None of them is a wire frame.
+  - Boot mount. `OS FLASH mount ok=1 label=<l> total=<bytes> free=<bytes>
+    formatted=<0|1>`, or `OS FLASH mount ok=0 err=<name> formatted_flag=<0|1|unknown>`
+    when the volume stays off. `unknown` means the NVS flag could not be read,
+    and the board treats it as set, so it never formats. `OS FLASH ERROR operation=mount err=<name>
+    retry=1` marks the one retry before a format, and `OS FLASH ERROR
+    operation=<flag-read|flag-save>` marks an NVS flag fault.
+  - Root choice. `OS STORAGE target=<card|flash|none>` on each change.
+  - Space. `OS FLASH full free=<bytes> reserve=<bytes>` when flash falls below
+    its reserve and `OS FLASH room free=<bytes>` when room returns. Each prints
+    once per transition. `full` reports the flash volume, so it can print
+    while a card is the target.
+  - Copy back. `OS FLASH copy name=<relative> bytes=<n>
+    result=<copied|identical|conflict|error|cancelled>`, with `reason=` on
+    `error` and `cancelled` and `errno=` on `error`. Then `OS FLASH copy
+    held files=<n>` when only held files stay and `OS FLASH copy done
+    files=<n>` once flash is empty.
+  - Suspects. `PARQUET RECOVERY crosslink-suspect file=<relative> action=none`
+    follows a copy line with `result=error reason=crosslink-suspect`. It means
+    the card holds both a final name and its `.copy` temporary, which may share
+    clusters after a power cut. Both card entries and the flash file stay for
+    the owner, and it prints once per file and boot.
+  - Faults. `OS FLASH ERROR operation=<space|write|directory|allocate|
+    copy-walk>`. `OS FLASH ERROR operation=copy-count list_since=full
+    copy_back=held` prints once per boot when NVS cannot read or store the
+    copy count. A `write` fault also pauses new flash files for 60 s
+    (`retry_s=60`).
+  - Quarantine. `PARQUET RECOVERY quarantined=<n> repaired=0 deleted=0
+    root=flash` for flash `.partial` files moved aside at boot.
+  - Boot ring. `PARQUET WARN operation=boot-ring-marker root=flash
+    action=none` when a boot whose ring append failed writes an unsynced file
+    to flash. The `ringless=` marker is made on the card only.
+
+**Why.** A Thing with no card, or a pulled card, kept its rows in RAM only and
+dropped them once the batch filled. Flash keeps a few windows (about an hour
+on the CrowPanel, about 19 hours on the 16 MB boards) for the phone and the
+card.
+
+**What the app must do.** Nothing. A file can now appear in a listing without
+a card and later reappear from the card with the same name and bytes, so a
+copy the phone already holds stays valid.
+
 ## Shared e-paper UI on the Waveshare ePaper-3.97
 
 **Log lines only, no app change.** The ePaper-3.97 replaces its bring-up

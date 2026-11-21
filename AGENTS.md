@@ -93,8 +93,11 @@ in `firmware/common/`. Device protocol and telemetry contracts live in
   Parquet, so the worker removes it at runtime and quarantines one a reset left
   behind, see `firmware/common/logger/AGENTS.md`. The SD governor
   alarms and resumes after space or storage recovers, without automatic deletion. Do not
-  silently repair, delete or rewrite owner data.
-- The card is the origin. The local phone or laptop archive is the first copy.
+  silently repair, delete or rewrite owner data. The one exception is a flash
+  file after an identical verified copy is on the card (decision record
+  [0004](docs/shared/decisions/0004-flash-fallback-archive.md)).
+- The card is the origin, or the internal flash volume while no card is usable.
+  The local phone or laptop archive is the first copy.
   BLE/LAN sync works without internet. Cloud upload is optional. The uploader
   software landed in #129, off by default and not wired into any board yet.
   Wiring it into the storage worker is #144.

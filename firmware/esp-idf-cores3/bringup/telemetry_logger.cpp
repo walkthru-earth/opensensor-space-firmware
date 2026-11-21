@@ -235,7 +235,7 @@ void refresh_capacity() {
 }
 } // namespace
 
-bool begin_logger(bool sd_mounted) {
+bool begin_logger(bool sd_mounted, const char *fallback_directory) {
   for (std::size_t i = 0; i < field_count; ++i) {
     const auto &field = kFields[i];
     fields[i] = {field.name,     field.type,     field.procedure,
@@ -258,6 +258,7 @@ bool begin_logger(bool sd_mounted) {
       .board = kBoard,
       .output_directory = "/sd/output",
       .legacy_directory = "/sd/parquet",
+      .fallback_directory = fallback_directory,
       .ble_name_prefix = kBleNamePrefix,
       .descriptor = kTemplateJson,
       .descriptor_bytes = sizeof(kTemplateJson) - 1,

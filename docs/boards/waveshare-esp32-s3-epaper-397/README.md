@@ -19,8 +19,11 @@ seen on the glass. Nothing else is qualified yet, see the
 - Console is the ESP32-S3 USB-Serial/JTAG on the USB-C port. GPIO43 and GPIO44
   are UART0 by default, and here they carry the SEN63C bus instead.
 - Flash layout is NVS 0x9000, otadata 0xe000, two 6 MiB OTA slots at 0x10000
-  and 0x610000, the core dump at 0xc10000 and an unused data partition at
-  0xc20000. The pins live once in
+  and 0x610000, the core dump at 0xc10000 and a data partition at
+  0xc20000 (0x3e0000 bytes, 3.875 MiB, label `spiffs`) that holds the internal
+  flash archive while no card is usable, see
+  [decision record 0004](../../shared/decisions/0004-flash-fallback-archive.md).
+  The pins live once in
   `firmware/esp-idf-waveshare-epaper-397/board_io.h` and
   `display/epd_ssd1677.cpp`.
 

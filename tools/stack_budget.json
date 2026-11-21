@@ -52,12 +52,41 @@
       ]
     },
     {
-      "about": "FatFs disk I/O goes to the SD card driver, which calls the host transaction hook.",
+      "about": "FatFs disk I/O goes to the SD card driver, which calls the host transaction hook, or to the wear levelling driver of the internal flash volume.",
       "from": [
         "ff_disk_*"
       ],
       "to": [
-        "ff_sdmmc_*"
+        "ff_sdmmc_*",
+        "ff_wl_*"
+      ]
+    },
+    {
+      "about": "The wear levelling API calls its WL_Flash instance through virtual methods, and WL_Flash reaches the flash partition through Flash_Access.",
+      "from": [
+        "wl_mount",
+        "wl_unmount",
+        "wl_erase_range",
+        "wl_write",
+        "wl_read",
+        "wl_size",
+        "wl_sector_size"
+      ],
+      "to": [
+        "WL_Flash::*",
+        "WL_Ext_Perf::*",
+        "WL_Ext_Safe::*"
+      ]
+    },
+    {
+      "from": [
+        "WL_Flash::*",
+        "WL_Ext_Perf::*",
+        "WL_Ext_Safe::*"
+      ],
+      "to": [
+        "Partition::*",
+        "SPI_Flash::*"
       ]
     },
     {
@@ -319,8 +348,8 @@
       "tasks": {
         "parquet-sd": {
           "stack_bytes": 24576,
-          "measured": 11264,
-          "budget": 12416
+          "measured": 11296,
+          "budget": 12480
         },
         "nimble_host": {
           "measured": 5840,
@@ -355,16 +384,16 @@
         ".iram0.text": 129792,
         ".dram0.data": 37120,
         ".dram0.bss": 61440,
-        ".flash.text": 1320960,
-        ".flash.rodata": 471808,
+        ".flash.text": 1343232,
+        ".flash.rodata": 475904,
         ".noinit": 256
       },
       "sections_measured": {
         ".iram0.text": 127031,
-        ".dram0.data": 36341,
-        ".dram0.bss": 60072,
-        ".flash.text": 1295022,
-        ".flash.rodata": 462404,
+        ".dram0.data": 36373,
+        ".dram0.bss": 60200,
+        ".flash.text": 1316874,
+        ".flash.rodata": 466324,
         ".noinit": 3
       }
     },
@@ -398,8 +427,8 @@
         "board": {
           "task_name": "os-board",
           "stack_bytes": 12288,
-          "measured": 4832,
-          "budget": 5376
+          "measured": 4976,
+          "budget": 5504
         },
         "esp_timer": {
           "measured": 592,
@@ -414,16 +443,16 @@
         ".iram0.text": 122624,
         ".dram0.data": 35072,
         ".dram0.bss": 58368,
-        ".flash.text": 1182464,
-        ".flash.rodata": 419584,
+        ".flash.text": 1204224,
+        ".flash.rodata": 423680,
         ".noinit": 0
       },
       "sections_measured": {
         ".iram0.text": 120035,
-        ".dram0.data": 34180,
-        ".dram0.bss": 57032,
-        ".flash.text": 1159278,
-        ".flash.rodata": 411220,
+        ".dram0.data": 34196,
+        ".dram0.bss": 57176,
+        ".flash.text": 1180554,
+        ".flash.rodata": 415268,
         ".noinit": 0
       }
     },
@@ -452,8 +481,8 @@
       "sections_measured": {
         ".iram0.text": 56131,
         ".dram0.data": 14392,
-        ".dram0.bss": 7240,
-        ".flash.text": 164678,
+        ".dram0.bss": 7256,
+        ".flash.text": 164682,
         ".flash.rodata": 63636,
         ".noinit": 0
       }
@@ -483,8 +512,8 @@
         "board": {
           "task_name": "os-board",
           "stack_bytes": 12288,
-          "measured": 4736,
-          "budget": 5248
+          "measured": 4848,
+          "budget": 5376
         },
         "os-ui": {
           "stack_bytes": 8192,
@@ -504,16 +533,16 @@
         ".iram0.text": 128000,
         ".dram0.data": 35072,
         ".dram0.bss": 58880,
-        ".flash.text": 1224448,
-        ".flash.rodata": 434432,
+        ".flash.text": 1246720,
+        ".flash.rodata": 438528,
         ".noinit": 256
       },
       "sections_measured": {
         ".iram0.text": 125295,
-        ".dram0.data": 34257,
-        ".dram0.bss": 57512,
-        ".flash.text": 1200258,
-        ".flash.rodata": 425736,
+        ".dram0.data": 34289,
+        ".dram0.bss": 57688,
+        ".flash.text": 1222178,
+        ".flash.rodata": 429912,
         ".noinit": 3
       }
     },
@@ -542,8 +571,8 @@
         "board": {
           "task_name": "os-board",
           "stack_bytes": 12288,
-          "measured": 4720,
-          "budget": 5248
+          "measured": 4848,
+          "budget": 5376
         },
         "os-ui": {
           "stack_bytes": 8192,
@@ -561,18 +590,18 @@
       },
       "sections": {
         ".iram0.text": 127744,
-        ".dram0.data": 34560,
+        ".dram0.data": 34816,
         ".dram0.bss": 58880,
-        ".flash.text": 1201920,
-        ".flash.rodata": 456192,
+        ".flash.text": 1224448,
+        ".flash.rodata": 460288,
         ".noinit": 0
       },
       "sections_measured": {
         ".iram0.text": 125195,
-        ".dram0.data": 33872,
-        ".dram0.bss": 57504,
-        ".flash.text": 1178182,
-        ".flash.rodata": 447024,
+        ".dram0.data": 33888,
+        ".dram0.bss": 57680,
+        ".flash.text": 1200222,
+        ".flash.rodata": 451152,
         ".noinit": 0
       }
     }

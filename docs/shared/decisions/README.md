@@ -13,6 +13,7 @@ A later record can supersede an earlier one, and the old one stays as history.
 | [0001 Who writes STAC for a standalone Wi-Fi Thing](0001-standalone-thing-stac.md) | [#109](https://github.com/walkthru-earth/opensensor-space-firmware/issues/109) | Accepted 2026-11-04, the board writes STAC (OD-2026-11-04-D) |
 | [0002 Small Parquet files, compaction and range reads](0002-small-parquet-files.md) | [#25](https://github.com/walkthru-earth/opensensor-space-firmware/issues/25) | Proposed, pending owner sign off |
 | [0003 Metadata-driven apps](0003-metadata-driven-apps.md) | [#17](https://github.com/walkthru-earth/opensensor-space-firmware/issues/17), mobile [#219](https://github.com/walkthru-earth/opensensor-space-mobile/issues/219) | Decided 2026-11-17 by the owner, not built |
+| [0004 Internal flash archive when the card is missing](0004-flash-fallback-archive.md) | Owner request 2026-11-21 | Accepted 2026-11-21 by the owner, being built |
 
 ## Writing a record
 

@@ -125,6 +125,8 @@ common_sources=(
   firmware/common/connectivity/src/ota_lan.cpp
   firmware/common/src/boot_self_test.cpp
   firmware/common/src/ota_transfer.cpp
+  firmware/common/src/flash_volume.cpp
+  firmware/common/src/flash_volume_policy.cpp
 )
 # Every tracked firmware/common .cpp in a src folder, vendor and tests aside,
 # is in the list, and every listed file is tracked.
@@ -154,8 +156,11 @@ cppcheck "${options[@]}" \
   ${board_other[@]+"${board_other[@]}"} \
   "${common_sources[@]}"
 # A diagnostic explicitly rejects PSRAM, every telemetry app needs it for the
-# writer workspace. Check each file in the configuration it is compiled with.
-cppcheck "${options[@]}" -DCONFIG_SPIRAM=1 "${board_telemetry[@]}"
+# writer workspace. Every telemetry app also mounts the internal flash volume
+# (decision record 0004). Check each file in the configuration it is compiled
+# with.
+cppcheck "${options[@]}" -DCONFIG_SPIRAM=1 -DCONFIG_OS_LOGGER_FLASH_FALLBACK=1 \
+  "${board_telemetry[@]}"
 # The bench only parquet bench-stall branch is off in every shipped image, so
 # check os_logger.cpp once more with it on (CONFIG_OS_LOGGER_BENCH_STALL).
 cppcheck "${options[@]}" -DCONFIG_OS_LOGGER_BENCH_STALL=1 \

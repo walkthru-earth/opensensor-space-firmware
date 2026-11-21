@@ -2,18 +2,23 @@
 #include "crc_cache.h"
 #include "debug_log.h"
 #include "device_config.h"
+#include "flash_volume.h"
 #include "lz4_codec.h"
 #include "os_logger_archive_reset.h"
+#include "os_logger_archive_target.h"
 #include "os_logger_codec_store.h"
 #include "os_logger_directory.h"
 #include "os_logger_emergency_close.h"
+#include "os_logger_flash_copy.h"
 #include "os_logger_footer.h"
 #include "os_logger_list_job.h"
+#include "os_logger_list_merge.h"
 #include "os_logger_list_since.h"
 #include "os_logger_live.h"
 #include "os_logger_location.h"
 #include "os_logger_power.h"
 #include "os_logger_provision.h"
+#include "os_logger_roots.h"
 #include "os_logger_rotation.h"
 #include "os_logger_status.h"
 #include "os_logger_transfer_gate.h"
@@ -114,8 +119,10 @@ struct OutputFile {
   Workspace workspace{};
   char stem[384]{}; // <partition>/<prefix>_<boot>_<first>
   char partial[416]{};
-  char *staging = nullptr;    // stdio buffer, see WriterState
-  const char *root = nullptr; // kDirectory or kBenchDirectory
+  char *staging = nullptr; // stdio buffer, see WriterState
+  // kDirectory, kBenchDirectory or flash_root. A file keeps its root until
+  // it is finalized, and every path of the file is built from it.
+  const char *root = nullptr;
   bool benchmark = false;
   bool dated = false; // false: unsynced tree
   Codec codec = Codec::Uncompressed;
@@ -236,6 +243,50 @@ std::atomic<std::uint32_t> mount_epoch{0};
 list_since::RingKeeper boot_ring;
 // The lowest dated day and the last unsynced sequence of this boot.
 list_since::Tracker since_state;
+// Flash fallback archive (decision record 0004). Storage worker only.
+namespace archive_target = opensensor::logger::archive_target;
+namespace flash_copy = opensensor::logger::flash_copy;
+namespace list_merge = opensensor::logger::list_merge;
+// config.fallback_directory, nullptr without the volume. flash_ready once
+// the worker made sure the root exists.
+const char *flash_root = nullptr;
+bool flash_ready = false;
+// True while the flash root may hold a file. Set at boot and by each flash
+// write, cleared when a copy pass finds the root empty. LIST_SINCE answers
+// with the full listing meanwhile.
+bool flash_holds_files = false;
+// Free bytes of the flash volume, read at boot, after each flash write and
+// after each copy. flash_full follows the reserve check for its log line.
+std::uint64_t flash_free = 0;
+bool flash_full = false;
+// A failed flash write pauses new flash files until this uptime second, so
+// a broken volume never loops.
+std::int64_t flash_retry_at = 0;
+// The root of the next telemetry file. Set by the caller of commit().
+const char *next_root = nullptr;
+archive_target::Target storage_target = archive_target::Target::None;
+bool storage_target_logged = false;
+// Files copied back over the life of the board, kept in NVS. A mount shifts
+// the volume serial by them, so a LIST_SINCE cursor from before a copy never
+// reads as current, not even after a reboot.
+list_since::CopyCounter copy_count;
+// The count could not be read or stored, logged once per boot.
+bool copy_count_logged = false;
+
+bool on_flash(const OutputFile &file) {
+  return flash_root && file.root == flash_root;
+}
+
+// The card walk runs while the card is mounted. With a flash root it also
+// sits out Retry, so a pulled card never fails a LIST that flash can answer.
+bool card_listable() {
+  return storage_ok.load() &&
+         (!flash_ready || governor.state() != storage::State::Retry);
+}
+
+// LIST and OPEN have something to read. ERROR 8 only when neither root is
+// usable (decision record 0004, item 7).
+bool archive_ready(bool storage_ready) { return storage_ready || flash_ready; }
 std::int64_t boot_hi = 0, boot_lo = 0, device = 0, next_sample_us = 0;
 std::int64_t sample_sequence = 0;
 std::atomic<std::int64_t> missed_deadlines{0};
@@ -673,9 +724,62 @@ const list_since::RingStore ring_store{
       return ok;
     }};
 
+// The copy count is one u32, `copies`, in the `osflash` namespace next to
+// `formatted`. Never erased.
+const list_since::CopyCountStore copy_count_store{
+    nullptr,
+    [](void *, std::uint32_t &count) {
+      nvs_handle_t flags;
+      const esp_err_t opened = nvs_open(
+          opensensor::storage::kFlashFlagNamespace, NVS_READONLY, &flags);
+      if (opened == ESP_ERR_NVS_NOT_FOUND)
+        return list_since::Load::Missing;
+      if (opened != ESP_OK)
+        return list_since::Load::Failed;
+      const esp_err_t read =
+          nvs_get_u32(flags, opensensor::storage::kFlashCopiesKey, &count);
+      nvs_close(flags);
+      if (read == ESP_ERR_NVS_NOT_FOUND)
+        return list_since::Load::Missing;
+      return read == ESP_OK ? list_since::Load::Found
+                            : list_since::Load::Failed;
+    },
+    [](void *, std::uint32_t count) {
+      nvs_handle_t flags;
+      if (nvs_open(opensensor::storage::kFlashFlagNamespace, NVS_READWRITE,
+                   &flags) != ESP_OK)
+        return false;
+      const bool ok = nvs_set_u32(flags, opensensor::storage::kFlashCopiesKey,
+                                  count) == ESP_OK &&
+                      nvs_commit(flags) == ESP_OK;
+      nvs_close(flags);
+      return ok;
+    }};
+
+void log_copy_count_error() {
+  if (copy_count_logged)
+    return;
+  copy_count_logged = true;
+  ++errors;
+  oslog.println("OS FLASH ERROR operation=copy-count list_since=full "
+                "copy_back=held");
+}
+
+// The mount epoch of a volume serial. Without a flash root nothing is ever
+// copied back, so the serial is the epoch and NVS is not read.
+std::uint32_t volume_epoch(std::uint32_t serial) {
+  if (!flash_root)
+    return serial;
+  const std::uint32_t epoch = copy_count.epoch(copy_count_store, serial);
+  if (serial && !epoch)
+    log_copy_count_error();
+  return epoch;
+}
+
 // Names this boot in the ring before its first unsynced folder exists. A
 // failure only widens the next LIST_SINCE, so the file is still written.
-void note_unsynced_boot() {
+// `root` is the new file's root. The marker goes on the card only.
+void note_unsynced_boot(const char *root) {
   if (boot_ring.appended())
     return;
   boot_ring.note_unsynced(ring_store);
@@ -708,6 +812,16 @@ void note_unsynced_boot() {
   oslog.println("PARQUET WARN operation=boot-ring list_since=unsynced-full");
   if (!boot_ring.needs_marker())
     return;
+  // Copy back moves regular files only, so a marker on flash would never
+  // reach the card. None is made there. LIST_SINCE answers full while flash
+  // holds the file, and its copy moves the stored mount epoch, so every
+  // cursor from before the copy lists in full. The next card file of this
+  // boot makes the marker.
+  if (root != kDirectory) {
+    oslog.println(
+        "PARQUET WARN operation=boot-ring-marker root=flash action=none");
+    return;
+  }
   // A later boot's ring will not name this boot, so its LIST_SINCE finds
   // the boot folder through this marker.
   if (named && make_directories(marker))
@@ -724,7 +838,9 @@ bool create_file(OutputFile &target, Codec codec, bool benchmark) {
   char partition[160], prefix[24];
   int partition_length;
   target.dated = false;
-  target.root = benchmark ? kBenchDirectory : kDirectory;
+  target.root = benchmark   ? kBenchDirectory
+                : next_root ? next_root
+                            : kDirectory;
   target.window = window_index(first_row);
   if (benchmark) {
     partition_length =
@@ -753,7 +869,7 @@ bool create_file(OutputFile &target, Codec codec, bool benchmark) {
         std::snprintf(partition, sizeof(partition), "thing=%s/unsynced/boot=%s",
                       thing_text, boot_text);
     std::strcpy(prefix, "data_unsynced");
-    note_unsynced_boot();
+    note_unsynced_boot(target.root);
   }
   char directory[192];
   const int directory_length = std::snprintf(directory, sizeof(directory),
@@ -1141,10 +1257,12 @@ bool finalize_file(OutputFile &target) {
   if (ok) {
     BusLock lock;
     ok = ::access(ready, F_OK) != 0 && ::rename(target.partial, ready) == 0;
-    used_kib =
-        (hooks.storage_used_bytes ? hooks.storage_used_bytes(hooks.context)
-                                  : 0) /
-        1024;
+    // STATUS reports the card. A flash file leaves its numbers alone.
+    if (!on_flash(target))
+      used_kib =
+          (hooks.storage_used_bytes ? hooks.storage_used_bytes(hooks.context)
+                                    : 0) /
+          1024;
   }
   write_us =
       static_cast<std::uint32_t>(esp_timer_get_time() - target.opened_us);
@@ -1295,8 +1413,28 @@ struct ListVisitor {
   }
 };
 
-// Walks the main archive tree, then the legacy tree, in bounded steps. Only a
-// complete scan replaces the partial counter. Holds its directories open
+// Lists the flash root after the card. A name the card root holds is left
+// out, the card walk listed it. That includes a conflict, where the card holds
+// other bytes under the same name: OPEN serves the card copy first, so
+// listing the flash copy would name a file the peer cannot fetch. The flash
+// copy stays for the owner, with its OS FLASH copy result=conflict line.
+struct FlashListVisitor {
+  ListVisitor &list;
+  const char *card_root = nullptr; // null while the card is not listable
+
+  bool operator()(const char *name, const struct stat &info) {
+    if (S_ISREG(info.st_mode) && safe_name(name)) {
+      ArchiveDirectoryIO probe;
+      if (!list_merge::emits(list_merge::flash_name(probe, card_root, name)))
+        return true;
+    }
+    return list(name, info);
+  }
+};
+
+// Walks the main archive tree, then the legacy tree, then the flash root, in
+// bounded steps. Only a complete scan replaces the partial counter, which
+// sums the partials of every root. Holds its directories open
 // between steps until it ends or cancel() runs. step_since() runs the
 // LIST_SINCE walk through the same IO, one walk at a time.
 class ArchiveList {
@@ -1313,15 +1451,29 @@ public:
       cancel();
       incremental_ = false;
       finalized_at_start_ = finalized.load();
-      if (!walk_.begin(io_, kDirectory))
+      card_ = card_listable();
+      phase_ = card_ ? Phase::Card : Phase::Flash;
+      if (!card_ && !flash_ready) {
+        errno = ENODEV;
+        return fail();
+      }
+      if (!walk_.begin(io_, card_ ? kDirectory : flash_root))
         return fail();
     }
-    ListVisitor visit{.prefix = legacy_ ? "legacy-parquet/" : "",
-                      .emit = emit,
-                      .context = context,
-                      .partials = &partials};
+    ListVisitor visit{
+        .prefix = phase_ == Phase::Legacy ? list_merge::kLegacyPrefix : "",
+        .emit = emit,
+        .context = context,
+        .partials = &partials};
     using Walk = opensensor::logger::detail::DirectoryWalk<ArchiveDirectoryIO>;
-    const auto status = walk_.step(budget, visit);
+    Walk::Status status;
+    if (phase_ == Phase::Flash) {
+      FlashListVisitor flash{.list = visit,
+                             .card_root = card_ ? kDirectory : nullptr};
+      status = walk_.step(budget, flash);
+    } else {
+      status = walk_.step(budget, visit);
+    }
     if (status == Walk::Status::More)
       return ossync::ListStatus::More;
     if (status == Walk::Status::Failed || visit.bad_entry)
@@ -1330,8 +1482,8 @@ public:
       cancel();
       return ossync::ListStatus::Stopped;
     }
-    if (!legacy_ && config.legacy_directory) {
-      legacy_ = true;
+    if (phase_ == Phase::Card && config.legacy_directory) {
+      phase_ = Phase::Legacy;
       struct stat legacy{};
       int stat_result;
       int stat_error;
@@ -1355,6 +1507,13 @@ public:
         return fail();
       }
     }
+    if (phase_ != Phase::Flash && flash_ready) {
+      phase_ = Phase::Flash;
+      // The flash tree starts on the next step.
+      if (!walk_.begin(io_, flash_root))
+        return fail();
+      return ossync::ListStatus::More;
+    }
     cancel();
     partials_seen = partials;
     return ossync::ListStatus::Complete;
@@ -1372,8 +1531,15 @@ public:
         errno = ENOTSUP;
         return fail();
       }
-      const auto in = since_state.inputs(
-          cursor, mount_epoch.load(), utc_yesterday(), boot_ring, ring_store);
+      auto in = since_state.inputs(cursor, mount_epoch.load(), utc_yesterday(),
+                                   boot_ring, ring_store);
+      // A flash file carries no card epoch, so it answers with the full
+      // listing. A card that sits out Retry cannot be walked, so the full
+      // walk reads flash only and hands out epoch 0, never the pulled card's
+      // epoch. A copy back moves the epoch instead (copy_count), see
+      // list_merge::since_needs_full.
+      in.card_listable = card_listable();
+      in.force_full = list_merge::since_needs_full(flash_holds_files);
       const auto plan = list_since::plan(in);
       result = plan.result;
       oslog.printf("LIST_SINCE plan full=%u floor=%lu unsynced_full=%u "
@@ -1417,7 +1583,7 @@ public:
     walk_.cancel();
     if (since_)
       since_->cancel();
-    legacy_ = false;
+    phase_ = Phase::Card;
   }
 
   // True when no file finalized since the walk started. Steps let commits
@@ -1439,7 +1605,9 @@ private:
   list_since::IncrementalWalk<ArchiveDirectoryIO> *since_;
   ArchiveDirectoryIO io_;
   std::uint32_t finalized_at_start_ = 0;
-  bool legacy_ = false;
+  enum class Phase : std::uint8_t { Card, Legacy, Flash };
+  Phase phase_ = Phase::Card;
+  bool card_ = true; // the card was listable when the walk started
   bool incremental_ = false;
 };
 
@@ -1458,10 +1626,10 @@ bool partial_name(const char *name) {
 // iterative with a fixed depth, and a directory past it is logged. An entry
 // that cannot be inspected or opened is logged and skipped, so the partials
 // after it still move. Only a directory read error ends the walk.
-void quarantine_directory(unsigned &quarantined) {
+void quarantine_directory(const char *root, unsigned &quarantined) {
   ArchiveDirectoryIO io;
   auto move = [&](const char *name) {
-    if (quarantine_one(kDirectory, name, "boot"))
+    if (quarantine_one(root, name, "boot"))
       ++quarantined;
   };
   auto too_deep = [](const char *name) {
@@ -1477,7 +1645,7 @@ void quarantine_directory(unsigned &quarantined) {
     oslog.printf("PARQUET ERROR operation=quarantine-entry name=%s errno=%d\n",
                  name, error);
   };
-  if (!opensensor::logger::detail::find_partials(io, kDirectory, move, too_deep,
+  if (!opensensor::logger::detail::find_partials(io, root, move, too_deep,
                                                  unreadable)) {
     ++errors;
     oslog.printf("PARQUET ERROR operation=quarantine-walk errno=%d\n", errno);
@@ -1514,12 +1682,29 @@ unsigned quarantine_partials() {
     return 0;
   }
   unsigned quarantined = 0;
-  quarantine_directory(quarantined);
+  quarantine_directory(kDirectory, quarantined);
   unsigned total = 0;
   std::uint64_t bytes = 0;
   count_quarantine(total, bytes);
   partials_quarantined = total;
   quarantine_bytes = bytes;
+  return quarantined;
+}
+
+// The boot quarantine of the flash root, the same provenance move as on the
+// card under <flash root>/quarantine. STATUS counts stay card only.
+unsigned quarantine_flash_partials() {
+  char directory[64];
+  std::snprintf(directory, sizeof(directory), "%s/quarantine", flash_root);
+  if (!make_directories(directory)) {
+    ++errors;
+    oslog.printf("PARQUET ERROR operation=quarantine-mkdir root=flash "
+                 "errno=%d\n",
+                 errno);
+    return 0;
+  }
+  unsigned quarantined = 0;
+  quarantine_directory(flash_root, quarantined);
   return quarantined;
 }
 
@@ -1565,6 +1750,9 @@ void list_files(bool emit_serial = true) {
   oslog.println("PARQUET LIST END");
 }
 
+// OPEN and READ look on the card first, then on flash (decision record
+// 0004, item 7). A card that is not listable, or holds no file of this name,
+// leaves the flash file. Otherwise the card path, whose open fails as before.
 bool resolve_path(const char *name, char *path, std::size_t size) {
   if (!safe_name(name))
     return false;
@@ -1575,7 +1763,22 @@ bool resolve_path(const char *name, char *path, std::size_t size) {
                                  config.legacy_directory, name + 15)
                  : -1)
           : std::snprintf(path, size, "%s/%.384s", kDirectory, name);
-  return written >= 0 && static_cast<std::size_t>(written) < size;
+  if (written < 0 || static_cast<std::size_t>(written) >= size)
+    return false;
+  if (!flash_ready || std::strncmp(name, "legacy-parquet/", 15) == 0)
+    return true;
+  ArchiveDirectoryIO io;
+  struct stat info{};
+  if (card_listable() && (io.inspect(path, &info) == 0 || errno != ENOENT))
+    return true;
+  char flash[416];
+  const int length =
+      std::snprintf(flash, sizeof(flash), "%s/%.384s", flash_root, name);
+  if (length < 0 || static_cast<std::size_t>(length) >= sizeof(flash) ||
+      static_cast<std::size_t>(length) >= size || io.inspect(flash, &info) != 0)
+    return true;
+  std::memcpy(path, flash, static_cast<std::size_t>(length) + 1);
+  return true;
 }
 
 void send_file(const char *name) {
@@ -2073,7 +2276,7 @@ bool measure_free(std::uint64_t &free_bytes) {
 // thresholds and returns false when the volume cannot report free space.
 bool measure_volume() {
   std::uint64_t total = 0, used = 0;
-  std::uint32_t cluster = 0;
+  std::uint32_t cluster = 0, serial = 0;
   stamp_heartbeat();
   {
     BusLock lock;
@@ -2084,10 +2287,12 @@ bool measure_volume() {
     cluster = hooks.storage_cluster_bytes
                   ? hooks.storage_cluster_bytes(hooks.context)
                   : 0;
-    mount_epoch = hooks.storage_volume_serial
-                      ? hooks.storage_volume_serial(hooks.context)
-                      : 0;
+    serial = hooks.storage_volume_serial
+                 ? hooks.storage_volume_serial(hooks.context)
+                 : 0;
   }
+  // NVS is read outside the bus lock.
+  mount_epoch = volume_epoch(serial);
   stamp_heartbeat();
   total_kib = static_cast<std::uint32_t>(total / 1024);
   used_kib = static_cast<std::uint32_t>(used / 1024);
@@ -2115,7 +2320,7 @@ bool measure_volume() {
 void publish_storage(storage::State previous) {
   auto current = governor.state();
   if (current == storage::State::Full && previous != current &&
-      writer_state->telemetry.open() &&
+      writer_state->telemetry.open() && !on_flash(writer_state->telemetry) &&
       !finalize_file(writer_state->telemetry)) {
     governor.write_failed(uptime_seconds());
     current = governor.state();
@@ -2139,13 +2344,103 @@ void publish_storage(storage::State previous) {
   publish_status();
 }
 
+constexpr std::int64_t kFlashRetrySeconds = 60;
+
+// Reads the flash free space. A volume that cannot answer reads as full, so
+// no new file starts there.
+void measure_flash() {
+  if (!flash_ready)
+    return;
+  stamp_heartbeat();
+  const auto space = opensensor::storage::flash_volume_space();
+  stamp_heartbeat();
+  if (space) {
+    flash_free = space->free_bytes;
+    return;
+  }
+  flash_free = 0;
+  ++errors;
+  oslog.println("OS FLASH ERROR operation=space");
+}
+
+// Where a new telemetry file goes (decision record 0004, items 4 and 6).
+// Logs a change of target, and the flash volume falling below its reserve or
+// getting room back, once per transition. Never deletes to make room.
+archive_target::Target choose_target() {
+  archive_target::Inputs in{
+      .card_ready = governor.writable(),
+      .flash_mounted = flash_ready && uptime_seconds() >= flash_retry_at,
+      .flash_free_bytes = flash_free,
+      .flash_reserve_bytes = config.fallback_reserve_bytes};
+  const auto target = archive_target::choose(in);
+  if (!flash_root)
+    return target;
+  // The reserve check alone, whether or not the card is there.
+  in.card_ready = false;
+  in.flash_mounted = flash_ready;
+  const bool full = archive_target::flash_below_reserve(in);
+  if (full != flash_full) {
+    flash_full = full;
+    if (full)
+      oslog.printf("OS FLASH full free=%llu reserve=%llu\n",
+                   static_cast<unsigned long long>(flash_free),
+                   static_cast<unsigned long long>(in.flash_reserve_bytes));
+    else
+      oslog.printf("OS FLASH room free=%llu\n",
+                   static_cast<unsigned long long>(flash_free));
+  }
+  if (!storage_target_logged || target != storage_target) {
+    storage_target = target;
+    storage_target_logged = true;
+    oslog.printf("OS STORAGE target=%s\n", archive_target::target_name(target));
+  }
+  return target;
+}
+
+// True when the next commit writes to flash. An open file keeps its root, a
+// new one takes the chosen target.
+bool commit_to_flash() {
+  const OutputFile &open = writer_state->telemetry;
+  return open.open() ? on_flash(open)
+                     : choose_target() == archive_target::Target::Flash;
+}
+
+// A commit may run: to the open flash file, to a new flash file, or to the
+// card while the governor lets it write.
+bool can_commit(bool storage_ready) {
+  return commit_to_flash() || (storage_ready && governor.writable());
+}
+
+// A flash write leaves the card governor alone. A failure pauses new flash
+// files for kFlashRetrySeconds, the open one was closed and quarantined.
+bool flash_commit(std::size_t &count, bool finalize, bool *written) {
+  next_root = flash_root;
+  flash_holds_files = true;
+  const bool ok = commit(count, finalize);
+  next_root = kDirectory;
+  if (written)
+    *written = ok;
+  if (!ok) {
+    flash_retry_at = uptime_seconds() + kFlashRetrySeconds;
+    oslog.printf("OS FLASH ERROR operation=write retry_s=%lld\n",
+                 static_cast<long long>(kFlashRetrySeconds));
+  }
+  measure_flash();
+  return ok;
+}
+
 // Every telemetry write passes here so the governor sees each result. A
 // failure never retries in place; the probe schedule owns recovery. The
 // result is false when the write or the free space reading failed.
 // `written`, when given, reports the write alone, so a caller can tell a
 // good finalize from a card that then failed to report its free space.
+// A flash file, or a new file while flash is the target, goes to
+// flash_commit() instead.
 bool governed_commit(std::size_t &count, bool finalize,
                      bool *written = nullptr) {
+  if (commit_to_flash())
+    return flash_commit(count, finalize, written);
+  next_root = kDirectory;
   const auto previous = governor.state();
   bool ok = commit(count, finalize);
   if (written)
@@ -2159,6 +2454,347 @@ bool governed_commit(std::size_t &count, bool finalize,
   }
   publish_storage(previous);
   return ok;
+}
+
+// Copy back (decision record 0004, item 8). One reader and one writer, the
+// kCopyBackFiles budget of archive_files.h, with their own SHA-256 stream so
+// the STAC writer's never changes hands. Every call takes the bus lock and
+// each chunk read stamps the heartbeat.
+struct CopyIO : ArchiveDirectoryIO {
+  int reader = -1;
+  int writer = -1;
+  std::array<std::uint8_t, flash_copy::kChunkBytes> buffer{};
+  opensensor::hash::Sha256Stream sha;
+
+  static bool make_directories(const char *path) {
+    return oslogger::make_directories(path);
+  }
+  bool open_read(const char *path) {
+    BusLock lock;
+    reader = ::open(path, O_RDONLY);
+    return reader >= 0;
+  }
+  // A new file only, so a name that appeared meanwhile is never truncated.
+  bool open_write(const char *path) {
+    BusLock lock;
+    writer = ::open(path, O_WRONLY | O_CREAT | O_EXCL, 0644);
+    return writer >= 0;
+  }
+  std::ptrdiff_t read(std::span<std::uint8_t> out) {
+    stamp_heartbeat();
+    BusLock lock;
+    return ::read(reader, out.data(), out.size());
+  }
+  bool write(std::span<const std::uint8_t> bytes) {
+    BusLock lock;
+    while (!bytes.empty()) {
+      const ssize_t wrote = ::write(writer, bytes.data(), bytes.size());
+      if (wrote <= 0) {
+        if (wrote == 0)
+          errno = EIO;
+        return false;
+      }
+      bytes = bytes.subspan(static_cast<std::size_t>(wrote));
+    }
+    return true;
+  }
+  bool sync() {
+    stamp_heartbeat();
+    BusLock lock;
+    return ::fsync(writer) == 0;
+  }
+  bool close_read() {
+    BusLock lock;
+    const int closed = ::close(reader);
+    reader = -1;
+    return closed == 0;
+  }
+  bool close_write() {
+    BusLock lock;
+    const int closed = ::close(writer);
+    writer = -1;
+    return closed == 0;
+  }
+  std::span<std::uint8_t> scratch() { return buffer; }
+  static int unlink(const char *path) {
+    BusLock lock;
+    return ::unlink(path);
+  }
+  // FatFs refuses a rename onto an existing name with EEXIST, so the plain
+  // rename never replaces a card file.
+  static int rename_no_replace(const char *from, const char *to) {
+    BusLock lock;
+    return ::rename(from, to);
+  }
+  std::expected<void, opensensor::hash::Sha256Error> hash_begin() {
+    return sha.begin();
+  }
+  void hash_update(std::span<const std::uint8_t> bytes) { sha.update(bytes); }
+  std::expected<opensensor::hash::Sha256Digest, opensensor::hash::Sha256Error>
+  hash_finish() {
+    return sha.finish();
+  }
+};
+
+// The copy back state, about 5 KiB, in PSRAM so no task stack holds it.
+struct FlashDrain {
+  // Names that stay for the owner this boot: a conflict, a crosslink
+  // suspect, a name the copier refused. `failed` holds names that failed
+  // with an IO error and is cleared before the next pass over the root.
+  static constexpr std::size_t kNames = 32;
+  struct Names {
+    std::array<std::uint32_t, kNames> hashes{};
+    std::size_t count = 0;
+    bool contains(std::uint32_t hash) const {
+      return std::find(hashes.begin(), hashes.begin() + count, hash) !=
+             hashes.begin() + count;
+    }
+    // False when full, the caller then waits a pass instead.
+    bool add(std::uint32_t hash) {
+      if (contains(hash))
+        return true;
+      if (count == hashes.size())
+        return false;
+      hashes[count++] = hash;
+      return true;
+    }
+  };
+  CopyIO io;
+  flash_copy::Copier copier;
+  opensensor::logger::detail::DirectoryWalk<ArchiveDirectoryIO> walk;
+  std::array<char, flash_copy::kRelativeBytes> best{};
+  Names held;
+  Names failed;
+  std::uint32_t moved = 0;
+  std::uint32_t left_logged = UINT32_MAX;
+  std::int64_t next_at = 0; // uptime seconds of the next pass
+};
+FlashDrain *flash_drain = nullptr;
+constexpr std::int64_t kCopyWaitSeconds = 60;
+
+std::uint32_t name_hash(const char *name) {
+  std::uint32_t hash = 2166136261U;
+  for (; *name; ++name)
+    hash = (hash ^ static_cast<std::uint8_t>(*name)) * 16777619U;
+  return hash;
+}
+
+// A copy runs only while the card takes writes and nothing else needs the
+// card: no LIST job, no emergency close.
+bool copy_back_allowed(bool storage_ready) {
+  return flash_drain && flash_ready && flash_holds_files && storage_ready &&
+         storage_ok.load() && governor.state() == storage::State::Ready &&
+         !archive_session.listing() && !emergency_close.active() &&
+         !emergency_close.preempt(uptime_ms());
+}
+
+// Ends a copy in progress. The copier removes only its own temporary, and
+// only while the source is still on flash.
+void cancel_copy_back(const char *reason) {
+  if (!flash_drain || !flash_drain->copier.active())
+    return;
+  oslog.printf("OS FLASH copy name=%s bytes=%llu result=cancelled reason=%s\n",
+               flash_drain->copier.relative(),
+               static_cast<unsigned long long>(flash_drain->copier.bytes()),
+               reason);
+  flash_drain->copier.cancel(flash_drain->io);
+}
+
+// A card that just mounted gets its copy pass now, not after the wait.
+void copy_back_now() {
+  if (flash_drain) {
+    flash_drain->next_at = 0;
+    flash_drain->failed.count = 0;
+  }
+}
+
+// True when the flash file `relative` holds the owner's data on its own:
+// a sidecar waits until its Parquet left flash and is on the card.
+bool sidecar_waits(const char *relative) {
+  const std::string_view name{relative};
+  constexpr std::string_view kJson = ".json";
+  char parquet[flash_copy::kPathBytes];
+  const auto stem = static_cast<int>(name.size() - kJson.size());
+  struct stat info{};
+  const int flash_length = std::snprintf(
+      parquet, sizeof(parquet), "%s/%.*s.parquet", flash_root, stem, relative);
+  if (flash_length < 0 ||
+      static_cast<std::size_t>(flash_length) >= sizeof(parquet))
+    return true;
+  if (ArchiveDirectoryIO::inspect(parquet, &info) == 0 || errno != ENOENT)
+    return true;
+  const int card_length = std::snprintf(
+      parquet, sizeof(parquet), "%s/%.*s.parquet", kDirectory, stem, relative);
+  if (card_length < 0 ||
+      static_cast<std::size_t>(card_length) >= sizeof(parquet))
+    return true;
+  return ArchiveDirectoryIO::inspect(parquet, &info) != 0;
+}
+
+// Removes the empty directories above a freed flash file, up to the flash
+// root. The root's quarantine folder stays for same-boot quarantine moves.
+void remove_empty_flash_directories(const char *relative) {
+  char path[flash_copy::kPathBytes];
+  const int length =
+      std::snprintf(path, sizeof(path), "%s/%s", flash_root, relative);
+  if (length < 0 || static_cast<std::size_t>(length) >= sizeof(path))
+    return;
+  const std::size_t root_length = std::strlen(flash_root);
+  for (;;) {
+    char *slash = std::strrchr(path, '/');
+    if (!slash || static_cast<std::size_t>(slash - path) <= root_length)
+      return;
+    *slash = '\0';
+    if (std::strcmp(path + root_length, "/quarantine") == 0)
+      return;
+    BusLock lock;
+    if (::rmdir(path) != 0)
+      return; // not empty, or gone
+  }
+}
+
+// Picks the next flash file with one complete walk that closes every
+// directory, so nothing stays open between passes. False when no copy began.
+bool copy_back_next() {
+  FlashDrain &drain = *flash_drain;
+  drain.best[0] = '\0';
+  std::uint32_t files = 0;
+  auto visit = [&](const char *name, const struct stat &info) {
+    if (!S_ISREG(info.st_mode))
+      return true;
+    ++files;
+    const auto kind = flash_copy::copy_kind(name);
+    if (!kind || std::strlen(name) >= drain.best.size())
+      return true;
+    const std::uint32_t hash = name_hash(name);
+    if (drain.held.contains(hash) || drain.failed.contains(hash))
+      return true;
+    if (drain.best[0] && !flash_copy::copy_before(name, drain.best.data()))
+      return true;
+    if (*kind == flash_copy::Kind::Sidecar && sidecar_waits(name))
+      return true;
+    std::strcpy(drain.best.data(), name);
+    return true;
+  };
+  using Walk = opensensor::logger::detail::DirectoryWalk<ArchiveDirectoryIO>;
+  Walk::Status status = Walk::Status::Failed;
+  if (drain.walk.begin(drain.io, flash_root)) {
+    do
+      status = drain.walk.step(64, visit);
+    while (status == Walk::Status::More);
+  }
+  const std::int64_t now = uptime_seconds();
+  if (status != Walk::Status::Done) {
+    drain.walk.cancel();
+    ++errors;
+    oslog.printf("OS FLASH ERROR operation=copy-walk errno=%d\n", errno);
+    drain.next_at = now + kCopyWaitSeconds;
+    return false;
+  }
+  if (!drain.best[0]) {
+    drain.failed.count = 0;
+    if (!files) {
+      flash_holds_files = false;
+      drain.left_logged = UINT32_MAX;
+      oslog.printf("OS FLASH copy done files=%lu\n",
+                   static_cast<unsigned long>(drain.moved));
+      drain.moved = 0;
+      return false;
+    }
+    if (files != drain.left_logged) {
+      drain.left_logged = files;
+      oslog.printf("OS FLASH copy held files=%lu\n",
+                   static_cast<unsigned long>(files));
+    }
+    drain.next_at = now + kCopyWaitSeconds;
+    return false;
+  }
+  // The count goes up in NVS before a file moves, so a reset never brings
+  // back an epoch from before the copy. Without it the file waits on flash,
+  // where LIST still finds it.
+  if (!copy_count.reserve(copy_count_store)) {
+    log_copy_count_error();
+    drain.next_at = now + kCopyWaitSeconds;
+    return false;
+  }
+  const auto begun =
+      drain.copier.begin(flash_root, kDirectory, drain.best.data());
+  if (!begun) {
+    ++errors;
+    oslog.printf("OS FLASH copy name=%s bytes=0 result=error reason=%s\n",
+                 drain.best.data(),
+                 begun.error() == flash_copy::BeginError::TooLong   ? "too-long"
+                 : begun.error() == flash_copy::BeginError::BadName ? "bad-name"
+                                                                    : "busy");
+    if (!drain.held.add(name_hash(drain.best.data())))
+      drain.next_at = now + kCopyWaitSeconds;
+    return false;
+  }
+  return true;
+}
+
+// One copy step: a walk for the next file, or one chunk of the current one.
+// True when it did work, so the loop yields a tick instead of sleeping.
+bool service_copy_back(bool storage_ready) {
+  if (!copy_back_allowed(storage_ready)) {
+    cancel_copy_back("paused");
+    return false;
+  }
+  FlashDrain &drain = *flash_drain;
+  if (!drain.copier.active()) {
+    if (uptime_seconds() < drain.next_at)
+      return false;
+    return copy_back_next();
+  }
+  const auto outcome = drain.copier.step(drain.io);
+  if (outcome == flash_copy::Outcome::InProgress)
+    return true;
+  const char *relative = drain.copier.relative();
+  const auto bytes = static_cast<unsigned long long>(drain.copier.bytes());
+  const std::uint32_t hash = name_hash(relative);
+  const std::int64_t now = uptime_seconds();
+  switch (outcome) {
+  case flash_copy::Outcome::Copied:
+  case flash_copy::Outcome::AlreadyIdentical:
+    oslog.printf(
+        "OS FLASH copy name=%s bytes=%llu result=%s\n", relative, bytes,
+        outcome == flash_copy::Outcome::Copied ? "copied" : "identical");
+    if (drain.moved != UINT32_MAX)
+      ++drain.moved;
+    // A LIST_SINCE cursor from before the move never reads as current.
+    copy_count.copied();
+    mount_epoch = list_since::next_epoch(mount_epoch.load());
+    remove_empty_flash_directories(relative);
+    measure_flash();
+    break;
+  case flash_copy::Outcome::Conflict:
+    oslog.printf("OS FLASH copy name=%s bytes=%llu result=conflict\n", relative,
+                 bytes);
+    if (!drain.held.add(hash))
+      drain.next_at = now + kCopyWaitSeconds;
+    break;
+  default: {
+    ++errors;
+    const auto failure =
+        drain.copier.failure().value_or(flash_copy::Failure::Idle);
+    oslog.printf("OS FLASH copy name=%s bytes=%llu result=error reason=%s "
+                 "errno=%d\n",
+                 relative, bytes, flash_copy::failure_name(failure),
+                 drain.copier.error());
+    if (failure == flash_copy::Failure::CrosslinkSuspect) {
+      // Both card entries and the flash source stay for the owner, once
+      // per file and boot.
+      oslog.printf("PARQUET RECOVERY crosslink-suspect file=%s action=none\n",
+                   relative);
+      if (!drain.held.add(hash))
+        drain.next_at = now + kCopyWaitSeconds;
+    } else if (!drain.failed.add(hash)) {
+      drain.next_at = now + kCopyWaitSeconds;
+    }
+    break;
+  }
+  }
+  return true;
 }
 
 // The codec-test file and its stdio staging are borrowed from PSRAM only for
@@ -2197,8 +2833,10 @@ void free_benchmark() {
 // probe_storage releases the archive session's read streams through
 // remounted(), and after mounted() the next READ on each handle reopens the
 // path and rechecks its size and CRC.
+// A flash file stays open across a card remount.
 bool files_closed() {
-  return !writer_state->telemetry.open() &&
+  return (!writer_state->telemetry.open() ||
+          on_flash(writer_state->telemetry)) &&
          (!writer_state->benchmark || !writer_state->benchmark->open());
 }
 
@@ -2214,9 +2852,12 @@ void probe_storage(std::size_t &count, bool &storage_ready,
   bool ok = storage_ready || may_remount;
   // An open file is finalized (or closed and quarantined by close_failed on
   // error) so no FILE* outlives the mount.
-  if (ok && may_remount && writer_state->telemetry.open())
+  if (ok && may_remount && writer_state->telemetry.open() &&
+      !on_flash(writer_state->telemetry))
     finalize_file(writer_state->telemetry);
   if (ok && may_remount && files_closed()) {
+    // A copy back holds card files, and the card may be another one.
+    cancel_copy_back("remount");
     // A remount may follow an external card edit, so cached CRCs go too.
     archive_session.remounted();
     writer_state->crc_cache.clear();
@@ -2231,8 +2872,10 @@ void probe_storage(std::size_t &count, bool &storage_ready,
     stamp_heartbeat();
     mounted_again = ok;
   }
-  if (mounted_again)
+  if (mounted_again) {
     archive_session.mounted();
+    copy_back_now();
+  }
   std::uint64_t free_bytes = 0;
   ok = ok && (!mounted_again || measure_volume()) && measure_free(free_bytes);
   if (ok && !storage_ready) {
@@ -2250,9 +2893,21 @@ void probe_storage(std::size_t &count, bool &storage_ready,
                  quarantined);
   }
   // Waiting rows are the real write test. Committed while still in Retry so
-  // a card that mounts but cannot write keeps its growing backoff.
-  if (ok && count && free_bytes >= governor.limits().reserve)
-    ok = commit(count, false) && measure_free(free_bytes);
+  // a card that mounts but cannot write keeps its growing backoff. An open
+  // flash file is finalized first, so the waiting rows open a card file and
+  // the card is written before Retry clears. A failed flash finalize is
+  // logged and paused by flash_commit and never fails the card probe. With
+  // no rows waiting the next card file is the write test, as without flash.
+  if (ok && free_bytes >= governor.limits().reserve) {
+    if (on_flash(writer_state->telemetry)) {
+      std::size_t none = 0;
+      flash_commit(none, true, nullptr);
+    }
+    if (count) {
+      next_root = kDirectory;
+      ok = commit(count, false) && measure_free(free_bytes);
+    }
+  }
   if (ok)
     governor.probe_succeeded(free_bytes, now);
   else
@@ -2328,6 +2983,14 @@ void service_presence(bool storage_ready) {
 }
 
 // Explicit owner actions retry at once instead of waiting for the backoff.
+bool storage_writable(std::size_t &count, bool &storage_ready);
+
+// A commit may go ahead now: to flash without touching the card, or else to
+// a card that probes writable.
+bool commit_writable(std::size_t &count, bool &storage_ready) {
+  return commit_to_flash() || storage_writable(count, storage_ready);
+}
+
 bool storage_writable(std::size_t &count, bool &storage_ready) {
   governor.request_probe();
   service_storage(count, storage_ready, true);
@@ -2347,7 +3010,7 @@ struct CloseStorage {
   std::size_t &count;
   bool &storage_ready;
   bool has_data() const { return count || writer_state->telemetry.open(); }
-  bool writable() { return storage_writable(count, storage_ready); }
+  bool writable() { return commit_writable(count, storage_ready); }
   bool finalize() {
     bool written = false;
     governed_commit(count, true, &written);
@@ -2420,7 +3083,8 @@ bool fits_batch(const Sample &row, std::size_t count) {
 void service_samples_while_waiting() {
   // Mirrors the main loop: without storage or a remount hook rows are dropped
   // there, and a row the batch cannot take needs a write.
-  if (!active_state || (!active_state->storage_ready && !hooks.storage_remount))
+  if (!active_state ||
+      (!active_state->storage_ready && !hooks.storage_remount && !flash_ready))
     return;
   static Sample row;
   auto &count = active_state->count;
@@ -2442,7 +3106,7 @@ void handle_control_request(const ble::ControlRequest &request,
       (request.link == ble::Link::Ble && request.peer != 0) ||
       request.link_generation != link_generation(request.link, request.peer))
     return;
-  if (archive_session.handle(request, state.storage_ready) ||
+  if (archive_session.handle(request, archive_ready(state.storage_ready)) ||
       ossync::ota::handle(request, control_replies))
     return;
   if (ossync::handle_common_control(request, control_replies)) {
@@ -2491,7 +3155,7 @@ void handle_control_request(const ble::ControlRequest &request,
       respond_error(ble::kOpFlush, ble::kErrNothingToFlush, nullptr);
       return;
     }
-    if (!storage_writable(state.count, state.storage_ready)) {
+    if (!commit_writable(state.count, state.storage_ready)) {
       respond_error(ble::kOpFlush, ble::kErrStorage,
                     storage::state_name(governor.state()));
       return;
@@ -2517,7 +3181,7 @@ void handle_control_request(const ble::ControlRequest &request,
   case ble::kOpReboot: {
     // Never lose the RAM batch to a reboot the owner asked for.
     if ((state.count || writer_state->telemetry.open()) &&
-        state.storage_ready && governor.writable())
+        can_commit(state.storage_ready))
       governed_commit(state.count, true);
     // Rows taken while REBOOTING waits for ring space would die with the
     // restart, so leave them in the sample queue.
@@ -2583,6 +3247,42 @@ void bench_stall(const char *text) {
   oslog.println("PARQUET BENCH stall-end");
 }
 #endif
+// Brings up the flash fallback root once the card side is known: the root
+// folder, its boot quarantine and the copy back state. Without the volume or
+// on any failure flash stays off and the card works as before.
+void start_flash_root() {
+  if (!flash_root)
+    return;
+  bool made;
+  {
+    BusLock lock;
+    made = opensensor::logger::detail::ensure_directory(flash_root);
+  }
+  if (!made) {
+    ++errors;
+    oslog.printf("OS FLASH ERROR operation=directory errno=%d\n", errno);
+    return;
+  }
+  flash_ready = true;
+  measure_flash();
+  const unsigned quarantined = quarantine_flash_partials();
+  oslog.printf("PARQUET RECOVERY quarantined=%u repaired=0 deleted=0 "
+               "root=flash\n",
+               quarantined);
+  // The first copy pass finds out whether the root is empty.
+  flash_holds_files = true;
+  void *memory = heap_caps_calloc(1, sizeof(FlashDrain),
+                                  MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (!memory) {
+    ++errors;
+    oslog.printf("OS FLASH ERROR operation=allocate mem=psram bytes=%u "
+                 "purpose=copy-back\n",
+                 unsigned(sizeof(FlashDrain)));
+    return;
+  }
+  flash_drain = new (memory) FlashDrain{};
+}
+
 void storage_worker(void *) {
   // begin() gives the start signal right after it prints PARQUET BEGIN, so
   // every worker line of a boot follows that boot's BEGIN. Nothing between
@@ -2617,7 +3317,6 @@ void storage_worker(void *) {
     const unsigned quarantined = quarantine_partials();
     oslog.printf("PARQUET RECOVERY quarantined=%u repaired=0 deleted=0\n",
                  quarantined);
-    list_files(false);
   } else {
     ++errors;
     oslog.printf("PARQUET ERROR operation=mount-or-directory "
@@ -2632,16 +3331,25 @@ void storage_worker(void *) {
     portEXIT_CRITICAL(&storage_mutex);
     publish_status();
   }
+  start_flash_root();
+  if (storage_ready || flash_ready)
+    list_files(false);
   std::size_t count = 0;
   Sample row;
   Command command;
   for (;;) {
     stamp_heartbeat();
+    // A copy back never holds card files through a LIST job, an emergency
+    // close or a card that left Ready.
+    if (flash_drain && flash_drain->copier.active() &&
+        !copy_back_allowed(storage_ready))
+      cancel_copy_back("paused");
     service_emergency_close(count, storage_ready);
     // Sample priority is retained without sleeping before every control
     // request. Successful producers signal after copying to a queue.
     if (xQueueReceive(samples, &row, 0) == pdTRUE) {
-      if ((!storage_ready && !hooks.storage_remount) || count == kMaxRows) {
+      if ((!storage_ready && !hooks.storage_remount && !flash_ready) ||
+          count == kMaxRows) {
         ++dropped;
       } else {
         // A batch from another window can only leave RAM through a write.
@@ -2650,7 +3358,7 @@ void storage_worker(void *) {
         // space read still left room, so the row is kept.
         if (!fits_batch(row, count) &&
             !admit_unfitted_row(
-                storage_ready && governor.writable(),
+                can_commit(storage_ready),
                 [&] { return governed_commit(count, true); },
                 [&] { return fits_batch(row, count); })) {
           ++dropped;
@@ -2658,7 +3366,7 @@ void storage_worker(void *) {
         }
         writer_state->rows[count++] = row;
         buffered = count;
-        if (count >= rows_per_group() && storage_ready && governor.writable())
+        if (count >= rows_per_group() && can_commit(storage_ready))
           governed_commit(count, false);
       }
     }
@@ -2666,8 +3374,11 @@ void storage_worker(void *) {
     service_presence(storage_ready);
     // A recheck can resume without a probe write. A full batch would
     // otherwise drop every later sample. A failed commit leaves writable().
-    if (count >= rows_per_group() && storage_ready && governor.writable())
+    if (count >= rows_per_group() && can_commit(storage_ready))
       governed_commit(count, false);
+    // Logs a change of target or of flash room even while no row waits.
+    if (flash_root)
+      (void)choose_target();
     // One bounded LIST step per pass, after samples and commits, so a large
     // card never holds the worker for a whole walk. The walk's reads stamp
     // the heartbeat, a stuck peer is bounded by its deliver wait.
@@ -2675,7 +3386,7 @@ void storage_worker(void *) {
       WorkerState state{count, storage_ready};
       active_state = &state;
       current_abort = archive_session.list_tag();
-      archive_session.step(storage_ready);
+      archive_session.step(archive_ready(storage_ready));
       current_abort = nullptr;
       active_state = nullptr;
     }
@@ -2692,6 +3403,10 @@ void storage_worker(void *) {
       if (listing) {
         // One tick per step, so a walk of cached entries into a ring with
         // room still lets IDLE run for the task watchdog.
+        vTaskDelay(1);
+      } else if (service_copy_back(storage_ready)) {
+        // One copy back step per pass, then a tick for IDLE, like a LIST
+        // step. Samples and requests still come first on the next pass.
         vTaskDelay(1);
       } else {
         // Drain pending samples before sleeping. Queue-then-signal also
@@ -2739,6 +3454,9 @@ void storage_worker(void *) {
             "PARQUET ERASE_ARCHIVE ok=0 reason=no-storage\n");
         continue;
       }
+      // Card roots only. The flash fallback root is not erased, its files
+      // stay for the next boot's copy back (decision record 0004).
+      cancel_copy_back("erase");
       archive_reset = true;
       archive_erase = ArchiveErase::Running;
       archive_session.close();
@@ -2902,7 +3620,7 @@ void storage_worker(void *) {
                std::strcmp(command.text, "parquet codec lz4") == 0) {
       // A file holds one codec: finish the open one before switching.
       if ((count || writer_state->telemetry.open()) &&
-          (!storage_writable(count, storage_ready) ||
+          (!commit_writable(count, storage_ready) ||
            !governed_commit(count, true))) {
         oslog.printf("PARQUET ERROR operation=codec reason=storage-%s\n",
                      storage::state_name(governor.state()));
@@ -2929,7 +3647,7 @@ void storage_worker(void *) {
                 std::strcmp(command.text + 17, "3600") == 0)) {
       // The window defines the file: finish the open one first.
       if ((count || writer_state->telemetry.open()) &&
-          (!storage_writable(count, storage_ready) ||
+          (!commit_writable(count, storage_ready) ||
            !governed_commit(count, true))) {
         oslog.printf("PARQUET ERROR operation=interval reason=storage-%s\n",
                      storage::state_name(governor.state()));
@@ -3159,11 +3877,17 @@ void unlock_bus() {
     xSemaphoreGive(spi_mutex);
 }
 
-// True when `path` is `root` or lies below it.
-bool path_within(const char *path, const char *root) {
-  const std::size_t length = std::strlen(root);
-  return std::strncmp(path, root, length) == 0 &&
-         (path[length] == '\0' || path[length] == '/');
+using opensensor::logger::roots::path_within;
+
+// True when the optional flash fallback root is unset, or an absolute path of
+// at most 31 bytes that neither holds nor sits below the card archive, the
+// codec-test root or the legacy root (os_logger_roots.h).
+bool fallback_root_valid(const Config &configuration) {
+  return opensensor::logger::roots::fallback_valid(
+      {.output = configuration.output_directory,
+       .benchmark = configuration.benchmark_directory,
+       .legacy = configuration.legacy_directory,
+       .fallback = configuration.fallback_directory});
 }
 
 // True for a SHA-256 digest as 64 lowercase hex characters.
@@ -3368,6 +4092,7 @@ bool begin(const Config &configuration, const Hooks &board_hooks,
       std::strlen(config.benchmark_directory) > 31 ||
       path_within(config.benchmark_directory, config.output_directory) ||
       path_within(config.output_directory, config.benchmark_directory) ||
+      !fallback_root_valid(config) ||
       !cadence::valid_sample_interval(config.sample_interval_ms) ||
       !config.deployment_id || !config.deployment_id[0] ||
       !config.calibration_id || !config.calibration_id[0] ||
@@ -3443,6 +4168,7 @@ bool begin(const Config &configuration, const Hooks &board_hooks,
   }
   kDirectory = config.output_directory;
   kBenchDirectory = config.benchmark_directory;
+  flash_root = config.fallback_directory;
   mounted = sd_mounted;
   if (!thing_identity()) {
     oslog.println("PARQUET ERROR operation=thing-identity logging=false");

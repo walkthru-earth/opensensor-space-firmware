@@ -103,6 +103,7 @@ tasks=(
   # Logger lifecycle, storage and persistence
   "debug-log-test"
   "coredump-report-test"
+  "flash-volume-test"
   "logger-work-queue-test"
   "logger-watchdog-test"
   "logger-bench-stall-test"
@@ -117,6 +118,7 @@ tasks=(
   "logger-live-test"
   "logger-power-test"
   "storage-governor-test"
+  "logger-flash-fallback-test"
   "crc-cache-test"
   "sd-transfer-buffer-test"
   # Offline backup publication with a fake esptool
