@@ -119,7 +119,7 @@ what that does and does not protect.
   same frame, which zeroes 2 KiB of the dead parse and H3 frames before the
   task reads or blocks again. `pixi run stack-budget --check` fails a board
   build whose scrub frame no longer covers the `parse_line` subtree with a
-  256 B margin (2080 B over 1424 B on the 2026-11-21 build), and
+  256 B margin (2080 B over 1472 B on the 2026-11-21 build), and
   `pixi run gnss-test` checks the source with mutants. A dump can still hold
   a position when the panic hits during a parse, in the reader task or in a
   task on the other core while the reader parses. The 32 B at the top of the
