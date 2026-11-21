@@ -23,6 +23,7 @@ TESTS = {
     "list-merge": ("test_list_merge.cpp", ["os_logger_list_merge.h"], []),
     "roots": ("test_roots.cpp", ["os_logger_roots.h"], []),
     "copy-candidates": ("test_copy_candidates.cpp", ["os_logger_copy_candidates.h"], []),
+    "thing-id": ("test_thing_id.cpp", [], []),
 }
 
 FORBIDDEN = re.compile(

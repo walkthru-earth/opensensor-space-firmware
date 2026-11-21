@@ -70,10 +70,12 @@
 #include <cstring>
 #include <ctime>
 #include <dirent.h>
+#include <expected>
 #include <fcntl.h>
 #include <new>
 #include <numeric>
 #include <optional>
+#include <span>
 #include <string_view>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -328,7 +330,7 @@ static_assert(kWorkerStartWaitMs <
 #endif
 char boot_text[33]{};
 char device_text[13]{};
-char thing_text[37]{};
+char thing_text[thing_id::kTextBytes]{};
 portMUX_TYPE clock_mutex = portMUX_INITIALIZER_UNLOCKED;
 // Guards the pair sd_state and worker_failed, so logging_view() never pairs a
 // new storage state with the failure flag of the previous one.
@@ -492,42 +494,30 @@ void prepare_columns() {
   }
 }
 
-bool thing_identity() {
-  nvs_handle_t settings;
-  if (nvs_open("parquet", NVS_READWRITE, &settings) != ESP_OK)
-    return false;
-  std::size_t length = sizeof(thing_text);
-  const esp_err_t found = nvs_get_str(settings, "thing", thing_text, &length);
-  if (found == ESP_ERR_NVS_NOT_FOUND) {
-    std::uint8_t id[16];
-    esp_fill_random(id, sizeof(id));
-    id[6] = (id[6] & 0x0f) | 0x40;
-    id[8] = (id[8] & 0x3f) | 0x80;
-    std::snprintf(
-        thing_text, sizeof(thing_text),
-        "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-        id[0], id[1], id[2], id[3], id[4], id[5], id[6], id[7], id[8], id[9],
-        id[10], id[11], id[12], id[13], id[14], id[15]);
-    if (nvs_set_str(settings, "thing", thing_text) != ESP_OK ||
-        nvs_commit(settings) != ESP_OK) {
-      nvs_close(settings);
-      return false;
-    }
-  } else if (found != ESP_OK) {
-    nvs_close(settings);
-    return false;
+// NVS behind thing_id::load_or_create (#225). The handle opens read-write so
+// a first boot can store a new id.
+struct ThingIdStore {
+  nvs_handle_t handle{};
+  int open() { return nvs_open(thing_id::kNamespace, NVS_READWRITE, &handle); }
+  int get(std::span<char, thing_id::kTextBytes> out, std::size_t &length) {
+    return nvs_get_str(handle, thing_id::kKey, out.data(), &length);
   }
-  nvs_close(settings);
-  if (std::strlen(thing_text) != 36)
-    return false;
-  for (std::size_t i = 0; i < 36; ++i) {
-    const bool dash = i == 8 || i == 13 || i == 18 || i == 23;
-    if (dash ? thing_text[i] != '-'
-             : !((thing_text[i] >= '0' && thing_text[i] <= '9') ||
-                 (thing_text[i] >= 'a' && thing_text[i] <= 'f')))
-      return false;
+  int set(const char *text) {
+    return nvs_set_str(handle, thing_id::kKey, text);
   }
-  return true;
+  int commit() { return nvs_commit(handle); }
+  void close() { nvs_close(handle); }
+};
+static_assert(thing_id::kOk == ESP_OK);
+static_assert(thing_id::kNotFound == ESP_ERR_NVS_NOT_FOUND);
+
+std::expected<void, thing_id::Error> thing_identity() {
+  ThingIdStore store;
+  return thing_id::load_or_create(
+      store, std::span<char, thing_id::kTextBytes>{thing_text},
+      [](std::array<std::uint8_t, 16> &id) {
+        esp_fill_random(id.data(), id.size());
+      });
 }
 
 bool make_directories(const char *path) {
@@ -3916,8 +3906,12 @@ bool begin(const Config &configuration, const Hooks &board_hooks,
   kBenchDirectory = config.benchmark_directory;
   flash_root = config.fallback_directory;
   mounted = sd_mounted;
-  if (!thing_identity()) {
-    oslog.println("PARQUET ERROR operation=thing-identity logging=false");
+  if (const auto identity = thing_identity(); !identity) {
+    const thing_id::Error &error = identity.error();
+    oslog.printf(thing_id::kFaultLine, thing_id::stage_name(error.stage),
+                 error.code);
+    if (hooks.thing_id_fault)
+      hooks.thing_id_fault(error, hooks.context);
     return false;
   }
   // A failed read never stops logging. It falls back to the default codec and
