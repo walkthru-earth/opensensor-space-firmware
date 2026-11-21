@@ -333,8 +333,11 @@ public:
         std::snprintf(final_.data(), final_.size(), "%s/%s", card_root, name);
     const int temp = std::snprintf(temp_.data(), temp_.size(), "%s/%s%s",
                                    card_root, name, kTempSuffix);
+    // Each path is checked on its own, so a later root or buffer change
+    // can never truncate the final name unnoticed (#211).
     if (source < 0 || final_length < 0 || temp < 0 ||
         static_cast<std::size_t>(source) >= source_.size() ||
+        static_cast<std::size_t>(final_length) >= final_.size() ||
         static_cast<std::size_t>(temp) >= temp_.size()) {
       source_[0] = final_[0] = temp_[0] = '\0';
       return std::unexpected(BeginError::TooLong);

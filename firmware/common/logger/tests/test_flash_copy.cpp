@@ -930,6 +930,27 @@ void begin_rules() {
   bad(kFlash, kCard, longest.c_str(), TooLong);
   const std::string root(fc::kPathBytes, 'r');
   bad(kFlash, root.c_str(), "a.parquet", TooLong);
+  // A card root that makes the final path one byte too long, and one that
+  // fills it exactly, are both refused, the second since the temporary is
+  // longer. Neither leaves a truncated final name behind (#211).
+  for (const std::size_t final_length : {fc::kPathBytes, fc::kPathBytes - 1}) {
+    const std::string name = "a.parquet";
+    const std::string card(final_length - 1 - name.size(), 'c');
+    const auto begun = copier.begin(kFlash, card.c_str(), name.c_str());
+    assert(!begun.has_value() && begun.error() == TooLong);
+    assert(*copier.relative() == '\0' && !copier.active());
+  }
+  // The longest card root whose final path and temporary both still fit.
+  {
+    const std::string name = "a.parquet";
+    const std::string card(fc::kPathBytes - 1 - name.size() - 1 -
+                               (sizeof(fc::kTempSuffix) - 1),
+                           'c');
+    fc::Copier edge;
+    const auto begun = edge.begin(kFlash, card.c_str(), name.c_str());
+    assert(begun.has_value());
+    assert(std::strcmp(edge.relative(), name.c_str()) == 0);
+  }
   // A name that fits every path, the temporary included.
   const std::string fits(fc::kRelativeBytes - 1, 'b');
   assert(copier.begin(kFlash, kCard, fits.c_str()).has_value());
