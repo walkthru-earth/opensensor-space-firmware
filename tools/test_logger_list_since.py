@@ -40,8 +40,9 @@ def check_wiring(source: str) -> None:
             r"target\.dated, target\.last\);",
         "LIST_SINCE plans from the tracker when its walk starts":
             r"if \(start\) \{ cancel\(\); if \(!since_\) \{ errno = ENOTSUP; return fail\(\); \} "
-            r"const auto in = since_state\.inputs\(cursor, "
+            r"auto in = since_state\.inputs\(cursor, "
             r"mount_epoch\.load\(\), utc_yesterday\(\), boot_ring, ring_store\); "
+            r"in\.force_full = [^;]*; "
             r"const auto plan = list_since::plan\(in\); result = plan\.result;",
         "a widened walk reports unsynced_full":
             r"if \(since_->widened\(\)\) result\.flags \|= ossync::kListSinceUnsyncedFull;",
