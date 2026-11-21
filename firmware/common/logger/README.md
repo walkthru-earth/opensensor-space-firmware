@@ -326,8 +326,12 @@ A reset during the sidecar write leaves a `<file>.json.partial`. At boot it is
 moved to quarantine like any other partial, unless its `.json` already exists,
 then it stays in place as a crosslink suspect. A reset between the Parquet
 rename and the sidecar rename leaves a finalized file with no sidecar. The
-firmware does not write it again later. LIST and the archive transfer still
-show only `.parquet` files, so a phone does not see the sidecar yet (#143).
+firmware does not write it again later, and LIST then shows the Parquet
+alone. BLE and LAN LIST and LIST_SINCE name a sidecar right after its dated
+Parquet, on the card or the flash volume, and OPEN serves it after a size and
+`{`/`}` check (#143, see the sidecar rule in
+[ble-sync-protocol.md](../../../docs/shared/ble-sync-protocol.md)). The serial
+archive list and the `PARQUET SCAN` count stay Parquet only.
 The serial archive reset removes `.json` files with everything else.
 
 ## Battery emergency close

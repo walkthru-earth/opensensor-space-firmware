@@ -472,7 +472,9 @@ def mutation_proofs(directory: Path, h3_objects: list[str], cases: dict, numbers
 # never runs them, so source checks pin them, as tools/test_logger_footer.py
 # does for the footer gate. Each listed mutant must fail its check.
 LOGGER = COMMON / "logger/src/os_logger.cpp"
-# check_file() hands the SHA-256 the same bytes as the CRC-32, from one read.
+# crc_file() hands the SHA-256 the same bytes as the CRC-32, from one read,
+# and check_file() passes it the caller's stream.
+SHA_PASS = "if (!crc_file(file, check, sha))"
 SHA_FEED = re.compile(
     r"crc = crc32_update\(crc, writer_state->crc_scratch, count\);\s*"
     r"if \(sha\)\s*sha->update\(\{writer_state->crc_scratch, count\}\);\s*"
@@ -518,10 +520,13 @@ def logger_body(source: str, signature: str) -> str:
 
 
 def check_logger_sidecar(source: str) -> None:
+    crc = logger_body(source, "\nbool crc_file(FILE *file")
+    require(len(SHA_FEED.findall(crc)) == 1,
+            "crc_file() must feed sha->update({crc_scratch, count}) right after the CRC")
+    require(crc.count("sha->") == 1, "crc_file() touches the SHA-256 only in that update")
     check = logger_body(source, "\nbool check_file(const char *path")
-    require(len(SHA_FEED.findall(check)) == 1,
-            "check_file() must feed sha->update({crc_scratch, count}) right after the CRC")
-    require(check.count("sha->") == 1, "check_file() touches the SHA-256 only in that update")
+    require(check.count(SHA_PASS) == 1 and check.count("sha") == 2,
+            "check_file() must hand its sha to crc_file() and use it nowhere else")
     finalized = logger_body(source, "\nbool finalized_file(const char *path")
     require(len(SHA_READ.findall(finalized)) == 1,
             "finalized_file() must hash through check_file(path, file, check, false, sha)")
@@ -552,6 +557,8 @@ LOGGER_MUTANTS = [
     ("sha fed the whole scratch buffer", "sha->update({writer_state->crc_scratch, count});",
      "sha->update({writer_state->crc_scratch, kCrcScratchBytes});"),
     ("sha update removed", "if (sha)\n      sha->update({writer_state->crc_scratch, count});\n", ""),
+    ("check_file drops the sha", "if (!crc_file(file, check, sha))",
+     "if (!crc_file(file, check, nullptr))"),
     ("hash after a CRC cache hit", "bool ok = check_file(path, file, check, false, sha);",
      "bool ok = check_file(path, file, check, true, sha);"),
     ("partial truncated", "out.fd = ::open(partial, O_WRONLY | O_CREAT | O_EXCL, 0600);",

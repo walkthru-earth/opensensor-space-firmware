@@ -153,6 +153,23 @@ def check_wiring(source: str) -> None:
         "a set aside sidecar waits for its Parquet under either name":
             r"if \(flash_copy::set_aside_name\(relative\)\) \{ "
             r"stem\.remove_prefix\(flash_copy::kConflictPrefixLength\); names = 2; \}",
+        "the radio LIST walks list STAC sidecars (#143)":
+            r"ArchiveList archive_list\{&archive_since, true\};",
+        "the serial list and the startup scan stay Parquet only":
+            r"bool list_all\(FileEmitter emit, void \*context, unsigned &partials\) "
+            r"\{ ArchiveList list;",
+        "a sidecar follows its Parquet in LIST":
+            r"return emit\(context, exported, static_cast<std::uint32_t>\(info\.st_size\)\) "
+            r"&& \(!sidecars \|\| emit_sidecar\(exported\)\);",
+        "a sidecar is looked up where OPEN finds it":
+            r"list_merge::sidecar\(probe, card_listable\(\) \? kDirectory : nullptr, "
+            r"flash_ready \? flash_root : nullptr, json, flash_phase\);",
+        "the flash walk marks its Parquet files as on flash":
+            r"\.sidecars = sidecars_, \.flash_phase = phase_ == Phase::Flash\};",
+        "OPEN checks a sidecar name as a sidecar":
+            r"return check_archive_file\(path, file, check\);",
+        "a sidecar needs its Parquet on a root that pairs with it":
+            r"!list_merge::sidecar_pairs\(sidecar_on_flash, parquet_on_flash\)\) return false;",
         "a crosslink suspect is logged and held once per file":
             r"PARQUET RECOVERY crosslink-suspect file=%s action=none\\n\", relative\); "
             r"if \(!drain\.held\.add\(hash\)\)",

@@ -14,6 +14,7 @@
 #include <fcntl.h>
 #include <string>
 #include <sys/resource.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <utility>
 #include <vector>
@@ -1635,6 +1636,160 @@ void list_since_cases(Fixture &f, ossync::ArchiveSession &session) {
   assert(f.errors.empty() && f.frames.back().bytes.size() == 15);
 }
 
+// A STAC sidecar next to its dated Parquet (#143), served through the same
+// session as the Parquet. The hooks apply the owner's rules from sync_codec.h
+// as os_logger.cpp does: resolve takes a Parquet name or the sidecar name of
+// a dated one, and the finalized hook checks a sidecar's Parquet beside it,
+// its size bounds and its first and last byte.
+void sidecar_cases(const std::string &root) {
+  const std::string directory = root + "/sidecar";
+  const std::string day = "thing=t1/year=2026/month=11/day=21";
+  std::string made = directory;
+  assert(::mkdir(made.c_str(), 0700) == 0);
+  for (const char *part : {"/thing=t1", "/year=2026", "/month=11", "/day=21"}) {
+    made += part;
+    assert(::mkdir(made.c_str(), 0700) == 0);
+  }
+  const std::string stem =
+      day + "/data_0910_0123456789abcdef0123456789abcdef_1-90-0";
+  const std::string parquet = stem + ".parquet", json = stem + ".json";
+  Fixture f(directory.c_str());
+  write_file(directory + "/" + parquet, f.bytes);
+  const std::string text = R"({"type":"Feature","id":"x","properties":{}})";
+  const std::vector<std::uint8_t> sidecar(text.begin(), text.end());
+  write_file(directory + "/" + json, sidecar);
+  f.names = {parquet, json};
+  auto hooks = f.archive();
+  hooks.resolve = [](void *ctx, const char *name, char *path,
+                     std::size_t size) {
+    auto &self = *static_cast<Fixture *>(ctx);
+    if (!safe_parquet_name(name) && !safe_sidecar_name(name))
+      return false;
+    const int n =
+        std::snprintf(path, size, "%s/%s", self.directory.c_str(), name);
+    return n > 0 && static_cast<std::size_t>(n) < size;
+  };
+  hooks.finalized = [](void *ctx, const char *path, FILE *file,
+                       ossync::FileCheck &check) {
+    auto &self = *static_cast<Fixture *>(ctx);
+    const std::string_view full{path};
+    if (!full.ends_with(kSidecarSuffix))
+      return false; // the Parquet cases live in main()
+    const std::string relative{full.substr(self.directory.size() + 1)};
+    std::array<char, 385> sibling{};
+    struct stat info{};
+    if (!sidecar_parquet_name(relative.c_str(), sibling) ||
+        ::stat((self.directory + "/" + sibling.data()).c_str(), &info) != 0 ||
+        !S_ISREG(info.st_mode))
+      return false;
+    std::vector<std::uint8_t> data(kMaxSidecarBytes + 2);
+    const std::size_t count = std::fread(data.data(), 1, data.size(), file);
+    check.size = static_cast<std::uint32_t>(count);
+    check.crc = crc32_update(0xffffffffU, data.data(), count) ^ 0xffffffffU;
+    return count > 0 && sidecar_complete(count, data[0], data[count - 1]);
+  };
+  ossync::ArchiveSession session(hooks, f.transport());
+
+  // LIST names the sidecar right after its Parquet, and LIST_END counts
+  // every FILE frame, sidecars included.
+  for (const auto link : {ble::Link::Ble, ble::Link::Lan}) {
+    f.clear();
+    assert(serve(session, request(f, ble::kOpList, link), true));
+    assert(f.errors.empty() && f.frames.size() == 3);
+    for (std::size_t i = 0; i < 2; ++i) {
+      const auto &frame = f.frames[i].bytes;
+      assert(frame[0] == ble::kFrameFile);
+      assert(std::string(frame.begin() + 5, frame.end()) == f.names[i]);
+    }
+    assert(f.frames[2].bytes[0] == ble::kFrameListEnd &&
+           get_u32(f.frames[2].bytes.data() + 1) == 2);
+  }
+
+  const auto open_name = [&](const std::string &name, ble::Link link) {
+    f.clear();
+    auto r = request(f, ble::kOpOpen, link);
+    std::memcpy(r.bytes + 1, name.data(), name.size());
+    r.length += name.size();
+    assert(session.handle(r, true));
+  };
+  // OPEN and READ serve the sidecar bytes with their size and CRC-32.
+  for (const auto link : {ble::Link::Ble, ble::Link::Lan}) {
+    open_name(json, link);
+    assert(f.errors.empty() && f.frames.size() == 1);
+    const auto &opened = f.frames[0].bytes;
+    assert(opened[0] == ble::kFrameOpened &&
+           get_u32(opened.data() + 3) == sidecar.size());
+    assert(get_u32(opened.data() + 7) ==
+           (crc_update(0xffffffffU, sidecar.data(), sidecar.size()) ^
+            0xffffffffU));
+    const auto handle = get_u16(opened.data() + 1);
+    f.clear();
+    serve(session,
+          read(f, handle, 0, static_cast<std::uint32_t>(sidecar.size()), link),
+          true);
+    std::vector<std::uint8_t> received;
+    for (std::size_t i = 0; i + 1 < f.frames.size(); ++i) {
+      assert(f.frames[i].bytes[0] == ble::kFrameChunk);
+      received.insert(received.end(), f.frames[i].bytes.begin() + 7,
+                      f.frames[i].bytes.end());
+    }
+    assert(f.errors.empty() && received == sidecar);
+    assert(f.frames.back().bytes[0] == ble::kFrameReadEnd &&
+           f.frames.back().bytes[7] == 0);
+  }
+
+  // Names that are never served: a partial, a traversal, an unsynced or a
+  // set aside sidecar, and a json beside nothing dated.
+  write_file(directory + "/" + json + ".partial", sidecar);
+  const std::vector<std::string> refused = {
+      json + ".partial",
+      day + "/../" + json,
+      "../" + json,
+      "thing=t1/unsynced/boot=0123456789abcdef0123456789abcdef/"
+      "data_unsynced_0123456789abcdef0123456789abcdef_1-90-0.json",
+      "flash-conflict/" + json,
+      "quarantine/" + json,
+      "legacy-parquet/" + json,
+      "sample.json"};
+  for (const auto &name : refused) {
+    open_name(name, ble::Link::Ble);
+    expect_error(f, ble::kErrInvalidName);
+  }
+
+  // A sidecar whose Parquet is gone is not a finalized file.
+  const std::string lone =
+      day + "/data_0920_0123456789abcdef0123456789abcdef_91-180-0.json";
+  write_file(directory + "/" + lone, sidecar);
+  open_name(lone, ble::Link::Ble);
+  expect_error(f, ble::kErrNotFinalized);
+  // A missing sidecar beside a real Parquet.
+  std::rename((directory + "/" + json).c_str(),
+              (directory + "/" + json + ".moved").c_str());
+  open_name(json, ble::Link::Ble);
+  expect_error(f, ble::kErrNotFinalized);
+
+  // Over the writer's largest Item, or not one JSON object, is refused.
+  std::vector<std::uint8_t> oversize(kMaxSidecarBytes + 1, ' ');
+  oversize.front() = '{';
+  oversize.back() = '}';
+  write_file(directory + "/" + json, oversize);
+  open_name(json, ble::Link::Ble);
+  expect_error(f, ble::kErrNotFinalized);
+  oversize.pop_back();
+  oversize.back() = '}';
+  write_file(directory + "/" + json, oversize);
+  open_name(json, ble::Link::Ble);
+  assert(f.errors.empty() && f.frames.size() == 1 &&
+         get_u32(f.frames[0].bytes.data() + 3) == kMaxSidecarBytes);
+  for (const std::string &bad : {std::string("{\"a\":1"), std::string("[]"),
+                                 std::string("{}\n"), std::string("{")}) {
+    write_file(directory + "/" + json,
+               std::vector<std::uint8_t>(bad.begin(), bad.end()));
+    open_name(json, ble::Link::Ble);
+    expect_error(f, ble::kErrNotFinalized);
+  }
+}
+
 int main(int argc, char **argv) {
   assert(argc == 2);
   Fixture f(argv[1]);
@@ -1732,6 +1887,7 @@ int main(int argc, char **argv) {
   list_job_cases(f, session);
   list_since_cases(f, session);
   worker_glue_cases(f, session);
+  sidecar_cases(argv[1]);
 
   auto handle = open(f, session);
   f.clear();
