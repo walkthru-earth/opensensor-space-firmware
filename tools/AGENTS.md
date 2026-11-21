@@ -10,6 +10,7 @@ C++ contract tests and cannot prove behavior on a physical board.
 | Native GEOMETRY column and the `geo` footer key through the real writer, read by PyArrow and DuckDB | `geoparquet-test` |
 | Footer reader and Iceberg DataFile metrics | `reader-test` (ASan + UBSan, crafted footers, fuzz loop) |
 | File size, footer share and host encoding or compaction variants | `size-survey`, `size-survey-test` |
+| Host compactor prototype (#136). Reads the dated Hive tree with explicit `hive_types`, writes one sorted LZ4_RAW Parquet V2 file per board and month or day under a separate prefix with the device field ids, a `thing_id` column (field id 1001) and UTC kept as `TIMESTAMP(MICROS, UTC)`, checks rows, content hashes, types and codecs, never overwrites and never touches sources. `measure` is the raw against compacted reader benchmark, `ducklake` runs DuckLake on copies in scratch and needs the network once | `compact compact|verify|measure|ducklake`, `compact-test --sanitize` |
 | Telemetry dictionary, units and validity | `telemetry-contract-test --sanitize` |
 | BLE/LAN archive and framing | `archive-sync-test`, `test_ble_sync.py` |
 | Protocol 3 wire codec through the shipped Python client, advert bytes, BYE, DIAG and ABORTED golden frames, the LAN `FrameRing`, BLE notify credits and link auth gates | `ble-sync-test`, `ble-advert-test`, `disconnect-test`, `frame-ring-test`, `ble-policy-test` |
