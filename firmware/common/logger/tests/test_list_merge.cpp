@@ -27,6 +27,7 @@ constexpr const char *kName =
 // test sees which roots were looked at.
 struct Probe {
   std::map<std::string, mode_t> entries;
+  std::map<std::string, off_t> sizes;
   std::string fail;
   int fail_errno = EIO;
   std::vector<std::string> probed;
@@ -44,6 +45,8 @@ struct Probe {
     }
     *info = {};
     info->st_mode = entry->second;
+    const auto size = sizes.find(path);
+    info->st_size = size == sizes.end() ? 100 : size->second;
     return 0;
   }
 };
@@ -144,6 +147,82 @@ void set_aside_listed() {
   assert(lm::flash_name(probe, kCard, aside.c_str()) == FlashName::OnCard);
 }
 
+constexpr const char *kFlash = "/flash/output";
+constexpr const char *kSidecar = "thing=t1/year=2026/month=11/day=21/"
+                                 "data_0910_0123456789abcdef0123456789abcdef_"
+                                 "1-90-0.json";
+
+std::string at(const char *root, const char *name) {
+  return std::string(root) + "/" + name;
+}
+
+// The sidecar is found where OPEN finds it, the card first, then flash
+// (#143). A flash sidecar is listed under the name it has on the card.
+void sidecar_lookup() {
+  using lm::SidecarMiss;
+  Probe card;
+  card.entries[at(kCard, kSidecar)] = S_IFREG;
+  card.sizes[at(kCard, kSidecar)] = 900;
+  auto found = lm::sidecar(card, kCard, kFlash, kSidecar, false);
+  assert(found && *found == 900);
+  assert(card.probed == std::vector<std::string>{at(kCard, kSidecar)});
+
+  // Only on flash, with or without a card.
+  Probe flash;
+  flash.entries[at(kFlash, kSidecar)] = S_IFREG;
+  for (const char *card_root : {kCard, static_cast<const char *>(nullptr)})
+    for (const bool parquet_on_flash : {false, true}) {
+      found = lm::sidecar(flash, card_root, kFlash, kSidecar, parquet_on_flash);
+      assert(found && *found == 100);
+    }
+  // Flash not ready.
+  found = lm::sidecar(flash, kCard, nullptr, kSidecar, false);
+  assert(!found && found.error() == SidecarMiss::Absent);
+
+  // A card sidecar beside a Parquet only on flash is some other file's.
+  found = lm::sidecar(card, kCard, kFlash, kSidecar, true);
+  assert(!found && found.error() == SidecarMiss::Split);
+  static_assert(lm::sidecar_pairs(false, false));
+  static_assert(lm::sidecar_pairs(true, false));
+  static_assert(lm::sidecar_pairs(true, true));
+  static_assert(!lm::sidecar_pairs(false, true));
+
+  // No json beside the Parquet.
+  Probe none;
+  found = lm::sidecar(none, kCard, kFlash, kSidecar, false);
+  assert(!found && found.error() == SidecarMiss::Absent);
+  assert(none.probed.size() == 2);
+
+  // A directory of that name, and sizes OPEN refuses.
+  Probe odd;
+  odd.entries[at(kCard, kSidecar)] = S_IFDIR;
+  found = lm::sidecar(odd, kCard, kFlash, kSidecar, false);
+  assert(!found && found.error() == SidecarMiss::NotFile);
+  odd.entries[at(kCard, kSidecar)] = S_IFREG;
+  for (const off_t size :
+       {off_t(0), off_t(1), off_t(opensensor::sync::kMaxSidecarBytes) + 1,
+        off_t(-1)}) {
+    odd.sizes[at(kCard, kSidecar)] = size;
+    found = lm::sidecar(odd, kCard, kFlash, kSidecar, false);
+    assert(!found && found.error() == SidecarMiss::Size);
+  }
+  for (const off_t size :
+       {off_t(2), off_t(opensensor::sync::kMaxSidecarBytes)}) {
+    odd.sizes[at(kCard, kSidecar)] = size;
+    found = lm::sidecar(odd, kCard, kFlash, kSidecar, false);
+    assert(found && *found == static_cast<std::uint32_t>(size));
+  }
+
+  // A card that cannot be inspected ends the lookup, flash is not tried, so
+  // LIST never names a file OPEN would not resolve to.
+  Probe broken;
+  broken.entries[at(kFlash, kSidecar)] = S_IFREG;
+  broken.fail = at(kCard, kSidecar);
+  found = lm::sidecar(broken, kCard, kFlash, kSidecar, false);
+  assert(!found && found.error() == SidecarMiss::Unreadable && errno == EIO);
+  assert(broken.probed.size() == 1);
+}
+
 int main() {
   duplicate();
   unique();
@@ -152,5 +231,6 @@ int main() {
   bad_names();
   since_rule();
   set_aside_listed();
+  sidecar_lookup();
   return 0;
 }
