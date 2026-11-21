@@ -17,7 +17,9 @@ delete the `walkthru-earth/embedded-h3-location` entry from every board
 `dependencies.lock`, then build every board. The component manager keeps a
 locked git commit even after the ref changes, so without that step the locks
 still name the old commit. Deleting only that entry leaves the registry pins
-alone, unlike `idf.py update-dependencies`.
+alone, unlike `idf.py update-dependencies`. When the new tag vendors another
+H3 release, also update the expected H3 tag and commit in `verify_vendor` in
+`tools/h3_library.py`, or every host H3 test fails its vendor check.
 
 What stays in this repository
 
