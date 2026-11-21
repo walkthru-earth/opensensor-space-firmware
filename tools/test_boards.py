@@ -558,7 +558,7 @@ def check_drift() -> None:
 
     tasks = tomllib.loads((ROOT / "pixi.toml").read_text())["tasks"]
     for board in every:
-        for action in ("setup", "build", "flash"):
+        for action in ("build", "flash"):
             name = f"{board.alias}-{action}"
             if tasks.get(name) != f"{board.project}/{action}.sh":
                 findings.append(f"pixi.toml {name} is {tasks.get(name)!r}, expected {board.project}/{action}.sh")
@@ -598,18 +598,25 @@ def check_drift() -> None:
         if leg["task"] not in tasks_ok:
             findings.append(f"ci.yml leg {leg['name']} task {leg['task']!r}, expected one of {sorted(tasks_ok)}")
     findings += stall_findings(legs, every)
-    # The one step that runs the check. Other steps, such as the IDF Python
-    # lock check (#176), may follow it.
-    repro_runs = [step["run"].split() for step in ci["jobs"]["repro-paths"]["steps"]
-                  if "repro-paths-check" in step.get("run", "")]
-    repro = repro_runs[0] if len(repro_runs) == 1 else repro_runs
-    if repro[:3] != ["pixi", "run", "repro-paths-check"] or len(repro) not in (4, 5):
-        findings.append(f"ci.yml repro-paths runs {repro}, expected repro-paths-check <board> [variant]")
-    else:
+    # One leg per board, each the telemetry app, the image a release ships
+    # (#45). The one step that runs the check takes the leg from env. Other
+    # steps, such as the IDF Python lock check (#176), may follow it.
+    repro_job = ci["jobs"]["repro-paths"]
+    repro_legs = ((repro_job.get("strategy") or {}).get("matrix") or {}).get("include") or []
+    checked = sorted((str(leg.get("board")), str(leg.get("variant"))) for leg in repro_legs)
+    if checked != sorted((b.alias, b.telemetry_variant) for b in every):
+        findings.append(f"ci.yml repro-paths legs {checked}, expected the telemetry app of every board")
+    for leg in repro_legs:
         try:
-            boards.resolve(repro[3], repro[4] if len(repro) == 5 else None)
+            boards.resolve(str(leg.get("board")), str(leg.get("variant")))
         except boards.BoardError as error:
-            findings.append(f"ci.yml repro-paths board, {error}")
+            findings.append(f"ci.yml repro-paths leg, {error}")
+    repro_steps = [step for step in repro_job["steps"] if "repro-paths-check" in step.get("run", "")]
+    want_env = {"BOARD": "${{ matrix.board }}", "VARIANT": "${{ matrix.variant }}"}
+    if len(repro_steps) != 1 or repro_steps[0]["run"].strip() != 'pixi run repro-paths-check "${BOARD}" "${VARIANT}"' \
+            or repro_steps[0].get("env") != want_env:
+        findings.append("ci.yml repro-paths must run repro-paths-check \"${BOARD}\" \"${VARIANT}\" once, "
+                        f"with {want_env}")
 
     release = yaml.safe_load((ROOT / ".github/workflows/release.yml").read_text())
     release_legs = next(job["strategy"]["matrix"]["include"] for job in release["jobs"].values()

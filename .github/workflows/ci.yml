@@ -378,18 +378,36 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           exit "${status}"
 
-  # One board built from two checkout paths must give the same images (#45).
-  # tools/check_repro_paths.sh builds the Waveshare logger, which compiles every
-  # common component, in two git worktrees of HEAD and compares the
-  # os-build-sha256.json manifests. One board keeps the job to two builds.
-  # No ccache, a cache hit could hide a path that leaks at compile time.
+  # Each board's telemetry image built from two checkout paths must give the
+  # same images (#45). tools/check_repro_paths.sh builds it in two git
+  # worktrees of HEAD and compares the os-build-sha256.json manifests. Every
+  # released image has a leg, so CoreS3 with M5Unified and M5GFX and the two
+  # e-paper boards with the shared UI are path checked too. The legs run in
+  # parallel. On the #233 PR run (2026-11-21) the four legs took 4 min 6 s to
+  # 5 min 14 s each, about 19.4 runner minutes against about 4 for the one
+  # Waveshare leg before, and the run took about 1 minute longer. The Waveshare
+  # diagnostic is never released and
+  # has no leg. No ccache, a cache hit could hide a path that leaks at
+  # compile time.
   repro-paths:
-    name: Reproducible image paths
+    name: Reproducible image paths ${{ matrix.board }}
     runs-on: ubuntu-24.04
-    # Two uncached builds of about 4 min each, plus SDK setup.
+    # Two uncached builds of about 1.5 to 3 min each, plus SDK setup.
     timeout-minutes: 40
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - board: cores3
+            variant: bringup
+          - board: waveshare
+            variant: logger
+          - board: crowpanel
+            variant: logger
+          - board: epaper397
+            variant: logger
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -426,7 +444,10 @@ jobs:
       - name: Install pinned ESP-IDF
         run: pixi run idf-setup
       - name: Build from two paths and compare
-        run: pixi run repro-paths-check waveshare logger
+        env:
+          BOARD: ${{ matrix.board }}
+          VARIANT: ${{ matrix.variant }}
+        run: pixi run repro-paths-check "${BOARD}" "${VARIANT}"
       - name: Check IDF Python packages against the lock
         run: pixi run idf-python-check
 
