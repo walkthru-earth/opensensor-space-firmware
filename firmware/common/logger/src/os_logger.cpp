@@ -16,6 +16,7 @@
 #include "os_logger_list_since.h"
 #include "os_logger_live.h"
 #include "os_logger_location.h"
+#include "os_logger_paths.h"
 #include "os_logger_power.h"
 #include "os_logger_provision.h"
 #include "os_logger_roots.h"
@@ -102,6 +103,9 @@ using opensensor::sync::put_i64;
 using opensensor::sync::put_u16;
 using opensensor::sync::put_u32;
 using opensensor::utc::days_from_civil;
+namespace paths = opensensor::logger::paths;
+// The "%.384s" name bounds below print at most one relative name.
+static_assert(paths::kRelativeBytes == 384);
 constexpr std::size_t kMaxRows = cadence::kMaxBatchRows;
 static_assert(kMaxRows <= telemetry::kLz4PageRows,
               "the LZ4 page scratch must hold a full RAM batch");
@@ -117,8 +121,8 @@ struct OutputFile {
   FILE *file = nullptr;
   Writer writer;
   Workspace workspace{};
-  char stem[384]{}; // <partition>/<prefix>_<boot>_<first>
-  char partial[416]{};
+  char stem[paths::kRelativeBytes]{}; // <partition>/<prefix>_<boot>_<first>
+  char partial[paths::kPathBytes]{};
   char *staging = nullptr; // stdio buffer, see WriterState
   // kDirectory, kBenchDirectory or flash_root. A file keeps its root until
   // it is finalized, and every path of the file is built from it.
@@ -526,7 +530,7 @@ bool thing_identity() {
 }
 
 bool make_directories(const char *path) {
-  char copy[416];
+  char copy[paths::kPathBytes];
   if (std::strlen(path) >= sizeof(copy))
     return false;
   std::strcpy(copy, path);
@@ -621,7 +625,7 @@ bool quarantine_one(const char *root, const char *relative,
                     const char *origin) {
   const char *base = std::strrchr(relative, '/');
   base = base ? base + 1 : relative;
-  char directory[416];
+  char directory[paths::kPathBytes];
   const int length =
       base == relative
           ? std::snprintf(directory, sizeof(directory), "%s", root)
@@ -638,12 +642,12 @@ bool quarantine_one(const char *root, const char *relative,
                  relative);
     return false;
   }
-  char source[416];
+  char source[paths::kPathBytes];
   struct stat info{};
   std::snprintf(source, sizeof(source), "%s/%s", root, relative);
   if (io.inspect(source, &info) != 0)
     info.st_size = 0;
-  char destination[416];
+  char destination[paths::kPathBytes];
   const bool ok = opensensor::logger::detail::quarantine_partial(
       io, root, relative, boot_text, quarantine_counter++, destination,
       sizeof(destination));
@@ -683,7 +687,7 @@ void close_failed(OutputFile &target, const char *operation,
     open_rows = open_groups = 0;
   // The .partial is retained, never repaired. Move it out of the active tree
   // now, so the next file and LIST never see it beside live data.
-  char relative[416];
+  char relative[paths::kPathBytes];
   const int length =
       std::snprintf(relative, sizeof(relative), "%s-%lu.partial", target.stem,
                     static_cast<unsigned long>(target.attempt));
@@ -1048,7 +1052,8 @@ void write_sidecar(const OutputFile &target, const char *ready,
   const std::string_view ready_path{ready};
   constexpr std::string_view kParquet = ".parquet";
   const std::string_view root{target.root};
-  char path[416], partial[424];
+  char path[paths::kPathBytes],
+      partial[paths::kPathBytes + sizeof(".partial") - 1];
   // <root>/<stem>-<last>-<attempt>, the name both files share.
   int path_length = -1, partial_length = -1;
   if (ready_path.ends_with(kParquet) &&
@@ -1241,7 +1246,7 @@ bool finalize_file(OutputFile &target) {
   target.file = nullptr;
   if (!target.benchmark)
     open_rows = open_groups = 0;
-  char ready[416];
+  char ready[paths::kPathBytes];
   std::snprintf(ready, sizeof(ready), "%s/%s-%lld-%lu.parquet", target.root,
                 target.stem, static_cast<long long>(target.last),
                 static_cast<unsigned long>(target.attempt));
@@ -1778,7 +1783,7 @@ bool resolve_path(const char *name, char *path, std::size_t size) {
   struct stat info{};
   if (card_listable() && (io.inspect(path, &info) == 0 || errno != ENOENT))
     return true;
-  char flash[416];
+  char flash[paths::kPathBytes];
   const int length =
       std::snprintf(flash, sizeof(flash), "%s/%.384s", flash_root, name);
   if (length < 0 || static_cast<std::size_t>(length) >= sizeof(flash) ||
@@ -1789,7 +1794,7 @@ bool resolve_path(const char *name, char *path, std::size_t size) {
 }
 
 void send_file(const char *name) {
-  char path[416];
+  char path[paths::kPathBytes];
   if (!resolve_path(name, path, sizeof(path))) {
     oslog.println("PARQUET ERROR operation=get reason=invalid-name");
     return;
@@ -2571,7 +2576,7 @@ struct FlashDrain {
   CopyIO io;
   flash_copy::Copier copier;
   opensensor::logger::detail::DirectoryWalk<ArchiveDirectoryIO> walk;
-  std::array<char, flash_copy::kRelativeBytes> best{};
+  std::array<char, paths::kRelativeBytes> best{};
   Names held;
   Names failed;
   std::uint32_t moved = 0;
@@ -2621,7 +2626,7 @@ void copy_back_now() {
 // path does not fit or the inspect fails for another reason than ENOENT.
 bool parquet_on(const char *root, std::string_view prefix,
                 std::string_view stem, bool &unsure) {
-  char parquet[flash_copy::kPathBytes];
+  char parquet[paths::kPathBytes];
   const int length =
       std::snprintf(parquet, sizeof(parquet), "%s/%.*s%.*s.parquet", root,
                     static_cast<int>(prefix.size()), prefix.data(),
@@ -2664,7 +2669,7 @@ bool sidecar_waits(const char *relative) {
 // Removes the empty directories above a freed flash file, up to the flash
 // root. The root's quarantine folder stays for same-boot quarantine moves.
 void remove_empty_flash_directories(const char *relative) {
-  char path[flash_copy::kPathBytes];
+  char path[paths::kPathBytes];
   const int length =
       std::snprintf(path, sizeof(path), "%s/%s", flash_root, relative);
   if (length < 0 || static_cast<std::size_t>(length) >= sizeof(path))

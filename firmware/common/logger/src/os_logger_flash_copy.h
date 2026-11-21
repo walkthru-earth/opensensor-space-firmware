@@ -1,5 +1,6 @@
 #pragma once
 
+#include "os_logger_paths.h"
 #include "sha256_stream.h"
 #include "sync_codec.h"
 
@@ -62,9 +63,10 @@
 namespace opensensor::logger::flash_copy {
 
 inline constexpr std::size_t kChunkBytes = 4096;
-// Same bounds as the archive walk, a full path and a relative name.
-inline constexpr std::size_t kPathBytes = 416;
-inline constexpr std::size_t kRelativeBytes = 384;
+// The archive walk bounds, a full path and a relative name
+// (os_logger_paths.h).
+using paths::kPathBytes;
+using paths::kRelativeBytes;
 inline constexpr char kTempSuffix[] = ".copy";
 
 enum class [[nodiscard]] Outcome : std::uint8_t {

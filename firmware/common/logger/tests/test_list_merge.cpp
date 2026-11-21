@@ -1,3 +1,4 @@
+#include "os_logger_flash_copy.h"
 #include "os_logger_list_merge.h"
 
 #include <cassert>
@@ -10,6 +11,12 @@
 namespace {
 namespace lm = opensensor::logger::list_merge;
 using lm::FlashName;
+
+// The LIST merge and the copy back share one path bound, so a flash name the
+// merge lists always fits the copy (#210).
+static_assert(&lm::kPathBytes == &opensensor::logger::paths::kPathBytes);
+static_assert(&opensensor::logger::flash_copy::kPathBytes ==
+              &opensensor::logger::paths::kPathBytes);
 
 constexpr const char *kCard = "/sd/output";
 constexpr const char *kLegacy = "/sd/parquet";
