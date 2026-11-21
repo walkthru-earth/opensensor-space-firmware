@@ -417,7 +417,7 @@ void cancel(const char *reason) {
   flash_drain->candidates.clear();
 }
 
-void now() {
+void run_now() {
   if (flash_drain) {
     flash_drain->next_at = 0;
     flash_drain->failed.count = 0;

@@ -2542,7 +2542,7 @@ void probe_storage(std::size_t &count, bool &storage_ready,
   }
   if (mounted_again) {
     archive_session.mounted();
-    copy_back::now();
+    copy_back::run_now();
   }
   std::uint64_t free_bytes = 0;
   ok = ok && (!mounted_again || measure_volume()) && measure_free(free_bytes);

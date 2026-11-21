@@ -23,7 +23,7 @@ void start();
 // Ends a copy in progress, the copier removes only its own temporary.
 void cancel(const char *reason);
 // A card that just mounted gets its copy pass now, not after the wait.
-void now();
+void run_now();
 // The flash root may hold other names: a flash commit made, renamed or
 // quarantined a file. The next step walks the root again.
 void flash_changed();
