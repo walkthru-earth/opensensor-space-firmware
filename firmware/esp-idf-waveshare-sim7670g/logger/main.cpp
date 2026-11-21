@@ -10,6 +10,7 @@
 #include <esp_psram.h>
 #include <esp_system.h>
 #include <esp_timer.h>
+#include <flash_volume.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <log_persist.h>
@@ -21,6 +22,9 @@
 #include <os_stac_item.h>
 #include <pms_frame.h>
 #include <power.h>
+#include <sdkconfig.h>
+
+#include <array>
 #include <utility>
 
 #ifndef CONFIG_SPIRAM
@@ -249,10 +253,13 @@ bool init_board() {
                mounted, static_cast<unsigned long long>(board::card_bytes()),
                board::sd_buffer_reserved(), sensor_ready, kSdClk, kSdCmd,
                kSdData0);
+  oslogger::Config logger_config = kLoggerConfig;
+  logger_config.fallback_directory = opensensor::storage::mount_flash_fallback(
+      [](const char *text) { oslog.printf("%s", text); });
   if (const auto gnss = opensensor::gnss::start(kGnss); !gnss)
     oslog.printf("OS ERROR operation=gnss-start reason=%u\n",
                  static_cast<unsigned>(std::to_underlying(gnss.error())));
-  logging = oslogger::begin(kLoggerConfig, kHooks, mounted);
+  logging = oslogger::begin(logger_config, kHooks, mounted);
   config::set_sensor_policy(kSensorPolicy);
   if (logging && !oslogger::start_links(false))
     oslog.println("OS ERROR operation=sync-start");

@@ -50,4 +50,17 @@ config OS_LOGGER_BENCH_STALL
         directory. Never ship an image with it, any serial user can stop
         logging with it.
 
+config OS_LOGGER_FLASH_FALLBACK
+    bool "Mount the internal flash volume for cardless logging"
+    default n
+    help
+        The board mounts the data partition labelled spiffs at /flash through
+        wear levelling at boot and passes /flash/output to the logger as its
+        fallback archive root (decision record 0004). The volume is formatted
+        at most once in the life of the board, and NVS osflash/formatted
+        records that format. After it is set a failed mount leaves the volume
+        off and is never formatted again. NVS osflash/copies counts the files
+        copied back to the card, so the LIST_SINCE epoch never repeats. Boot prints one
+        `OS FLASH mount ok=...` line. The partition table stays as it is.
+
 endmenu

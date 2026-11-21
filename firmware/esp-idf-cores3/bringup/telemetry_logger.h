@@ -16,9 +16,12 @@ struct PmsSnapshot {
   bool present = false;
 };
 
-// Called once after M5.begin and SD mount. One worker owns all subsequent SD
-// IO. False when the logger could not start, so no row is ever written.
-[[nodiscard]] bool begin_logger(bool sd_mounted);
+// Called once after M5.begin, SD mount and the internal flash mount. One
+// worker owns all subsequent SD IO. `fallback_directory` is the flash archive
+// root, or nullptr when that volume is off. False when the logger could not
+// start, so no row is ever written.
+[[nodiscard]] bool begin_logger(bool sd_mounted,
+                                const char *fallback_directory);
 // The row's PMS status (telemetry_contract.h pms_status_of) for the screen and
 // the MEAS line, so neither shows a value the row nulls (#165). `status`
 // follows the pms_status codes, 4 is valid. `age_ms` is the saturated

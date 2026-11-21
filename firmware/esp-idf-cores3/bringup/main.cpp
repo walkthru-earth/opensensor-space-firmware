@@ -21,6 +21,7 @@
 #include <esp_timer.h>
 #include <esp_vfs_fat.h>
 #include <fat_volume.h>
+#include <flash_volume.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <nvs_flash.h>
@@ -931,9 +932,11 @@ static void board_begin() {
   report_rtc_imu_touch();
   sd_mounted = report_sd();
   report_dma_memory("sd-mounted");
+  const char *fallback_directory = opensensor::storage::mount_flash_fallback(
+      [](const char *text) { oslog.printf("%s", text); });
   start_pms();
   // os_logger prints the cause. The device page shows "not started".
-  if (!telemetry::begin_logger(sd_mounted))
+  if (!telemetry::begin_logger(sd_mounted, fallback_directory))
     oslog.println("DIAG logger status=start_failed logging=false");
   if (kEnableBle) {
     ble_started = telemetry::start_links(M5.getDisplayCount() > 0);

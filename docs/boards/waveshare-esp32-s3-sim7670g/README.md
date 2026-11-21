@@ -25,6 +25,16 @@ On 2026-09-28, identification, full backup, diagnostic/full logger boot, TF moun
 
 The board's product name includes a modem, but local sampling and SD copies must continue to work without a SIM or internet. A later cellular upload path cannot replace the card or local archive.
 
+## Internal flash archive
+
+The `spiffs` data partition at 0xc20000 (0x3e0000 bytes, 3.875 MiB) is a FAT
+volume mounted at `/flash`. With no usable card the logger writes Parquet there
+and copies each file to the card once one is Ready, see [decision record 0004](../../shared/decisions/0004-flash-fallback-archive.md).
+Only the logger variant enables it, in
+`firmware/esp-idf-waveshare-sim7670g/logger/sdkconfig.defaults`. The diagnostic
+variant has no logger and never mounts the volume. Nothing is proven on the
+bench yet.
+
 ## Stack and heap budgets
 
 Task stacks are sized from two numbers, the method of issue #37. The static worst case comes from

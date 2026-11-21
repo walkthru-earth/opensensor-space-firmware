@@ -37,6 +37,15 @@ including four persistent archive readers. Reserve the 4 KiB internal DMA SD
 transfer buffer before radios and keep it for the whole boot, also when the
 mount fails, so a card inserted later still mounts. Then call
 `start_links(display_detected)` once and `poll()` on every main-loop pass.
+A board that opts in with `CONFIG_OS_LOGGER_FLASH_FALLBACK` calls
+[`mount_flash_fallback()`](../../firmware/common/src/flash_volume.h) after its
+card setup. It prints the `OS FLASH mount` line through the callback the board
+passes and returns `"/flash/output"` when the mount succeeded, which the board
+sets as `Config::fallback_directory`. It returns null without the opt-in. The
+helper mounts the `spiffs` data partition through wear levelling and formats it
+at most once, recorded in NVS `osflash/formatted`. The logger counts the
+files it copies back in NVS `osflash/copies`, see
+[decision record 0004](decisions/0004-flash-fallback-archive.md).
 OSLogger alone accesses files after startup. OSConnectivity alone initializes
 radios, the LAN task writes sockets, and the NimBLE host sends BLE responses.
 

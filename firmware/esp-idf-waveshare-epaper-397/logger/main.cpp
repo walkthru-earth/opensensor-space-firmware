@@ -23,6 +23,7 @@
 #include <esp_psram.h>
 #include <esp_timer.h>
 #include <expected>
+#include <flash_volume.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <freertos/semphr.h>
@@ -1350,7 +1351,10 @@ bool init_board() {
                board::sd_buffer_reserved(), board::kSdClk, board::kSdCmd,
                board::kSdData0, board::kSdData1, board::kSdData2,
                board::kSdData3);
-  logging = oslogger::begin(kLoggerConfig, kHooks, mounted);
+  oslogger::Config logger_config = kLoggerConfig;
+  logger_config.fallback_directory = opensensor::storage::mount_flash_fallback(
+      [](const char *text) { oslog.printf("%s", text); });
+  logging = oslogger::begin(logger_config, kHooks, mounted);
   const bool ui_ok = display_ok && start_ui_task();
   if (display_ok && !ui_ok)
     oslog.println("OS ERROR operation=ui-task-create");
