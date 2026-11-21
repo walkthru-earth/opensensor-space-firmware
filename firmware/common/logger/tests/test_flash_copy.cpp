@@ -402,6 +402,13 @@ void verify_mismatch() {
   assert(io.files.at(kSource) == bytes);
   assert(!io.files.contains(kTemp) && !io.files.contains(kFinal));
   assert(io.unlinked == std::vector<std::string>{kTemp});
+  // A step while idle keeps the cause and errno of the failed copy for the
+  // caller's log line.
+  const int failed_errno = copier.error();
+  assert(copier.step(io) == Outcome::IoError);
+  assert(copier.failure() == Failure::Verify);
+  assert(copier.error() == failed_errno);
+  assert(std::strcmp(copier.relative(), kName.c_str()) == 0);
 }
 
 // The card already holds the same bytes under the final name, with no
@@ -719,6 +726,17 @@ void begin_rules() {
   const auto busy = copier.begin(kFlash, kCard, "a.parquet");
   assert(!busy.has_value() && busy.error() == Busy);
   assert(std::strcmp(copier.relative(), fits.c_str()) == 0);
+  // A refused begin after a finished copy names no file, so its failure line
+  // never names the file of the last copy.
+  for (const char *refused : {longest.c_str(), "a/../b.parquet"}) {
+    FakeIO io = with_source(pattern(10));
+    fc::Copier done;
+    begin(done);
+    assert(run(done, io).outcome == Outcome::Copied);
+    assert(std::strcmp(done.relative(), kName.c_str()) == 0);
+    assert(!done.begin(kFlash, kCard, refused).has_value());
+    assert(*done.relative() == '\0' && !done.active());
+  }
 }
 
 // cancel() closes what is open and removes the temporary of this attempt,
@@ -733,10 +751,10 @@ void cancel_mid_copy() {
   copier.cancel(io);
   assert(!copier.active() && !io.reader_open && !io.writer_open);
   assert(!io.files.contains(kTemp) && io.files.at(kSource) == bytes);
-  // Idle cancel and step do nothing.
+  // Idle cancel and step do nothing. A cancelled copy has no failure.
   copier.cancel(io);
   assert(copier.step(io) == Outcome::IoError);
-  assert(copier.failure() == Failure::Idle);
+  assert(!copier.failure().has_value());
   assert(io.files.at(kSource) == bytes);
 }
 

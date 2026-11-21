@@ -232,6 +232,9 @@ public:
   begin(const char *flash_root, const char *card_root, const char *name) {
     if (stage_ != Stage::Idle)
       return std::unexpected(BeginError::Busy);
+    // A refused begin names no file, never the last copy.
+    source_[0] = final_[0] = temp_[0] = '\0';
+    relative_at_ = 0;
     if (flash_root == nullptr || *flash_root == '\0' || card_root == nullptr ||
         *card_root == '\0' || name == nullptr || *name == '\0')
       return std::unexpected(BeginError::BadName);
@@ -251,7 +254,6 @@ public:
         static_cast<std::size_t>(source) >= source_.size() ||
         static_cast<std::size_t>(temp) >= temp_.size()) {
       source_[0] = final_[0] = temp_[0] = '\0';
-      relative_at_ = 0;
       return std::unexpected(BeginError::TooLong);
     }
     relative_at_ = static_cast<std::size_t>(source) - length;
@@ -261,12 +263,11 @@ public:
   }
 
   // One bounded step. InProgress until the copy ends. Any other outcome
-  // leaves the Copier idle with every file closed.
+  // leaves the Copier idle with every file closed. A step while idle does
+  // nothing and keeps failure() and error() of the last copy.
   template <class IO> Outcome step(IO &io) {
     switch (stage_) {
     case Stage::Idle:
-      failure_ = Failure::Idle;
-      error_ = 0;
       return Outcome::IoError;
     case Stage::Start:
       return start(io);
