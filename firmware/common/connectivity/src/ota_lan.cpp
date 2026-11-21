@@ -37,12 +37,20 @@ struct Device {
   const esp_partition_t *slot = nullptr;
   esp_ota_handle_t handle = 0;
   bool open = false;
+  // The worker's replies, set only while handle() runs a request.
+  const ControlReplies *replies = nullptr;
 };
 Device device;
 // Read back buffer for the SHA-256, off the worker stack.
 std::uint8_t readback[1024];
 
 Device &of(void *context) { return *static_cast<Device *>(context); }
+
+// Long OTA work is still moving, so the worker stamps its heartbeat.
+void report_progress(const Device &d) {
+  if (d.replies && d.replies->progress)
+    d.replies->progress(d.replies->context);
+}
 
 std::expected<void, rules::SinkError> check(esp_err_t err) {
   if (err != ESP_OK)
@@ -88,6 +96,8 @@ const rules::Sink kSink{
           psa_hash_abort(&operation);
           return std::unexpected(rules::SinkError::Failed);
         }
+        if (rules::progress_due(offset, offset + count, size))
+          report_progress(d);
         offset += count;
       }
       rules::Digest digest{};
@@ -128,6 +138,7 @@ const rules::Sink kSink{
             static_cast<void>(esp_ota_abort(d.handle));
           d.open = false;
         },
+    .progress = [](void *context) { report_progress(of(context)); },
 };
 
 rules::Transfer &transfer() {
@@ -159,14 +170,20 @@ rules::Owner owner_of(const ble::ControlRequest &request) {
 std::int64_t owner_seen_us = 0;
 
 // A LAN session that went away or stalled mid upload frees the slot for the
-// next one.
+// next one. A staged image whose session went away may then be cancelled by
+// any session.
 void drop_stale(rules::Transfer &upload, std::int64_t now_us) {
   const auto progress = upload.progress();
-  if (progress.phase != rules::Phase::Receiving)
+  if (progress.phase == rules::Phase::Idle)
     return;
   const auto owner = upload.owner();
   const auto generation = rules::owner_generation(owner, ble::kMaxLanClients,
                                                   lan::connection_generation);
+  if (rules::release_due(progress, owner, generation)) {
+    if (upload.release_staged(owner))
+      oslog.printf("OTA RELEASE reason=session-closed\n");
+    return;
+  }
   const auto keep =
       rules::stale_action(progress, owner, generation, now_us, owner_seen_us);
   if (keep == rules::Keep::Keep || !upload.drop_owner(owner))
@@ -195,7 +212,10 @@ bool handle(const ble::ControlRequest &request, const ControlReplies &replies) {
   drop_stale(upload, now_us);
   const auto before = upload.progress();
   const auto owner = owner_of(request);
+  // OTA_END reads the image back on this worker, see report_progress.
+  device.replies = &replies;
   const auto result = upload.handle({request.bytes, request.length}, owner);
+  device.replies = nullptr;
   owner_seen_us = rules::touch_seen(upload.progress(), upload.owner(), owner,
                                     now_us, owner_seen_us);
   if (!result) {

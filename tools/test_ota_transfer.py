@@ -16,6 +16,10 @@ GLUE_CALLS = (
     re.compile(r"const auto keep =\s*rules::stale_action\(progress, owner, generation, now_us,\s*owner_seen_us\);"),
     re.compile(r"owner_seen_us = rules::touch_seen\(upload\.progress\(\), upload\.owner\(\), owner,\s*now_us, owner_seen_us\);"),
     re.compile(r"return rules::lan_owner\(request\.peer, request\.link_generation\);"),
+    re.compile(r"if \(rules::release_due\(progress, owner, generation\)\) \{\s*if \(upload\.release_staged\(owner\)\)"),
+    re.compile(r"if \(rules::progress_due\(offset, offset \+ count, size\)\)\s*report_progress\(d\);"),
+    re.compile(r"\.progress = \[\]\(void \*context\) \{ report_progress\(of\(context\)\); \},"),
+    re.compile(r"device\.replies = &replies;\s*const auto result = upload\.handle\(\{request\.bytes, request\.length\}, owner\);\s*device\.replies = nullptr;"),
 )
 
 
@@ -61,7 +65,8 @@ def main() -> None:
         subprocess.run([str(executable)], check=True)
     print("OTA begin size and slot cap, contiguous chunks, header chip and "
           "project match, SHA-256 before activate, abort on mismatch, "
-          "ownership, stale owner glue and STATE frame passed")
+          "ownership, staged image release, OTA_END progress, stale owner "
+          "glue and STATE frame passed")
 
 
 if __name__ == "__main__":

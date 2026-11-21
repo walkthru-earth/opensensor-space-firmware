@@ -73,14 +73,24 @@ Progress Transfer::progress() const {
           .slot_bytes = target_.slot_bytes};
 }
 
+void Transfer::reset() {
+  phase_ = Phase::Idle;
+  owner_ = 0;
+  released_ = false;
+  size_ = 0;
+  next_ = 0;
+  declared_ = {};
+}
+
+void Transfer::note_progress() const {
+  if (sink_.progress)
+    sink_.progress(sink_.context);
+}
+
 Error Transfer::fail(Error error) {
   if (phase_ == Phase::Receiving) {
     sink_.abort(sink_.context);
-    phase_ = Phase::Idle;
-    owner_ = 0;
-    size_ = 0;
-    next_ = 0;
-    declared_ = {};
+    reset();
   }
   return error;
 }
@@ -89,6 +99,13 @@ bool Transfer::drop_owner(Owner gone) {
   if (phase_ != Phase::Receiving || owner_ != gone)
     return false;
   static_cast<void>(fail(Error::Busy));
+  return true;
+}
+
+bool Transfer::release_staged(Owner gone) {
+  if (phase_ != Phase::Ready || owner_ != gone || released_)
+    return false;
+  released_ = true;
   return true;
 }
 
@@ -133,6 +150,7 @@ Transfer::begin(std::span<const std::uint8_t> body, Owner requester) {
     return std::unexpected(Error::Flash);
   phase_ = Phase::Receiving;
   owner_ = requester;
+  released_ = false;
   size_ = size;
   next_ = 0;
   std::copy_n(body.begin() + 4, kDigestBytes, declared_.begin());
@@ -163,10 +181,15 @@ std::expected<Progress, Error> Transfer::finish() {
   if (next_ != size_)
     return std::unexpected(fail(Error::Incomplete));
   // esp_ota_end first, so every buffered byte is in flash before the read
-  // back, and the image has passed ESP-IDF's own checks.
-  if (!sink_.finish(sink_.context))
+  // back, and the image has passed ESP-IDF's own checks. Both read the whole
+  // image, so progress runs on each side of them.
+  note_progress();
+  const auto finished = sink_.finish(sink_.context);
+  note_progress();
+  if (!finished)
     return std::unexpected(fail(Error::Verify));
   const auto digest = sink_.digest(sink_.context, size_);
+  note_progress();
   if (!digest)
     return std::unexpected(fail(Error::Flash));
   if (*digest != declared_)
@@ -181,11 +204,7 @@ std::expected<Progress, Error> Transfer::cancel() {
   if (phase_ == Phase::Ready) {
     if (!sink_.revert(sink_.context))
       return std::unexpected(Error::Activate);
-    phase_ = Phase::Idle;
-    owner_ = 0;
-    size_ = 0;
-    next_ = 0;
-    declared_ = {};
+    reset();
     return progress();
   }
   static_cast<void>(fail(Error::Busy));
@@ -202,10 +221,16 @@ Transfer::handle(std::span<const std::uint8_t> request, Owner requester) {
     return begin(body, requester);
   if (op != kOpWrite && op != kOpEnd && op != kOpCancel)
     return std::unexpected(Error::UnknownOp);
-  // Any authenticated session may cancel a staged image, since the session
-  // that staged it may be gone.
-  if (op == kOpCancel && phase_ != Phase::Receiving)
+  // Cancel with nothing staged is a no-op for any session. A staged image is
+  // cancelled by the session that staged it, or by any session once that one
+  // closed (release_staged), so another app cannot undo a running update.
+  if (op == kOpCancel && phase_ == Phase::Idle)
     return cancel();
+  if (op == kOpCancel && phase_ == Phase::Ready) {
+    if (requester != owner_ && !released_)
+      return std::unexpected(Error::Busy);
+    return cancel();
+  }
   if (phase_ == Phase::Idle)
     return std::unexpected(Error::NotActive);
   if (phase_ == Phase::Ready)
