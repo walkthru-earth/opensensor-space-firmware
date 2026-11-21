@@ -309,8 +309,8 @@ reads as 1. The empty list gives `0x63b0c442`. The device keeps `thing.setup_v` 
 writes both in one `SET_CONFIG`. A stale `setup_v` reads as nothing done.
 
 A Key is `{"type", "values", "applies", "page", "label", "label_i18n"}`.
-The name matches `[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+`, is at most 48 bytes,
-does not start with a reserved prefix (`ble.`, `wifi.`, `lan.`, `ntp.`,
+The name matches `[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+`, is at most 48 bytes
+and has at most 4 dotted parts, does not start with a reserved prefix (`ble.`, `wifi.`, `lan.`, `ntp.`,
 `location.`, `thing.`, `owner.` or `sensor.`) and has no `pin`, `psk`, `token`,
 `password` or `secret` part. No key is a dotted prefix of another, such as
 `panel.display` next to `panel.display.x`, because page 7 nests keys by

@@ -254,6 +254,7 @@ void archive_contract() {
   assert(!parquet_complete(13, nullptr, tail));
   assert(!parquet_complete(13, head, nullptr));
   assert(!parquet_complete(13, head, tail, 12));
+  assert(parquet_complete(1048576, head, tail));
   assert(!parquet_complete(1048577, head, tail));
   head[0] = 'X';
   assert(!parquet_complete(13, head, tail));
