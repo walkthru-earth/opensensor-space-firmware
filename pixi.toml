@@ -101,13 +101,11 @@ idf = "tools/idf.sh"
 idf-python-check = "tools/idf-python.sh check"
 idf-python-lock = "tools/idf-python.sh lock"
 idf-python-lock-test = "python tools/test_idf_python_lock.py"
-cores3-setup = "firmware/esp-idf-cores3/setup.sh"
 cores3-build = "firmware/esp-idf-cores3/build.sh"
 # Destructive: requires checked port and exact 16 MiB board backup.
 cores3-flash = "firmware/esp-idf-cores3/flash.sh"
 
 # --- Waveshare V2 logger and retained PMS5003T/TF diagnostic ---
-waveshare-setup = "firmware/esp-idf-waveshare-sim7670g/setup.sh"
 waveshare-build = "firmware/esp-idf-waveshare-sim7670g/build.sh"
 waveshare-diagnostic-build = "firmware/esp-idf-waveshare-sim7670g/build.sh diagnostic"
 waveshare-contract-test = "python tools/test_waveshare_contract.py"
@@ -139,14 +137,12 @@ logger-power-test = "python tools/test_logger_power.py --sanitize"
 waveshare-flash = "firmware/esp-idf-waveshare-sim7670g/flash.sh"
 
 # --- CrowPanel ESP32-S3 4.2" e-paper with the SEN63C ---
-crowpanel-setup = "firmware/esp-idf-crowpanel-epaper/setup.sh"
 crowpanel-build = "firmware/esp-idf-crowpanel-epaper/build.sh"
 crowpanel-contract-test = "python tools/test_crowpanel_contract.py"
 # Destructive: requires the checked port and exact full-backup file.
 crowpanel-flash = "firmware/esp-idf-crowpanel-epaper/flash.sh"
 
 # --- Waveshare ESP32-S3-ePaper-3.97 with the SEN63C ---
-epaper397-setup = "firmware/esp-idf-waveshare-epaper-397/setup.sh"
 epaper397-build = "firmware/esp-idf-waveshare-epaper-397/build.sh"
 epaper397-contract-test = "python tools/test_epaper397_contract.py"
 # Destructive: requires the checked port and exact full-backup file.
@@ -241,7 +237,6 @@ ccache = ">=4.14.3,<5"
 python = ">=3.15.2,<3.16"
 git = ">=2.56.0,<3"
 esptool = "==5.6.0"
-rust = ">=1.99.1,<1.100"
 # Host fixtures, formatting and lint use these exact pins on macOS and Linux,
 # so local runs and CI see the same compiler, sanitizer runtime and diagnostics.
 # LLVM 23.1.5 is out upstream (2026-11-03), but on 2026-11-09 conda-forge has

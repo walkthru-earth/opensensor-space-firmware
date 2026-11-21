@@ -558,7 +558,7 @@ def check_drift() -> None:
 
     tasks = tomllib.loads((ROOT / "pixi.toml").read_text())["tasks"]
     for board in every:
-        for action in ("setup", "build", "flash"):
+        for action in ("build", "flash"):
             name = f"{board.alias}-{action}"
             if tasks.get(name) != f"{board.project}/{action}.sh":
                 findings.append(f"pixi.toml {name} is {tasks.get(name)!r}, expected {board.project}/{action}.sh")
