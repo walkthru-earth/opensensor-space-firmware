@@ -108,8 +108,8 @@ components, which carry the same licenses and copyright notices.
 | `espressif/led_strip` | 3.1.1 | Waveshare SIM7670G | Apache-2.0 | Copyright Espressif Systems (Shanghai) CO LTD |
 | `m5stack/m5unified` | 0.3.0 | CoreS3 | MIT | Copyright (c) 2021 M5Stack |
 | `m5stack/m5gfx` | 0.3.0 | CoreS3 | MIT, with bundled third-party parts listed below | Copyright (c) 2021 M5Stack |
-| `walkthru-earth/embedded-h3-location` (git, tag `v2.0.0`, commit `49753cb9a8795ff1ae6bc6eed461fee0fc30cdc7`) | 2.0.0 | CoreS3, Waveshare SIM7670G, CrowPanel ePaper 4.2, Waveshare ePaper-3.97 | CC-BY-4.0 AND Apache-2.0, see its `LICENSE` and `NOTICE` | Copyright (c) 2025-2026 Walkthru.Earth |
-| Uber H3, vendored unmodified inside `embedded-h3-location` under `vendor/h3` (tag `v4.5.0`, commit `1b536c34225191ba24a75a840f634d4a48c3b206`) | 4.5.0 | CoreS3, Waveshare SIM7670G, CrowPanel ePaper 4.2, Waveshare ePaper-3.97 | Apache-2.0, see `vendor/h3/LICENSE` and `vendor/h3/NOTICE` in that library | Copyright 2017-2021 Uber Technologies, Inc. |
+| `walkthru-earth/embedded-h3-location` (git, tag `v2.1.0`, commit `6adb86d026d369fb1808ca7b0bff53d7528589fe`) | 2.1.0 | CoreS3, Waveshare SIM7670G, CrowPanel ePaper 4.2, Waveshare ePaper-3.97 | CC-BY-4.0 AND Apache-2.0, see its `LICENSE` and `NOTICE` | Copyright (c) 2025-2026 Walkthru.Earth |
+| Uber H3, vendored unmodified inside `embedded-h3-location` under `vendor/h3` (tag `v4.6.0`, commit `33ec62807261311a26eb59f8a1c95163c988efff`) | 4.6.0 | CoreS3, Waveshare SIM7670G, CrowPanel ePaper 4.2, Waveshare ePaper-3.97 | Apache-2.0, see `vendor/h3/LICENSE` and `vendor/h3/NOTICE` in that library | Copyright 2017-2021 Uber Technologies, Inc. |
 
 `embedded-h3-location` is fetched from GitHub by the component manager, not
 the ESP Component Registry. `firmware/common/location/idf_component.yml` pins

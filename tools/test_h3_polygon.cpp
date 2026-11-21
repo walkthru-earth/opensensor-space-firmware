@@ -539,7 +539,7 @@ void random_sets() {
               sets);
 }
 
-// Each device hook on its own, with the sizes H3 v4.5.0 never passes too.
+// Each device hook on its own, with the sizes H3 v4.6.0 never passes too.
 // Every size goes through nonzero_alloc_size, so a zero request gets a 1 byte
 // block where the ESP-IDF heap alone returns NULL, and every block is PSRAM.
 void hooks() {
@@ -578,7 +578,7 @@ void hooks() {
 }
 
 // The whole globe asks H3 for a zero byte block, the SortableLoop array for
-// no loops (cellsToMultiPoly.c line 388 in H3 v4.5.0). The device malloc hook
+// no loops (cellsToMultiPoly.c line 388 in H3 v4.6.0). The device malloc hook
 // rounds it up, without that the ESP-IDF heap returns NULL and the call fails
 // with OutOfMemory. hooks() covers the calloc and realloc arguments.
 void globe() {

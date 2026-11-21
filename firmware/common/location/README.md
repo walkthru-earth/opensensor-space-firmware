@@ -2,10 +2,10 @@
 
 This optional ESP-IDF `location` component is the firmware policy over
 [walkthru-earth/embedded-h3-location
-v2.0.0](https://github.com/walkthru-earth/embedded-h3-location/releases/tag/v2.0.0),
-commit `49753cb9a8795ff1ae6bc6eed461fee0fc30cdc7`. The library wraps [official
-Uber H3 v4.5.0](https://github.com/uber/h3/releases/tag/v4.5.0), commit
-`1b536c34225191ba24a75a840f634d4a48c3b206`, vendored unmodified with its
+v2.1.0](https://github.com/walkthru-earth/embedded-h3-location/releases/tag/v2.1.0),
+commit `6adb86d026d369fb1808ca7b0bff53d7528589fe`. The library wraps [official
+Uber H3 v4.6.0](https://github.com/uber/h3/releases/tag/v4.6.0), commit
+`33ec62807261311a26eb59f8a1c95163c988efff`, vendored unmodified with its
 Apache-2.0 license and NOTICE and checked by SHA-256 when it configures.
 `idf_component.yml` pins the tag and each board `dependencies.lock` records the
 commit. Host tests build the same commit through `tools/h3_library.py`, which

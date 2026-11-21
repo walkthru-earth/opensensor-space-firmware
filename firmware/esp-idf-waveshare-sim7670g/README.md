@@ -22,7 +22,7 @@ Shared radio code uses native NimBLE/Wi-Fi/netif/SNTP and managed mDNS
 **1.15.1**. The RGB adapter uses led_strip **3.1.1**. These stable versions
 were checked on **2026-11-09**. LZ4 is vendored **1.11.0**, and this board
 has no M5Unified/M5GFX dependency. The optional shared location component uses
-embedded-h3-location **v2.0.0** with official H3 **4.5.0**.
+embedded-h3-location **v2.1.0** with official H3 **4.6.0**.
 
 **Native hardware qualification is partial.** A short native USB and SD
 readback of v2.15 on 2026-10-26 is in the
