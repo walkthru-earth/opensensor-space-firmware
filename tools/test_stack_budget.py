@@ -448,6 +448,29 @@ def check_runtime_report() -> None:
     assert printed == [tasks, heap]
 
 
+def check_logger_hooks_traced(root: Path) -> None:
+    """Every board logger main.cpp hands lambdas to oslogger::Hooks. The board
+    and parquet-sd rules must trace them like the bringup and component ones
+    (issue #198), for each logger found in the tree, so a new board is covered."""
+    budgets = json.loads(sb.DEFAULT_BUDGETS.read_text())
+    mains = sorted((sb.ROOT / "firmware").glob("esp-idf-*/logger/main.cpp"))
+    assert len(mains) >= 3, "no board logger main.cpp found"
+    lines = []
+    for main in mains:
+        where = f"{main.relative_to(sb.ROOT)}:1:1"
+        lines.append(node(f"hook_{main.parent.parent.name}",
+                          "{anonymous}::kHooks::{lambda(void*)#1}::_FUN(void*)", 16, where=where))
+    graph = sb.load_ci([write_ci(root / "hooks.ci", lines)])
+    for task_name in ("parquet-sd", "board"):
+        rules = [rule for rule in budgets["tasks"][task_name]["indirect"]
+                 if any(target.startswith("firmware/esp-idf-") for target in rule["to"])]
+        assert rules, f"{task_name} has no board hook rule"
+        for rule in rules:
+            matched = {title for pattern in rule["to"] for title in sb.pattern_matches(graph, pattern)}
+            for title in graph.functions:
+                assert title in matched, f"{task_name} does not trace the hook {title}"
+
+
 def check_committed_budgets() -> None:
     budgets = json.loads(sb.DEFAULT_BUDGETS.read_text())
     policy = budgets["policy"]
@@ -475,6 +498,8 @@ def main() -> None:
         check_internal_stacks(root / "src")
     check_runtime_report()
     check_committed_budgets()
+    with tempfile.TemporaryDirectory() as raw:
+        check_logger_hooks_traced(Path(raw))
     print("stack_budget tests passed")
 
 
