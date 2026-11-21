@@ -99,6 +99,7 @@ common_sources=(
   firmware/common/logger/src/os_logger_status.cpp
   firmware/common/logger/src/os_logger_provision.cpp
   firmware/common/logger/src/os_logger_live.cpp
+  firmware/common/logger/src/os_logger_copy_back.cpp
   firmware/common/connectivity/src/disconnect.cpp
   firmware/common/location/src/os_h3_alloc.cpp
   firmware/common/runtime/src/log_persist.cpp
