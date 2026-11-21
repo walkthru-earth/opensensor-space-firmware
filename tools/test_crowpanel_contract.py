@@ -181,7 +181,7 @@ def main() -> None:
         executable = directory / "fixture"
         command = ["clang++", CXX_STD, "-Wall", "-Wextra", "-Werror"]
         for include in ("src", "sensors/src", "sensors/modules", "logger/src", "connectivity/src", "runtime/src",
-                        "gnss/src", "power/src"):
+                        "gnss/src", "power/src", "epaper_ui/include", "text/src"):
             command += ["-I", str(common / include)]
         if args.sanitize:
             command += ["-fsanitize=address,undefined", "-fno-sanitize-recover=all"]
