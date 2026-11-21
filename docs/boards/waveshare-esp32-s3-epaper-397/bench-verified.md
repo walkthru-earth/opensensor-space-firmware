@@ -142,3 +142,41 @@ picture turning with the device under Auto, partial refresh, the IMU lines on
 device, battery operation, the RTC set and kept
 across a power cut, SEN63C values against a reference, BLE and LAN sync, OTA,
 endurance and power-cut durability.
+
+## Battery detection on the glass, 2026-11-21
+
+- Same unit and port. `chip`, `flash-id` and `efuse` read the same MAC
+  `44:b1:76:b6:a1:2c` and 16 MB flash. No eFuse was written. Full
+  16,777,216 byte backup
+  `backup/waveshare-epaper-397-flash-20261121T185645Z.bin`, SHA-256
+  `15c4e3adede33b082c128a504f1657ba8dd3868cc79c4cc53ba169512230d213`.
+- Image `App version: 8b1d70f` (main after #241), written with
+  `pixi run epaper397-flash`, every region hash verified.
+- The 75 s capture (`artifacts/flash-8b1d70f-20261121/epaper397-boot.log`,
+  ignored) shows `OS PMIC chip=tg28 found=1 chip_id=0x4a ldo_enables=0xff
+  bat_det=0x01 battery_detect=on adc=on error=none`, then `OS POWER vbus=1
+  battery=0 battery_mv=null battery_percent=null`, and `SELFTEST
+  result=healthy`.
+- So 0x68 bit 0 was already set before this boot wrote it. The missing
+  detection bit was not why the board reported no battery. With detection
+  on, STATUS1 bit 3 stays clear, so the TG28 sees no cell on its battery
+  pin. The owner has a LiPo attached. Waveshare documents three alike MX1.25
+  headers on this board, the lithium battery, the RTC backup battery and the
+  speaker, and only the first one charges and powers the board.
+- Not shown yet. Where the owner LiPo is plugged in, its polarity and its
+  protection state, and a header battery icon on the glass.
+
+## Fixed digit slots, 2026-11-21
+
+- Same unit and port, identity read again as above. Full 16,777,216 byte
+  backup `backup/waveshare-epaper-397-flash-20261121T191041Z.bin`, SHA-256
+  `61d908f52d81b511e4ecd7dd77893c4bf0cd85c6738c6b841923d30488d17e51`.
+- Image `App version: a662d1a` (main after #242), app 1,846,624 bytes,
+  written with `pixi run epaper397-flash`, every region hash verified.
+- The 75 s capture (`artifacts/flash-a662d1a-20261121/epaper397-boot.log`,
+  ignored) shows `SELFTEST result=healthy reason=ok sd=pass sensor=pass
+  radio=pass`, rows at 10 s with `dropped=0`, and `OS DISPLAY
+  refresh=partial ok=1` at 652 to 653 ms. `OS POWER` still reads
+  `battery=0`.
+- Not shown yet. The digits on the glass, whether a change from one to two
+  whole digits leaves no half digit behind, and any energy saving.
