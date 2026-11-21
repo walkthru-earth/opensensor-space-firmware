@@ -26,6 +26,9 @@ inline constexpr char kFlashPartitionLabel[] = "spiffs";
 inline constexpr char kFlashArchiveDirectory[] = "/flash/output";
 inline constexpr char kFlashFlagNamespace[] = "osflash";
 inline constexpr char kFlashFlagKey[] = "formatted";
+// u32 count of files the logger copied back to the card over the life of the
+// board, written a block ahead (list_since::CopyCounter). Never erased.
+inline constexpr char kFlashCopiesKey[] = "copies";
 // Room for the retry line, an ERROR line and the mount line, below the 256
 // byte DebugLog::printf stack buffer.
 inline constexpr std::size_t kFlashLineBytes = 224;

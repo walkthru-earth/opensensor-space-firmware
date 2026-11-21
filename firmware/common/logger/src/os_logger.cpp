@@ -266,9 +266,12 @@ std::int64_t flash_retry_at = 0;
 const char *next_root = nullptr;
 archive_target::Target storage_target = archive_target::Target::None;
 bool storage_target_logged = false;
-// Files copied back this boot. A remount shifts the volume serial by them,
-// so a LIST_SINCE cursor from before a copy never reads as current.
-std::uint32_t copy_bumps = 0;
+// Files copied back over the life of the board, kept in NVS. A mount shifts
+// the volume serial by them, so a LIST_SINCE cursor from before a copy never
+// reads as current, not even after a reboot.
+list_since::CopyCounter copy_count;
+// The count could not be read or stored, logged once per boot.
+bool copy_count_logged = false;
 
 bool on_flash(const OutputFile &file) {
   return flash_root && file.root == flash_root;
@@ -720,6 +723,58 @@ const list_since::RingStore ring_store{
       nvs_close(settings);
       return ok;
     }};
+
+// The copy count is one u32, `copies`, in the `osflash` namespace next to
+// `formatted`. Never erased.
+const list_since::CopyCountStore copy_count_store{
+    nullptr,
+    [](void *, std::uint32_t &count) {
+      nvs_handle_t flags;
+      const esp_err_t opened = nvs_open(
+          opensensor::storage::kFlashFlagNamespace, NVS_READONLY, &flags);
+      if (opened == ESP_ERR_NVS_NOT_FOUND)
+        return list_since::Load::Missing;
+      if (opened != ESP_OK)
+        return list_since::Load::Failed;
+      const esp_err_t read =
+          nvs_get_u32(flags, opensensor::storage::kFlashCopiesKey, &count);
+      nvs_close(flags);
+      if (read == ESP_ERR_NVS_NOT_FOUND)
+        return list_since::Load::Missing;
+      return read == ESP_OK ? list_since::Load::Found
+                            : list_since::Load::Failed;
+    },
+    [](void *, std::uint32_t count) {
+      nvs_handle_t flags;
+      if (nvs_open(opensensor::storage::kFlashFlagNamespace, NVS_READWRITE,
+                   &flags) != ESP_OK)
+        return false;
+      const bool ok = nvs_set_u32(flags, opensensor::storage::kFlashCopiesKey,
+                                  count) == ESP_OK &&
+                      nvs_commit(flags) == ESP_OK;
+      nvs_close(flags);
+      return ok;
+    }};
+
+void log_copy_count_error() {
+  if (copy_count_logged)
+    return;
+  copy_count_logged = true;
+  ++errors;
+  oslog.println("OS FLASH ERROR operation=copy-count list_since=full "
+                "copy_back=held");
+}
+
+// The mount epoch of a volume serial. Without a flash root nothing is ever
+// copied back, so the serial is the epoch and NVS is not read.
+std::uint32_t volume_epoch(std::uint32_t serial) {
+  if (!flash_root)
+    return serial;
+  const std::uint32_t epoch = copy_count.epoch(copy_count_store, serial);
+  if (serial && !epoch)
+    log_copy_count_error();
+  return epoch;
+}
 
 // Names this boot in the ring before its first unsynced folder exists. A
 // failure only widens the next LIST_SINCE, so the file is still written.
@@ -1470,7 +1525,7 @@ public:
       // A flash file carries no card epoch, so it answers with the full
       // listing. A card that sits out Retry cannot be walked, so the full
       // walk reads flash only and hands out epoch 0, never the pulled card's
-      // epoch. A copy back moves the epoch instead (copy_bumps), see
+      // epoch. A copy back moves the epoch instead (copy_count), see
       // list_merge::since_needs_full.
       in.card_listable = card_listable();
       in.force_full = list_merge::since_needs_full(flash_holds_files);
@@ -2210,7 +2265,7 @@ bool measure_free(std::uint64_t &free_bytes) {
 // thresholds and returns false when the volume cannot report free space.
 bool measure_volume() {
   std::uint64_t total = 0, used = 0;
-  std::uint32_t cluster = 0;
+  std::uint32_t cluster = 0, serial = 0;
   stamp_heartbeat();
   {
     BusLock lock;
@@ -2221,11 +2276,12 @@ bool measure_volume() {
     cluster = hooks.storage_cluster_bytes
                   ? hooks.storage_cluster_bytes(hooks.context)
                   : 0;
-    mount_epoch = list_since::shifted_epoch(
-        hooks.storage_volume_serial ? hooks.storage_volume_serial(hooks.context)
-                                    : 0,
-        copy_bumps);
+    serial = hooks.storage_volume_serial
+                 ? hooks.storage_volume_serial(hooks.context)
+                 : 0;
   }
+  // NVS is read outside the bus lock.
+  mount_epoch = volume_epoch(serial);
   stamp_heartbeat();
   total_kib = static_cast<std::uint32_t>(total / 1024);
   used_kib = static_cast<std::uint32_t>(used / 1024);
@@ -2642,6 +2698,14 @@ bool copy_back_next() {
     drain.next_at = now + kCopyWaitSeconds;
     return false;
   }
+  // The count goes up in NVS before a file moves, so a reset never brings
+  // back an epoch from before the copy. Without it the file waits on flash,
+  // where LIST still finds it.
+  if (!copy_count.reserve(copy_count_store)) {
+    log_copy_count_error();
+    drain.next_at = now + kCopyWaitSeconds;
+    return false;
+  }
   const auto begun =
       drain.copier.begin(flash_root, kDirectory, drain.best.data());
   if (!begun) {
@@ -2687,7 +2751,7 @@ bool service_copy_back(bool storage_ready) {
     if (drain.moved != UINT32_MAX)
       ++drain.moved;
     // A LIST_SINCE cursor from before the move never reads as current.
-    ++copy_bumps;
+    copy_count.copied();
     mount_epoch = list_since::next_epoch(mount_epoch.load());
     remove_empty_flash_directories(relative);
     measure_flash();

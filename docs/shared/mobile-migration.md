@@ -25,8 +25,12 @@ or digest changes. Decision record 0004.
   ERROR 8. ERROR 8 means neither root is usable. With a card, `LIST` adds the
   flash files the card does not hold yet, after the card entries.
 - `LIST_SINCE` answers `full` while flash holds files or no card can be
-  listed, and STATUS `ls` steps by one for each file copied back this boot,
-  so a saved cursor from before a copy reads as stale.
+  listed, and STATUS `ls` steps by one for each file copied back, so a saved
+  cursor from before a copy reads as stale. The count of copies is kept in
+  NVS, so after a reboot `ls` stays above every epoch the board handed out
+  before a copy. A listing taken while no card can be listed carries epoch 0
+  in its cursor, so the next `LIST_SINCE` with the card back is `full`. `ls`
+  is 0 when the count cannot be read, and copy back then waits.
 - New serial log lines. A phone or log reader may see these on the console
   and in a captured log. None of them is a wire frame.
   - Boot mount. `OS FLASH mount ok=1 label=<l> total=<bytes> free=<bytes>
@@ -50,7 +54,9 @@ or digest changes. Decision record 0004.
     clusters after a power cut. Both card entries and the flash file stay for
     the owner, and it prints once per file and boot.
   - Faults. `OS FLASH ERROR operation=<space|write|directory|allocate|
-    copy-walk>`. A `write` fault also pauses new flash files for 60 s
+    copy-walk>`. `OS FLASH ERROR operation=copy-count list_since=full
+    copy_back=held` prints once per boot when NVS cannot read or store the
+    copy count. A `write` fault also pauses new flash files for 60 s
     (`retry_s=60`).
   - Quarantine. `PARQUET RECOVERY quarantined=<n> repaired=0 deleted=0
     root=flash` for flash `.partial` files moved aside at boot.

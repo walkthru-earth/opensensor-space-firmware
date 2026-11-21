@@ -75,10 +75,18 @@ def check_wiring(source: str) -> None:
             r"flash_commit\(none, true, nullptr\); \} if \(count\) \{ "
             r"next_root = kDirectory; ok = commit\(count, false\) && "
             r"measure_free\(free_bytes\); \} \}",
-        "a remount shifts the volume serial by the files copied back":
-            r"mount_epoch = list_since::shifted_epoch\(",
+        "a mount shifts the volume serial by the stored copy count":
+            r"const std::uint32_t epoch = copy_count\.epoch\(copy_count_store, serial\);",
+        "every mount takes its epoch from the copy count":
+            r"mount_epoch = volume_epoch\(serial\);",
+        "the copy count is stored before a file moves":
+            r"if \(!copy_count\.reserve\(copy_count_store\)\) \{ log_copy_count_error\(\); "
+            r"drain\.next_at = now \+ kCopyWaitSeconds; return false; \} "
+            r"const auto begun = drain\.copier\.begin\(",
+        "the copy count lives in the osflash namespace":
+            r"nvs_set_u32\(flags, opensensor::storage::kFlashCopiesKey, count\)",
         "a copy back moves the mount epoch":
-            r"\+\+copy_bumps; mount_epoch = list_since::next_epoch\(mount_epoch\.load\(\)\);",
+            r"copy_count\.copied\(\); mount_epoch = list_since::next_epoch\(mount_epoch\.load\(\)\);",
         "the copier hashes with its own stream":
             r"return sha\.begin\(\);",
         "the copy back state lives in PSRAM":

@@ -42,7 +42,8 @@ A board that opts in with `CONFIG_OS_LOGGER_FLASH_FALLBACK` calls
 setup, prints the `OS FLASH mount` line it returns and passes
 `Config::fallback_directory = "/flash/output"` when the mount succeeded. The
 helper mounts the `spiffs` data partition through wear levelling and formats it
-at most once, recorded in NVS `osflash/formatted`, see
+at most once, recorded in NVS `osflash/formatted`. The logger counts the
+files it copies back in NVS `osflash/copies`, see
 [decision record 0004](decisions/0004-flash-fallback-archive.md).
 OSLogger alone accesses files after startup. OSConnectivity alone initializes
 radios, the LAN task writes sockets, and the NimBLE host sends BLE responses.

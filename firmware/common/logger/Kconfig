@@ -59,7 +59,8 @@ config OS_LOGGER_FLASH_FALLBACK
         fallback archive root (decision record 0004). The volume is formatted
         at most once in the life of the board, and NVS osflash/formatted
         records that format. After it is set a failed mount leaves the volume
-        off and is never formatted again. Boot prints one
+        off and is never formatted again. NVS osflash/copies counts the files
+        copied back to the card, so the LIST_SINCE epoch never repeats. Boot prints one
         `OS FLASH mount ok=...` line. The partition table stays as it is.
 
 endmenu

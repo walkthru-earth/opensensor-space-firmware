@@ -69,7 +69,10 @@ and the files move to the card once a card is back.
    flash. LIST and OPEN answer ERROR 8 only when neither root is usable.
    LIST_SINCE never leaves out a file the peer may not have seen. When flash
    files exist or a copy has moved files onto the card, it falls back to the
-   full listing.
+   full listing. A copy moves the mount epoch by one, and the count of
+   copies is kept in NVS (namespace `osflash`, key `copies`, u32, stored a
+   block of 16 ahead before a file moves), so the epoch never repeats across
+   reboots. A walk without the card hands out epoch 0.
 8. **Copy back.** When the card is Ready and the flash volume holds files,
    the worker copies them one at a time in small chunks, between its other
    jobs, never during a LIST job or an emergency close. Each copy goes to a

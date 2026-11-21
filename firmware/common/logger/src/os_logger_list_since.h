@@ -395,8 +395,9 @@ struct Inputs {
 }
 
 // The volume serial moved on by `bumps` copies, as next_epoch() applied that
-// many times. A remount reads the serial again and the worker shifts it by
-// the copies of this boot, so a cursor from before a copy stays stale.
+// many times. A mount reads the serial and the worker shifts it by the
+// stored count of files copied back (CopyCounter), so a cursor from before a
+// copy stays stale across remounts and reboots.
 [[nodiscard]] constexpr std::uint32_t shifted_epoch(std::uint32_t serial,
                                                     std::uint32_t bumps) {
   if (serial == 0)
@@ -406,6 +407,78 @@ struct Inputs {
       (std::uint64_t{serial} - 1 + bumps) % std::uint64_t{UINT32_MAX};
   return static_cast<std::uint32_t>(index + 1);
 }
+
+// Copies one store write covers. A drain of the 16 MB boards' flash is about
+// 150 files, so it writes the key about ten times.
+inline constexpr std::uint32_t kCopyCountBlock = 16;
+
+// Where the count of files copied back lives (NVS `osflash/copies`). load
+// is Missing before the first copy of the board's life. save writes and
+// commits the value.
+struct CopyCountStore {
+  void *context = nullptr;
+  Load (*load)(void *, std::uint32_t &count) = nullptr;
+  bool (*save)(void *, std::uint32_t count) = nullptr;
+};
+
+// The count of files copied back from flash over the life of the board. The
+// mount epoch is the volume serial shifted by it. The store always holds a
+// value above every count a boot used, written a block ahead before a copy,
+// so a reset never brings back an epoch that a cursor from before a copy
+// carries. Never erased, and it never goes down.
+class CopyCounter {
+public:
+  // The epoch of a volume serial, 0 (unknown) while the count cannot be read.
+  [[nodiscard]] std::uint32_t epoch(const CopyCountStore &store,
+                                    std::uint32_t serial) {
+    return load(store) ? shifted_epoch(serial, count_) : 0;
+  }
+  // Call before each copy moves a file. False when the count cannot be read
+  // or the next block cannot be stored, and the copy then waits, so no file
+  // moves without a count a reset cannot lose.
+  [[nodiscard]] bool reserve(const CopyCountStore &store) {
+    if (!load(store))
+      return false;
+    if (count_ < stored_)
+      return true;
+    if (count_ > UINT32_MAX - kCopyCountBlock)
+      return false; // never reached, about 4e9 copies
+    const std::uint32_t next = count_ + kCopyCountBlock;
+    if (!store.save(store.context, next))
+      return false;
+    stored_ = next;
+    return true;
+  }
+  // A copy moved a file, after reserve() returned true for it.
+  void copied() {
+    if (count_ < stored_)
+      ++count_;
+  }
+  std::uint32_t count() const { return count_; }
+
+private:
+  bool load(const CopyCountStore &store) {
+    if (loaded_)
+      return true;
+    std::uint32_t stored = 0;
+    switch (store.load(store.context, stored)) {
+    case Load::Missing:
+      stored = 0;
+      break;
+    case Load::Found:
+      break;
+    case Load::Failed:
+      return false;
+    }
+    count_ = stored_ = stored;
+    loaded_ = true;
+    return true;
+  }
+
+  std::uint32_t count_ = 0;
+  std::uint32_t stored_ = 0;
+  bool loaded_ = false;
+};
 
 struct Plan {
   // Walk what plain LIST walks. The cursor did not match this mount.
