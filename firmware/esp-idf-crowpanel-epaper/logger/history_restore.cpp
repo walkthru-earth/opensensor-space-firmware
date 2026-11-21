@@ -37,7 +37,7 @@
 // its chart history after every reset, so this board refuses the switch until
 // the decoder reads DELTA_BINARY_PACKED.
 #if defined(CONFIG_OS_LOGGER_DELTA_INTEGERS) && CONFIG_OS_LOGGER_DELTA_INTEGERS
-#error "CONFIG_OS_LOGGER_DELTA_INTEGERS needs DELTA decode in parquet_columns.h first (#135)"
+#error "history restore reads PLAIN only, turn off DELTA integers (#135)"
 #endif
 
 namespace opensensor::crowpanel {
