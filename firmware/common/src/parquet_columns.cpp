@@ -462,8 +462,7 @@ delta_values(std::span<const uint8_t> bytes, std::span<T> out) {
 // `valid` marks, and writes 0 to the null rows. Walking backwards never
 // overwrites a value before it moves, since a present value only moves on.
 template <typename T>
-void spread(std::span<T> rows, std::span<const uint8_t> valid,
-            size_t present) {
+void spread(std::span<T> rows, std::span<const uint8_t> valid, size_t present) {
   size_t from = present;
   for (size_t i = rows.size(); i-- > 0;)
     rows[i] = valid[i] ? rows[--from] : T{0};

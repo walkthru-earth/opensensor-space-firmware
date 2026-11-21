@@ -169,9 +169,9 @@ int main(int argc, char **argv) {
   if (!file)
     return 3;
   telemetry::Writer writer;
-  auto result = writer.begin(file_sink, file, workspace, columns.data(),
-                             kFieldCount, compressed ? &compression : nullptr,
-                             integers);
+  auto result =
+      writer.begin(file_sink, file, workspace, columns.data(), kFieldCount,
+                   compressed ? &compression : nullptr, integers);
   std::vector<unsigned long long> ends;
   for (std::size_t g = 0; g < groups && result.ok; ++g) {
     for (std::size_t r = 0; r < count; ++r)
