@@ -243,23 +243,69 @@ void Canvas::dotted_vline(int x, int y, int h, int on, int off, Ink ink) {
       pixel(x, y + i, ink);
 }
 
+void Canvas::glyph(const Font &font, const Glyph &g, int x, int y, Ink ink) {
+  const int stride = (g.width + 7) / 8;
+  const std::uint8_t *rows = font.bits + g.offset;
+  const int ox = x + g.x_offset;
+  const int oy = y + g.y_offset;
+  for (int r = 0; r < g.height; ++r) {
+    for (int c = 0; c < g.width; ++c) {
+      if ((rows[r * stride + (c >> 3)] & (0x80u >> (c & 7))) != 0)
+        pixel(ox + c, oy + r, ink);
+    }
+  }
+}
+
 int Canvas::text(const Font &font, int x, int y, std::string_view utf8,
                  Ink ink) {
   return shape(font, utf8, [&](const ShapedGlyph &sg) {
-    const Glyph *g = sg.glyph;
-    if (g == nullptr)
-      return true;
-    const int stride = (g->width + 7) / 8;
-    const std::uint8_t *rows = sg.font->bits + g->offset;
-    const int ox = x + sg.x + g->x_offset;
-    const int oy = y + g->y_offset;
-    for (int r = 0; r < g->height; ++r) {
-      for (int c = 0; c < g->width; ++c) {
-        if ((rows[r * stride + (c >> 3)] & (0x80u >> (c & 7))) != 0)
-          pixel(ox + c, oy + r, ink);
-      }
-    }
+    if (sg.glyph != nullptr)
+      glyph(*sg.font, *sg.glyph, x + sg.x, y, ink);
     return true;
+  });
+}
+
+namespace {
+
+// Walks a left to right run with tabular figures, calling `visit` with each
+// glyph that draws, the font that holds it and its pen position from the
+// left of the run. Returns the advance.
+template <typename Visit>
+int tabular(const Font &font, std::string_view utf8, Visit &&visit) {
+  const int cell = digit_cell(font);
+  int pen = 0;
+  std::size_t pos = 0;
+  while (pos < utf8.size()) {
+    const std::uint32_t cp = next_codepoint(utf8, pos);
+    const Font *used = nullptr;
+    const Glyph *g = find_glyph_or_fallback(font, cp, used);
+    if (g == nullptr)
+      continue;
+    if (cp >= '0' && cp <= '9' && cell > 0) {
+      visit(*used, *g, pen + (cell - g->advance) / 2);
+      pen += cell;
+    } else {
+      visit(*used, *g, pen);
+      pen += g->advance;
+    }
+  }
+  return pen;
+}
+
+} // namespace
+
+int tabular_width(const Font &font, std::string_view utf8) {
+  if (text::has_rtl(utf8))
+    return text_width(font, utf8);
+  return tabular(font, utf8, [](const Font &, const Glyph &, int) {});
+}
+
+int Canvas::tabular_text(const Font &font, int x, int y, std::string_view utf8,
+                         Ink ink) {
+  if (text::has_rtl(utf8))
+    return text(font, x, y, utf8, ink);
+  return tabular(font, utf8, [&](const Font &f, const Glyph &g, int pen) {
+    glyph(f, g, x + pen, y, ink);
   });
 }
 

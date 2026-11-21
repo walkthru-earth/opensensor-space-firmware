@@ -14,6 +14,7 @@
 // panel. The cost is a multiply by a member instead of a constant per pixel,
 // which is noise next to a refresh that takes seconds over SPI.
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -85,6 +86,13 @@ public:
   // frame.
   int text_lines(const Font &font, int x, int y, std::string_view utf8,
                  Align align, int max_w, Ink ink = Ink::Black);
+  // A left to right run with tabular figures, from `x` as its left edge.
+  // Each digit '0' to '9' sits centred in a cell digit_cell() wide and every
+  // other code point keeps its own advance, so a digit keeps its pixels
+  // wherever the same cell draws it again. A run with a right to left letter
+  // draws as text() does. Returns tabular_width().
+  int tabular_text(const Font &font, int x, int y, std::string_view utf8,
+                   Ink ink = Ink::Black);
 
   [[nodiscard]] int width() const { return width_; }
   [[nodiscard]] int height() const { return height_; }
@@ -98,6 +106,8 @@ public:
 private:
   Canvas(std::span<std::uint8_t> frame, const DisplayProfile &profile,
          Rotation rotation);
+  // One glyph of `font` with its pen at `x` and its baseline at `y`.
+  void glyph(const Font &font, const Glyph &g, int x, int y, Ink ink);
 
   std::span<std::uint8_t> frame_;
   const DisplayProfile *profile_;
@@ -193,6 +203,24 @@ int shape(const Font &font, std::string_view utf8, Visit &&visit) {
 
 // The advance of `utf8` in `font`, the same sum Canvas::text() moves the pen.
 [[nodiscard]] int text_width(const Font &font, std::string_view utf8);
+
+// The width of one tabular digit cell in `font`, the widest advance of the
+// digits '0' to '9' its glyph table holds, 0 when it holds none. The table
+// is sorted by code point, so this is one search and ten reads, with no
+// state kept between calls.
+[[nodiscard]] constexpr int digit_cell(const Font &font) {
+  const auto first = std::lower_bound(
+      font.glyphs.begin(), font.glyphs.end(), std::uint32_t{'0'},
+      [](const Glyph &g, std::uint32_t cp) { return g.codepoint < cp; });
+  int cell = 0;
+  for (auto it = first;
+       it != font.glyphs.end() && it->codepoint <= std::uint32_t{'9'}; ++it)
+    cell = std::max(cell, static_cast<int>(it->advance));
+  return cell;
+}
+
+// The advance Canvas::tabular_text() moves the pen for `utf8`.
+[[nodiscard]] int tabular_width(const Font &font, std::string_view utf8);
 
 // Where a line of `utf8` breaks to fit `max_w` pixels, the byte offset of
 // the last space that fits, or utf8.size() when the whole text fits or no
