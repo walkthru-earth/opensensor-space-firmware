@@ -2,6 +2,7 @@
 // reads a bounded number of entries on a 5000+ file archive, and still finds
 // every file a later boot or a moved clock adds.
 
+#include <os_logger_list_merge.h>
 #include <os_logger_list_since.h>
 
 #include <cassert>
@@ -17,6 +18,7 @@
 #include <sys/stat.h>
 
 namespace ls = opensensor::logger::list_since;
+namespace list_merge = opensensor::logger::list_merge;
 using opensensor::logger::detail::DirectoryWalk;
 
 namespace {
@@ -501,6 +503,40 @@ void check_plan() {
   assert(ls::plan(in).unsynced_full);
 }
 
+// Decision record 0004. Files on the flash root carry no card epoch and
+// sit outside the incremental walk, so a matching cursor still gets the full
+// listing while flash holds any. The next cursor keeps this mount's epoch, so
+// once flash is empty the same cursor is incremental again. A copy back that
+// moved files onto the card moves the epoch on, which makes every cursor
+// taken before it full.
+void check_flash_fallback() {
+  ls::Ring ring;
+  ring.append(boot_of(1));
+  ring.append(boot_of(2));
+  auto in = inputs(
+      {.mount_epoch = 0xcafe, .day = 20260310, .boot = boot_of(1), .seq = 3},
+      &ring, boot_of(2));
+  assert(!ls::plan(in).full);
+  in.force_full = list_merge::since_needs_full(true, false);
+  auto plan = ls::plan(in);
+  assert(plan.full && plan.result.flags == ossync::kListSinceFull);
+  assert(plan.result.next.mount_epoch == 0xcafe);
+  in.force_full = list_merge::since_needs_full(false, false);
+  assert(!ls::plan(in).full);
+  // A copy moved the epoch on. The cursor taken before it is full, the
+  // cursor the full listing hands out is incremental.
+  in.mount_epoch = ls::next_epoch(0xcafe);
+  assert(in.mount_epoch == 0xcaff);
+  plan = ls::plan(in);
+  assert(plan.full && plan.result.next.mount_epoch == 0xcaff);
+  in.cursor.mount_epoch = plan.result.next.mount_epoch;
+  assert(!ls::plan(in).full);
+  // The epoch never wraps to 0, which means unknown, and unknown stays
+  // unknown.
+  assert(ls::next_epoch(0xffffffffU) == 1);
+  assert(ls::next_epoch(0) == 0);
+}
+
 void check_walks() {
   const auto old_boot = boot_of(1);
   const auto current = boot_of(2);
@@ -660,5 +696,6 @@ int main(int argc, char **argv) {
   check_keeper();
   check_tracker();
   check_plan();
+  check_flash_fallback();
   check_walks();
 }

@@ -375,7 +375,20 @@ struct Inputs {
   bool current_unlisted = false;
   // Last sequence of this boot's newest finalized unsynced file.
   std::optional<std::uint64_t> current_last_seq;
+  // Walk what plain LIST walks even for a matching cursor, while the flash
+  // fallback root holds files the incremental walk never reads (decision
+  // record 0004, list_merge::since_needs_full).
+  bool force_full = false;
 };
+
+// The epoch after a copy back moved files onto the card. Every cursor of the
+// old epoch then gets the full listing, since a copied file may sit behind
+// it. It skips 0, which means unknown, and 0 stays 0.
+[[nodiscard]] constexpr std::uint32_t next_epoch(std::uint32_t epoch) {
+  if (epoch == 0)
+    return 0;
+  return epoch == UINT32_MAX ? 1 : epoch + 1;
+}
 
 struct Plan {
   // Walk what plain LIST walks. The cursor did not match this mount.
@@ -394,7 +407,8 @@ struct Plan {
 
 constexpr Plan plan(const Inputs &in) {
   Plan out;
-  out.full = !in.mount_epoch || in.cursor.mount_epoch != in.mount_epoch;
+  out.full = in.force_full || !in.mount_epoch ||
+             in.cursor.mount_epoch != in.mount_epoch;
   const std::uint32_t request_day = out.full ? 0 : in.cursor.day;
   const std::uint32_t floor =
       request_day
