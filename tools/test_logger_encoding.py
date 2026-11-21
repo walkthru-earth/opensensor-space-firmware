@@ -1,8 +1,10 @@
 """The integer encoding switch CONFIG_OS_LOGGER_DELTA_INTEGERS (#135), off and on.
 
 1. Kconfig keeps it default n, no shipped sdkconfig defaults set it, only the
-   bench overlay that OS_BENCH=delta appends turns it on, and os_logger.cpp
-   passes the switch to Writer::begin and prints it on PARQUET BEGIN.
+   bench overlay that OS_BENCH=delta appends turns it on, os_logger.cpp
+   passes the switch to Writer::begin and prints it on PARQUET BEGIN, and a
+   board that decodes its own files with the PLAIN only parquet_columns.h
+   refuses the switch at build time.
 2. firmware/common/logger/tests/test_encoding.cpp is built twice, as the
    default build and with -DCONFIG_OS_LOGGER_DELTA_INTEGERS=1, and writes
    files through the real writer with and without LZ4_RAW.
@@ -70,6 +72,17 @@ def check_wiring(root: Path) -> None:
                          text, re.M), f"{script} must build OS_BENCH=delta in its own directory"
     build = (root / "tools/build-idf-board.sh").read_text()
     assert "OS_SDKCONFIG_OVERLAY=${repo_root}/" + OVERLAY in build, "OS_BENCH=delta must append the delta overlay"
+
+    # parquet_columns.h decodes PLAIN values only. A board source that reads
+    # finalized files back on device must refuse the switch at build time
+    # until that decoder reads DELTA (the CrowPanel chart history restore).
+    readers = [path for path in root.glob("firmware/esp-idf-*/**/*.cpp")
+               if "/build" not in str(path) and "managed_components" not in str(path)
+               and "parquet_columns.h" in path.read_text()]
+    assert readers, "no board reads Parquet back on device any more, drop this guard"
+    for path in readers:
+        assert re.search(rf"#if defined\({GUARD}\) && {GUARD}\n#error ", path.read_text()), \
+            f"{path.relative_to(root)} decodes PLAIN only and must #error on {GUARD}"
 
 
 def encodings(path: Path) -> dict[str, list[list[int]]]:
