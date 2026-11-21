@@ -72,7 +72,10 @@ and the files move to the card once a card is back.
    full listing. A copy moves the mount epoch by one, and the count of
    copies is kept in NVS (namespace `osflash`, key `copies`, u32, stored a
    block of 16 ahead before a file moves), so the epoch never repeats across
-   reboots. A walk without the card hands out epoch 0.
+   reboots. Every mount reads the count, also on a boot whose flash mount
+   failed or an image with the fallback off, so a count an earlier boot
+   stored still shifts the epoch (#217). A walk without the card hands out
+   epoch 0.
 8. **Copy back.** When the card is Ready and the flash volume holds files,
    the worker copies them one at a time in small chunks, between its other
    jobs, never during a LIST job or an emergency close. Each copy goes to a

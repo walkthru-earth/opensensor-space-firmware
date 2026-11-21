@@ -704,6 +704,25 @@ void check_copy_count() {
     assert(copy_one(boot, failing) && boot.count() == 1);
   }
   {
+    // A boot with no flash root, because the flash mount failed or the image
+    // has the fallback off, still reads the stored count (#217). Copies an
+    // earlier boot made moved its epochs, so the serial alone could repeat
+    // an epoch a cursor from before those copies carries.
+    FakeCount stored;
+    stored.mode = ls::Load::Found;
+    stored.value = 3 * ls::kCopyCountBlock;
+    ls::CopyCounter no_flash;
+    const std::uint32_t epoch = no_flash.epoch(stored.store(), serial);
+    assert(epoch == ls::shifted_epoch(serial, 3 * ls::kCopyCountBlock));
+    assert(epoch != serial);
+    assert(stored.saves == 0);
+    // Without a key the serial stays the epoch, as on a board that never
+    // copied a file.
+    FakeCount none;
+    ls::CopyCounter fresh;
+    assert(fresh.epoch(none.store(), serial) == serial);
+  }
+  {
     // Serial 0 is unknown whatever the count.
     ls::CopyCounter boot;
     FakeCount empty;

@@ -75,7 +75,9 @@ def check_wiring(source: str) -> None:
             r"flash_commit\(none, true, nullptr\); \} if \(count\) \{ "
             r"next_root = kDirectory; ok = commit\(count, false\) && "
             r"measure_free\(free_bytes\); \} \}",
-        "a mount shifts the volume serial by the stored copy count":
+        "a mount shifts the volume serial by the stored copy count, with or "
+        "without a flash root (#217)":
+            r"std::uint32_t volume_epoch\(std::uint32_t serial\) \{ "
             r"const std::uint32_t epoch = copy_count\.epoch\(copy_count_store, serial\);",
         "every mount takes its epoch from the copy count":
             r"mount_epoch = volume_epoch\(serial\);",

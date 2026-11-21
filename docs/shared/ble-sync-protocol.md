@@ -766,7 +766,7 @@ all-zero cursor, which asks for a full listing and returns a first cursor.
   (decision record 0004) the epoch steps by one for each file copied back from
   flash to the card. The count lives in NVS (`osflash/copies`) and is stored
   ahead of each copy, so a reboot never brings back an epoch from before a
-  copy. Without that count the epoch is 0 and copy back waits. The board
+  copy. Every mount reads the count, also when the flash mount failed. Without that count the epoch is 0 and copy back waits. The board
   answers `full` while flash holds files. While no card can be listed it
   walks flash alone and hands out epoch 0, so that cursor never matches the
   card when it comes back. A cursor never skips a file that moved.

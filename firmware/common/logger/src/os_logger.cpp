@@ -765,11 +765,12 @@ void log_copy_count_error() {
                 "copy_back=held");
 }
 
-// The mount epoch of a volume serial. Without a flash root nothing is ever
-// copied back, so the serial is the epoch and NVS is not read.
+// The mount epoch of a volume serial. The stored copy count is read on every
+// boot, with or without a flash root. A boot whose flash mount failed, or an
+// image with the fallback off, still sees the copies an earlier boot made, so
+// it never hands out an epoch a cursor from before those copies carries
+// (#217). A missing key leaves the serial as the epoch.
 std::uint32_t volume_epoch(std::uint32_t serial) {
-  if (!flash_root)
-    return serial;
   const std::uint32_t epoch = copy_count.epoch(copy_count_store, serial);
   if (serial && !epoch)
     log_copy_count_error();

@@ -55,7 +55,7 @@ flash, and ERROR 8 means neither root is usable. OPEN and READ try the card
 first, then flash. LIST_SINCE answers `full` while flash holds files or after
 a copy moved one. A copy moves the mount epoch by one, and NVS
 `osflash/copies` keeps the count across reboots, stored a block of 16 ahead
-before a file moves. When the count cannot be read or stored the epoch is 0,
+before a file moves. Every mount reads it, with or without a flash root. When the count cannot be read or stored the epoch is 0,
 copy back waits and `OS FLASH ERROR operation=copy-count list_since=full
 copy_back=held` prints once per boot. A walk without the card hands out
 epoch 0.
