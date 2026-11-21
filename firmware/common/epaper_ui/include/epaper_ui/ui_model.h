@@ -100,6 +100,14 @@ struct Reading {
 
 enum class Link : std::uint8_t { Off, Waiting, Connected };
 
+// The battery the header shows, set only by a board that reads one and has
+// a charge to show. A board with no battery, or none fitted, leaves
+// Status::battery empty and the header draws as it always has.
+struct Battery {
+  std::uint8_t percent = 0; // 0 to 100, a larger value draws as 100.
+  bool charging = false;    // True only when the board reads that it charges.
+};
+
 struct Status {
   std::optional<std::int64_t> utc_s; // Unix seconds, nullopt until anchored.
   bool sd_ok = false;
@@ -120,6 +128,7 @@ struct Status {
   // screen is the one place the passkey appears, never a log.
   std::optional<std::uint32_t> pairing_passkey;
   std::string_view device_name; // BLE local name, shown with the passkey.
+  std::optional<Battery> battery;
 };
 
 struct Model {

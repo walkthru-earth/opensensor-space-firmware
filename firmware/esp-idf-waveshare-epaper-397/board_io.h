@@ -99,8 +99,24 @@ struct PowerStatus {
   bool battery_present = false;
   std::optional<std::uint16_t> battery_mv;
   std::optional<std::uint8_t> battery_percent;
+  // STATUS2 0x01 bits 7:5 read 001, the test XPowersLib isCharging() makes.
+  // False without a battery or when that read fails.
+  bool charging = false;
 };
+// Board task, it shares the internal bus.
 [[nodiscard]] std::expected<PowerStatus, PmicError> read_power();
+// The charge the screen header draws.
+struct BatteryLevel {
+  std::uint8_t percent = 0; // 0 to 100
+  bool charging = false;
+};
+// Board task, called every loop. About every 30 s it reads the PMIC and
+// caches the charge, the first loop reads at once.
+void poll_power(std::int64_t now_us);
+// Any task. The charge poll_power cached, or nothing before the first read,
+// when that read failed, with no battery present or without a percent. The
+// display task reads it, so the UI never touches the I2C bus.
+[[nodiscard]] std::optional<BatteryLevel> last_battery();
 
 // QMI8658A accelerometer, the gyro stays off. Only the orientation hook
 // uses it. A board without an answering IMU keeps running, the hook then
@@ -136,9 +152,11 @@ struct Accel {
 // down, gravity points to +y at 0, +x at 1, -y at 2 and -x at 3.
 //
 // How the IMU axes sit against the panel is not printed in the schematic and
-// the Waveshare demo never maps them to a rotation. This table is the
-// provisional guess, IMU x along panel x and IMU y along panel y. The owner
-// test in the board README confirms or corrects it from the OS IMU lines.
+// the Waveshare demo never maps them to a rotation. The first guess, IMU x
+// along panel x and IMU y along panel y, turned the picture the wrong way
+// round on the owner's board, which read az about -19000 lying face up.
+// Since 2026-11-21 IMU x runs against panel x and IMU y along panel y. The
+// owner test in the board README still confirms it from the OS IMU lines.
 struct ImuAxis {
   std::uint8_t axis = 0; // 0 x, 1 y, 2 z of the IMU
   std::int8_t sign = 1;
@@ -147,7 +165,7 @@ struct ImuToPanel {
   ImuAxis x{};
   ImuAxis y{};
 };
-inline constexpr ImuToPanel kImuToPanel{.x = {.axis = 0, .sign = 1},
+inline constexpr ImuToPanel kImuToPanel{.x = {.axis = 0, .sign = -1},
                                         .y = {.axis = 1, .sign = 1}};
 // Half a g in plane before a pose counts, so a nearly flat device reports
 // nothing rather than flicker between turns.
@@ -176,9 +194,11 @@ inline constexpr std::int32_t kMinInPlane = 8192;
   return static_cast<std::uint8_t>(gx > 0 ? 1 : 3);
 }
 static_assert(quarter_turn({.x = 0, .y = -16384, .z = 0}) == 0);
-static_assert(quarter_turn({.x = -16384, .y = 0, .z = 0}) == 1);
+static_assert(quarter_turn({.x = 16384, .y = 0, .z = 0}) == 1);
 static_assert(quarter_turn({.x = 0, .y = 16384, .z = 0}) == 2);
-static_assert(quarter_turn({.x = 16384, .y = 0, .z = 0}) == 3);
+static_assert(quarter_turn({.x = -16384, .y = 0, .z = 0}) == 3);
+// Face up the owner's board read az about -19000, flat, no turn.
+static_assert(!quarter_turn({.x = 0, .y = 0, .z = -19000}));
 static_assert(!quarter_turn({.x = 0, .y = 0, .z = 16384}));
 static_assert(!quarter_turn({.x = 4000, .y = -4000, .z = 15000}));
 static_assert(!quarter_turn({.x = -32768, .y = -32768, .z = -32768}));

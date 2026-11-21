@@ -35,9 +35,13 @@ trial's settings or pins.
   (`board::read_orientation()`) and the raw counts (`board::last_accel()`)
   for any task. Under Rotation Auto the UI task feeds the cached counts to
   the shared tracker, which owns hysteresis and the 2 s stability window. The
-  UI task never reads the I2C bus. The axis table `kImuToPanel` is
-  provisional until the owner test in the board README passes. The board must
-  keep logging when the IMU does not answer.
+  UI task never reads the I2C bus. The axis table `kImuToPanel` had its x
+  sign flipped on 2026-11-21 after the owner report and stays unverified
+  until the owner test in the board README passes. The board must keep
+  logging when the IMU does not answer.
+- The board task polls the TG28 PMIC about every 30 s (`board::poll_power`)
+  and caches the battery charge, `board::last_battery()` gives it to any
+  task. The UI header draws it, and no battery or no percent draws no icon.
 - No phone `config_keys` yet. Adding them moves the desc digest and needs the
   pinned URI commit steps in `docs/shared/templates/README.md`.
 - The PCF85063 is the RTC hook. UTC stays null until it holds a set time or a

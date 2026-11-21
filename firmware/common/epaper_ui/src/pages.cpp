@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <array>
 #include <cstdio>
+#include <numeric>
+#include <span>
 #include <string_view>
 
 #include "epaper_ui/air_band.h"
@@ -87,15 +89,25 @@ void text_fit(Canvas &c, const Font &f, int x, int y, std::string_view s,
   }
 }
 
+// One link tag of the header, a word in a box filled when `on`.
+struct Tag {
+  Str word = Str::TagSd;
+  bool on = false;
+};
+
+[[nodiscard]] int tag_width(const Canvas &c, Str word) {
+  return text_width(c.fonts().small, tr(word)) + 2 * c.layout().header.tag_pad;
+}
+
 // A small label box at the header's right, filled when `on`. Returns the
 // right edge for the next tag.
-int tag(Canvas &c, int right, Str word, bool on) {
+int tag(Canvas &c, int right, Tag t) {
   const HeaderLayout &hl = c.layout().header;
   const Font &f = c.fonts().small;
-  const std::string_view s = tr(word);
-  const int w = text_width(f, s) + 2 * hl.tag_pad;
+  const std::string_view s = tr(t.word);
+  const int w = tag_width(c, t.word);
   const Rect r{right - w, hl.tag_y, w, hl.tag_h};
-  if (on) {
+  if (t.on) {
     c.fill_round_rect(r);
     c.text(f, r.x + hl.tag_pad, hl.tag_baseline, s, Ink::White);
   } else {
@@ -105,18 +117,72 @@ int tag(Canvas &c, int right, Str word, bool on) {
   return r.x - hl.tag_gap;
 }
 
+// The width of the battery icon with its nub, and with `percent` after it
+// when that is not empty.
+[[nodiscard]] int battery_width(const Canvas &c, std::string_view percent) {
+  const HeaderLayout &hl = c.layout().header;
+  const int icon = hl.battery_w + hl.battery_nub;
+  if (percent.empty())
+    return icon;
+  return icon + hl.battery_gap + text_width(c.fonts().small, percent);
+}
+
+// The battery at the header's right edge, an outline with a terminal nub,
+// filled in proportion to the charge, and `percent` right aligned on `right`
+// unless it is empty. A plus inverted over the middle of the body says it
+// charges. Returns the left edge of the icon.
+int battery(Canvas &c, int right, const Battery &b, std::string_view percent) {
+  const HeaderLayout &hl = c.layout().header;
+  const int line = hl.battery_line;
+  const Rect body{right - battery_width(c, percent),
+                  hl.tag_y + (hl.tag_h - hl.battery_h) / 2, hl.battery_w,
+                  hl.battery_h};
+  for (int i = 0; i < line; ++i)
+    c.rect({body.x + i, body.y + i, body.w - 2 * i, body.h - 2 * i});
+  const int nub_inset = body.h / 4;
+  c.fill({body.right(), body.y + nub_inset, hl.battery_nub,
+          body.h - 2 * nub_inset});
+  // One white pixel between the outline and the charge.
+  const int inset = line + 1;
+  const Rect inner{body.x + inset, body.y + inset, body.w - 2 * inset,
+                   body.h - 2 * inset};
+  c.fill({inner.x, inner.y, battery_fill(inner.w, b.percent), inner.h});
+  if (b.charging) {
+    // Each pixel of the plus flips once, so it reads on the charge and on
+    // the empty part alike.
+    const int arm = inner.h;
+    const int cx = inner.x + (inner.w - line) / 2;
+    const int cy = inner.y + (inner.h - line) / 2;
+    const int left = cx - (arm - line) / 2;
+    const int top = cy - (arm - line) / 2;
+    for (int y = top; y < top + arm; ++y)
+      for (int x = left; x < left + arm; ++x) {
+        const bool across = y >= cy && y < cy + line;
+        const bool down = x >= cx && x < cx + line;
+        if (across || down)
+          c.pixel(x, y, invert(c.get(x, y)));
+      }
+  }
+  if (!percent.empty())
+    c.text(c.fonts().small, right, hl.tag_baseline, percent, Align::Right);
+  return body.x;
+}
+
 void header(Canvas &c, const Status &st) {
   const HeaderLayout &hl = c.layout().header;
   const FontSet &fs = c.fonts();
   const int w = c.width();
   const int brand_end =
       hl.margin + c.text(fs.label, hl.margin, hl.baseline, tr(Str::Brand));
-  int right = w - hl.margin;
+  std::array<Tag, 3> tags{};
+  std::size_t tag_count = 0;
   if (st.wifi != Link::Off)
-    right = tag(c, right, Str::TagWifi, st.wifi == Link::Connected);
+    tags[tag_count++] = {.word = Str::TagWifi,
+                         .on = st.wifi == Link::Connected};
   if (st.ble != Link::Off)
-    right = tag(c, right, Str::TagBle, st.ble == Link::Connected);
-  right = tag(c, right, st.sd_ok ? Str::TagSd : Str::TagNoSd, st.sd_ok);
+    tags[tag_count++] = {.word = Str::TagBle, .on = st.ble == Link::Connected};
+  tags[tag_count++] = {.word = st.sd_ok ? Str::TagSd : Str::TagNoSd,
+                       .on = st.sd_ok};
   Text t{};
   std::string_view clock = tr(Str::ClockUnset);
   if (st.utc_s) {
@@ -126,6 +192,36 @@ void header(Canvas &c, const Status &st) {
                                 static_cast<int>((day_s / 60) % 60));
     clock = view(t, n);
   }
+  int right = w - hl.margin;
+  if (st.battery) {
+    // The icon and the percent while the clock still fits in the small
+    // font between the brand and the tags, else the icon alone, else no
+    // battery, so the battery never pushes the clock onto the brand.
+    Text pct{};
+    const int n = std::snprintf(pct.data(), pct.size(), tr_fmt(Str::BatteryFmt),
+                                static_cast<unsigned>(std::min<std::uint8_t>(
+                                    st.battery->percent, 100)));
+    const auto shown = std::span(tags).first(tag_count);
+    const int tags_w =
+        std::accumulate(shown.begin(), shown.end(), 0, [&](int sum, Tag tg) {
+          return sum + tag_width(c, tg.word) + hl.tag_gap;
+        });
+    const int clock_room =
+        brand_end + 3 * hl.tag_gap + text_width(fs.small, clock);
+    const auto fits = [&](std::string_view percent) {
+      return clock_room <=
+             right - battery_width(c, percent) - hl.tag_gap - tags_w;
+    };
+    const std::string_view percent = view(pct, n);
+    if (fits(percent))
+      right = battery(c, right, *st.battery, percent) - hl.tag_gap;
+    else if (fits({}))
+      right = battery(c, right, *st.battery, {}) - hl.tag_gap;
+  }
+  for (std::size_t i = 0; i < tag_count; ++i)
+    // Each tag draws as it goes, not a sum.
+    // cppcheck-suppress useStlAlgorithm
+    right = tag(c, right, tags[i]);
   // Centred on clock_x, moved into the gap between the brand and the tags
   // when it would touch either, as on a narrow portrait screen. Where even
   // the gap is too narrow it drops to the small font, centred in the gap.

@@ -805,6 +805,14 @@ ui::History *history = nullptr;
 // it into the panel frame and keeps the frame on the glass, all in PSRAM.
 std::optional<ui::Presenter> presenter;
 
+// The board task reads the PMIC every 30 s and caches the charge, so the UI
+// task never touches the I2C bus. No battery or no percent draws no icon.
+std::optional<ui::Battery> battery_of(std::optional<board::BatteryLevel> b) {
+  if (!b)
+    return std::nullopt;
+  return ui::Battery{.percent = b->percent, .charging = b->charging};
+}
+
 ui::Model model_of(const UiFeed &f) {
   ui::Model m{};
   const auto &r = f.reading;
@@ -832,7 +840,8 @@ ui::Model model_of(const UiFeed &f) {
               .sensor_status = r.device_status,
               .sensor_present = f.sensor_present,
               .pairing_passkey = f.passkey,
-              .device_name = f.device_name.data()};
+              .device_name = f.device_name.data(),
+              .battery = battery_of(board::last_battery())};
   return m;
 }
 
@@ -1442,6 +1451,7 @@ void poll_board() {
   const auto now = esp_timer_get_time();
   poll_sensor(now);
   poll_orientation(now);
+  board::poll_power(now);
   if (logging)
     oslogger::poll();
   poll_feed(esp_timer_get_time());

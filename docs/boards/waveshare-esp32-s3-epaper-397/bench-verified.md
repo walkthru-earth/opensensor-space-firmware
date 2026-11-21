@@ -100,6 +100,21 @@ Open findings from this boot.
   profile keeps `full_ms=2531` from the first boot and 0 for the unmeasured
   fast and partial times.
 
+## Header battery and IMU x sign, 2026-11-21, built only
+
+- The shared header draws a battery icon and percent when the board reports
+  a battery. The board task polls the PMIC every 30 s and the UI reads the
+  cache. The charging plus reads STATUS2 0x01 bits 7:5 as XPowersLib
+  `isCharging()` does. Without a battery the header is unchanged, and every
+  CrowPanel golden frame in `pixi run epaper-ui-test` still matches.
+- `kImuToPanel.x` sign flipped to -1 after the owner reported that Auto
+  turned the picture the wrong way round, with `az` about -19000 lying face
+  up. IMU y keeps its sign. The static_asserts and the host poses moved with
+  it.
+- Built only, never flashed. Neither the icon on the glass nor the flipped
+  rotation on the device is shown yet. The owner test in the board README
+  still confirms the axis table.
+
 Not shown yet. The UI pages, keys and settings popup on the glass, the
 picture turning with the device under Auto, partial refresh, the IMU lines on
 device, battery operation, the RTC set and kept

@@ -85,6 +85,13 @@ GOLDEN = {
     "status": "00c8c182626ebd0c10d3e79fdda2757c7cc91449f4c9f36c5d9cf714dc059b5d",
     "storage-fault": "d4884180575902b99bef3df73a5727b46a11b245945b3c4136f3e4d296e4a3d9",
     "thing-id-fault": "3e6ffb8df4b7eb628ecac12c6bd22e96c45b6122e9f8a83a4059e331acf1b3ab",
+    # No CrowPanel reports a battery, so it never draws these. They pin the
+    # header battery icon a board with a PMIC adds.
+    "chart-battery-empty": "ea96b9c213e00d1eeb80371d30066a897454237ba746061c8c42347492572482",
+    "dashboard-battery-dark": "4b7091c397c78f5501ecf3b4d3e7fd8582a36f22c64bceaf93e6a10c838a3464",
+    "dashboard-battery": "e85252377a3d74cd2e9a3e3e4d11c7fd0b6ca60ff64495500524910ec400d49c",
+    "dashboard-gap-battery": "1ffa4a20c79d76551a9d3a69b355d425d4f0610e661007399b6927805366e207",
+    "status-battery-charging": "073c7f3b6b3fca5af41cc13f4021c8180b718ab0274c9d2ec57786da11c18300",
 }
 # A few Arabic 400x300 r0 frames, one of each kind of page, so a change to
 # the bidi pass, the Arabic fonts or the mirroring shows up here.

@@ -77,10 +77,19 @@ def check_graph(root: Path) -> None:
         "40000003:\tcall8\t40000010 <helper>",
         "40000006:\tcall8\t40000020 <pool+0x4>",
         "40000009:\tcallx8\ta8",
+        "4000000c:\tcall0\t40000030 <spill>",
+        "4000000f:\tcall0\t40000040 <windowed>",
+        "40000012:\tcall0\t40000010 <helper>",
         "40000010 <helper>:",
         "40000010:\tentry\ta1, 999",
+        "40000030 <spill>:",
+        "40000030:\tret",
+        "40000040 <windowed>:",
+        "40000040:\tentry\ta1, 32",
     ]))
-    assert graph.functions["blob"].frame == 48 and graph.functions["blob"].calls == {"helper"}
+    # A call0 reaches prebuilt code with no `entry`. One that lands on a
+    # windowed function is data decoded as an instruction and is dropped.
+    assert graph.functions["blob"].frame == 48 and graph.functions["blob"].calls == {"helper", "spill"}
     assert graph.functions["blob"].indirect
     assert "helper" not in graph.functions, "a static function's bare symbol keeps its .ci frame"
 

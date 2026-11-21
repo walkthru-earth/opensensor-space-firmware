@@ -43,6 +43,13 @@ std::atomic<std::uint64_t> orientation_cache{kNoTurn};
 // age is the orientation_cache stamp, both are stored by the same poll.
 constexpr std::uint64_t kAccelValid = 1ULL << 48;
 std::atomic<std::uint64_t> accel_cache{0};
+// The board task writes, any task reads. The percent in bits 7:0, bit 8 set
+// while charging and bit 9 set when the last read gave a battery percent.
+constexpr std::uint32_t kBatteryCharging = 1U << 8;
+constexpr std::uint32_t kBatteryValid = 1U << 9;
+std::atomic<std::uint32_t> battery_cache{0};
+std::int64_t power_next_us = 0;
+constexpr std::int64_t kPowerPollUs = 30000000;
 
 sdmmc_card_t *card = nullptr;
 opensensor::storage::SdTransferBuffer sd_transfer_buffer;
@@ -54,6 +61,7 @@ std::uint64_t cached_used_bytes = 0;
 // AXP2101 register map, which the TG28 follows for these registers.
 namespace pmic_reg {
 constexpr std::uint8_t kStatus1 = 0x00; // bit 5 VBUS good, bit 3 battery
+constexpr std::uint8_t kStatus2 = 0x01; // bits 7:5 001 while charging
 constexpr std::uint8_t kChipId = 0x03;
 constexpr std::uint8_t kAdcEnable = 0x30;  // bit 0 VBAT, bit 2 VBUS
 constexpr std::uint8_t kVbatHigh = 0x34;   // 6 bits, then 0x35 low 8, in mV
@@ -447,7 +455,8 @@ std::expected<PowerStatus, PmicError> read_power() {
   PowerStatus out{.vbus_good = (*status & (1U << 5)) != 0,
                   .battery_present = (*status & (1U << 3)) != 0,
                   .battery_mv = std::nullopt,
-                  .battery_percent = std::nullopt};
+                  .battery_percent = std::nullopt,
+                  .charging = false};
   if (!out.battery_present)
     return out;
   const auto high = pmic_read(pmic_reg::kVbatHigh);
@@ -457,7 +466,31 @@ std::expected<PowerStatus, PmicError> read_power() {
   const auto percent = pmic_read(pmic_reg::kBatteryPercent);
   if (percent && *percent <= 100)
     out.battery_percent = *percent;
+  // XPowersLib v0.3.3 XPowersAXP2101.tpp isCharging(), also in the copy the
+  // Waveshare ESP32-S3-ePaper-3.97 demo vendors for this board.
+  const auto status2 = pmic_read(pmic_reg::kStatus2);
+  out.charging = status2 && (*status2 >> 5) == 0x01;
   return out;
+}
+
+void poll_power(std::int64_t now_us) {
+  if (now_us < power_next_us)
+    return;
+  power_next_us = now_us + kPowerPollUs;
+  const auto power = read_power();
+  std::uint32_t cached = 0;
+  if (power && power->battery_present && power->battery_percent)
+    cached = kBatteryValid | *power->battery_percent |
+             (power->charging ? kBatteryCharging : 0U);
+  battery_cache.store(cached, std::memory_order_relaxed);
+}
+
+std::optional<BatteryLevel> last_battery() {
+  const std::uint32_t cached = battery_cache.load(std::memory_order_relaxed);
+  if ((cached & kBatteryValid) == 0)
+    return std::nullopt;
+  return BatteryLevel{.percent = static_cast<std::uint8_t>(cached & 0xFF),
+                      .charging = (cached & kBatteryCharging) != 0};
 }
 
 bool rtc_read(std::int64_t &seconds, void *) {

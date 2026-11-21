@@ -43,6 +43,15 @@ struct Nav {
 // handle(), so here it keeps the page.
 [[nodiscard]] Nav navigate(std::uint8_t page, Input in);
 
+// The filled width of a battery icon whose inside is `inner_w` pixels wide,
+// at `percent` rounded to the nearest pixel. A percent past 100 fills it.
+[[nodiscard]] constexpr int battery_fill(int inner_w, std::uint8_t percent) {
+  if (inner_w <= 0)
+    return 0;
+  const int p = percent > 100 ? 100 : percent;
+  return (inner_w * p + 50) / 100;
+}
+
 // Draws `page` of the model into the canvas, clearing it first.
 void render(Canvas &c, std::uint8_t page, const Model &model,
             const History &history);
