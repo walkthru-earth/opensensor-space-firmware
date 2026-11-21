@@ -109,6 +109,7 @@ tasks=(
   "logger-watchdog-test"
   "logger-bench-stall-test"
   "logger-codec-store-test"
+  "logger-encoding-test"
   "logger-status-test"
   "logger-rotation-test"
   "logger-footer-test"

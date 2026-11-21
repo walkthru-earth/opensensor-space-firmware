@@ -37,6 +37,7 @@ code, see the
 | Stable `field_id`, append only from the Thing baseline, `TIMESTAMP(MICROS, UTC)`, `sorting_columns` on the sequence column | `docs/shared/table-and-observation-model.md`, `docs/shared/parquet-small-files.md` |
 | One `opensensor` footer key of compact JSON plus the `geo` key, instead of the 37 to 42 flat keys the survey measured | #88, `docs/shared/table-and-observation-model.md` |
 | Footer decoding into Iceberg v3 `DataFile` metrics, host verified, not called by any board | `firmware/common/src/parquet_reader.h` |
+| DELTA_BINARY_PACKED for INT32 and INT64 behind the Kconfig switch `CONFIG_OS_LOGGER_DELTA_INTEGERS`, default n, on in no board | `firmware/common/logger/Kconfig`, `firmware/common/logger/src/os_logger_encoding.h` |
 
 Finalized files are immutable and the card is the origin. Each uploaded file
 stands alone with a full footer (bridge decision 16).
@@ -57,6 +58,10 @@ stands alone with a full footer (bridge decision 16).
   Updated 2026-11-09. The writer has a DELTA_BINARY_PACKED integer encoder
   since #135 step 1. It is off by default and no board turns it on, so this
   line still holds for every file a board writes.
+  Updated 2026-11-21. Since #135 step 2 every board can turn it on at build
+  time with `CONFIG_OS_LOGGER_DELTA_INTEGERS`. The switch defaults to n and no
+  board sets it, so this line still holds. What the host proves and what the
+  board still owes is in DELTA integers below.
 - No ZSTD in any file the phone may read. The phone reads ZSTD on Android only.
 - No dictionary encoding until there are on device RAM numbers for it next to the
   TLS and BLE buffers.
@@ -66,6 +71,70 @@ stands alone with a full footer (bridge decision 16).
 - No compaction, rewrite or relabel of finalized files on the board.
 - No Iceberg manifests, manifest lists or catalog commits on the board.
 - No rotation window longer than one hour.
+
+## DELTA integers
+
+Added 2026-11-21 for #135 step 2. Turning DELTA on for a board is a one line
+change in that board's `sdkconfig.defaults`, made only after the owner signs
+off on the board numbers below.
+
+### Proven on the host
+
+- The encoder writes INT32 and INT64 values as DELTA_BINARY_PACKED in blocks
+  of 128 values and 4 miniblocks of 32. Every value stream is byte equal to a
+  Python encoder written from parquet-format 2.14.0 Encodings.md, and every
+  single group INT32 stream is byte equal to the one PyArrow writes
+  (`pixi run parquet-test`).
+- PyArrow and DuckDB read every DELTA file bit for bit equal to its PLAIN twin,
+  and every integer edge column equal to absolute values from an independent
+  Python copy of the fixture generator. The edges are 1, 2, 3, 32, 33, 90, 128,
+  129, 130, 257 and 1000 rows, nulls in a run and every third row, all null
+  columns, INT32 and INT64 min and max on alternating rows, deltas that need
+  the full 32 or 64 bits, random values and zero width miniblocks, with and
+  without LZ4_RAW.
+- Footer null_count, min_value and max_value match the generator, and every
+  footer field outside the page layout equals the PLAIN twin. FLOAT, GEOMETRY
+  and the RLE definition levels stay as they are.
+- The worst case INT64 page equals `delta_binary_packed_bound()`, LZ4 scratch
+  one byte short fails closed with no byte written, and an unknown encoding is
+  refused before any byte is written.
+- The board switch, off and on, through `create_file()`'s own source of the
+  encoding (`pixi run logger-encoding-test`). Off is the writer default byte
+  for byte. On changes only the integer chunks, keeps every statistic and reads
+  back the same values in both readers. No shipped `sdkconfig.defaults` sets
+  it, and the `bench-delta` CI leg compiles the CoreS3 and Waveshare V2 images
+  with it on.
+- On host fixtures shaped like the CoreS3 dictionary, DELTA plus LZ4_RAW is 35
+  percent smaller than PLAIN LZ4_RAW for one 90 row group and 38 percent for
+  four, see [Small Parquet files](../parquet-small-files.md).
+
+### Owed on the board, in #61
+
+- Paired 900 s windows on CoreS3 and Waveshare V2, the shipped PLAIN LZ4_RAW
+  image against the `OS_BENCH=delta` image, with file and footer bytes,
+  `writer_us` per row group, finalize and sync time, and free heap, PSRAM and
+  worker stack watermarks. The host fixture is synthetic, so its sizes are a
+  direction, not a device figure.
+- The image size and OTA slot share of the bench image against the shipped
+  image on each board.
+- A DELTA file pulled over BLE and over LAN on Android and on iOS, opened in
+  phone History, with the values compared against the card copy.
+- On a cardless board, the flash spool volume per day with DELTA against
+  PLAIN ([decision 0004](0004-flash-fallback-archive.md)).
+
+### Before any board turns it on
+
+- The CrowPanel chart history restore decodes PLAIN pages only through
+  `parquet_columns.h`. Its build stops when the switch is on, and that stays
+  until the decoder reads DELTA_BINARY_PACKED.
+- `tools/rebuild_partial.py` rebuilds PLAIN partials only. A DELTA partial is
+  refused as torn, so recovery of a reset window needs DELTA page support
+  first.
+- A matched phone build with a newest-first entry in
+  [mobile migration](../mobile-migration.md), and every board of that kind
+  reflashed.
+- BYTE_STREAM_SPLIT for FLOAT is not built. It would follow the same switch
+  pattern as its own Kconfig option after the DELTA numbers are in.
 
 ## What moves to a cloud compactor
 
@@ -229,6 +298,7 @@ issue #61 with the other bench work.
   reader.
 - One real file per rotation setting on the current firmware, since the survey
   predates the Thing baseline and the `opensensor` footer.
+- The paired PLAIN and DELTA bench in DELTA integers above.
 
 ## Reopen when
 
@@ -236,8 +306,9 @@ issue #61 with the other bench work.
   BYTE_STREAM_SPLIT on both iOS and Android (mobile PR #103, covered by
   `verifyIos`). The DELTA integer measurement on device is
   [#135](https://github.com/walkthru-earth/opensensor-space-firmware/issues/135).
-- Not met yet. The DELTA measurement in #135 shows it fits the writer time,
-  heap and image budget on both boards.
+- Not met yet. The DELTA measurement in #61 shows it fits the writer time,
+  heap and image budget on both boards. The switch and the host proof landed
+  in #135 step 2.
 - iOS reads ZSTD. Then compare ZSTD against LZ4_RAW on device.
 - On device numbers show a dictionary page fits next to TLS and BLE on both
   boards.
