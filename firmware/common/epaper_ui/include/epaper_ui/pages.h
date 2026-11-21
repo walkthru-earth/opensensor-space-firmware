@@ -52,4 +52,10 @@ void render(Canvas &c, std::uint8_t page, const Model &model,
 // sleeping panel never passes an old value off as current (#165).
 void render_asleep(Canvas &c, const Model &model);
 
+// The settings storage fault page, clearing the canvas first (#177). A board
+// draws it when NVS cannot start, so it holds no reading. It says logging is
+// off in English and in Arabic, because the language setting lives in NVS,
+// and names the ESP-IDF error. It leaves the active language as it found it.
+void render_storage_fault(Canvas &c, int error);
+
 } // namespace opensensor::ui
