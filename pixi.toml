@@ -291,3 +291,39 @@ PYTHONTZPATH = "/usr/share/zoneinfo"
 
 [pypi-dependencies]
 bleak = ">=3.1.0, <4"
+
+# --- 3D printable enclosures and mechanical models (opt in) ---
+# The cad environment holds text-to-cad's `cad` command, which builds
+# build123d models, inspects vendor STEP files and exports STEP, STL and 3MF.
+# See .claude/agents/cad-designer.md. It is a separate environment, so the
+# firmware gate and CI never install it. Use `pixi run -e cad <task>`.
+# conda-forge has Python, numpy, ezdxf and Pillow, so those come from there.
+# Its uv is a bare binary that does not satisfy cad's PyPI requirement on the
+# uv Python package, so uv is pinned once on PyPI instead of installed twice. `cad` itself is on PyPI only (0.11.13 is the newest, 2026-11-18), and
+# its CAD kernel stack (build123d 0.13, cadquery-ocp-novtk 8.0) is not on
+# conda-forge at those versions (it has build123d 0.9.1 on 2026-11-19), so cad
+# fetches that stack itself into its own cache on first build. cad 0.11.13
+# requires uv >=0.13.8.
+[feature.cad.dependencies]
+python = ">=3.13,<3.14"
+numpy = ">=2.5,<3"
+ezdxf = ">=1.4.2,<2"
+pillow = "==13.0.0"
+
+[feature.cad.pypi-dependencies]
+cad = "==0.11.13"
+uv = "==0.13.9"
+
+[feature.cad.activation.env]
+# Usage stats stay off for every cad process this workspace starts.
+CAD_TELEMETRY = "off"
+DO_NOT_TRACK = "1"
+
+[feature.cad.tasks]
+# Report cad, its cache, kernel and server. Changes nothing.
+cad-doctor = "cad doctor"
+# The server builds models and serves the viewer. cad runs one per computer.
+cad-server = "cad server start"
+
+[environments]
+cad = { features = ["cad"], no-default-feature = true }

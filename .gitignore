@@ -4,8 +4,12 @@
 backup/
 
 # local agent / tooling state
-# Agent git worktrees are created under .claude/worktrees, so ignore the lot.
-.claude/
+# Agent git worktrees and local state live under .claude/, so ignore it all
+# except the shared subagents, project skills and plugin settings.
+.claude/*
+!.claude/agents/
+!.claude/skills/
+!.claude/settings.json
 .code-review-graph/
 
 # Firmware SDKs live in $OS_TOOLCHAIN_ROOT outside the repo, but ignore these
@@ -44,3 +48,6 @@ firmware/common/logger/tests/compile/dependencies.lock
 # Editor and OS state
 .vscode/
 .DS_Store
+
+# Slicer CLI run report written to the working directory
+/result.json

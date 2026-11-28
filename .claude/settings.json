@@ -1,0 +1,14 @@
+{
+  "extraKnownMarketplaces": {
+    "earthtojake": {
+      "source": {
+        "source": "github",
+        "repo": "earthtojake/text-to-cad",
+        "ref": "v0.11.13"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "text-to-cad@earthtojake": true
+  }
+}

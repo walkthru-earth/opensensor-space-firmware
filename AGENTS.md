@@ -75,6 +75,7 @@ in `firmware/common/`. Device protocol and telemetry contracts live in
 | Board STAC File Item sidecar (built, #142) and Thing Collection (not built, #145), decided in DR 0001 | `firmware/common/stac/AGENTS.md`, `docs/shared/stac-contract/README.md`, `docs/shared/decisions/0001-standalone-thing-stac.md` |
 | LAN OTA, boot self test and core dumps (#40) | `firmware/common/connectivity/AGENTS.md`, `firmware/common/runtime/AGENTS.md`, `docs/shared/security-hardening.md` |
 | Host scripts and gates | `tools/AGENTS.md`, `docs/shared/development.md` |
+| 3D printed enclosures, bases, stands and mounts for any set of boards and sensors | `.claude/skills/hardware-design/SKILL.md` (generic rules and steps), `.claude/agents/cad-designer.md` (subagent that runs them), `hardware/parts/`, the design folder's `AGENTS.md` when it has one, `pixi run -e cad cad-doctor` |
 
 ## Code boundaries
 
