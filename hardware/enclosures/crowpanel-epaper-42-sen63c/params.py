@@ -212,6 +212,9 @@ CRADLE_FRONT_LIP_IN_Z = PANEL_FRONT_Z + FIT_PANEL  # 1.9, lip inner face clears 
 CRADLE_FRONT_LIP_H = 3.5  # DES Cradle bullet, about 3.5 tall
 CRADLE_FRONT_LIP_T = WALL  # builder call
 CRADLE_FRONT_LIP_TOP_PANEL_Y = CRADLE_FLOOR_Y + CRADLE_FRONT_LIP_H  # 3.35
+# The lip inner face leans out by TILT_DEG from the floor to the lip top, see
+# base_body.py Front lip draft. The base and the test plate coupon share it.
+CRADLE_FRONT_LIP_TOP_IN_Z = CRADLE_FRONT_LIP_IN_Z + CRADLE_FRONT_LIP_H * math.tan(math.radians(TILT_DEG))
 CRADLE_REAR_IN_Z = PANEL_BACK_COVER_Z0 - FIT_PANEL  # -7.8
 CRADLE_REAR_WALL_T = (ASSUMED_SCREW_RELIEF_DEPTH - FIT_PANEL) + SKIN  # 3.65, skin behind the relief
 CRADLE_REAR_OUT_Z = CRADLE_REAR_IN_Z - CRADLE_REAR_WALL_T  # -11.45
@@ -537,6 +540,14 @@ def check():
         POCKET_D >= SEN_MAX_H + ASSUMED_GASKET_COMPRESSED_T + ASSUMED_END_PAD_COMPRESSED_T,
         POCKET_D,
     )
+    # The gasket and the end pads are both foam, in series across POCKET_D.
+    # The smallest sensor must still squeeze them, so it cannot rattle.
+    sen_min_h = 2 * SEN_H - SEN_MAX_H
+    ok(
+        "foam stack squeezed at the smallest sensor",
+        ASSUMED_GASKET_T + ASSUMED_END_PAD_T - (POCKET_D - sen_min_h) >= 0.5,
+        ASSUMED_GASKET_T + ASSUMED_END_PAD_T - (POCKET_D - sen_min_h),
+    )
     ok("front lip top panel y < 8.1", CRADLE_FRONT_LIP_TOP_PANEL_Y < PANEL_ACTIVE_Y0, CRADLE_FRONT_LIP_TOP_PANEL_Y)
     ok("side lip top panel y < 15", CRADLE_SIDE_LIP_TOP_PANEL_Y < PANEL_SIDE_LIP_MAX_Y, CRADLE_SIDE_LIP_TOP_PANEL_Y)
     ok(
@@ -560,7 +571,11 @@ def check():
     )
     ok("latch catch <= 1.2", LATCH_CATCH <= 1.2, LATCH_CATCH)
     ok("fin >= 8", FIN_DEPTH >= 8.0, FIN_DEPTH)
-    ok("fin between grilles", GRILLE_INLET_X1 + FIN_T / 2 < FIN_X - SEN_X0 + FIN_T < GRILLE_OUTLET_X0 + FIN_T, FIN_X)
+    ok(
+        "fin between grilles, both faces",
+        GRILLE_INLET_X1 < FIN_X - SEN_X0 - FIN_T / 2 and FIN_X - SEN_X0 + FIN_T / 2 < GRILLE_OUTLET_X0,
+        FIN_X,
+    )
     ok("vents >= 20 from grilles", VENT_GRILLE_DIST >= VENT_MIN_GRILLE_DIST, VENT_GRILLE_DIST)
     ok(
         "grilles inside the sensor face with gasket land",

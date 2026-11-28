@@ -348,7 +348,11 @@ ASSUMED, so iteration 2 changes one number.
 - The caliper list in the board sheet, mainly the shell
   outline, the header socket position and the BOOT and RST plunger height.
 - The plug height above the sensor rim and the cable bend radius. No source
-  gives them, so the pocket ring on the test plate checks them with the real
-  cable.
+  gives them, so the model reserves `ASSUMED_PLUG_ZONE` (15 mm) in front of
+  the rim and keeps it behind the jumper block. Measure the real plug and bend
+  with the sensor seated in the pocket ring on the test plate. The ring is
+  only 5 mm tall, so it gives the numbers but cannot show a clash in the full
+  base. The first full print (README owner print test steps 6 and 7) is the
+  check for that.
 - Foam material and thickness, settled on the test plate.
 - Which panel FPC connector is fitted, only if it changes the back face.

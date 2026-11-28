@@ -209,8 +209,8 @@ the printer time from the slice or a rough hands-on time.
    was left in the plate grooves, and whether the grille slots are open.
 5. Slide the bottom plate in and out five times without the sensor. About 5
    min. Note how hard it slides and how clear the detent click feels.
-6. Fit the gasket, pads and sensor and close the plate (Assembly steps 1, 2,
-   4 and 5). About 20 min. Press on the sensor through the grilles and note
+6. Fit the gasket, pads and sensor, close the plate and stick on the feet
+   (Assembly steps 1, 2, 4, 5 and 6). About 20 min. Press on the sensor through the grilles and note
    whether it twists or rocks in its pocket.
 7. Fit the backrest, plug in the jumpers and seat the panel (Assembly steps 7
    and 8). About 10 min. Note whether the jumpers fit under the panel without
@@ -219,8 +219,8 @@ the printer time from the slice or a rough hands-on time.
 8. Weigh the panel on a kitchen scale before you seat it, and the whole
    Thing after. About 5 min. The tipping check needs the panel at 114 g or
    more.
-9. Stand the Thing on the desk and push the panel top edge gently forward
-   and back with one finger. About 5 min. Note whether it rocks or tips
+9. Stand the Thing on the desk, check that all four rubber feet touch it,
+   and push the panel top edge gently forward and back with one finger. About 5 min. Note whether it rocks or tips
    before the base slides.
 10. Press a pin into each 3.2 mm hole in the back wall, and take the TF
     card out and back in. About 5 min. Note whether BOOT and RST click and

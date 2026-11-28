@@ -355,11 +355,10 @@ def _chamfer_bed(shape):
         return (ARM_X0 - SLOT - SPINE_X0 - 0.01 <= c.X <= ARM_X1 + SLOT - SPINE_X0 + 0.01
                 and ARM_ROOT_Y - TONGUE_Y0 - 0.01 <= c.Y <= HEAD_Y0 - TONGUE_Y0 + 0.01)
     edges = [e for e in shape.edges() if abs(e.bounding_box().max.Z) < 1e-6 and not on_arm(e)]
-    try:
-        out = bd.chamfer(edges, BED_CHAMFER)
-        return out, len(edges)
-    except Exception:  # OCC can refuse a chamfer that meets a face it cannot trim
-        return shape, 0
+    assert edges, "no bed edges to chamfer"
+    # No fallback. A refused chamfer fails the build, so the part never ships
+    # without its elephant foot relief.
+    return bd.chamfer(edges, BED_CHAMFER), len(edges)
 
 
 def _part():
@@ -370,7 +369,7 @@ def _part():
     raw = raw.solids()[0] if len(raw.solids()) == 1 else raw
     solid, n = _chamfer_bed(raw)
     assert SLOT >= p.FIT_LATCH_GAP and HEAD_Y0 - RAIL_Y1 >= p.FIT_LATCH_GAP
-    report.append(f"bed chamfer {BED_CHAMFER} on {n} edges" if n else "bed chamfer skipped, OCC refused it")
+    report.append(f"bed chamfer {BED_CHAMFER} on {n} edges")
     return solid, report
 
 

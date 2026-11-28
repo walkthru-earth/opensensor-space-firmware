@@ -124,7 +124,8 @@ Bottom cover
 
 ## Controls
 
-All press directions are in the board plane. They are not on the back face.
+Every control except BOOT and RST presses in the board plane. BOOT and RST
+press +z through d2.8 holes in the bottom cover, on the back face.
 
 | Control | Body | Actuator | Past PCB edge | Past shell edge | Press |
 |---|---|---|---|---|---|

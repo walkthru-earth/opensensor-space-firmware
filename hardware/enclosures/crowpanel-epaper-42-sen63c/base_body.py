@@ -50,8 +50,7 @@ FLOOR_UNDER_Y = p.CRADLE_FLOOR_Y - p.CRADLE_FLOOR_T  # panel -1.95
 # glass face sweeps a 15 degree fan from that edge. The lip inner face leans
 # out by the same angle from the floor and keeps the FIT_PANEL gap the whole
 # way (PLAN Task 3, draft the front lip inner face if the forward tip needs it).
-LIP_DRAFT_TAN = math.tan(math.radians(p.TILT_DEG))
-LIP_TOP_IN_Z = p.CRADLE_FRONT_LIP_IN_Z + (p.CRADLE_FRONT_LIP_TOP_PANEL_Y - p.CRADLE_FLOOR_Y) * LIP_DRAFT_TAN
+LIP_TOP_IN_Z = p.CRADLE_FRONT_LIP_TOP_IN_Z
 DOWN_Y = -60.0  # builder call, panel y far below the cradle, the blocks are trimmed at Z 2
 BED_CHAMFER = 0.4  # PLAN Task 3 Step 3, 0.4 on bed edges, takes the elephant foot (MAT 1.3, 0.10)
 TOL = 1e-3  # builder call, mm3 of overlap counted as touching
@@ -369,10 +368,10 @@ def _chamfer_bed(shape):
         return any(abs(c.Y - y) < 1e-3 for y in keep_y) or abs(c.X - IN_X0) < 1e-3
 
     edges = [e for e in shape.edges() if abs(e.bounding_box().max.Z - Z0) < 1e-6 and not inner(e)]
-    try:
-        return bd.chamfer(edges, BED_CHAMFER), len(edges)
-    except Exception:  # OCC can refuse a chamfer it cannot trim
-        return shape, 0
+    assert edges, "no bed edges to chamfer"
+    # No fallback. A refused chamfer fails the build, so the part never ships
+    # without its elephant foot relief.
+    return bd.chamfer(edges, BED_CHAMFER), len(edges)
 
 
 # ---------------------------------------------------------------------------
@@ -388,8 +387,8 @@ def check_values(report):
     (yc, zc), zp = _floor_under_meets_slope()
     assert p.CRADLE_REAR_OUT_Z < zp < LIP_OUT_Z, zp
     report.append(f"slope meets the floor underside at base ({yc:.3f}, {zc:.3f}), panel z {zp:.3f}")
-    band_front = p.FRONT_WALL_T - (GROOVE_Y0_BED - 0.0) * 0  # front wall is full band thick
-    assert band_front >= p.DOVETAIL_PLATE_BAND_T - 1e-9
+    # The front groove undercuts the front wall band. The band is thinnest at
+    # the groove top, which the next assert checks.
     assert GROOVE_Y0_TOP >= p.PLA_MIN_WALL, GROOVE_Y0_TOP
     assert p.BACK_BAND_OUT_Y - GROOVE_Y1_TOP >= p.PLA_MIN_WALL, p.BACK_BAND_OUT_Y - GROOVE_Y1_TOP
     report.append(f"groove Y {GROOVE_Y0_BED:.3f} to {GROOVE_Y1_BED:.3f} at the bed, {GROOVE_Y0_TOP:.3f} to "
@@ -499,8 +498,19 @@ def check_geometry(body, report):
         assert not solid((xc, (p.BACK_WALL_IN_Y + p.BACK_WALL_OUT_Y) / 2, zc)), ("slot", xc)
         assert not solid((xc, (p.BACK_WALL_IN_Y + p.BACK_WALL_OUT_Y) / 2, gz1 - 0.05)), ("slot top", xc)
         assert solid((xc, (p.BACK_WALL_IN_Y + p.BACK_WALL_OUT_Y) / 2, gz1 + 0.05)), ("slot top wall", xc)
-        assert solid((gx1 + 0.05, (p.BACK_WALL_IN_Y + p.BACK_WALL_OUT_Y) / 2, zc)) or gx1 == _IN[-1][1] or gx1 == _OUT[-1][1] or True
-    report.append(f"grilles {len(_IN)} inlet and {len(_OUT)} outlet vertical slots open through the back wall")
+    # Every bar between two slots and the wall past each grille end is still there.
+    ym = (p.BACK_WALL_IN_Y + p.BACK_WALL_OUT_Y) / 2
+    for slots in (_IN, _OUT):
+        slots = sorted(slots)
+        for (ax0, ax1, az0, az1), (bx0, bx1, bz0, bz1) in zip(slots, slots[1:]):
+            assert ax1 < bx0, ("slots overlap", ax1, bx0)
+            zc = (max(az0, bz0) + min(az1, bz1)) / 2
+            assert solid(((ax1 + bx0) / 2, ym, zc)), ("grille bar", ax1, bx0)
+        x0, x1, z0, z1 = slots[0]
+        assert solid((x0 - 0.05, ym, (z0 + z1) / 2)), ("wall before the grille", x0)
+        x0, x1, z0, z1 = slots[-1]
+        assert solid((x1 + 0.05, ym, (z0 + z1) / 2)), ("wall after the grille", x1)
+    report.append(f"grilles {len(_IN)} inlet and {len(_OUT)} outlet vertical slots open through the back wall, every bar solid")
     # Fin
     assert solid((p.FIN_X, p.BACK_WALL_OUT_Y + p.FIN_DEPTH - 0.05, 20.0)), "fin tip"
     assert not solid((p.FIN_X, p.BACK_WALL_OUT_Y + p.FIN_DEPTH + 0.05, 20.0)), "fin depth"
@@ -615,7 +625,7 @@ def _part(full=True):
     raw = _build()
     raw = raw.solids()[0] if len(raw.solids()) == 1 else raw
     body, n = _chamfer_bed(raw)
-    report.append(f"bed chamfer {BED_CHAMFER} on {n} edges" if n else "bed chamfer skipped, OCC refused it")
+    report.append(f"bed chamfer {BED_CHAMFER} on {n} edges")
     check_geometry(body, report)
     if full:
         check_fit(body, report)

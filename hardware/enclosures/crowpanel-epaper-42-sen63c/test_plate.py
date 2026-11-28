@@ -102,12 +102,21 @@ def _slice_point(pt, x0):
     return (x - x0, -z + LIP_OUT_Z, y - FLOOR_Y0)
 
 
+def _front_lip(x0, x1):
+    """Front lip with the same drafted inner face as the base (params CRADLE_FRONT_LIP_TOP_IN_Z)."""
+    pts = [(FLOOR_Y0, p.CRADLE_FRONT_LIP_IN_Z), (p.CRADLE_FLOOR_Y, p.CRADLE_FRONT_LIP_IN_Z),
+           (p.CRADLE_FRONT_LIP_TOP_PANEL_Y, p.CRADLE_FRONT_LIP_TOP_IN_Z), (p.CRADLE_FRONT_LIP_TOP_PANEL_Y, LIP_OUT_Z),
+           (FLOOR_Y0, LIP_OUT_Z)]
+    face = bd.Plane.YZ.offset(x0) * bd.Polygon(*pts, align=None)
+    return bd.extrude(face, x1 - x0)
+
+
 def cradle_slice(name):
     """One cradle cross section slice in the panel frame, with its label tab."""
     label, x0, x1 = SLICES[name]
     rear_out = p.CRADLE_REAR_OUT_Z
     body = _box(x0, x1, FLOOR_Y0, p.CRADLE_FLOOR_Y, rear_out, LIP_OUT_Z)  # floor
-    body += _box(x0, x1, FLOOR_Y0, p.CRADLE_FRONT_LIP_TOP_PANEL_Y, p.CRADLE_FRONT_LIP_IN_Z, LIP_OUT_Z)  # front lip
+    body += _front_lip(x0, x1)
     body += _box(x0, x1, FLOOR_Y0, p.CRADLE_REAR_WALL_TOP_PANEL_Y, rear_out, p.CRADLE_REAR_IN_Z)  # rear wall
     if x0 < p.CRADLE_SIDE_IN_X0:  # left side lip, base outer face to the side inner face
         body += _box(x0, p.CRADLE_SIDE_IN_X0, FLOOR_Y0, p.CRADLE_SIDE_LIP_TOP_PANEL_Y, rear_out, LIP_OUT_Z)
@@ -151,7 +160,12 @@ def _check_slices(pieces):
     # Lip and wall heights against the panel rows.
     assert p.CRADLE_FRONT_LIP_TOP_PANEL_Y < p.PANEL_ACTIVE_Y0
     assert p.CRADLE_REAR_WALL_TOP_PANEL_Y <= p.PANEL_SIDE_LIP_MAX_Y and p.CRADLE_SIDE_LIP_TOP_PANEL_Y <= p.PANEL_SIDE_LIP_MAX_Y
-    lip_z = (p.CRADLE_FRONT_LIP_IN_Z + LIP_OUT_Z) / 2
+    # The lip inner face is drafted like the base, so probe the top band and
+    # check that the panel side of the lip top is open.
+    lip_z = (p.CRADLE_FRONT_LIP_TOP_IN_Z + LIP_OUT_Z) / 2
+    top_y = p.CRADLE_FRONT_LIP_TOP_PANEL_Y - 0.05
+    assert not _probe(s, _slice_point((30.0, top_y, p.CRADLE_FRONT_LIP_TOP_IN_Z - 0.05), x0)), "lip inner face drafted"
+    assert _probe(s, _slice_point((30.0, top_y, p.CRADLE_FRONT_LIP_TOP_IN_Z + 0.05), x0)), "lip inner face drafted"
     assert _probe(s, _slice_point((30.0, p.CRADLE_FRONT_LIP_TOP_PANEL_Y - 0.05, lip_z), x0)), "lip reaches y 3.35"
     assert not _probe(s, _slice_point((30.0, p.CRADLE_FRONT_LIP_TOP_PANEL_Y + 0.05, lip_z), x0)), "lip stops at y 3.35"
     # Channel clears the shell depth at the sliding fit.

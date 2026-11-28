@@ -51,7 +51,7 @@ The example retainer STEP (RET) and foam (FOAM) use plan coordinates mirrored in
 | Mass | 18 min, 20 typ, 22 max g | DS Table 1, p.5 |
 | Label area | 22 x 8 mm on the connector side | DS Fig 9, p.57 |
 
-**Outline conflict settled.** The current datasheet drawing (DS p.56), the STEP and the product page (PP) all give 55.2 x 25.6 x 21.3 mm. The 55.5 x 25.6 x 21.5 figure matches no current Sensirion drawing we found. It falls inside the upper tolerance band (55.2 + 0.2 = 55.4 is still below 55.5, 21.3 + 0.5 = 21.8 covers 21.5), so it reads as a rounded worst case, not a drawing value. Design the pocket for the maximum material size, 55.4 x 25.7 x 21.8 mm, from the tolerances above.
+**Outline conflict settled.** The current datasheet drawing (DS p.56), the STEP and the product page (PP) all give 55.2 x 25.6 x 21.3 mm. The 55.5 x 25.6 x 21.5 figure matches no current Sensirion drawing we found. Its height is inside the tolerance band (21.3 + 0.5 = 21.8 covers 21.5), but its length is 0.1 past the upper limit (55.2 + 0.2 = 55.4, below 55.5). It reads as a rounded figure, not a drawing value. A pocket sized for 55.4 with 0.3 side clearance still takes a 55.5 sensor. Design the pocket for the maximum material size, 55.4 x 25.7 x 21.8 mm, from the tolerances above.
 
 ## 2. Inlets, outlet and fan
 

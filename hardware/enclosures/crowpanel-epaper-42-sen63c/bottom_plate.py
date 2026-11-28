@@ -173,9 +173,12 @@ def detent_flex(report):
         f"detent flex {d} at plate x {xs:.2f}, span {span:.2f}, strain {eps_ss:.3f} % simply supported, "
         f"{eps_cc:.3f} % clamped, limit {p.PLA_STRAIN_LIMIT_XY} %"
     )
+    # The beam spans Y, so its load is per mm of plate width along X. The
+    # ridge runs RIDGE_L along that span, not across it, so no total force is
+    # given here. The owner slide test measures it.
     report.append(
-        f"detent load per mm of contact width {f:.3f} N simply supported, {fc:.3f} N clamped, "
-        f"so {f * RIDGE_L:.1f} to {fc * RIDGE_L:.1f} N over the {RIDGE_L} ridge, friction not modelled"
+        f"detent load per mm of plate width along X {f:.3f} N simply supported, {fc:.3f} N clamped, "
+        f"friction not modelled"
     )
     assert max(eps_ss, eps_cc) <= p.PLA_STRAIN_LIMIT_XY, (eps_ss, eps_cc)
 
