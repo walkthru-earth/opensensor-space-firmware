@@ -354,5 +354,12 @@ ASSUMED, so iteration 2 changes one number.
   only 5 mm tall, so it gives the numbers but cannot show a clash in the full
   base. The first full print (README owner print test steps 6 and 7) is the
   check for that.
-- Foam material and thickness, settled on the test plate.
+- Foam material and thickness, settled on the test plate. With 3.0 mm end
+  pads a sensor at the low end of its height tolerance (20.8) sits on the
+  gasket stops with 0.0 of pad squeeze, against 0.5 at nominal and 1.0 at the
+  largest sensor. Then the stops do not set the gasket squeeze, the gasket
+  pushes the sensor off them until the two foams balance. Seat the owner's
+  sensor in the pocket ring with the chosen foam and check that it stays on
+  both stops. If it lifts off, use thicker or firmer end pads, for example
+  one more layer of 1 mm tape. The pocket depth does not change.
 - Which panel FPC connector is fitted, only if it changes the back face.

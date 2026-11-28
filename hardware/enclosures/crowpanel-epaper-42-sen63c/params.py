@@ -540,11 +540,19 @@ def check():
         POCKET_D >= SEN_MAX_H + ASSUMED_GASKET_COMPRESSED_T + ASSUMED_END_PAD_COMPRESSED_T,
         POCKET_D,
     )
-    # The gasket and the end pads are both foam, in series across POCKET_D.
-    # The smallest sensor must still squeeze them, so it cannot rattle.
+    # The rigid gasket stops set the gasket squeeze only while the end pads
+    # push the sensor onto them. With the sensor on the stops the pads get
+    # POCKET_D - ASSUMED_GASKET_COMPRESSED_T - sensor height. At the largest
+    # sensor that is 1.0 of squeeze, at the smallest it is 0.0, so a small
+    # sensor rests on the stops with no preload and the gasket can lift it
+    # off them (DESIGN.md Open items, settled on the test plate). The checks
+    # below keep that from getting worse. The pads must still touch a sensor
+    # on the stops, and both foams together must still hold it.
     sen_min_h = 2 * SEN_H - SEN_MAX_H
+    pad_squeeze_min = ASSUMED_END_PAD_T - (POCKET_D - ASSUMED_GASKET_COMPRESSED_T - sen_min_h)
+    ok("end pads touch the smallest sensor on the stops", pad_squeeze_min >= -1e-9, pad_squeeze_min)
     ok(
-        "foam stack squeezed at the smallest sensor",
+        "gasket and pads together squeeze the smallest sensor",
         ASSUMED_GASKET_T + ASSUMED_END_PAD_T - (POCKET_D - sen_min_h) >= 0.5,
         ASSUMED_GASKET_T + ASSUMED_END_PAD_T - (POCKET_D - sen_min_h),
     )
