@@ -35,7 +35,7 @@ it for every new design and every change. Reuse the part sheets in
   and its `references/` folder. Always read the `cad` skill and its
   `references/manufacturing-printing.md` before you write a printed part.
 - If the plugin is missing, install it for this project only with
-  `claude plugin marketplace add 'earthtojake/text-to-cad#latest' --scope project`
+  `claude plugin marketplace add 'earthtojake/text-to-cad#v0.11.13' --scope project`
   and `claude plugin install text-to-cad@earthtojake --scope project`.
 - Slicing for the owner's Bambu Lab A1 goes through the `print3d` skill,
   which needs OrcaSlicer or Bambu Studio installed as desktop apps. Neither

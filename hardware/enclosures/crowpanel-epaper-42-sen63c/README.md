@@ -211,7 +211,9 @@ the printer time from the slice or a rough hands-on time.
    min. Note how hard it slides and how clear the detent click feels.
 6. Fit the gasket, pads and sensor, close the plate and stick on the feet
    (Assembly steps 1, 2, 4, 5 and 6). About 20 min. Press on the sensor through the grilles and note
-   whether it twists or rocks in its pocket.
+   whether it twists or rocks in its pocket. With the plate closed, check
+   that the sensor plug and the cable bend clear the plate without being
+   pinched, and note any contact.
 7. Fit the backrest, plug in the jumpers and seat the panel (Assembly steps 7
    and 8). About 10 min. Note whether the jumpers fit under the panel without
    bending hard, whether the panel sits flat against the rear wall, and how
