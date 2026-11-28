@@ -53,6 +53,8 @@ def _placed(path, step_to_frame, frame_to_case):
             f"{path} is missing. Convert the vendor STEP in {VENDOR_DIR} to .xbf first, never refetch it."
         )
     solids = [leaf for leaf in leaves(xbf.read(path)) if getattr(leaf, "solids", None) and leaf.solids()]
+    if not solids:
+        raise ValueError(f"{path} holds no solids. Convert the vendor STEP in {VENDOR_DIR} to .xbf again.")
     loc = frame_to_case * step_to_frame
     return bd.Compound(children=[s.moved(loc) for s in solids])
 

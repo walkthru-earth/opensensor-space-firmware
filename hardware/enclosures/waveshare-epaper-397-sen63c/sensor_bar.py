@@ -10,7 +10,9 @@ sensor squeezes the gasket onto the back wall stand-offs.
 The left end splits into two prongs with a barb each. The barbs pass the
 holes with a 30 degree lead and catch the left wall outer face with a 45
 degree return. The whole return sits outside the wall, its root 0.1 past
-the wall face, so the bar has 0.2 of play along X and nothing is preloaded.
+the wall face. The wall hole edge is 0.3 above the bar, so the return meets
+it 0.4 to the right, and the head stops 0.1 to the left. The bar has about
+0.5 of play along X and nothing is preloaded.
 Release by squeezing the two prongs together outside the left wall and
 pulling the head, or pull hard, the 45 degree return lets go.
 
@@ -33,7 +35,7 @@ from cad import model  # noqa: E402
 import params as p  # noqa: E402
 from shapes import box  # noqa: E402
 
-RETURN_DEG = 45.0  # call, removable with a firm pull, preloads the head
+RETURN_DEG = 45.0  # call, removable with a firm pull
 LAND = 0.3  # call
 SLIT = p.BAR_W - 2 * p.PRONG_H
 SLIT_ROOT_R = SLIT / 2  # call, round slit end against a stress corner
@@ -77,6 +79,7 @@ def check_geometry(part, report):
     hole_half = p.BAR_W / 2 + p.HOLE_CLEAR + p.WALL_HOLE_GROW
     catch = p.BAR_W / 2 + p.PRONG_CATCH - hole_half
     assert catch > 0.2, catch
+    flex = p.PRONG_CATCH - p.HOLE_CLEAR  # the barbs also pass the tighter post holes
     assert bb.min.X >= p.PRONG_TIP_X - 1e-6 and bb.min.X < p.OUT_X0 - 1.0, "prong tips outside the left wall"
     assert bb.max.X > p.OUT_X1, "head outside the right wall"
     assert p.HEAD[1] / 2 > hole_half + 1.0, "head covers the right wall hole"
@@ -87,8 +90,9 @@ def check_geometry(part, report):
     assert part.is_inside(bd.Vector(xb, yc, p.BAR_Z0 - p.PRONG_CATCH + 0.05)), "lower barb"
     assert p.BAR_BARB_X - p.PRONG_CATCH - LAND - p.PRONG_CATCH / math.tan(math.radians(p.LATCH_LEAD_DEG)) \
         >= p.PRONG_TIP_X - 1e-6, "barb fits on the prong"
-    report.append(f"barb catch {catch:.2f} over the wall hole, prong strain "
-                  f"{p.latch_strain_constant(p.PRONG_L, catch, p.PRONG_H):.2f} % (limit {p.PLA_STRAIN_LIMIT_XY} %), "
+    report.append(f"barb catch {catch:.2f} over the wall hole, prong deflection {flex:.2f} through the post holes, "
+                  f"prong strain {p.latch_strain_constant(p.PRONG_L, flex, p.PRONG_H):.2f} % "
+                  f"(limit {p.PLA_STRAIN_LIMIT_XY} %), "
                   f"slit {SLIT:.2f}")
 
 
@@ -106,6 +110,7 @@ def sensor_bar():
 @model
 def sensor_bar_print():
     part = _part()
+    check_geometry(part, [])
     # Rotate 90 about X maps case Y to print Z, then lift the front face to Z 0.
     part = part.moved(bd.Location((0, 0, 0), (1, 0, 0), 90))
     bb = part.bounding_box()

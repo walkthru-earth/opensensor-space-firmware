@@ -89,13 +89,22 @@ def slice_plate(plate, parts, presets):
            "--load-settings", f"{printer};{process}", "--load-filaments", str(filament),
            "--slice", "0", "--outputdir", str(out), "--export-3mf", f"{plate}.gcode.3mf",
            *map(str, meshes)]
+    # Drop the last run's report and G-code, so a run that fails before it
+    # writes new ones can never be read as a fresh success.
+    report, gcode = out / "result.json", out / f"{plate}.gcode.3mf"
+    report.unlink(missing_ok=True)
+    gcode.unlink(missing_ok=True)
     with open(out / "slice.log", "w") as log:
-        subprocess.run(cmd, cwd=out, stdout=log, stderr=subprocess.STDOUT, check=False)
-    r = json.loads((out / "result.json").read_text())
+        run = subprocess.run(cmd, cwd=out, stdout=log, stderr=subprocess.STDOUT, check=False)
+    if run.returncode != 0:
+        sys.exit(f"{plate}: Bambu Studio exited with {run.returncode}, see {out / 'slice.log'}")
+    if not report.exists() or not gcode.exists():
+        sys.exit(f"{plate}: Bambu Studio wrote no report or no G-code, see {out / 'slice.log'}")
+    r = json.loads(report.read_text())
     if r.get("return_code") != 0:
         sys.exit(f"{plate}: {r.get('error_string')}, see {out / 'slice.log'}")
     pl = r["sliced_plates"][0]
-    (ART / f"{plate}.gcode.3mf").write_bytes((out / f"{plate}.gcode.3mf").read_bytes())
+    (ART / f"{plate}.gcode.3mf").write_bytes(gcode.read_bytes())
     mins = round(pl["total_predication"] / 60)
     warn = pl.get("warning_message") or "none"
     print(f"{plate}: {mins // 60} h {mins % 60} min, {pl['filaments'][0]['total_used_g']:.1f} g, warnings {warn}")

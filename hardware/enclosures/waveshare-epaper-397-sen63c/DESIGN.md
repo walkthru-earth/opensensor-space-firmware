@@ -235,8 +235,9 @@ wall and slides along X through holes in both side walls and in two posts
 that rise from the floor, one each side of the sensor pocket. Its left end
 carries two barbed prongs that pass out through the left wall and snap
 behind its outer face, with the whole 45 degree return outside the wall and its root 0.1 past
-the wall face. With the head 0.1 off the right wall this leaves 0.2 of play
-along X and nothing is preloaded. The
+the wall face. The wall hole edge is 0.3 above the bar, so the return meets
+it 0.4 to the right, and the head stops 0.1 off the right wall. This leaves
+about 0.5 of play along X and nothing is preloaded. The
 prongs flex outside the left post. A head (1.5 along X, 7.5 tall) sits 0.1
 off the right wall outer face and gives a grip to pull it out. Squeeze the
 two prongs together outside the left wall to release it, or pull the head
@@ -251,8 +252,10 @@ hard, the 45 degree return lets go.
   to 13.0 and 42.0 to 53.7, either side of the connector. The bar compresses
   them to 1.5 at the nominal sensor. The bar bears on the rigid front faces of
   the post holes, so the pad squeeze is set by plastic, not by the prongs.
-- Prongs 10.0 long, 1.5 thick, 0.6 barb, 0.3 deflection each. Root strain
-  0.68 % against the 1.2 % limit (constant section, MAT 2.1).
+- Prongs 10.0 long, 1.5 thick, 0.6 barb. The barbs pass the post holes as
+  well as the wall holes, so the 0.2 post hole sets the deflection at 0.4
+  each. Root strain 0.90 % against the 1.2 % limit (constant section, MAT
+  2.1). The barb catches the wall hole by 0.3.
 
 ### Battery shelf
 

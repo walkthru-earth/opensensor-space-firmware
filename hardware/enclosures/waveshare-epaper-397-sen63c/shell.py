@@ -199,8 +199,11 @@ def _part():
         s = s - c
     solids = s.solids()
     report.append(f"solids {len(solids)}, volume {sum(x.volume for x in solids) / 1000:.1f} cm3")
-    s = max(solids, key=lambda x: x.volume) if len(solids) > 1 else solids[0]
-    return s, report
+    # Never drop a piece. A cut that splits off a rib, fence or the coin block
+    # must fail here, before any export.
+    assert len(solids) == 1, f"shell split into {len(solids)} solids, " + \
+        ", ".join(f"{x.volume:.1f} mm3" for x in sorted(solids, key=lambda x: -x.volume))
+    return solids[0], report
 
 
 def check_geometry(part, report):
@@ -270,6 +273,7 @@ def shell():
 @model
 def shell_print():
     part, report = _part()
+    check_geometry(part, report)
     part = part.moved(_to_print())
     bb = part.bounding_box()
     report.append(f"print size {bb.size.X:.2f} x {bb.size.Y:.2f} x {bb.size.Z:.2f} mm, min Z {bb.min.Z:.3f}")

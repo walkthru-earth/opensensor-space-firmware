@@ -110,7 +110,7 @@ are not recorded yet.
 | `params.py` asserts | all pass |
 | DFM shell (FDM, PLA) | OK, 59.3 cm³ with the shelf, thinnest wall 1.46, no overhang past 45 degrees, longest bridge 5.0. The support estimate counts only bridge ceilings and the hole floors under them. Two holes on the plate give an info note about elephant foot |
 | DFM bezel | OK, 7.64 cm³, arm root strain 0.51 % against 1.2 % |
-| DFM sensor bar | OK, barb catch 0.30 over the wall hole, prong strain 0.68 % against 1.2 % |
+| DFM sensor bar | OK, barb catch 0.30 over the wall hole, prong deflection 0.40 through the post holes, strain 0.90 % against 1.2 % |
 | Shelf fit | one solid, pack 61.5 x 41 x 4.0 and coin 20 x 3.2 fit with no clash, pack lead route 39.5 from the lower corner and 51.6 from mid edge against 55, coin lead route 65.3 |
 | Interference | clear between our parts, the pack, the coin, the board and the sensor. One pair inside the board STEP could not be intersected by the kernel and is not ours |
 | Assembled size | X -4.6 to 110.0, Y -6.6 to 46.0, Z -3.0 to 76.9 with the feet |

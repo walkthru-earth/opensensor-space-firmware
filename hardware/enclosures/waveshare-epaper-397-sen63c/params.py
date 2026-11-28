@@ -25,6 +25,7 @@ Frames
 """
 
 import math
+import traceback
 
 # ---------------------------------------------------------------------------
 # Board, from the board sheet (BRD), board frame
@@ -365,8 +366,9 @@ def _checks():
     assert ARM_Z1 - LATCH_H_ROOT - ARM_SLOT >= b2c(0, DISP_Y[1] + POCKET_CLEAR, FRONT_BZ)[2] + 0.5
     # Strains
     assert latch_strain_tapered(LATCH_L) <= PLA_STRAIN_LIMIT_XY
-    hole_half = BAR_W / 2 + HOLE_CLEAR + WALL_HOLE_GROW
-    prong_y = BAR_W / 2 + PRONG_CATCH - hole_half
+    # The barbs pass the post holes (HOLE_CLEAR) as well as the wall holes,
+    # so the tighter post hole sets the prong deflection.
+    prong_y = PRONG_CATCH - HOLE_CLEAR
     assert latch_strain_constant(PRONG_L, prong_y, PRONG_H) <= PLA_STRAIN_LIMIT_XY
     assert BAR_W - 2 * PRONG_H >= 2 * prong_y + 0.2
     # Bridges
@@ -412,7 +414,19 @@ def _checks():
     assert mid <= BAT_LEAD_L - 2.0, mid
     assert rtc_lead_path() <= RTC_LEAD_MIN_L - 5.0, rtc_lead_path()
 
-_checks()
+
+def _run_checks():
+    """Run _checks and name the failed rule, so an assumed constant edit says what broke."""
+    try:
+        _checks()
+    except AssertionError as e:
+        frame = traceback.extract_tb(e.__traceback__)[-1]
+        detail = f", value {e}" if str(e) else ""
+        raise AssertionError(f"params.py line {frame.lineno} failed: {frame.line}{detail}. "
+                             "Change the constant it names, see DESIGN.md Assumptions.") from None
+
+
+_run_checks()
 
 if __name__ == "__main__":
     print(f"OZ {OZ:.2f} Z_TI {Z_TI:.2f} Z_TO {Z_TO:.2f} front Y at Z0 {y_front(0):.2f} at top {y_front(Z_TO):.2f}")
